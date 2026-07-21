@@ -1,0 +1,33 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Claude Code Review
+        uses: anthropics/claude-code-action@v1
+        with:
+          # API 키 대신 OAuth 토큰 사용 (claude setup-token 으로 발급)
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_tools: "Read,Grep,Glob"
+          claude_args: "--max-turns 5"
+          prompt: |
+            이 PR의 전체 diff를 리뷰해줘.
+            - CLAUDE.md에 정의된 코딩 컨벤션 기준으로 검토
+            - 버그, 보안 이슈, 성능 문제 위주로 확인
+            - 인라인 코멘트 대신, 발견한 이슈들을 정리해서 PR에 요약 코멘트 하나로 남겨줘
+            - 문제 없으면 간단히 승인 의견만 남겨줘
