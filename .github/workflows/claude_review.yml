@@ -23,8 +23,7 @@ jobs:
         with:
           # API 키 대신 OAuth 토큰 사용 (claude setup-token 으로 발급)
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          allowed_tools: "Read,Grep,Glob"
-          claude_args: "--max-turns 5"
+          claude_args: "--allowedTools Read,Grep,Glob --max-turns 10"
           prompt: |
             이 PR의 전체 diff를 리뷰해줘.
             - CLAUDE.md에 정의된 코딩 컨벤션 기준으로 검토
