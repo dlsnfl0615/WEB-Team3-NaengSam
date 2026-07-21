@@ -11,6 +11,15 @@
 
 커밋 전에는 반드시 포맷을 한 번 적용해주세요. 포맷 차이로 인한 불필요한 diff를 줄일 수 있습니다.
 
+### 저장 시 자동 포맷 (권장)
+
+포맷 단축키를 매번 누르는 대신, 저장할 때 자동으로 포맷되도록 설정할 수 있습니다.
+
+1. `Settings` > `Tools` > `Actions on Save` 로 이동합니다.
+2. `Reformat code` 를 체크합니다. (필요하면 `Optimize imports` 도 함께 체크)
+
+이 설정은 코드 스타일 스킴(`intelij-style.xml`) import와는 **별개인, 각자 IDE에서 켜는 설정**입니다. 스킴은 "어떻게 정렬할지", Actions on Save는 "언제 정렬할지"를 담당합니다. 켜두면 위의 "커밋 전 포맷 1회 적용"이 저장할 때마다 자동으로 처리됩니다.
+
 ## 2. 들여쓰기
 
 | 설정                       | 값    |
@@ -98,33 +107,36 @@ List<String> names = ingredients.stream()
 
 ## 6. 중괄호
 
-| 설정                                                                               | 값         |
-| ---------------------------------------------------------------------------------- | ---------- |
-| `IF_BRACE_FORCE` / `WHILE_BRACE_FORCE` / `DOWHILE_BRACE_FORCE` / `FOR_BRACE_FORCE` | 3 (Always) |
-| `KEEP_CONTROL_STATEMENT_IN_ONE_LINE`                                               | false      |
+| 설정                                                            | 값                |
+| --------------------------------------------------------------- | ----------------- |
+| `IF_BRACE_FORCE`                                                | 0 (Do not force)  |
+| `WHILE_BRACE_FORCE` / `DOWHILE_BRACE_FORCE` / `FOR_BRACE_FORCE` | 3 (Always)        |
+| `KEEP_CONTROL_STATEMENT_IN_ONE_LINE`                            | true              |
 
-- 본문이 한 줄이더라도 **제어문에는 항상 중괄호를 붙입니다.**
-- 제어문을 한 줄로 붙여 쓰는 것도 허용하지 않습니다. 포맷 시 자동으로 줄이 나뉩니다.
+- **`if` 문은 중괄호를 강제하지 않으며, 한 줄로 붙여 쓰는 것을 허용합니다.** 포맷 시 중괄호를 추가하거나 줄을 나누지 않습니다.
+- `while` / `do-while` / `for` 문은 본문이 한 줄이더라도 **항상 중괄호를 붙입니다.**
 
 ```java
-// Before
+// if는 한 줄로 붙여 쓸 수 있습니다
 if (ingredient == null) return;
 
-// After
-if (ingredient == null) {
-    return;
+// while / for는 항상 중괄호
+for (Ingredient ingredient : ingredients) {
+    ingredient.cook();
 }
 ```
 
 ## 7. 빈 줄
 
-| 설정                             | 값  |
-| -------------------------------- | --- |
-| `KEEP_BLANK_LINES_IN_CODE`       | 1   |
-| `BLANK_LINES_AFTER_CLASS_HEADER` | 0   |
-| `KEEP_BLANK_LINES_BEFORE_RBRACE` | 0   |
+| 설정                                | 값  |
+| ----------------------------------- | --- |
+| `KEEP_BLANK_LINES_IN_CODE`          | 1   |
+| `KEEP_BLANK_LINES_IN_DECLARATIONS`  | 1   |
+| `BLANK_LINES_AFTER_CLASS_HEADER`    | 0   |
+| `KEEP_BLANK_LINES_BEFORE_RBRACE`    | 0   |
 
 - 코드 중간의 연속된 빈 줄은 **최대 1줄**까지만 유지됩니다.
+- 필드·메서드 등 선언부 사이의 연속된 빈 줄도 **최대 1줄**까지만 유지됩니다.
 - 클래스 선언 직후에는 빈 줄을 넣지 않습니다.
 - 닫는 중괄호 `}` 바로 앞의 빈 줄은 제거됩니다.
 
