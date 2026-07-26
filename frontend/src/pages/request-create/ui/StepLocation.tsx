@@ -8,8 +8,7 @@ import {
   TextField,
   TopBar,
 } from "@/shared/ui";
-import { cn } from "@/shared/lib/cn";
-import type { RequestForm, UpdateForm } from "./types";
+import type { Meeting, RequestForm, UpdateForm } from "./types";
 
 export interface StepLocationProps {
   form: RequestForm;
@@ -21,6 +20,11 @@ type Field = "pickup" | "dropoff";
 const FIELD_LABELS: Record<Field, string> = {
   pickup: "픽업지 검색",
   dropoff: "도착지 검색",
+};
+
+const MEETING_KEYS: Record<Field, "pickupMeeting" | "dropoffMeeting"> = {
+  pickup: "pickupMeeting",
+  dropoff: "dropoffMeeting",
 };
 
 /** 스텝 1: 위치 — 픽업/도착지 입력 + 대면/비대면 선택 + 지도(자리표시). */
@@ -43,11 +47,7 @@ export function StepLocation({ form, update }: StepLocationProps) {
           className="cursor-pointer"
           onClick={() => setEditing("pickup")}
         />
-        <MeetingOption
-          label={"“대면”으로 드릴게요"}
-          selected={form.meeting === "대면"}
-          onClick={() => update({ meeting: "대면" })}
-        />
+        <MeetingNote meeting={form.pickupMeeting} suffix="드릴게요" />
 
         <div className="flex justify-center py-1">
           <Icon name="transfer" size={28} className="text-track" />
@@ -62,11 +62,7 @@ export function StepLocation({ form, update }: StepLocationProps) {
           className="cursor-pointer"
           onClick={() => setEditing("dropoff")}
         />
-        <MeetingOption
-          label={"“비대면”으로 받을게요"}
-          selected={form.meeting === "비대면"}
-          onClick={() => update({ meeting: "비대면" })}
-        />
+        <MeetingNote meeting={form.dropoffMeeting} suffix="받을게요" />
       </Card>
 
       <div className="flex h-[200px] items-center justify-center rounded-md border border-dashed border-line bg-canvas text-center text-2xs leading-[14px] text-muted">
@@ -92,10 +88,11 @@ export function StepLocation({ form, update }: StepLocationProps) {
           <p className="text-sm text-muted">전달 방식</p>
           <SegmentedToggle
             options={["대면", "비대면"]}
-            value={form.meeting}
-            onChange={(value) =>
-              update({ meeting: value as RequestForm["meeting"] })
-            }
+            value={editing ? form[MEETING_KEYS[editing]] : ""}
+            onChange={(value) => {
+              if (editing)
+                update({ [MEETING_KEYS[editing]]: value as Meeting });
+            }}
           />
         </div>
 
@@ -110,23 +107,17 @@ export function StepLocation({ form, update }: StepLocationProps) {
   );
 }
 
-interface MeetingOptionProps {
-  label: string;
-  selected: boolean;
-  onClick: () => void;
+interface MeetingNoteProps {
+  meeting: Meeting;
+  suffix: string;
 }
 
-function MeetingOption({ label, selected, onClick }: MeetingOptionProps) {
+/** “대면”으로 드릴게요 — 해당 필드에 선택된 전달 방식을 문장으로 보여줍니다. */
+function MeetingNote({ meeting, suffix }: MeetingNoteProps) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        "w-fit text-sm",
-        selected ? "font-semibold text-teal-700" : "text-muted",
-      )}
-    >
-      {label}
-    </button>
+    <p className="text-sm text-muted">
+      <span className="font-semibold text-teal-700">“{meeting}”</span>으로{" "}
+      {suffix}
+    </p>
   );
 }

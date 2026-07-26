@@ -12,7 +12,8 @@ import type { RequestForm } from "./types";
 const INITIAL_FORM: RequestForm = {
   pickup: "",
   dropoff: "",
-  meeting: "대면",
+  pickupMeeting: "대면",
+  dropoffMeeting: "비대면",
   itemType: "서류",
   itemSize: "S",
   itemName: "",

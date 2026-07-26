@@ -1,9 +1,14 @@
+/** 대면/비대면 전달 방식. */
+export type Meeting = "대면" | "비대면";
+
 /** 부름 등록 폼 상태(UI 전용, API 미연동). */
 export interface RequestForm {
   pickup: string;
   dropoff: string;
-  /** 전달 방식 */
-  meeting: "대면" | "비대면";
+  /** 픽업 전달 방식 */
+  pickupMeeting: Meeting;
+  /** 도착 수령 방식 */
+  dropoffMeeting: Meeting;
   /** 물품 유형 */
   itemType: "서류" | "소형택배" | "샘플" | "기타";
   /** 물품 크기 */
