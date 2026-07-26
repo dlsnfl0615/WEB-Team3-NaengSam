@@ -20,6 +20,7 @@ export const ROUTES = {
   activity: "/activity",
   activityDetail: "/activity-detail",
   activityDetailDriver: "/activity-detail-driver",
+  earnings: "/earnings",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
