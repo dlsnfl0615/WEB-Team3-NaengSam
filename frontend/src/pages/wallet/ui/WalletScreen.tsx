@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { BottomNav, Button, Card, ScreenShell, TopBar } from "@/shared/ui";
+import { ROUTES } from "@/shared/config/routes";
 import { HistoryItem } from "./HistoryItem";
 import { WALLET_HISTORY } from "./history";
 
@@ -8,6 +10,7 @@ import { WALLET_HISTORY } from "./history";
  * 보유 포인트와 머니(드리미 수익) 잔액, 최근 입출금 내역을 보여줍니다.
  */
 export function WalletScreen() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState("point");
 
   return (
@@ -24,7 +27,12 @@ export function WalletScreen() {
           </div>
           <p className="text-3xl font-bold tracking-[-0.6px]">12,400 P</p>
           <p className="text-2xs opacity-70">배송 결제에 사용 가능</p>
-          <Button block arrow className="mt-3">
+          <Button
+            block
+            arrow
+            className="mt-3"
+            onClick={() => navigate(ROUTES.pointCharge)}
+          >
             포인트 충전
           </Button>
         </Card>
@@ -47,7 +55,12 @@ export function WalletScreen() {
             >
               출금하기
             </Button>
-            <Button variant="navy" block arrow>
+            <Button
+              variant="navy"
+              block
+              arrow
+              onClick={() => navigate(`${ROUTES.pointCharge}?mode=convert`)}
+            >
               포인트로 전환
             </Button>
           </div>
