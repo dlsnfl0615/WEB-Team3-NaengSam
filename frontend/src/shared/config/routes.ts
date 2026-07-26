@@ -17,6 +17,7 @@ export const ROUTES = {
   deliveryComplete: "/delivery-complete",
   driverReason: "/driver-reason",
   deliveryProof: "/delivery-proof",
+  activity: "/activity",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
