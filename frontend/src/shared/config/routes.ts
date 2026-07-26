@@ -15,7 +15,6 @@ export const ROUTES = {
   deliveryTrack: "/delivery-track",
   deliveryDetail: "/delivery-detail",
   deliveryComplete: "/delivery-complete",
-  driverHome: "/driver-home",
   driverReason: "/driver-reason",
   deliveryProof: "/delivery-proof",
 } as const;
