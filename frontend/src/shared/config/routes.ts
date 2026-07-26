@@ -14,6 +14,7 @@ export const ROUTES = {
   rejectReason: "/reject-reason",
   deliveryTrack: "/delivery-track",
   deliveryDetail: "/delivery-detail",
+  deliveryComplete: "/delivery-complete",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
