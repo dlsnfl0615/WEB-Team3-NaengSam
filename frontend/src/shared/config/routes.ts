@@ -23,6 +23,7 @@ export const ROUTES = {
   earnings: "/earnings",
   wallet: "/wallet",
   pointCharge: "/point-charge",
+  mypage: "/mypage",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
