@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, MapCard, ScreenShell, TopBar } from "@/shared/ui";
+import { ROUTES } from "@/shared/config/routes";
 import { DriverOffer } from "./DriverOffer";
 
 /**
@@ -40,7 +41,7 @@ export function MatchingScreen() {
             rating={4.9}
             deliveries={132}
             distance="120m"
-            onReject={() => setOfferVisible(false)}
+            onReject={() => navigate(ROUTES.rejectReason)}
             onAccept={() => setOfferVisible(false)}
           />
         </footer>
