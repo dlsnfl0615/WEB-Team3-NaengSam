@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState } from "react";
 import {
   BottomNav,
   Button,
@@ -10,15 +10,15 @@ import {
   SectionHeader,
   SegmentedToggle,
   StatCard,
-} from '@/shared/ui'
+} from "@/shared/ui";
 
 /**
- * 쉼,부름 홈 화면(Figma node 1:1914).
+ * 쉼,부름 부르미(발송인) 홈 화면(Figma node 191:592).
  * 폰 목업 없이 모바일 폭(max-w) 셸로 렌더합니다.
  */
 export function HomeScreen() {
-  const [role, setRole] = useState('부르미')
-  const [tab, setTab] = useState('home')
+  const [role, setRole] = useState("부르미");
+  const [tab, setTab] = useState("home");
 
   return (
     <ScreenShell>
@@ -35,7 +35,7 @@ export function HomeScreen() {
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <SegmentedToggle
-          options={['부르미', '드리미']}
+          options={["부르미", "드리미"]}
           value={role}
           onChange={setRole}
         />
@@ -46,7 +46,7 @@ export function HomeScreen() {
         <Card variant="hero" className="flex flex-col gap-3">
           <p className="text-xl font-bold tracking-[-0.4px]">물품 보내기</p>
           <div className="h-[9px] w-3/4 rounded-[5px] bg-navy-700" />
-          <Button variant="primary" arrow className="w-fit">
+          <Button variant="primary" arrow className="w-5/5">
             물품 보내기
           </Button>
         </Card>
@@ -81,5 +81,5 @@ export function HomeScreen() {
         <BottomNav active={tab} onChange={setTab} />
       </div>
     </ScreenShell>
-  )
+  );
 }
