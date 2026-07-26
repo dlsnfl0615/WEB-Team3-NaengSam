@@ -9,7 +9,6 @@ import { ACCOUNT_MENU, SUPPORT_MENU } from "./menus";
  * 프로필, 현금화 계좌, 계정·지원 메뉴를 보여줍니다.
  */
 export function MypageScreen() {
-  const [tab, setTab] = useState("profile");
   const [registered, setRegistered] = useState(false);
 
   return (
@@ -38,7 +37,7 @@ export function MypageScreen() {
       </main>
 
       <div className="pt-4">
-        <BottomNav active={tab} onChange={setTab} />
+        <BottomNav />
       </div>
     </ScreenShell>
   );

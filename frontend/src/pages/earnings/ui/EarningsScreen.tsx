@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { BottomNav, ScreenShell, SegmentedToggle, TopBar } from "@/shared/ui";
 import { useRole } from "@/shared/lib/role/useRole";
 import type { Role } from "@/shared/lib/role/RoleContext";
@@ -11,7 +10,6 @@ import { SenderSavings } from "./SenderSavings";
  */
 export function EarningsScreen() {
   const { role, setRole } = useRole();
-  const [tab, setTab] = useState("point");
 
   const isDriver = role === "드리미";
 
@@ -33,7 +31,7 @@ export function EarningsScreen() {
       </main>
 
       <div className="pt-4">
-        <BottomNav active={tab} onChange={setTab} />
+        <BottomNav />
       </div>
     </ScreenShell>
   );

@@ -16,7 +16,6 @@ export function ActivityScreen() {
   const navigate = useNavigate();
   const { role, setRole } = useRole();
   const [filter, setFilter] = useState<ActivityFilter>("전체");
-  const [tab, setTab] = useState("activity");
 
   const isDriver = role === "드리미";
   const records = isDriver ? DRIVER_RECORDS : SENDER_RECORDS;
@@ -68,7 +67,7 @@ export function ActivityScreen() {
       </main>
 
       <div className="pt-4">
-        <BottomNav active={tab} onChange={setTab} />
+        <BottomNav />
       </div>
     </ScreenShell>
   );

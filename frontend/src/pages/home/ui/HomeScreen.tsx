@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { BottomNav, Icon, ScreenShell, SegmentedToggle } from "@/shared/ui";
+import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import type { Role } from "@/shared/lib/role/RoleContext";
 import { DriverPanel } from "./DriverPanel";
@@ -11,7 +12,7 @@ import { SenderPanel } from "./SenderPanel";
  */
 export function HomeScreen() {
   const { role, setRole } = useRole();
-  const [tab, setTab] = useState("home");
+  const navigate = useNavigate();
 
   return (
     <ScreenShell>
@@ -22,7 +23,13 @@ export function HomeScreen() {
         </h1>
         <div className="flex items-center gap-3">
           <Icon name="bell" size={20} className="text-navy-900" />
-          <Icon name="profile" size={20} className="text-navy-900" />
+          <button
+            type="button"
+            aria-label="마이페이지"
+            onClick={() => navigate(ROUTES.mypage)}
+          >
+            <Icon name="profile" size={20} className="text-navy-900" />
+          </button>
         </div>
       </header>
 
@@ -38,7 +45,7 @@ export function HomeScreen() {
 
       {/* 하단 네비 */}
       <div className="pt-4">
-        <BottomNav active={tab} onChange={setTab} />
+        <BottomNav />
       </div>
     </ScreenShell>
   );

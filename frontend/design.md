@@ -123,7 +123,7 @@ import { Icon } from './components'
 | `SectionHeader` | `title` `count` `action`                   | 섹션 제목 + 카운트 + 링크                                                 |
 | `LocationBar`   | `location` `status`                        | 상단 위치 바                                                              |
 | `TopBar`        | `title` `onBack` `actions`                 | 화면 헤더                                                                 |
-| `BottomNav`     | `items` `active` `onChange`                | 하단 탭 바(활성=teal)                                                     |
+| `BottomNav`     | `items`                                    | 하단 탭 바(현재 경로가 활성=teal, 누르면 이동)                            |
 | `Toast`         | `icon` `title` `description` `action`      | 알림 토스트(네이비)                                                       |
 | `RouteCard`     | `origin` `destination`                     | 출발지 → 도착지 경로 카드                                                 |
 | `InfoRow`       | `label` `children`                         | 상세 정보 카드의 라벨-값 한 줄                                            |

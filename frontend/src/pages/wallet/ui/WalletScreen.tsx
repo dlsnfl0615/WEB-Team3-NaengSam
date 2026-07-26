@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { BottomNav, Button, Card, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
@@ -11,7 +10,6 @@ import { WALLET_HISTORY } from "./history";
  */
 export function WalletScreen() {
   const navigate = useNavigate();
-  const [tab, setTab] = useState("point");
 
   return (
     <ScreenShell>
@@ -77,7 +75,7 @@ export function WalletScreen() {
       </main>
 
       <div className="pt-4">
-        <BottomNav active={tab} onChange={setTab} />
+        <BottomNav />
       </div>
     </ScreenShell>
   );
