@@ -1,5 +1,7 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { BottomNav, ScreenShell, SegmentedToggle, TopBar } from "@/shared/ui";
+import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import type { Role } from "@/shared/lib/role/RoleContext";
 import { ActivityItem } from "./ActivityItem";
@@ -11,6 +13,7 @@ import { DRIVER_RECORDS, SENDER_RECORDS, type ActivityFilter } from "./records";
  * 상단 토글로 부르미(요청한 배달)·드리미(수행한 배달) 내역을 같은 화면에서 전환합니다.
  */
 export function ActivityScreen() {
+  const navigate = useNavigate();
   const { role, setRole } = useRole();
   const [filter, setFilter] = useState<ActivityFilter>("전체");
   const [tab, setTab] = useState("activity");
@@ -40,7 +43,16 @@ export function ActivityScreen() {
         {visible.length > 0 ? (
           <div className="flex flex-col gap-3">
             {visible.map((record) => (
-              <ActivityItem key={record.id} record={record} earned={isDriver} />
+              <ActivityItem
+                key={record.id}
+                record={record}
+                earned={isDriver}
+                onClick={() =>
+                  navigate(
+                    `${ROUTES.activityDetail}?status=${record.filter === "진행중" ? "진행중" : "완료"}`,
+                  )
+                }
+              />
             ))}
           </div>
         ) : (

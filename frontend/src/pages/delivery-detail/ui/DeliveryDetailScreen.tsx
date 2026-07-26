@@ -4,11 +4,11 @@ import {
   Button,
   IconChip,
   MapCard,
+  RouteCard,
   ScreenShell,
   TopBar,
   toneForStatus,
 } from "@/shared/ui";
-import { RouteCard } from "./RouteCard";
 import { DETAIL_STATUSES, type DetailStatus } from "./statuses";
 
 /**

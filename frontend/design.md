@@ -125,6 +125,7 @@ import { Icon } from './components'
 | `TopBar`        | `title` `onBack` `actions`                 | 화면 헤더                                                                 |
 | `BottomNav`     | `items` `active` `onChange`                | 하단 탭 바(활성=teal)                                                     |
 | `Toast`         | `icon` `title` `description` `action`      | 알림 토스트(네이비)                                                       |
+| `RouteCard`     | `origin` `destination`                     | 출발지 → 도착지 경로 카드                                                 |
 | `MapCard`       | `overlay` `height` `children`              | 지도 화면 래퍼                                                            |
 | `BarChart`      | `data` `highlightLast`                     | 절감 리포트용 막대 그래프                                                 |
 | `ScreenShell`   | `children` `className`                     | 화면 공통 모바일 셸(가운데 정렬 `max-w-[420px]`). 모든 화면의 최상위 래퍼 |

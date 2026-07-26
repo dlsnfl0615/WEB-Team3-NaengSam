@@ -53,6 +53,9 @@ export type { TextFieldProps } from "./TextField/TextField";
 export { Toast } from "./Toast/Toast";
 export type { ToastProps } from "./Toast/Toast";
 
+export { RouteCard } from "./RouteCard/RouteCard";
+export type { RouteCardProps } from "./RouteCard/RouteCard";
+
 export { MapCard } from "./MapCard/MapCard";
 export type { MapCardProps } from "./MapCard/MapCard";
 

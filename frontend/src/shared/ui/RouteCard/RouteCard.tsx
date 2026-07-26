@@ -1,4 +1,5 @@
-import { Card, Icon } from "@/shared/ui";
+import { Card } from "../Card/Card";
+import { Icon } from "../Icon/Icon";
 
 export interface RouteCardProps {
   origin: string;
