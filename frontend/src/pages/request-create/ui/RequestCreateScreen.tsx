@@ -74,7 +74,7 @@ export function RequestCreateScreen() {
             variant="navy"
             block
             arrow
-            onClick={() => navigate(ROUTES.home)}
+            onClick={() => navigate(ROUTES.matching, { replace: true })}
           >
             등록 및 결제하기
           </Button>
