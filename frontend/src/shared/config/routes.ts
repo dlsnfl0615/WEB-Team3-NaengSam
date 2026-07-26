@@ -9,6 +9,7 @@ export const ROUTES = {
   verify: "/verify",
   home: "/home",
   requestCreate: "/request-create",
+  destinationSearch: "/destination-search",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
