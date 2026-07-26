@@ -10,8 +10,8 @@ export interface RequestForm {
   itemSize: "S" | "M";
   itemName: string;
   detail: string;
-  /** 배송 요청사항(다중 선택) */
-  tags: string[];
+  /** 배송 요청사항(단일 선택) */
+  requestTag: "없음" | "도착 시 연락" | "파손주의" | "기타";
   etc: string;
 }
 

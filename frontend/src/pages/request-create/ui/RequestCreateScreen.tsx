@@ -17,7 +17,7 @@ const INITIAL_FORM: RequestForm = {
   itemSize: "S",
   itemName: "",
   detail: "",
-  tags: ["없음"],
+  requestTag: "없음",
   etc: "",
 };
 

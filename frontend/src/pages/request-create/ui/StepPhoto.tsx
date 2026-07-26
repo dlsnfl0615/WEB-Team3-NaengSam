@@ -2,7 +2,12 @@ import { Icon, TextField } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
 import type { RequestForm, UpdateForm } from "./types";
 
-const REQUEST_TAGS = ["없음", "도착 시 연락", "파손주의", "기타"] as const;
+const REQUEST_TAGS: RequestForm["requestTag"][] = [
+  "없음",
+  "도착 시 연락",
+  "파손주의",
+  "기타",
+];
 
 export interface StepPhotoProps {
   form: RequestForm;
@@ -11,13 +16,6 @@ export interface StepPhotoProps {
 
 /** 스텝 3: 사진·요청 — 사진 업로드(자리표시) + 물건명/상세설명 + 요청사항 태그. */
 export function StepPhoto({ form, update }: StepPhotoProps) {
-  const toggleTag = (tag: string) => {
-    const has = form.tags.includes(tag);
-    update({
-      tags: has ? form.tags.filter((t) => t !== tag) : [...form.tags, tag],
-    });
-  };
-
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
@@ -63,14 +61,16 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
       {/* 배송 요청사항 */}
       <div className="flex flex-col gap-2">
         <p className="text-sm text-muted">배송 요청사항</p>
-        <div className="flex flex-wrap gap-2">
+        <div role="radiogroup" className="flex flex-wrap gap-2">
           {REQUEST_TAGS.map((tag) => {
-            const selected = form.tags.includes(tag);
+            const selected = form.requestTag === tag;
             return (
               <button
                 key={tag}
                 type="button"
-                onClick={() => toggleTag(tag)}
+                role="radio"
+                aria-checked={selected}
+                onClick={() => update({ requestTag: tag })}
                 className={cn(
                   "rounded-pill px-3 py-1 text-sm font-semibold",
                   selected
@@ -84,7 +84,7 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
           })}
         </div>
         <TextField
-          placeholder="기타 요청사항 직접 입력"
+          placeholder="추가 요청사항 직접 입력"
           value={form.etc}
           onChange={(e) => update({ etc: e.target.value })}
         />
