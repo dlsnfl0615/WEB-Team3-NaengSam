@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import {
   Button,
   Card,
@@ -6,9 +7,12 @@ import {
   SectionHeader,
   StatCard,
 } from "@/shared/ui";
+import { ROUTES } from "@/shared/config/routes";
 
 /** 홈 화면의 드리미(배송인) 본문. */
 export function DriverPanel() {
+  const navigate = useNavigate();
+
   return (
     <>
       <LocationBar location="Office Hub: Zone A" status="4층 대기" />
@@ -16,7 +20,12 @@ export function DriverPanel() {
       <Card variant="hero" className="flex flex-col gap-3">
         <p className="text-xl font-bold tracking-[-0.4px]">드리미 시작하기</p>
         <div className="h-[9px] w-3/4 rounded-[5px] bg-navy-700" />
-        <Button variant="primary" arrow block>
+        <Button
+          variant="primary"
+          arrow
+          block
+          onClick={() => navigate(ROUTES.matching)}
+        >
           드리미 시작하기
         </Button>
       </Card>

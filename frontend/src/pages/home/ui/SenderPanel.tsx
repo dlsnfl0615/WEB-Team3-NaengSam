@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import {
   Button,
   Card,
@@ -6,9 +7,12 @@ import {
   SectionHeader,
   StatCard,
 } from "@/shared/ui";
+import { ROUTES } from "@/shared/config/routes";
 
 /** 홈 화면의 부르미(발송인) 본문. */
 export function SenderPanel() {
+  const navigate = useNavigate();
+
   return (
     <>
       <LocationBar location="Office Hub: Zone A" status="Connected" />
@@ -16,7 +20,12 @@ export function SenderPanel() {
       <Card variant="hero" className="flex flex-col gap-3">
         <p className="text-xl font-bold tracking-[-0.4px]">물품 보내기</p>
         <div className="h-[9px] w-3/4 rounded-[5px] bg-navy-700" />
-        <Button variant="primary" arrow block>
+        <Button
+          variant="primary"
+          arrow
+          block
+          onClick={() => navigate(ROUTES.requestCreate)}
+        >
           물품 보내기
         </Button>
       </Card>
