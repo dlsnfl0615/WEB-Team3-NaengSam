@@ -29,6 +29,7 @@
   --color-status-warning: #b26a00; /* 지연 */
   --color-status-warning-50: #fff4e5; /* 경고 뱃지/알림 카드 배경 */
   --color-status-danger: #c0392b; /* 사고/거절 */
+  --color-status-success: #24c36b; /* 새 콜 카드 강조 테두리 */
 
   /* ---- Typography ---- */
   --font-sans:

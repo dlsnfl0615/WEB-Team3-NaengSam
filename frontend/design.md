@@ -37,6 +37,7 @@
 | info    | `text-teal-700` / `bg-teal-50`                                         | 배송중, 픽업중, 매칭중, 완료 |
 | warning | `text-status-warning` (`#b26a00`) / `bg-status-warning-50` (`#fff4e5`) | 지연, 경고 알림 카드         |
 | danger  | `text-status-danger` (`#c0392b`)                                       | 사고, 매칭 거절              |
+| success | `border-status-success` (`#24c36b`)                                    | 새 콜 카드 강조 테두리       |
 
 ---
 
@@ -131,6 +132,7 @@ import { Icon } from './components'
 | `MapCard`           | `overlay` `height` `children`              | 지도 화면 래퍼                                                            |
 | `BarChart`          | `data` `highlightLast`                     | 절감 리포트용 막대 그래프                                                 |
 | `BottomSheet`       | `open` `label` `onClose` `children`        | 하단에서 올라오는 모달 시트(배경 어둡게·흐리게, 배경 클릭 시 닫힘)        |
+| `Modal`             | `open` `label` `onClose` `children`        | 가운데에 뜨는 모달(배경 회색조 처리, `onClose` 없으면 배경 클릭 무시)     |
 | `DestinationPicker` | `onSubmit`                                 | 도착지 선택 본문(검색·빠른 선택 칩·최근/추천 목록·확인 버튼)              |
 | `ScreenShell`       | `children` `className`                     | 화면 공통 모바일 셸(가운데 정렬 `max-w-[420px]`). 모든 화면의 최상위 래퍼 |
 

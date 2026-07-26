@@ -15,8 +15,8 @@ export interface OfferCardProps {
 }
 
 /**
- * 매칭 중 도착한 상대방 요청 카드(수락·거절).
- * 부르미에게는 드리미 요청이, 드리미에게는 부름 요청이 표시됩니다.
+ * 부르미에게 도착한 드리미 요청 카드(수락·거절).
+ * 드리미가 받는 부름은 필드가 달라 CallCard를 씁니다.
  */
 export function OfferCard({
   heading,

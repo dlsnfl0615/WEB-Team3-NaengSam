@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, MapCard, ScreenShell, TopBar } from "@/shared/ui";
+import { Card, MapCard, Modal, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
+import { CallCard } from "./CallCard";
 import { OfferCard } from "./OfferCard";
 
 /**
@@ -42,20 +43,35 @@ export function MatchingScreen() {
         </Card>
       </main>
 
-      {offerVisible && (
-        <footer className="pt-3">
+      <Modal
+        open={offerVisible}
+        label={isDriver ? "새 부름 요청" : "새 드리미 요청"}
+      >
+        {isDriver ? (
+          <CallCard
+            code="#B-882"
+            price="₩3,500"
+            place="파르나스 타워"
+            route="24F → 12F"
+            pickupDistance="120m"
+            dropoffDistance="1.2km"
+            itemType="음료"
+            onReject={() => navigate(ROUTES.rejectReason)}
+            onAccept={() => setOfferVisible(false)}
+          />
+        ) : (
           <OfferCard
-            heading={isDriver ? "새 부름 요청 도착!" : "새 드리미 요청 도착!"}
-            name={isDriver ? "부르미 '온'" : "드리미 '핀'"}
-            rating={isDriver ? 4.8 : 4.9}
-            countLabel={isDriver ? "요청" : "배송"}
-            count={isDriver ? 24 : 132}
+            heading="새 드리미 요청 도착!"
+            name="드리미 '핀'"
+            rating={4.9}
+            countLabel="배송"
+            count={132}
             distance="120m"
             onReject={() => navigate(ROUTES.rejectReason)}
             onAccept={() => setOfferVisible(false)}
           />
-        </footer>
-      )}
+        )}
+      </Modal>
     </ScreenShell>
   );
 }

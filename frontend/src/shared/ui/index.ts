@@ -71,6 +71,9 @@ export type { BarChartProps, BarDatum } from "./BarChart/BarChart";
 export { BottomSheet } from "./BottomSheet/BottomSheet";
 export type { BottomSheetProps } from "./BottomSheet/BottomSheet";
 
+export { Modal } from "./Modal/Modal";
+export type { ModalProps } from "./Modal/Modal";
+
 export { DestinationPicker } from "./DestinationPicker/DestinationPicker";
 export type { DestinationPickerProps } from "./DestinationPicker/DestinationPicker";
 
