@@ -10,6 +10,7 @@ export const ROUTES = {
   home: "/home",
   requestCreate: "/request-create",
   destinationSearch: "/destination-search",
+  matching: "/matching",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
