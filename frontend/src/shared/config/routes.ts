@@ -13,6 +13,7 @@ export const ROUTES = {
   matching: "/matching",
   rejectReason: "/reject-reason",
   deliveryTrack: "/delivery-track",
+  deliveryDetail: "/delivery-detail",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
