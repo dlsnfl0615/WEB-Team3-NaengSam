@@ -65,7 +65,16 @@ export function WalletScreen() {
         </Card>
 
         <div className="flex flex-col gap-2">
-          <p className="text-2xs text-muted">최근 내역</p>
+          <div className="flex items-center justify-between">
+            <p className="text-2xs text-muted">최근 내역</p>
+            <button
+              type="button"
+              className="text-sm text-teal-700"
+              onClick={() => navigate(ROUTES.earnings)}
+            >
+              전체 보기
+            </button>
+          </div>
           <div className="flex flex-col gap-3">
             {WALLET_HISTORY.map((history) => (
               <HistoryItem key={history.id} history={history} />
