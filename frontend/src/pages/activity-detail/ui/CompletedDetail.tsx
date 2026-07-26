@@ -1,7 +1,14 @@
 import { useState } from "react";
-import { Badge, Button, Card, Icon, IconChip, RouteCard } from "@/shared/ui";
-import { InfoRow } from "./InfoRow";
-import { StarRating } from "./StarRating";
+import {
+  Badge,
+  Button,
+  Card,
+  Icon,
+  IconChip,
+  InfoRow,
+  RouteCard,
+  StarRating,
+} from "@/shared/ui";
 
 /** 완료된 배달의 상세 내용(요약·경로·결제 정보·평가). */
 export function CompletedDetail() {

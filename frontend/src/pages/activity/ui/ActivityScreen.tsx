@@ -23,6 +23,15 @@ export function ActivityScreen() {
   const visible =
     filter === "전체" ? records : records.filter((r) => r.filter === filter);
 
+  /** 진행 중인 건은 실시간 상세로, 끝난 드리미 건은 드림 상세로 보냅니다. */
+  const detailPath = (recordFilter: ActivityFilter) => {
+    if (recordFilter === "진행중")
+      return `${ROUTES.activityDetail}?status=진행중`;
+    return isDriver
+      ? ROUTES.activityDetailDriver
+      : `${ROUTES.activityDetail}?status=완료`;
+  };
+
   return (
     <ScreenShell>
       <TopBar title="활동" actions={["search", "profile"]} />
@@ -47,11 +56,7 @@ export function ActivityScreen() {
                 key={record.id}
                 record={record}
                 earned={isDriver}
-                onClick={() =>
-                  navigate(
-                    `${ROUTES.activityDetail}?status=${record.filter === "진행중" ? "진행중" : "완료"}`,
-                  )
-                }
+                onClick={() => navigate(detailPath(record.filter))}
               />
             ))}
           </div>

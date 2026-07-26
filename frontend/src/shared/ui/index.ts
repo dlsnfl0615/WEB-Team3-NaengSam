@@ -53,6 +53,12 @@ export type { TextFieldProps } from "./TextField/TextField";
 export { Toast } from "./Toast/Toast";
 export type { ToastProps } from "./Toast/Toast";
 
+export { InfoRow } from "./InfoRow/InfoRow";
+export type { InfoRowProps } from "./InfoRow/InfoRow";
+
+export { StarRating } from "./StarRating/StarRating";
+export type { StarRatingProps } from "./StarRating/StarRating";
+
 export { RouteCard } from "./RouteCard/RouteCard";
 export type { RouteCardProps } from "./RouteCard/RouteCard";
 

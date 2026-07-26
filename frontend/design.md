@@ -126,6 +126,8 @@ import { Icon } from './components'
 | `BottomNav`     | `items` `active` `onChange`                | 하단 탭 바(활성=teal)                                                     |
 | `Toast`         | `icon` `title` `description` `action`      | 알림 토스트(네이비)                                                       |
 | `RouteCard`     | `origin` `destination`                     | 출발지 → 도착지 경로 카드                                                 |
+| `InfoRow`       | `label` `children`                         | 상세 정보 카드의 라벨-값 한 줄                                            |
+| `StarRating`    | `value` `onChange`                         | 별 5개 평점 입력(radiogroup)                                              |
 | `MapCard`       | `overlay` `height` `children`              | 지도 화면 래퍼                                                            |
 | `BarChart`      | `data` `highlightLast`                     | 절감 리포트용 막대 그래프                                                 |
 | `ScreenShell`   | `children` `className`                     | 화면 공통 모바일 셸(가운데 정렬 `max-w-[420px]`). 모든 화면의 최상위 래퍼 |

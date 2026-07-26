@@ -1,4 +1,4 @@
-import { Icon } from "@/shared/ui";
+import { Icon } from "../Icon/Icon";
 import { cn } from "@/shared/lib/cn";
 
 export interface StarRatingProps {
