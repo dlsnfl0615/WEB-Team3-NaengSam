@@ -4,6 +4,7 @@ import {
   Card,
   DestinationPicker,
   Icon,
+  SegmentedToggle,
   TextField,
   TopBar,
 } from "@/shared/ui";
@@ -86,6 +87,18 @@ export function StepLocation({ form, update }: StepLocationProps) {
           actions={["close"]}
           onAction={() => setEditing(null)}
         />
+
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-muted">전달 방식</p>
+          <SegmentedToggle
+            options={["대면", "비대면"]}
+            value={form.meeting}
+            onChange={(value) =>
+              update({ meeting: value as RequestForm["meeting"] })
+            }
+          />
+        </div>
+
         <DestinationPicker
           onSubmit={(place) => {
             if (editing) update({ [editing]: place });
