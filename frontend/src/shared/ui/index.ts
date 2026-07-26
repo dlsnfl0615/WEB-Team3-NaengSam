@@ -68,5 +68,11 @@ export type { MapCardProps } from "./MapCard/MapCard";
 export { BarChart } from "./BarChart/BarChart";
 export type { BarChartProps, BarDatum } from "./BarChart/BarChart";
 
+export { BottomSheet } from "./BottomSheet/BottomSheet";
+export type { BottomSheetProps } from "./BottomSheet/BottomSheet";
+
+export { DestinationPicker } from "./DestinationPicker/DestinationPicker";
+export type { DestinationPickerProps } from "./DestinationPicker/DestinationPicker";
+
 export { ScreenShell } from "./ScreenShell/ScreenShell";
 export type { ScreenShellProps } from "./ScreenShell/ScreenShell";

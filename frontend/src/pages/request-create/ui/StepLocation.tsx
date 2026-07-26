@@ -1,4 +1,12 @@
-import { Card, Icon, TextField } from "@/shared/ui";
+import { useState } from "react";
+import {
+  BottomSheet,
+  Card,
+  DestinationPicker,
+  Icon,
+  TextField,
+  TopBar,
+} from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
 import type { RequestForm, UpdateForm } from "./types";
 
@@ -7,8 +15,17 @@ export interface StepLocationProps {
   update: UpdateForm;
 }
 
+type Field = "pickup" | "dropoff";
+
+const FIELD_LABELS: Record<Field, string> = {
+  pickup: "픽업지 검색",
+  dropoff: "도착지 검색",
+};
+
 /** 스텝 1: 위치 — 픽업/도착지 입력 + 대면/비대면 선택 + 지도(자리표시). */
 export function StepLocation({ form, update }: StepLocationProps) {
+  const [editing, setEditing] = useState<Field | null>(null);
+
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-xl font-bold tracking-[-0.4px] text-navy-900">
@@ -20,7 +37,10 @@ export function StepLocation({ form, update }: StepLocationProps) {
           leadingIcon="pin"
           placeholder="픽업지: 사무실 / 구역"
           value={form.pickup}
-          onChange={(e) => update({ pickup: e.target.value })}
+          readOnly
+          aria-haspopup="dialog"
+          className="cursor-pointer"
+          onClick={() => setEditing("pickup")}
         />
         <MeetingOption
           label={"“대면”으로 드릴게요"}
@@ -36,7 +56,10 @@ export function StepLocation({ form, update }: StepLocationProps) {
           leadingIcon="pin"
           placeholder="도착지: 도착 층 / 호수"
           value={form.dropoff}
-          onChange={(e) => update({ dropoff: e.target.value })}
+          readOnly
+          aria-haspopup="dialog"
+          className="cursor-pointer"
+          onClick={() => setEditing("dropoff")}
         />
         <MeetingOption
           label={"“비대면”으로 받을게요"}
@@ -52,6 +75,24 @@ export function StepLocation({ form, update }: StepLocationProps) {
           주변 드리미: 12명
         </p>
       </div>
+
+      <BottomSheet
+        open={editing !== null}
+        label={editing ? FIELD_LABELS[editing] : ""}
+        onClose={() => setEditing(null)}
+      >
+        <TopBar
+          title={editing ? FIELD_LABELS[editing] : ""}
+          actions={["close"]}
+          onAction={() => setEditing(null)}
+        />
+        <DestinationPicker
+          onSubmit={(place) => {
+            if (editing) update({ [editing]: place });
+            setEditing(null);
+          }}
+        />
+      </BottomSheet>
     </div>
   );
 }

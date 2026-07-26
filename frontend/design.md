@@ -116,21 +116,23 @@ import { Icon } from './components'
 
 ### 복합 · 레이아웃
 
-| 컴포넌트        | 주요 props                                 | 설명                                                                      |
-| --------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
-| `DeliveryCard`  | `icon` `title` `route` `status` `progress` | 진행 중 배송 리스트 아이템                                                |
-| `StatCard`      | `label` `value` `variant`                  | 통계 카드(총 이용, 절감 금액)                                             |
-| `SectionHeader` | `title` `count` `action`                   | 섹션 제목 + 카운트 + 링크                                                 |
-| `LocationBar`   | `location` `status`                        | 상단 위치 바                                                              |
-| `TopBar`        | `title` `onBack` `actions`                 | 화면 헤더                                                                 |
-| `BottomNav`     | `items`                                    | 하단 탭 바(현재 경로가 활성=teal, 누르면 이동)                            |
-| `Toast`         | `icon` `title` `description` `action`      | 알림 토스트(네이비)                                                       |
-| `RouteCard`     | `origin` `destination`                     | 출발지 → 도착지 경로 카드                                                 |
-| `InfoRow`       | `label` `children`                         | 상세 정보 카드의 라벨-값 한 줄                                            |
-| `StarRating`    | `value` `onChange`                         | 별 5개 평점 입력(radiogroup)                                              |
-| `MapCard`       | `overlay` `height` `children`              | 지도 화면 래퍼                                                            |
-| `BarChart`      | `data` `highlightLast`                     | 절감 리포트용 막대 그래프                                                 |
-| `ScreenShell`   | `children` `className`                     | 화면 공통 모바일 셸(가운데 정렬 `max-w-[420px]`). 모든 화면의 최상위 래퍼 |
+| 컴포넌트            | 주요 props                                 | 설명                                                                      |
+| ------------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
+| `DeliveryCard`      | `icon` `title` `route` `status` `progress` | 진행 중 배송 리스트 아이템                                                |
+| `StatCard`          | `label` `value` `variant`                  | 통계 카드(총 이용, 절감 금액)                                             |
+| `SectionHeader`     | `title` `count` `action`                   | 섹션 제목 + 카운트 + 링크                                                 |
+| `LocationBar`       | `location` `status`                        | 상단 위치 바                                                              |
+| `TopBar`            | `title` `onBack` `actions`                 | 화면 헤더                                                                 |
+| `BottomNav`         | `items`                                    | 하단 탭 바(현재 경로가 활성=teal, 누르면 이동)                            |
+| `Toast`             | `icon` `title` `description` `action`      | 알림 토스트(네이비)                                                       |
+| `RouteCard`         | `origin` `destination`                     | 출발지 → 도착지 경로 카드                                                 |
+| `InfoRow`           | `label` `children`                         | 상세 정보 카드의 라벨-값 한 줄                                            |
+| `StarRating`        | `value` `onChange`                         | 별 5개 평점 입력(radiogroup)                                              |
+| `MapCard`           | `overlay` `height` `children`              | 지도 화면 래퍼                                                            |
+| `BarChart`          | `data` `highlightLast`                     | 절감 리포트용 막대 그래프                                                 |
+| `BottomSheet`       | `open` `label` `onClose` `children`        | 하단에서 올라오는 모달 시트(배경 어둡게·흐리게, 배경 클릭 시 닫힘)        |
+| `DestinationPicker` | `onSubmit`                                 | 도착지 선택 본문(검색·빠른 선택 칩·최근/추천 목록·확인 버튼)              |
+| `ScreenShell`       | `children` `className`                     | 화면 공통 모바일 셸(가운데 정렬 `max-w-[420px]`). 모든 화면의 최상위 래퍼 |
 
 ### 사용 예 (홈 화면)
 

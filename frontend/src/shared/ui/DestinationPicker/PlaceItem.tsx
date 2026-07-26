@@ -1,4 +1,5 @@
-import { Card, Icon, type IconName } from "@/shared/ui";
+import { Card } from "../Card/Card";
+import { Icon, type IconName } from "../Icon/Icon";
 import { cn } from "@/shared/lib/cn";
 
 export interface PlaceItemProps {
