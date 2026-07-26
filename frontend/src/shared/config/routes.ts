@@ -12,6 +12,7 @@ export const ROUTES = {
   destinationSearch: "/destination-search",
   matching: "/matching",
   rejectReason: "/reject-reason",
+  deliveryTrack: "/delivery-track",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
