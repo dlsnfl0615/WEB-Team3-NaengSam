@@ -1,14 +1,16 @@
-import { Card } from "@/shared/ui";
+import { Card } from "../Card/Card";
 import { cn } from "@/shared/lib/cn";
 
-export interface ReasonOptionProps {
+export interface RadioOptionProps {
   label: string;
   selected: boolean;
   onSelect: () => void;
 }
 
-/** 거절 사유 단일 선택 카드(라디오). */
-export function ReasonOption({ label, selected, onSelect }: ReasonOptionProps) {
+/**
+ * 상호 배제 단일 선택 카드(사유 선택 목록). 선택 시 테두리와 표시 원이 강조됩니다.
+ */
+export function RadioOption({ label, selected, onSelect }: RadioOptionProps) {
   return (
     <Card
       role="radio"

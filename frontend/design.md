@@ -16,27 +16,27 @@
 
 ## 1. 색상 토큰
 
-| 토큰 | Tailwind 유틸 | HEX | 용도 |
-|---|---|---|---|
+| 토큰     | Tailwind 유틸                 | HEX       | 용도                                |
+| -------- | ----------------------------- | --------- | ----------------------------------- |
 | navy-900 | `bg-navy-900` `text-navy-900` | `#0d1b3d` | 브랜드 메인, 제목, 히어로 카드 배경 |
-| navy-700 | `bg-navy-700` | `#39466a` | 히어로 카드 보조 바 |
-| teal-700 | `text-teal-700` | `#016a61` | 강조 텍스트, 진행바 채움, 활성 탭 |
-| teal-500 | `bg-teal-500` | `#00b7a7` | 주요 CTA 버튼 |
-| teal-50 | `bg-teal-50` | `#e8fbf8` | 뱃지·아이콘칩 연한 배경 |
-| ink | `bg-ink` | `#0b0b0f` | 상태바 노치, 폰 프레임 |
-| surface | `bg-surface` | `#ffffff` | 카드 표면 |
-| canvas | `bg-canvas` | `#f7f8fa` | 앱 배경 |
-| line | `border-line` | `#eae7eb` | 카드 테두리 |
-| track | `bg-track` | `#e3e6ec` | 진행바 트랙, 구분선 |
-| muted | `text-muted` | `#6c7585` | 보조 텍스트 |
+| navy-700 | `bg-navy-700`                 | `#39466a` | 히어로 카드 보조 바                 |
+| teal-700 | `text-teal-700`               | `#016a61` | 강조 텍스트, 진행바 채움, 활성 탭   |
+| teal-500 | `bg-teal-500`                 | `#00b7a7` | 주요 CTA 버튼                       |
+| teal-50  | `bg-teal-50`                  | `#e8fbf8` | 뱃지·아이콘칩 연한 배경             |
+| ink      | `bg-ink`                      | `#0b0b0f` | 상태바 노치, 폰 프레임              |
+| surface  | `bg-surface`                  | `#ffffff` | 카드 표면                           |
+| canvas   | `bg-canvas`                   | `#f7f8fa` | 앱 배경                             |
+| line     | `border-line`                 | `#eae7eb` | 카드 테두리                         |
+| track    | `bg-track`                    | `#e3e6ec` | 진행바 트랙, 구분선                 |
+| muted    | `text-muted`                  | `#6c7585` | 보조 텍스트                         |
 
 **상태 색상** (뱃지)
 
-| tone | 토큰 | 대상 상태 |
-|---|---|---|
-| info | `text-teal-700` / `bg-teal-50` | 배송중, 픽업중, 매칭중, 완료 |
-| warning | `text-status-warning` (`#b26a00`) | 지연 |
-| danger | `text-status-danger` (`#c0392b`) | 사고, 매칭 거절 |
+| tone    | 토큰                              | 대상 상태                    |
+| ------- | --------------------------------- | ---------------------------- |
+| info    | `text-teal-700` / `bg-teal-50`    | 배송중, 픽업중, 매칭중, 완료 |
+| warning | `text-status-warning` (`#b26a00`) | 지연                         |
+| danger  | `text-status-danger` (`#c0392b`)  | 사고, 매칭 거절              |
 
 ---
 
@@ -44,15 +44,15 @@
 
 **폰트**: Inter (Variable, `@fontsource-variable/inter`). 한글 폴백: Apple SD Gothic Neo / Malgun Gothic.
 
-| 토큰 | 크기 | 용도 |
-|---|---|---|
-| `text-xl` | 19px | 화면 제목, 히어로 타이틀, 큰 수치 |
-| `text-lg` | 16px | 섹션 제목 |
-| `text-md` | 15px | 본문, 버튼 라벨 |
-| `text-base` | 13px | 카드 제목 |
-| `text-sm` | 12px | 링크, 보조 라벨 |
-| `text-xs` | 11px | 부제, 캡션 |
-| `text-2xs` | 10px | 뱃지, 최소 캡션 |
+| 토큰        | 크기 | 용도                              |
+| ----------- | ---- | --------------------------------- |
+| `text-xl`   | 19px | 화면 제목, 히어로 타이틀, 큰 수치 |
+| `text-lg`   | 16px | 섹션 제목                         |
+| `text-md`   | 15px | 본문, 버튼 라벨                   |
+| `text-base` | 13px | 카드 제목                         |
+| `text-sm`   | 12px | 링크, 보조 라벨                   |
+| `text-xs`   | 11px | 부제, 캡션                        |
+| `text-2xs`  | 10px | 뱃지, 최소 캡션                   |
 
 - Bold 제목에는 `tracking-[-0.4px]`(letter-spacing)를 적용합니다.
 - 가중치: Regular(400) / Semibold(600) / Bold(700).
@@ -61,14 +61,14 @@
 
 ## 3. 반경 · 그림자 · 간격
 
-| 종류 | 토큰 | 값 | 용도 |
-|---|---|---|---|
-| 반경 | `rounded-sm` | 9px | 아이콘칩, 작은 태그 |
-| 반경 | `rounded-md` | 20px | 카드 |
-| 반경 | `rounded-pill` | 999px | 뱃지, 토글, 버튼 |
-| 반경 | `rounded-phone` | 56px | 폰 목업 프레임 |
-| 그림자 | `shadow-card` | `0 2px 5px rgba(13,27,61,.05)` | 카드 기본 |
-| 그림자 | `shadow-elevated` | `0 16px 44px rgba(13,27,61,.18)` | 토스트, 폰 프레임 |
+| 종류   | 토큰              | 값                               | 용도                |
+| ------ | ----------------- | -------------------------------- | ------------------- |
+| 반경   | `rounded-sm`      | 9px                              | 아이콘칩, 작은 태그 |
+| 반경   | `rounded-md`      | 20px                             | 카드                |
+| 반경   | `rounded-pill`    | 999px                            | 뱃지, 토글, 버튼    |
+| 반경   | `rounded-phone`   | 56px                             | 폰 목업 프레임      |
+| 그림자 | `shadow-card`     | `0 2px 5px rgba(13,27,61,.05)`   | 카드 기본           |
+| 그림자 | `shadow-elevated` | `0 16px 44px rgba(13,27,61,.18)` | 토스트, 폰 프레임   |
 
 간격은 Tailwind 기본 스페이싱 스케일(4px 단위: `gap-3`=12px, `p-4`=16px)을 사용합니다. 카드 안쪽 여백은 보통 `p-4`(16px), 카드 사이 간격은 `gap-3`(12px)입니다.
 
@@ -76,7 +76,7 @@
 
 ## 4. 아이콘 (20종)
 
-이름 → SVG 매핑은 `src/shared/ui/Icon/icons.ts`에 있습니다. 모든 아이콘은 **단색 라인 아이콘**이며, `<Icon>`이 SVG를 인라인으로 렌더하고 stroke/fill 을 `currentColor`로 재색(`.ds-icon` CSS)하므로 **`color`(text-*)로 색을 제어**합니다.
+이름 → SVG 매핑은 `src/shared/ui/Icon/icons.ts`에 있습니다. 모든 아이콘은 **단색 라인 아이콘**이며, `<Icon>`이 SVG를 인라인으로 렌더하고 stroke/fill 을 `currentColor`로 재색(`.ds-icon` CSS)하므로 **`color`(text-\*)로 색을 제어**합니다.
 
 ```tsx
 import { Icon } from './components'
@@ -85,13 +85,13 @@ import { Icon } from './components'
 <Icon name="bell" size={24} className="text-teal-700" />  {/* 티일색, 24px */}
 ```
 
-| 그룹 | 아이콘 |
-|---|---|
+| 그룹       | 아이콘                                                    |
+| ---------- | --------------------------------------------------------- |
 | 네비게이션 | `home` `activity` `point` `profile` `back` `more` `close` |
-| 알림/상태 | `bell` `check` `star` `time` |
-| 배송/물류 | `package` `document` `pin` `transfer` `drink` |
-| 결제 | `card` `bank` |
-| 기타 | `search` `camera` |
+| 알림/상태  | `bell` `check` `star` `time`                              |
+| 배송/물류  | `package` `document` `pin` `transfer` `drink`             |
+| 결제       | `card` `bank`                                             |
+| 기타       | `search` `camera`                                         |
 
 > 새 아이콘 추가: Figma에서 단색 라인 SVG를 내려받아 `src/shared/assets/icons/`에 저장 → `icons.ts`에서 `?raw`로 import 후 `ICONS` 맵에 등록. stroke/fill 은 `.ds-icon` CSS가 currentColor 로 재색하므로 색상은 지정하지 않아도 됩니다.
 
@@ -103,30 +103,31 @@ import { Icon } from './components'
 
 ### 프리미티브
 
-| 컴포넌트 | 주요 props | 설명 |
-|---|---|---|
-| `Button` | `variant` `size` `block` `arrow` | `primary`(teal) / `navy` / `outline`. `arrow`로 → 표시 |
-| `Badge` | `tone` | `info` / `warning` / `danger` / `neutral` 상태 뱃지 |
-| `Card` | `variant` | `surface`(흰색) / `hero`(네이비) / `accent`(연한 티일) |
-| `IconChip` | `name` `tone` `size` | 라운드 사각 아이콘 컨테이너 |
-| `ProgressBar` | `value`(0~100) | 배달 진행률 바 |
-| `SegmentedToggle` | `options` `value` `onChange` | 2-세그먼트 토글(부르미/드리미) |
-| `TextField` / `SearchField` | `label` `leadingIcon` … | 입력 필드. Search는 search 아이콘 포함 |
+| 컴포넌트                    | 주요 props                       | 설명                                                   |
+| --------------------------- | -------------------------------- | ------------------------------------------------------ |
+| `Button`                    | `variant` `size` `block` `arrow` | `primary`(teal) / `navy` / `outline`. `arrow`로 → 표시 |
+| `Badge`                     | `tone`                           | `info` / `warning` / `danger` / `neutral` 상태 뱃지    |
+| `Card`                      | `variant`                        | `surface`(흰색) / `hero`(네이비) / `accent`(연한 티일) |
+| `IconChip`                  | `name` `tone` `size`             | 라운드 사각 아이콘 컨테이너                            |
+| `ProgressBar`               | `value`(0~100)                   | 배달 진행률 바                                         |
+| `SegmentedToggle`           | `options` `value` `onChange`     | 2-세그먼트 토글(부르미/드리미)                         |
+| `RadioOption`               | `label` `selected` `onSelect`    | 상호 배제 단일 선택 카드(사유 선택)                    |
+| `TextField` / `SearchField` | `label` `leadingIcon` …          | 입력 필드. Search는 search 아이콘 포함                 |
 
 ### 복합 · 레이아웃
 
-| 컴포넌트 | 주요 props | 설명 |
-|---|---|---|
-| `DeliveryCard` | `icon` `title` `route` `status` `progress` | 진행 중 배송 리스트 아이템 |
-| `StatCard` | `label` `value` `variant` | 통계 카드(총 이용, 절감 금액) |
-| `SectionHeader` | `title` `count` `action` | 섹션 제목 + 카운트 + 링크 |
-| `LocationBar` | `location` `status` | 상단 위치 바 |
-| `TopBar` | `title` `onBack` `actions` | 화면 헤더 |
-| `BottomNav` | `items` `active` `onChange` | 하단 탭 바(활성=teal) |
-| `Toast` | `icon` `title` `description` `action` | 알림 토스트(네이비) |
-| `MapCard` | `overlay` `height` `children` | 지도 화면 래퍼 |
-| `BarChart` | `data` `highlightLast` | 절감 리포트용 막대 그래프 |
-| `ScreenShell` | `children` `className` | 화면 공통 모바일 셸(가운데 정렬 `max-w-[420px]`). 모든 화면의 최상위 래퍼 |
+| 컴포넌트        | 주요 props                                 | 설명                                                                      |
+| --------------- | ------------------------------------------ | ------------------------------------------------------------------------- |
+| `DeliveryCard`  | `icon` `title` `route` `status` `progress` | 진행 중 배송 리스트 아이템                                                |
+| `StatCard`      | `label` `value` `variant`                  | 통계 카드(총 이용, 절감 금액)                                             |
+| `SectionHeader` | `title` `count` `action`                   | 섹션 제목 + 카운트 + 링크                                                 |
+| `LocationBar`   | `location` `status`                        | 상단 위치 바                                                              |
+| `TopBar`        | `title` `onBack` `actions`                 | 화면 헤더                                                                 |
+| `BottomNav`     | `items` `active` `onChange`                | 하단 탭 바(활성=teal)                                                     |
+| `Toast`         | `icon` `title` `description` `action`      | 알림 토스트(네이비)                                                       |
+| `MapCard`       | `overlay` `height` `children`              | 지도 화면 래퍼                                                            |
+| `BarChart`      | `data` `highlightLast`                     | 절감 리포트용 막대 그래프                                                 |
+| `ScreenShell`   | `children` `className`                     | 화면 공통 모바일 셸(가운데 정렬 `max-w-[420px]`). 모든 화면의 최상위 래퍼 |
 
 ### 사용 예 (홈 화면)
 

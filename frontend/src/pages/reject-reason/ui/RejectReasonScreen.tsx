@@ -1,8 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Icon, IconChip, ScreenShell, TopBar } from "@/shared/ui";
+import {
+  Button,
+  Icon,
+  IconChip,
+  RadioOption,
+  ScreenShell,
+  TopBar,
+} from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
-import { ReasonOption } from "./ReasonOption";
 
 const REASONS = [
   "별점이 낮아요",
@@ -44,7 +50,7 @@ export function RejectReasonScreen() {
 
         <div role="radiogroup" className="flex flex-col gap-2">
           {REASONS.map((option) => (
-            <ReasonOption
+            <RadioOption
               key={option}
               label={option}
               selected={reason === option}
