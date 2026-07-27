@@ -30,7 +30,7 @@ public class UserController {
     })
     @ApiErrorCodes(enumClass = UserErrorCode.class, codes = {
             "USER_NOT_FOUND",
-            "INVAILD_PASSWORD",
+            "INVALID_PASSWORD",
             "INCORRECT_PASSWORD"})
     UserDto helloUser() {
         return userService.hello();
