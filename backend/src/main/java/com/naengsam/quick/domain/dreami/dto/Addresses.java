@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.dreami.entity;
+package com.naengsam.quick.domain.dreami.dto;
 
 import lombok.Builder;
 
