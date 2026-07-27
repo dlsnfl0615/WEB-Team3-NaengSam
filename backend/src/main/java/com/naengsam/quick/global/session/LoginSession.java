@@ -55,7 +55,10 @@ public class LoginSession {
      * 세션을 무효화한다(로그아웃).
      */
     public void invalidate() {
-        session.invalidate();
+        try {
+            session.invalidate();
+        } catch (IllegalStateException alreadyInvalidated) {
+        }
     }
 
     /**
