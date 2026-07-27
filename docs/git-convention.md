@@ -5,11 +5,20 @@
 커밋은 3가지 부분으로 이루어집니다.
 
 ```bash
-<type> : <header>
+<area>/<type> : <header>
 
 <body>
 
 <footer>
+```
+
+<area> : 백엔드인지, 프론트인지 구분합니다.
+```
+FE/Feat : ~~~
+
+BE/Refactor : ~~~
+
+Docs : ~~~
 ```
 
 <type> : 어떤 내용의 커밋인지 선언합니다. 대문자로 시작합니다.
@@ -32,7 +41,7 @@
 eg)
 
 ```bash
-Feat : 비밀번호 암호화 추가
+FE/Feat : 비밀번호 암호화 추가
 
 user.service에 비밀번호 hash로직을 추가하였습니다.
 

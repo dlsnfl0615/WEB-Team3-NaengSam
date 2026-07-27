@@ -2,7 +2,7 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize]
+    types: [opened, synchronize, ready_for_review]
 
 permissions:
   contents: read
@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   review:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -18,12 +19,13 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Run Claude Code Review
+      # 1단계: Claude는 read-only로 코드만 분석해서 JSON 결과를 파일로 남긴다.
+      #        GitHub에는 아무것도 쓰지 않는다.
+      - name: Run Claude review
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          # API 키 대신 OAuth 토큰 사용 (claude setup-token 으로 발급)
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           claude_args: >-
             --allowedTools Read,Grep,Glob,"Bash(gh pr diff)","Bash(gh pr diff:*)","Bash(gh pr view:*)","Bash(gh pr comment:*)"
