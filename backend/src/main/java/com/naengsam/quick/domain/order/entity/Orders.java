@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.order.entity;
 
-import com.naengsam.quick.domain.dreami.dto.Addresses;
+import com.naengsam.quick.domain.address.dto.Addresses;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
