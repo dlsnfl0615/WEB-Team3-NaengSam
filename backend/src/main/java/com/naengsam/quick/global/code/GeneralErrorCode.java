@@ -21,8 +21,7 @@ public enum GeneralErrorCode implements BaseErrorCode {
     EXTERNAL_SERVICE_ERROR(HttpStatus.SERVICE_UNAVAILABLE, "COMMON_011", "일시적인 오류가 발생했어요. 잠시 후 다시 시도해 주세요."),
     EXTERNAL_SERVICE_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "COMMON_012", "응답이 지연되고 있어요. 잠시 후 다시 시도해 주세요."),
     LOCATION_PERMISSION_DENIED(HttpStatus.BAD_REQUEST, "COMMON_013", "위치 권한을 허용해야 이용할 수 있어요."),
-    NOTIFICATION_PERMISSION_DENIED(HttpStatus.BAD_REQUEST, "COMMON_014", "알림 권한을 허용해야 이용할 수 있어요."),
-    UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "COMMON_401", "로그인이 필요합니다.");
+    NOTIFICATION_PERMISSION_DENIED(HttpStatus.BAD_REQUEST, "COMMON_014", "알림 권한을 허용해야 이용할 수 있어요.");
 
     private final HttpStatus status;
     private final String code;
