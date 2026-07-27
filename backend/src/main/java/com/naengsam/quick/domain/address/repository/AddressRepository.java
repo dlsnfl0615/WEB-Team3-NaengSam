@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.dreami.repository;
+package com.naengsam.quick.domain.address.repository;
 
 import com.naengsam.quick.domain.order.entity.Orders;
 import java.util.UUID;
