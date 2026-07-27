@@ -23,107 +23,36 @@ jobs:
       #        GitHub에는 아무것도 쓰지 않는다.
       - name: Run Claude review
         uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          claude_args: '--allowedTools "Read,Grep,Glob,Bash(gh pr diff:*),Write" --max-turns 15'
+          claude_args: >-
+            --allowedTools Read,Grep,Glob,"Bash(gh pr diff)","Bash(gh pr diff:*)","Bash(gh pr view:*)","Bash(gh pr comment:*)"
+            --max-turns 15
           prompt: |
-            이 PR의 diff를 리뷰해줘. `gh pr diff` 로 변경 내용을 확인할 수 있어.
+            이 PR(#${{ github.event.pull_request.number }})의 diff를 리뷰하고,
+            결과를 PR에 요약 코멘트로 직접 남겨줘.
 
-            리뷰 기준:
-            - 리포 루트에 CLAUDE.md 가 있으면 그 코딩 컨벤션을 기준으로 검토
-            - 버그, 보안 이슈, 성능 문제 위주로 확인
-            - 단순 스타일/취향 문제는 지적하지 마
+            진행 순서:
+            1. `gh pr diff ${{ github.event.pull_request.number }}` 로 변경 내용을 확인한다.
+            2. 리포 루트에 CLAUDE.md 가 있으면 그 코딩 컨벤션을 기준으로 검토한다.
+            3. 버그 / 보안 이슈 / 성능 문제 위주로 본다. 단순 스타일·취향 문제는 지적하지 않는다.
+            4. 아래 형식의 한국어 요약 코멘트를 한 번만 남긴다:
 
-            결과는 반드시 아래 JSON 스키마에 정확히 맞춰서
-            워크스페이스 루트의 `claude-review.json` 파일에 Write 도구로 저장해줘.
-            JSON 외의 다른 텍스트는 파일에 넣지 마.
+               gh pr comment ${{ github.event.pull_request.number }} \
+                 --edit-last --create-if-none --body '<본문>'
 
-            스키마:
-            {
-              "verdict": "approve" | "comment" | "request_changes",
-              "summary": "전체 리뷰 요약 (한국어, 2~4문장)",
-              "findings": [
-                {
-                  "severity": "critical" | "high" | "medium" | "low",
-                  "file": "파일 경로",
-                  "line": 정수 또는 null,
-                  "title": "짧은 제목",
-                  "body": "구체적인 설명과 개선 제안"
-                }
-              ]
-            }
+            코멘트 본문 형식:
+            ## 🤖 Claude 리뷰
+            **판정:** approve | comment | request_changes
+            **요약:** (한국어 2~4문장)
 
-            문제가 없으면 verdict는 "approve", findings는 빈 배열로.
+            ### 발견 사항
+            - `파일:라인` **[critical|high|medium|low]** 구체적인 설명과 개선 제안
+            (문제가 없으면 이 섹션 대신 "특이사항 없음 ✅" 한 줄)
 
-      # 2단계: JSON을 파싱해서 결정론적으로 PR 리뷰/코멘트를 작성한다.
-      #        (AI가 아니라 스크립트가 GitHub API를 호출하므로 예측 가능)
-      - name: Create PR review
-        uses: actions/github-script@v7
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          script: |
-            const fs = require("fs");
-
-            let review;
-            try {
-              review = JSON.parse(fs.readFileSync("claude-review.json", "utf8"));
-            } catch (e) {
-              core.warning(`claude-review.json 을 읽거나 파싱하지 못했습니다: ${e.message}`);
-              return;
-            }
-
-            const findings = Array.isArray(review.findings) ? review.findings : [];
-
-            const findingLines = findings.map((f) => {
-              const location = Number.isInteger(f.line) ? `${f.file}:${f.line}` : f.file;
-              return `- **${f.severity}** \`${location}\` — ${f.title}\n  ${f.body}`;
-            });
-
-            const body = [
-              "## 🤖 Claude PR Review",
-              "",
-              `**Verdict:** ${review.verdict ?? "comment"}`,
-              "",
-              review.summary ?? "",
-              "",
-              "### Findings",
-              findingLines.length ? findingLines.join("\n") : "특이사항 없음.",
-            ].join("\n");
-
-            // file + line 이 있는 finding 은 인라인 코멘트로
-            const comments = findings
-              .filter((f) => f.file && Number.isInteger(f.line))
-              .map((f) => ({
-                path: f.file,
-                line: f.line,
-                side: "RIGHT",
-                body: `**${f.severity}: ${f.title}**\n\n${f.body}`,
-              }));
-
-            const verdictToEvent = {
-              approve: "COMMENT",          // 승인 자동화가 부담스러우면 COMMENT 유지
-              comment: "COMMENT",
-              request_changes: "REQUEST_CHANGES",
-            };
-            const event = verdictToEvent[review.verdict] ?? "COMMENT";
-
-            try {
-              await github.rest.pulls.createReview({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.payload.pull_request.number,
-                event,
-                body,
-                comments,
-              });
-            } catch (error) {
-              // 인라인 코멘트는 diff 범위 밖 라인이면 자주 실패 -> 요약만이라도 남긴다
-              core.warning(`인라인 코멘트 실패, 요약 리뷰만 생성합니다: ${error.message}`);
-              await github.rest.pulls.createReview({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                pull_number: context.payload.pull_request.number,
-                event,
-                body,
-              });
-            }
+            중요:
+            - 반드시 마지막에 `gh pr comment` 를 정확히 1번 실행해서 코멘트를 남겨야 한다.
+            - 문제가 없어도 판정 "approve" 로 코멘트를 반드시 남긴다. 조용히 끝내지 마라.
+            - diff 를 못 가져와도 그 사실을 코멘트로 남긴다.
