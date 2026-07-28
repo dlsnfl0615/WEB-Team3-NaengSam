@@ -1,21 +1,27 @@
 package com.naengsam.quick.domain.delivery.service;
 
-import com.naengsam.quick.domain.delivery.dto.*;
-
+import com.naengsam.quick.domain.delivery.dto.GeoPoint;
+import com.naengsam.quick.domain.delivery.dto.Order;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
-import java.time.Duration;
-import java.time.LocalDateTime;
-import java.util.*;
-
 /**
- * 부르미 - 드리미 매칭 로직 스켈레톤.
- * 로직 자체는 원본 그대로 두고, 컴파일/자료구조/네이밍 일관성만 보정한 버전.
+ * 부르미 - 드리미 매칭 로직 스켈레톤. 로직 자체는 원본 그대로 두고, 컴파일/자료구조/네이밍 일관성만 보정한 버전.
  */
 @Service
 @RequiredArgsConstructor
-public class MatchingService implements MatchingContext {
+public class MatchingService {
 
     /**
      * 드리미 응답 제한시간. TODO: 정책 확정 후 조정
@@ -27,129 +33,17 @@ public class MatchingService implements MatchingContext {
     private static final int MAX_OFFER_COUNT = 3;
 
     // ────────────────────────────── 도메인 타입 ──────────────────────────────
-
-
-    /**
-     * 큐에 쌓이는 액션. 타입별로 필요한 payload가 달라서 sealed interface로 분리
-     */
-
-
-    /**
-     * status가 계속 바뀌므로 record가 아닌 가변 클래스로 변경.
-     * (record로 유지하려면 withStatus()로 새 인스턴스를 만들어 맵에 다시 넣어야 함)
-     */
-    public static final class MatchOffer {
-        private final UUID offerId;
-        private final UUID orderId;
-        private final UUID dreamiId;
-        private final LocalDateTime expiresAt;
-        private MatchOfferStatus status;
-
-        public MatchOffer(UUID offerId, UUID orderId, UUID dreamiId,
-                          MatchOfferStatus status, LocalDateTime expiresAt) {
-            this.offerId = offerId;
-            this.orderId = orderId;
-            this.dreamiId = dreamiId;
-            this.status = status;
-            this.expiresAt = expiresAt;
-        }
-
-        public UUID offerId() {
-            return offerId;
-        }
-
-        public UUID orderId() {
-            return orderId;
-        }
-
-        public UUID dreamiId() {
-            return dreamiId;
-        }
-
-        public LocalDateTime expiresAt() {
-            return expiresAt;
-        }
-
-        public MatchOfferStatus status() {
-            return status;
-        }
-
-        public void changeStatus(MatchOfferStatus status) {
-            this.status = status;
-        }
-    }
-
-    public enum MatchOfferStatus {
-        OFFERED,                        // 드리미에게 제안이 전달되어 응답 대기 중
-        PENDING_BOORMI_CONFIRMATION,    // 해당 드리미가 수락하여 부르미의 승낙을 대기중
-        MATCHED,                        // 해당 드리미가 수락했고 부르미도 수락해 매칭 후보로 확정됨
-        BOORMI_REJECTED,                // 해당 부르미가 명시적으로 거절함
-        DREAMI_REJECTED,                // 해당 드리미가 명시적으로 거절함
-        BOORMI_EXPIRED,                 // 제한 시간 내 부르미가 응답하지 않아 만료됨
-        DREAMI_EXPIRED,                 // 제한 시간 내 드리미가 응답하지 않아 만료됨
-        WITHDRAWN                       // 다른 드리미가 먼저 수락했거나 서버가 제안을 회수함
-    }
-
-    /**
-     * 기다리고 있는 드리미 (콜 대기중인 드리미). 마찬가지로 status가 바뀌므로 가변 클래스
-     */
-    public static final class WaitingDreami {
-        private final UUID dreamiId;
-        private GeoPoint location;
-        private WaitingDreamiStatus status;
-        private LocalDateTime updatedAt;
-
-        public WaitingDreami(UUID dreamiId, GeoPoint location,
-                             WaitingDreamiStatus status, LocalDateTime updatedAt) {
-            this.dreamiId = dreamiId;
-            this.location = location;
-            this.status = status;
-            this.updatedAt = updatedAt;
-        }
-
-        public UUID dreamiId() {
-            return dreamiId;
-        }
-
-        public GeoPoint location() {
-            return location;
-        }
-
-        public WaitingDreamiStatus status() {
-            return status;
-        }
-
-        public LocalDateTime updatedAt() {
-            return updatedAt;
-        }
-
-        public void changeStatus(WaitingDreamiStatus status) {
-            this.status = status;
-            this.updatedAt = LocalDateTime.now();
-        }
-    }
-
-    public enum WaitingDreamiStatus {
-        MATCHING,   // 지금 매칭 중
-        PROPOSED    // 지금 Match Offer 방 안에 들어감
-    }
-
-    // ────────────────────────────── 저장소 ──────────────────────────────
-
     private final Map<UUID, MatchOffer> offersById = new HashMap<>();           // Map<OfferUUID, MatchOffer>
     private final Map<UUID, Set<UUID>> offerIdsByDreamiId = new HashMap<>();    // Map<DreamiUUID, Set<OfferUUID>>
     private final Map<UUID, Set<UUID>> offerIdsByOrderId = new HashMap<>();     // Map<OrderUUID, Set<OfferUUID>>
-
     /**
      * 하나의 주문에 대해 동시에 뿌린 제안 묶음 = "방". 원본의 offerMap을 orderId 기준으로 정리
      */
     private final Map<UUID, List<MatchOffer>> offersByOrderId = new HashMap<>();
 
+    // ────────────────────────────── 저장소 ──────────────────────────────
     private final Map<UUID, WaitingDreami> dreamiMap = new HashMap<>();
-
     private final MatchingEngine matchingEngine;
-
-    // ────────────────────────────── 액션 제출 (public API) ──────────────────────────────
 
     // 외부에서는 이 메서드로 액션을 큐에 넣기만 한다. 실제 상태 변경은 엔진 스레드에서 apply*가 수행한다.
     public void registerDreami(UUID dreamiId, GeoPoint location) {
@@ -165,14 +59,14 @@ public class MatchingService implements MatchingContext {
         // 아직 코드 구현X
     }
 
-    @Override
-    public void applyRegisterDreami(UUID dreamiId, GeoPoint location) {
+    void applyRegisterDreami(UUID dreamiId, GeoPoint location) {
         dreamiMap.put(dreamiId,
                 new WaitingDreami(dreamiId, location, WaitingDreamiStatus.MATCHING, LocalDateTime.now()));
     }
 
-    @Override
-    public void applyRemoveDreami(UUID dreamiId) {
+    // ────────────────────────────── 액션 제출 (public API) ──────────────────────────────
+
+    void applyRemoveDreami(UUID dreamiId) {
         dreamiMap.remove(dreamiId);
     }
 
@@ -239,7 +133,6 @@ public class MatchingService implements MatchingContext {
                 alarmBySocket("팝업꺼지게(선착순패배)");
             }
         }
-
     }
 
     // 드리미가 거절하면, DREAMI_REJECTED로 변경 및 다시 대기상태로
@@ -302,8 +195,6 @@ public class MatchingService implements MatchingContext {
         });
     }
 
-    // ────────────────────────────── 미구현 ──────────────────────────────
-
     /**
      * TODO: 거리순 등 실제 정렬 기준 확정 전까지는 대기 오래한 순
      */
@@ -311,19 +202,16 @@ public class MatchingService implements MatchingContext {
         return Comparator.comparing(WaitingDreami::updatedAt);
     }
 
-    // ────────────────────────────── 조회 헬퍼 ──────────────────────────────
-
     private Optional<MatchOffer> findOffer(UUID offerId) {
         return Optional.ofNullable(offersById.get(offerId));
     }
 
-    private Optional<WaitingDreami> findDreami(UUID dreamiId) {
+    Optional<WaitingDreami> findDreami(UUID dreamiId) {
         return Optional.ofNullable(dreamiMap.get(dreamiId));
     }
 
     /**
-     * 드리미가 정상적으로 수락 가능한 오퍼만 반환한다.
-     * 없거나 이미 종료된 상태면 실패 알림을 보내고 empty를 반환한다.
+     * 드리미가 정상적으로 수락 가능한 오퍼만 반환한다. 없거나 이미 종료된 상태면 실패 알림을 보내고 empty를 반환한다.
      */
     private Optional<MatchOffer> acceptableOffer(UUID offerId) {
         MatchOffer offer = offersById.get(offerId);
@@ -344,7 +232,110 @@ public class MatchingService implements MatchingContext {
         return Optional.of(offer);
     }
 
+    // ────────────────────────────── 미구현 ──────────────────────────────
+
     private void proceedToDelivery(MatchOffer matchOffer) {
         // 아직 코드 구현X
+    }
+
+    // ────────────────────────────── 조회 헬퍼 ──────────────────────────────
+
+    public enum MatchOfferStatus {
+        OFFERED,                        // 드리미에게 제안이 전달되어 응답 대기 중
+        PENDING_BOORMI_CONFIRMATION,    // 해당 드리미가 수락하여 부르미의 승낙을 대기중
+        MATCHED,                        // 해당 드리미가 수락했고 부르미도 수락해 매칭 후보로 확정됨
+        BOORMI_REJECTED,                // 해당 부르미가 명시적으로 거절함
+        DREAMI_REJECTED,                // 해당 드리미가 명시적으로 거절함
+        BOORMI_EXPIRED,                 // 제한 시간 내 부르미가 응답하지 않아 만료됨
+        DREAMI_EXPIRED,                 // 제한 시간 내 드리미가 응답하지 않아 만료됨
+        WITHDRAWN                       // 다른 드리미가 먼저 수락했거나 서버가 제안을 회수함
+    }
+
+    public enum WaitingDreamiStatus {
+        MATCHING,   // 지금 매칭 중
+        PROPOSED    // 지금 Match Offer 방 안에 들어감
+    }
+
+    /**
+     * status가 계속 바뀌므로 record가 아닌 가변 클래스로 변경. (record로 유지하려면 withStatus()로 새 인스턴스를 만들어 맵에 다시 넣어야 함)
+     */
+    public static final class MatchOffer {
+        private final UUID offerId;
+        private final UUID orderId;
+        private final UUID dreamiId;
+        private final LocalDateTime expiresAt;
+        private MatchOfferStatus status;
+
+        public MatchOffer(UUID offerId, UUID orderId, UUID dreamiId,
+                          MatchOfferStatus status, LocalDateTime expiresAt) {
+            this.offerId = offerId;
+            this.orderId = orderId;
+            this.dreamiId = dreamiId;
+            this.status = status;
+            this.expiresAt = expiresAt;
+        }
+
+        public UUID offerId() {
+            return offerId;
+        }
+
+        public UUID orderId() {
+            return orderId;
+        }
+
+        public UUID dreamiId() {
+            return dreamiId;
+        }
+
+        public LocalDateTime expiresAt() {
+            return expiresAt;
+        }
+
+        public MatchOfferStatus status() {
+            return status;
+        }
+
+        public void changeStatus(MatchOfferStatus status) {
+            this.status = status;
+        }
+    }
+
+    /**
+     * 기다리고 있는 드리미 (콜 대기중인 드리미). 마찬가지로 status가 바뀌므로 가변 클래스
+     */
+    public static final class WaitingDreami {
+        private final UUID dreamiId;
+        private final GeoPoint location;
+        private WaitingDreamiStatus status;
+        private LocalDateTime updatedAt;
+
+        public WaitingDreami(UUID dreamiId, GeoPoint location,
+                             WaitingDreamiStatus status, LocalDateTime updatedAt) {
+            this.dreamiId = dreamiId;
+            this.location = location;
+            this.status = status;
+            this.updatedAt = updatedAt;
+        }
+
+        public UUID dreamiId() {
+            return dreamiId;
+        }
+
+        public GeoPoint location() {
+            return location;
+        }
+
+        public WaitingDreamiStatus status() {
+            return status;
+        }
+
+        public LocalDateTime updatedAt() {
+            return updatedAt;
+        }
+
+        public void changeStatus(WaitingDreamiStatus status) {
+            this.status = status;
+            this.updatedAt = LocalDateTime.now();
+        }
     }
 }
