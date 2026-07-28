@@ -203,17 +203,20 @@ public class MatchingService {
 
     // 팝업에서 수락을 눌렀다는 가정
     void acceptByDreami(WaitingDreami dreami, UUID offerId) {
-        // 이미 자신 matchOffer상태가 WITHDRAWN이면? -> 실패메시지
-        MatchOffer matchOffer = offersById.get(offerId);
-        if (matchOffer.status() == MatchOfferStatus.WITHDRAWN) {
-            alarmBySocket("이미 다른 드리미가 수락한 주문입니다.");
+        Optional<MatchOffer> optionalMatchOffer = acceptableOffer(offerId);
+        if (optionalMatchOffer.isEmpty()) {
             return;
         }
-        // TODO : 추후에 여기서 다른 matchOffer.status에 대한 분기도 작성 필요
+        MatchOffer matchOffer = optionalMatchOffer.get();
+        List<MatchOffer> room = offersByOrderId.get(matchOffer.orderId());
+        if (room == null) {
+            alarmBySocket("존재하지 않는 주문입니다.");
+            return;
+        }
 
         // 수락한 사람의 상태를 PENDING_BOORMI_CONFIRMATION로 변경
         // 나머지 매칭오퍼 상태를 WITHDRAW로 변경
-        for (MatchOffer offer : offersByOrderId.get(matchOffer.orderId())) {
+        for (MatchOffer offer : room) {
             // 수락한사람은 PENDING_BOORMI_CONFIRMATION
             // 나머지 사람은 WITHDRAWN
             if (offer.dreamiId().equals(dreami.dreamiId())) {
@@ -221,62 +224,77 @@ public class MatchingService {
                 // 드리미의 status는 PROPOSED 유지
                 assert dreami.status() == WaitingDreamiStatus.PROPOSED;
                 alarmBySocket("부르미한테_드리미정보_팝업넘기기");
-            } else {
+            } else if (offer.status() == MatchOfferStatus.OFFERED) {
+                // 아직 응답 대기중(OFFERED)인 오퍼만 회수한다.
+                // 이미 거절/만료됐거나 다른 방으로 넘어간 드리미의 상태는 건드리지 않는다.
                 offer.changeStatus(MatchOfferStatus.WITHDRAWN);
                 // 선착순에서 패배한 드리미를 다시 매칭 수락가능한 상태로 변경
-                WaitingDreami otherDreami = dreamiMap.get(offer.dreamiId());
-                otherDreami.changeStatus(WaitingDreamiStatus.MATCHING);
+                findDreami(offer.dreamiId())
+                        .ifPresent(otherDreami -> otherDreami.changeStatus(WaitingDreamiStatus.MATCHING));
                 alarmBySocket("팝업꺼지게(선착순패배)");
             }
         }
+
     }
 
     // 드리미가 거절하면, DREAMI_REJECTED로 변경 및 다시 대기상태로
     void rejectByDreami(WaitingDreami dreami, UUID offerId) {
-        dreami.changeStatus(WaitingDreamiStatus.MATCHING);
-        MatchOffer offer = offersById.get(offerId);
-        offer.changeStatus(MatchOfferStatus.DREAMI_REJECTED);
-        alarmBySocket("거절했으니 팝업끄면됨");
+        findOffer(offerId).ifPresentOrElse(
+                offer -> {
+                    dreami.changeStatus(WaitingDreamiStatus.MATCHING);
+                    offer.changeStatus(MatchOfferStatus.DREAMI_REJECTED);
+                    alarmBySocket("거절했으니 팝업끄면됨");
+                },
+                () -> alarmBySocket("존재하지 않는 제안입니다.")
+        );
     }
 
     void acceptByBoormi(UUID offerId) {
-        MatchOffer matchOffer = offersById.get(offerId);
-        assert matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION;
-        matchOffer.changeStatus(MatchOfferStatus.MATCHED); // 부르미까지 수락 완료
-        proceedToDelivery(matchOffer);
+        findOffer(offerId).ifPresentOrElse(
+                matchOffer -> {
+                    assert matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION;
+                    matchOffer.changeStatus(MatchOfferStatus.MATCHED); // 부르미까지 수락 완료
+                    proceedToDelivery(matchOffer);
+                },
+                () -> alarmBySocket("존재하지 않는 제안입니다.")
+        );
     }
 
     void rejectByBoormi(UUID offerId) {
-        MatchOffer matchOffer = offersById.get(offerId);
-        assert matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION;
-        matchOffer.changeStatus(MatchOfferStatus.BOORMI_REJECTED);
+        findOffer(offerId).ifPresentOrElse(
+                matchOffer -> {
+                    assert matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION;
+                    matchOffer.changeStatus(MatchOfferStatus.BOORMI_REJECTED);
 
-        // 거절당한 드리미의 상태를 배달가능 상태로 변경
-        WaitingDreami waitingDreami = dreamiMap.get(matchOffer.dreamiId());
-        alarmBySocket("거절당한_드리미에게_부르미가_거절했다고_알려주기");
-        waitingDreami.changeStatus(WaitingDreamiStatus.MATCHING);
+                    // 거절당한 드리미의 상태를 배달가능 상태로 변경
+                    alarmBySocket("거절당한_드리미에게_부르미가_거절했다고_알려주기");
+                    findDreami(matchOffer.dreamiId())
+                            .ifPresent(dreami -> dreami.changeStatus(WaitingDreamiStatus.MATCHING));
+                },
+                () -> alarmBySocket("존재하지 않는 제안입니다.")
+        );
     }
 
     // 이건 액션에 의해 실행 되어야함
     void expireDreamiOffer(UUID offerId) {
-        MatchOffer matchOffer = offersById.get(offerId);
-
         // 해당 match가 OFFERED 상태가 아니라면 다른 로직에 의해서 처리가 된거임
-        if (matchOffer.status() != MatchOfferStatus.OFFERED) {
-            return;
-        }
-
-        matchOffer.changeStatus(MatchOfferStatus.DREAMI_EXPIRED);
-        dreamiMap.get(matchOffer.dreamiId()).changeStatus(WaitingDreamiStatus.MATCHING);
+        findOffer(offerId)
+                .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.OFFERED)
+                .ifPresent(matchOffer -> {
+                    matchOffer.changeStatus(MatchOfferStatus.DREAMI_EXPIRED);
+                    findDreami(matchOffer.dreamiId())
+                            .ifPresent(dreami -> dreami.changeStatus(WaitingDreamiStatus.MATCHING));
+                });
     }
 
     void expireBoormiOffer(UUID offerId) {
-        MatchOffer matchOffer = offersById.get(offerId);
         // TODO: 드리미쪽과 달리 status 가드가 없음. PENDING_BOORMI_CONFIRMATION 체크 필요 여부 확인
-
-        // 드리미가 다시 배달이 가능하게 바꿔야함
-        matchOffer.changeStatus(MatchOfferStatus.BOORMI_EXPIRED);
-        dreamiMap.get(matchOffer.dreamiId()).changeStatus(WaitingDreamiStatus.MATCHING);
+        findOffer(offerId).ifPresent(matchOffer -> {
+            // 드리미가 다시 배달이 가능하게 바꿔야함
+            matchOffer.changeStatus(MatchOfferStatus.BOORMI_EXPIRED);
+            findDreami(matchOffer.dreamiId())
+                    .ifPresent(dreami -> dreami.changeStatus(WaitingDreamiStatus.MATCHING));
+        });
     }
 
     // ────────────────────────────── 미구현 ──────────────────────────────
@@ -286,6 +304,39 @@ public class MatchingService {
      */
     private Comparator<WaitingDreami> orderingComparator() {
         return Comparator.comparing(WaitingDreami::updatedAt);
+    }
+
+    // ────────────────────────────── 조회 헬퍼 ──────────────────────────────
+
+    private Optional<MatchOffer> findOffer(UUID offerId) {
+        return Optional.ofNullable(offersById.get(offerId));
+    }
+
+    private Optional<WaitingDreami> findDreami(UUID dreamiId) {
+        return Optional.ofNullable(dreamiMap.get(dreamiId));
+    }
+
+    /**
+     * 드리미가 정상적으로 수락 가능한 오퍼만 반환한다.
+     * 없거나 이미 종료된 상태면 실패 알림을 보내고 empty를 반환한다.
+     */
+    private Optional<MatchOffer> acceptableOffer(UUID offerId) {
+        MatchOffer offer = offersById.get(offerId);
+        if (offer == null) {
+            alarmBySocket("존재하지 않는 제안입니다.");
+            return Optional.empty();
+        }
+        // 이미 자신 matchOffer상태가 WITHDRAWN이면? -> 실패메시지
+        if (offer.status() == MatchOfferStatus.WITHDRAWN) {
+            alarmBySocket("이미 다른 드리미가 수락한 주문입니다.");
+            return Optional.empty();
+        }
+        // 정상적으로 수락 가능한 상태는 OFFERED 뿐. (거절/만료된 제안은 수락 불가)
+        if (offer.status() != MatchOfferStatus.OFFERED) {
+            alarmBySocket("이미 종료된 제안입니다.");
+            return Optional.empty();
+        }
+        return Optional.of(offer);
     }
 
     private void proceedToDelivery(MatchOffer matchOffer) {
