@@ -14,11 +14,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 /**
  * 부르미 - 드리미 매칭 로직 스켈레톤. 로직 자체는 원본 그대로 두고, 컴파일/자료구조/네이밍 일관성만 보정한 버전.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class MatchingService {
@@ -54,6 +56,10 @@ public class MatchingService {
         matchingEngine.submit(new DreamiRemove(this, dreamiId));
     }
 
+    public List<WaitingDreami> waitingDreamis() {
+        return List.copyOf(dreamiMap.values());
+    }
+
     void alarmBySocket(String message) {
         // 소켓을 통해 알림보내기
         // 아직 코드 구현X
@@ -62,12 +68,14 @@ public class MatchingService {
     void applyRegisterDreami(UUID dreamiId, GeoPoint location) {
         dreamiMap.put(dreamiId,
                 new WaitingDreami(dreamiId, location, WaitingDreamiStatus.MATCHING, LocalDateTime.now()));
+        log.debug("드리미 등록 처리 완료: dreamiId={}, location={}", dreamiId, location);
     }
 
     // ────────────────────────────── 액션 제출 (public API) ──────────────────────────────
 
     void applyRemoveDreami(UUID dreamiId) {
         dreamiMap.remove(dreamiId);
+        log.debug("드리미 제거 처리 완료: dreamiId={}", dreamiId);
     }
 
     // 액션 하나 처리

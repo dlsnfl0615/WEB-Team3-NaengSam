@@ -16,6 +16,7 @@ public class MatchingEngine {
     private final BlockingQueue<Action> queue = new LinkedBlockingQueue<>();
 
     public void submit(Action action) {
+        log.debug("액션 큐에 등록: {}", action);
         queue.offer(action);
     }
 
