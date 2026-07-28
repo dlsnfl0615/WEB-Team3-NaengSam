@@ -40,6 +40,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             // 4xx 는 의도된 흐름 — 어디서 던졌는지만 한 줄로 남긴다
             log.warn("BusinessException: {} {} {} {} (at {})", errorCode.getCode(), errorCode.getMessage(),
                     request.getMethod(), request.getRequestURI(), origin(e));
+            log.debug("", e);
         }
 
         return ResponseEntity.status(errorCode.getStatus())
@@ -62,6 +63,7 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                                      HttpServletRequest request) {
         BaseErrorCode errorCode = GeneralErrorCode.CONFLICT;
         log.warn("OptimisticLockingFailure: {} {} (at {})", request.getMethod(), request.getRequestURI(), origin(e));
+        log.debug("", e);
 
         return ResponseEntity.status(errorCode.getStatus())
                 .body(CommonResponse.onFail(errorCode, null));
@@ -77,24 +79,26 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     }
 
     /**
-     * Spring MVC 가 처리하는 표준 예외. 본래 상태코드는 그대로 두고 body 만 공통 포맷으로 바꾼다.
-     * 예외 타입별로 세분화된 COMMON 코드를 매핑한다.
+     * Spring MVC 가 처리하는 표준 예외. 본래 상태코드는 그대로 두고 body 만 공통 포맷으로 바꾼다. 예외 타입별로 세분화된 COMMON 코드를 매핑한다.
      */
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(Exception e, Object body, HttpHeaders headers,
                                                              HttpStatusCode statusCode, WebRequest request) {
         BaseErrorCode errorCode = resolve(e, statusCode);
         log.warn("Spring MVC exception: {} {} -> {}", statusCode, e.getClass().getSimpleName(), errorCode.getCode());
-
+        log.debug("", e);
         return super.handleExceptionInternal(e, CommonResponse.onFail(errorCode, null), headers, statusCode, request);
     }
 
     private BaseErrorCode resolve(Exception e, HttpStatusCode statusCode) {
         return switch (e) {
             case MethodArgumentNotValidException ignored -> GeneralErrorCode.INVALID_PARAMETER;          // COMMON_001
-            case TypeMismatchException ignored -> GeneralErrorCode.TYPE_MISMATCH;                        // COMMON_002 (MethodArgumentTypeMismatch 포함)
-            case MissingServletRequestParameterException ignored -> GeneralErrorCode.MISSING_REQUEST_VALUE; // COMMON_003
-            case ServletRequestBindingException ignored -> GeneralErrorCode.MISSING_REQUEST_VALUE;       // COMMON_003 (헤더 누락 등 상위타입)
+            case TypeMismatchException ignored ->
+                    GeneralErrorCode.TYPE_MISMATCH;                        // COMMON_002 (MethodArgumentTypeMismatch 포함)
+            case MissingServletRequestParameterException ignored ->
+                    GeneralErrorCode.MISSING_REQUEST_VALUE; // COMMON_003
+            case ServletRequestBindingException ignored ->
+                    GeneralErrorCode.MISSING_REQUEST_VALUE;       // COMMON_003 (헤더 누락 등 상위타입)
             case HttpMessageNotReadableException ignored -> GeneralErrorCode.MALFORMED_REQUEST_BODY;     // COMMON_004
             case HttpMediaTypeNotSupportedException ignored -> GeneralErrorCode.UNSUPPORTED_MEDIA_TYPE;  // COMMON_007
             case HttpRequestMethodNotSupportedException ignored -> GeneralErrorCode.METHOD_NOT_ALLOWED;  // COMMON_006
