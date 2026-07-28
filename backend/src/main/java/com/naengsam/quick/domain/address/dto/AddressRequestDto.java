@@ -4,8 +4,6 @@ import java.util.UUID;
 
 public record AddressRequestDto(
         String addressAlias,
-        String latitude,
-        String longitude,
         String addressLine1,
         String addressLine2,
         UUID boormiId
