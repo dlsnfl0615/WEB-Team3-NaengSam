@@ -5,12 +5,12 @@ import com.naengsam.quick.domain.address.dto.AddressCoordinatesResponseDto;
 import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
 import com.naengsam.quick.domain.address.service.CoordinatesService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
-import com.naengsam.quick.global.session.LoginUser;
+import com.naengsam.quick.global.session.LoginRequired;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.UUID;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -29,8 +29,8 @@ public class AddressApiController {
     @PostMapping("/place")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"EXTERNAL_SERVICE_ERROR", "EXTERNAL_SERVICE_TIMEOUT"})
-    public AddressCoordinatesResponseDto getCoordinates(@LoginUser UUID boormiId,
-                                                        @RequestBody AddressApiRequestDto requestDto) {
+    @LoginRequired
+    public AddressCoordinatesResponseDto getCoordinates(@Valid @RequestBody AddressApiRequestDto requestDto) {
         // 카카오의 도로명주소 -> 위도 경도로 변환 api 사용
         CoordinatesResponseDto originCoordinates = coordinatesService.getCoordinates(requestDto.origin());
         CoordinatesResponseDto destinationCoordinates = coordinatesService.getCoordinates(requestDto.destination());
