@@ -146,14 +146,14 @@ public class MatchingService {
 
     // ────────────────────────────── 액션 처리 ──────────────────────────────
 
-    void 액션_수행() {
+    void processAction() {
         Action action = q.poll();
         if (action == null) {
             return;
         }
         switch (action) {
-            case DreamiRegister a -> 드리미_등록(a.dreamiId(), a.location());
-            case DreamiRemove a -> 드리미_삭제(a.dreamiId());
+            case DreamiRegister a -> registerDreami(a.dreamiId(), a.location());
+            case DreamiRemove a -> removeDreami(a.dreamiId());
         }
     }
 
@@ -162,20 +162,20 @@ public class MatchingService {
         // 아직 코드 구현X
     }
 
-    void 드리미_등록(UUID dreamiId, GeoPoint location) {
+    void registerDreami(UUID dreamiId, GeoPoint location) {
         dreamiMap.put(dreamiId,
                 new WaitingDreami(dreamiId, location, WaitingDreamiStatus.MATCHING, LocalDateTime.now()));
     }
 
-    void 드리미_삭제(UUID dreamiId) {
+    void removeDreami(UUID dreamiId) {
         dreamiMap.remove(dreamiId);
     }
 
     // 액션 하나 처리
-    void 매칭_시작(Order 주문건) {
+    void startMatching(Order order) {
         List<WaitingDreami> top3List = dreamiMap.values().stream()
                 .filter(dreami -> dreami.status() == WaitingDreamiStatus.MATCHING)
-                .sorted(정렬기준())
+                .sorted(orderingComparator())
                 .limit(MAX_OFFER_COUNT)
                 .toList();
 
@@ -183,26 +183,26 @@ public class MatchingService {
         LocalDateTime expiresAt = LocalDateTime.now().plus(OFFER_TTL);
         List<MatchOffer> matchOfferList = new ArrayList<>();
         for (WaitingDreami dreami : top3List) {
-            UUID offerId = 새로운_UUID_할당(); // 제안UUID (드리미 1명당 1개)
+            UUID offerId = UUID.randomUUID(); // 제안UUID (드리미 1명당 1개)
             MatchOffer offer = new MatchOffer(
-                    offerId, 주문건.orderId(), dreami.dreamiId(), MatchOfferStatus.OFFERED, expiresAt);
+                    offerId, order.orderId(), dreami.dreamiId(), MatchOfferStatus.OFFERED, expiresAt);
             matchOfferList.add(offer);
 
             offersById.put(offerId, offer);
             offerIdsByDreamiId.computeIfAbsent(dreami.dreamiId(), k -> new HashSet<>()).add(offerId);
-            offerIdsByOrderId.computeIfAbsent(주문건.orderId(), k -> new HashSet<>()).add(offerId);
+            offerIdsByOrderId.computeIfAbsent(order.orderId(), k -> new HashSet<>()).add(offerId);
         }
 
         // 드리미 3명에게 status를 변경 요청
         for (WaitingDreami dreami : top3List) {
             dreamiMap.get(dreami.dreamiId()).changeStatus(WaitingDreamiStatus.PROPOSED);
         }
-        offersByOrderId.put(주문건.orderId(), matchOfferList); // 방안에상위3명넣기 (사실상 방 만들기)
+        offersByOrderId.put(order.orderId(), matchOfferList); // 방안에상위3명넣기 (사실상 방 만들기)
         alarmBySocket("드리미에게_제안_팝업_띄우기");
     }
 
     // 팝업에서 수락을 눌렀다는 가정
-    void 드리미의_수락(WaitingDreami dreami, UUID offerId) {
+    void acceptByDreami(WaitingDreami dreami, UUID offerId) {
         // 이미 자신 matchOffer상태가 WITHDRAWN이면? -> 실패메시지
         MatchOffer matchOffer = offersById.get(offerId);
         if (matchOffer.status() == MatchOfferStatus.WITHDRAWN) {
@@ -232,21 +232,21 @@ public class MatchingService {
     }
 
     // 드리미가 거절하면, DREAMI_REJECTED로 변경 및 다시 대기상태로
-    void 드리미의_거절(WaitingDreami dreami, UUID offerId) {
+    void rejectByDreami(WaitingDreami dreami, UUID offerId) {
         dreami.changeStatus(WaitingDreamiStatus.MATCHING);
         MatchOffer offer = offersById.get(offerId);
         offer.changeStatus(MatchOfferStatus.DREAMI_REJECTED);
         alarmBySocket("거절했으니 팝업끄면됨");
     }
 
-    void 부르미의_수락(UUID offerId) {
+    void acceptByBoormi(UUID offerId) {
         MatchOffer matchOffer = offersById.get(offerId);
         assert matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION;
         matchOffer.changeStatus(MatchOfferStatus.MATCHED); // 부르미까지 수락 완료
-        실제_배달_로직으로_진행(matchOffer);
+        proceedToDelivery(matchOffer);
     }
 
-    void 부르미의_거절(UUID offerId) {
+    void rejectByBoormi(UUID offerId) {
         MatchOffer matchOffer = offersById.get(offerId);
         assert matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION;
         matchOffer.changeStatus(MatchOfferStatus.BOORMI_REJECTED);
@@ -258,7 +258,7 @@ public class MatchingService {
     }
 
     // 이건 액션에 의해 실행 되어야함
-    void 드리미가_시간내에_수락안누름(UUID offerId) {
+    void expireDreamiOffer(UUID offerId) {
         MatchOffer matchOffer = offersById.get(offerId);
 
         // 해당 match가 OFFERED 상태가 아니라면 다른 로직에 의해서 처리가 된거임
@@ -270,7 +270,7 @@ public class MatchingService {
         dreamiMap.get(matchOffer.dreamiId()).changeStatus(WaitingDreamiStatus.MATCHING);
     }
 
-    void 부르미가_시간내에_수락안누름(UUID offerId) {
+    void expireBoormiOffer(UUID offerId) {
         MatchOffer matchOffer = offersById.get(offerId);
         // TODO: 드리미쪽과 달리 status 가드가 없음. PENDING_BOORMI_CONFIRMATION 체크 필요 여부 확인
 
@@ -284,15 +284,11 @@ public class MatchingService {
     /**
      * TODO: 거리순 등 실제 정렬 기준 확정 전까지는 대기 오래한 순
      */
-    private Comparator<WaitingDreami> 정렬기준() {
+    private Comparator<WaitingDreami> orderingComparator() {
         return Comparator.comparing(WaitingDreami::updatedAt);
     }
 
-    private UUID 새로운_UUID_할당() {
-        return UUID.randomUUID();
-    }
-
-    private void 실제_배달_로직으로_진행(MatchOffer matchOffer) {
+    private void proceedToDelivery(MatchOffer matchOffer) {
         // 아직 코드 구현X
     }
 }
