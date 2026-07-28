@@ -19,7 +19,10 @@ public enum UserErrorCode implements BaseErrorCode {
     SUSPENDED_ACCOUNT(HttpStatus.FORBIDDEN, "AUTH_009", "이용이 제한된 계정입니다. 고객센터로 문의해 주세요."),
     WITHDRAWN_ACCOUNT(HttpStatus.FORBIDDEN, "AUTH_010", "이용할 수 없는 계정입니다."),
     INVALID_VERIFICATION_CODE(HttpStatus.BAD_REQUEST, "AUTH_011", "인증번호가 올바르지 않습니다."),
-    VERIFICATION_CODE_REQUEST_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "AUTH_012", "잠시 후 다시 시도해 주세요.");
+    VERIFICATION_CODE_REQUEST_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "AUTH_012", "잠시 후 다시 시도해 주세요."),
+    PHONE_NOT_VERIFIED(HttpStatus.BAD_REQUEST, "AUTH_013", "휴대폰 인증이 필요합니다."),
+    VERIFICATION_CODE_EXPIRED(HttpStatus.BAD_REQUEST, "AUTH_014", "인증번호가 만료되었습니다. 다시 요청해 주세요."),
+    PHONE_ALREADY_REGISTERED(HttpStatus.CONFLICT, "AUTH_015", "이미 가입된 휴대폰 번호입니다.");
 
     private final HttpStatus status;
     private final String code;
