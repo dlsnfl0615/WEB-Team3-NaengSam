@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
-public class AddressService {
+public class AddressApiService {
 
     private final OrderRepository orderRepository;
 

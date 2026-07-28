@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.address.dto;
 
-public record AddressRequestDto(
+public record AddressApiRequestDto(
         String origin,
         String originDetail,
         String destination,
