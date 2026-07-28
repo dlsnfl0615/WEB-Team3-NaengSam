@@ -2,6 +2,9 @@ package com.naengsam.quick.domain.delivery.service;
 
 import com.naengsam.quick.domain.delivery.dto.*;
 
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -10,7 +13,9 @@ import java.util.*;
  * 부르미 - 드리미 매칭 로직 스켈레톤.
  * 로직 자체는 원본 그대로 두고, 컴파일/자료구조/네이밍 일관성만 보정한 버전.
  */
-public class MatchingService {
+@Service
+@RequiredArgsConstructor
+public class MatchingService implements MatchingContext {
 
     /**
      * 드리미 응답 제한시간. TODO: 정책 확정 후 조정
@@ -142,19 +147,17 @@ public class MatchingService {
 
     private final Map<UUID, WaitingDreami> dreamiMap = new HashMap<>();
 
-    private final Queue<Action> q = new ArrayDeque<>();
+    private final MatchingEngine matchingEngine;
 
-    // ────────────────────────────── 액션 처리 ──────────────────────────────
+    // ────────────────────────────── 액션 제출 (public API) ──────────────────────────────
 
-    void processAction() {
-        Action action = q.poll();
-        if (action == null) {
-            return;
-        }
-        switch (action) {
-            case DreamiRegister a -> registerDreami(a.dreamiId(), a.location());
-            case DreamiRemove a -> removeDreami(a.dreamiId());
-        }
+    // 외부에서는 이 메서드로 액션을 큐에 넣기만 한다. 실제 상태 변경은 엔진 스레드에서 apply*가 수행한다.
+    public void registerDreami(UUID dreamiId, GeoPoint location) {
+        matchingEngine.submit(new DreamiRegister(this, dreamiId, location));
+    }
+
+    public void removeDreami(UUID dreamiId) {
+        matchingEngine.submit(new DreamiRemove(this, dreamiId));
     }
 
     void alarmBySocket(String message) {
@@ -162,12 +165,14 @@ public class MatchingService {
         // 아직 코드 구현X
     }
 
-    void registerDreami(UUID dreamiId, GeoPoint location) {
+    @Override
+    public void applyRegisterDreami(UUID dreamiId, GeoPoint location) {
         dreamiMap.put(dreamiId,
                 new WaitingDreami(dreamiId, location, WaitingDreamiStatus.MATCHING, LocalDateTime.now()));
     }
 
-    void removeDreami(UUID dreamiId) {
+    @Override
+    public void applyRemoveDreami(UUID dreamiId) {
         dreamiMap.remove(dreamiId);
     }
 
