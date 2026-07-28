@@ -12,4 +12,6 @@ public interface BoormiRepository extends JpaRepository<Boormi, UUID> {
     boolean existsByEmail(String email);
 
     boolean existsByPhoneNumber(String phoneNumber);
+
+    boolean existsByName(String name);
 }
