@@ -2,7 +2,6 @@ package com.naengsam.quick.domain.user.service;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
-import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
@@ -58,10 +57,9 @@ public class UserService {
 
         boolean flag = false;
         if (boormi.isDreamiActivate()) {
-            Dreami dreami = dreamiRepository.findById(boormiId).orElse(null);
-            if (dreami.getRequestCd().equals(DreamiCd.APPROVED)) {
-                flag = true;
-            }
+            flag = dreamiRepository.findById(boormiId)
+                    .map(d -> d.getRequestCd() == DreamiCd.APPROVED)
+                    .orElse(false);
         }
 
         return UserDto.from(boormi, flag);
