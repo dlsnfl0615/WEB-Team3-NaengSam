@@ -36,7 +36,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
             // 서버 결함이므로 전체 스택이 필요하다
             log.error("BusinessException: {} {} {} {}", errorCode.getCode(), errorCode.getMessage(),
                     request.getMethod(), request.getRequestURI(), e);
-            log.debug("", e);
         } else {
             // 4xx 는 의도된 흐름 — 어디서 던졌는지만 한 줄로 남긴다
             log.warn("BusinessException: {} {} {} {} (at {})", errorCode.getCode(), errorCode.getMessage(),
@@ -73,7 +72,6 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     @ExceptionHandler(Exception.class)
     public ResponseEntity<CommonResponse<Void>> handleException(Exception e) {
         log.error("Unhandled exception", e);
-        log.debug("", e);
         BaseErrorCode errorCode = GeneralErrorCode.INTERNAL_SERVER_ERROR;
 
         return ResponseEntity.status(errorCode.getStatus())

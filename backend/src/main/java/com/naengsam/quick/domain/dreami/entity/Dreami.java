@@ -2,6 +2,8 @@ package com.naengsam.quick.domain.dreami.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import java.util.UUID;
@@ -19,5 +21,9 @@ public class Dreami {
     @Id
     @JdbcTypeCode(SqlTypes.BINARY)
     @Column(name = "dreami_id", columnDefinition = "BINARY(16)")
-    private UUID boormiId;
+    private UUID dreamiId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "request_cd")
+    private DreamiCd requestCd;
 }

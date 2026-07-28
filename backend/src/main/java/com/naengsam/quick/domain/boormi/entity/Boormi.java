@@ -41,4 +41,7 @@ public class Boormi {
     @Enumerated(EnumType.STRING)
     @Column(name = "user_cd")
     private UserCd userCd;
+
+    @Column(name = "is_dreami_activated", nullable = false)
+    private boolean isDreamiActivate;
 }
