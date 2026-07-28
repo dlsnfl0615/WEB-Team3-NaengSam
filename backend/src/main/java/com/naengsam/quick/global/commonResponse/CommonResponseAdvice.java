@@ -35,9 +35,8 @@ public class CommonResponseAdvice implements ResponseBodyAdvice<Object> {
     public Object beforeBodyWrite(Object body, MethodParameter returnType, MediaType contentType,
                                   Class<? extends HttpMessageConverter<?>> converterType,
                                   ServerHttpRequest request, ServerHttpResponse response) {
-        // 본문 없는 응답, 이미 감싼 응답, 파일·바이너리 응답은 그대로 내보낸다
-        if (body == null || body instanceof CommonResponse
-                || body instanceof byte[] || body instanceof Resource) {
+        // 이미 감싼 응답, 파일·바이너리 응답은 그대로 내보낸다
+        if (body instanceof CommonResponse || body instanceof byte[] || body instanceof Resource) {
             return body;
         }
 
@@ -47,6 +46,8 @@ public class CommonResponseAdvice implements ResponseBodyAdvice<Object> {
             return objectMapper.writeValueAsString(CommonResponse.onSuccess(body));
         }
 
+        // body 가 null 이어도(반환값 없는 성공) 빈 바디 대신 result=null 봉투로 내려보낸다.
+        // 단, void 반환 메서드는 애초에 이 advice 를 타지 않으므로 CommonResponse<Void> 를 직접 반환해야 한다.
         return CommonResponse.onSuccess(body);
     }
 }
