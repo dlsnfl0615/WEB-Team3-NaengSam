@@ -10,6 +10,9 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+/**
+ * 부르미가 등록해 둔 배송지 엔티티. 좌표는 저장 시점에 {@code CoordinatesService} 로 도로명주소를 변환해 채운다.
+ */
 @Entity
 @Getter
 @NoArgsConstructor

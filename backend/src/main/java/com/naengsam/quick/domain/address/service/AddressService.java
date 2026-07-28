@@ -18,6 +18,9 @@ public class AddressService {
     private final AddressRepository addressRepository;
     private final CoordinatesService coordinatesService;
 
+    /**
+     * 도로명주소를 {@code CoordinatesService} 로 좌표 변환해 배송지를 저장하고, 생성된 식별자를 반환한다.
+     */
     public UUID saveAddress(AddressRequestDto requestDto) {
         CoordinatesResponseDto coordinates = coordinatesService.getCoordinates(requestDto.addressLine1());
 
@@ -34,6 +37,9 @@ public class AddressService {
         return addressRepository.save(address).getAddressId();
     }
 
+    /**
+     * 저장된 배송지 전체를 조회한다.
+     */
     public List<AddressResponseDto> findAll() {
         return addressRepository.findAll().stream()
                 .map(address -> new AddressResponseDto(
