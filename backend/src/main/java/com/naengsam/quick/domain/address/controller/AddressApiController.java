@@ -1,10 +1,15 @@
 package com.naengsam.quick.domain.address.controller;
 
 import com.naengsam.quick.domain.address.dto.AddressApiRequestDto;
-import com.naengsam.quick.domain.address.dto.Addresses;
+import com.naengsam.quick.domain.address.dto.AddressCoordinatesResponseDto;
 import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
-import com.naengsam.quick.domain.address.service.AddressApiService;
 import com.naengsam.quick.domain.address.service.CoordinatesService;
+import com.naengsam.quick.global.code.GeneralErrorCode;
+import com.naengsam.quick.global.session.LoginUser;
+import com.naengsam.quick.global.swagger.ApiErrorCodes;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,34 +19,29 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/address")
+@Tag(name = "주소 좌표 변환 컨트롤러", description = "도로명주소를 위도/경도로 변환한다. 결제가 완료되기 전까지는 아무것도 저장하지 않는다.")
 @RequiredArgsConstructor
 public class AddressApiController {
 
-    private final AddressApiService addressApiService;
     private final CoordinatesService coordinatesService;
 
+    @Operation(summary = "배송지 좌표 변환", description = "출발지/도착지 도로명주소를 위도/경도로 변환해 반환한다. 클라이언트는 이 값을 들고 있다가 결제 완료 시점에 주문 생성 요청에 함께 담아 보낸다.")
     @PostMapping("/place")
-    public UUID saveAddresses(@RequestBody AddressApiRequestDto requestDto) {
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"EXTERNAL_SERVICE_ERROR", "EXTERNAL_SERVICE_TIMEOUT"})
+    public AddressCoordinatesResponseDto getCoordinates(@LoginUser UUID boormiId,
+                                                        @RequestBody AddressApiRequestDto requestDto) {
         // 카카오의 도로명주소 -> 위도 경도로 변환 api 사용
         CoordinatesResponseDto originCoordinates = coordinatesService.getCoordinates(requestDto.origin());
         CoordinatesResponseDto destinationCoordinates = coordinatesService.getCoordinates(requestDto.destination());
 
-        // 별명은 나중에 생성 가능하도록 처음엔 null로 생성
-        Addresses addresses = Addresses.builder()
-                .originAddressLine1(requestDto.origin())
-                .originAddressLine2(requestDto.originDetail())
-                .originLatitude(originCoordinates.documents().getFirst().roadAddress().y())
-                .originLongitude(originCoordinates.documents().getFirst().roadAddress().x())
-                .destinationAddressLine1(requestDto.destination())
-                .destinationAddressLine2(requestDto.destinationDetail())
-                .destinationLatitude(destinationCoordinates.documents().getFirst().roadAddress().y())
-                .destinationLongitude(destinationCoordinates.documents().getFirst().roadAddress().x())
-                .build();
-
-        // 로그인 기능 연결해서 하드코딩 제거 예정
-        UUID orderId = UUID.fromString("1f1684da-bdc1-4e2a-a87f-66975aa090a8");
-        addressApiService.updateAddresses(orderId, addresses);
-
-        return orderId;
+        // 결제 완료 전까지는 아무것도 저장하지 않고, 계산된 좌표만 클라이언트에 돌려준다.
+        // 클라이언트가 이 값을 나머지 주문 정보와 함께 들고 있다가 결제 완료 시점에 한 번에 제출한다.
+        return new AddressCoordinatesResponseDto(
+                originCoordinates.documents().getFirst().roadAddress().y(),
+                originCoordinates.documents().getFirst().roadAddress().x(),
+                destinationCoordinates.documents().getFirst().roadAddress().y(),
+                destinationCoordinates.documents().getFirst().roadAddress().x()
+        );
     }
 }
