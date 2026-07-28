@@ -6,6 +6,7 @@ import static org.mockito.Mockito.when;
 
 import com.naengsam.quick.domain.address.dto.AddressRequestDto;
 import com.naengsam.quick.domain.address.dto.AddressResponseDto;
+import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
 import com.naengsam.quick.domain.address.entity.Address;
 import com.naengsam.quick.domain.address.repository.AddressRepository;
 import java.math.BigDecimal;
@@ -24,19 +25,29 @@ class AddressServiceTest {
     @Mock
     private AddressRepository addressRepository;
 
+    @Mock
+    private CoordinatesService coordinatesService;
+
     @InjectMocks
     private AddressService addressService;
 
     @Test
-    void 주소를_저장하면_요청값이_반영된_주소가_저장되고_생성된_id가_반환된다() {
+    void 주소를_저장하면_좌표가_계산되어_반영된_주소가_저장되고_생성된_id가_반환된다() {
         AddressRequestDto requestDto = new AddressRequestDto(
                 "우리집",
-                "37.123456",
-                "127.123456",
                 "서울시 강남구",
                 "101동 202호",
                 UUID.randomUUID()
         );
+        CoordinatesResponseDto.RoadAddress roadAddress =
+                new CoordinatesResponseDto.RoadAddress(
+                        null, null, null, null, null, null, null, null, null,
+                        "127.123456", "37.123456"
+                );
+        CoordinatesResponseDto coordinatesResponseDto =
+                new CoordinatesResponseDto(List.of(new CoordinatesResponseDto.Document(roadAddress)));
+        when(coordinatesService.getCoordinates(requestDto.addressLine1()))
+                .thenReturn(coordinatesResponseDto);
         when(addressRepository.save(any(Address.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -48,8 +59,8 @@ class AddressServiceTest {
 
         assertThat(savedId).isEqualTo(savedAddress.getAddressId());
         assertThat(savedAddress.getAddressAlias()).isEqualTo(requestDto.addressAlias());
-        assertThat(savedAddress.getLatitude()).isEqualTo(new BigDecimal(requestDto.latitude()));
-        assertThat(savedAddress.getLongitude()).isEqualTo(new BigDecimal(requestDto.longitude()));
+        assertThat(savedAddress.getLatitude()).isEqualTo(new BigDecimal("37.123456"));
+        assertThat(savedAddress.getLongitude()).isEqualTo(new BigDecimal("127.123456"));
         assertThat(savedAddress.getAddressLine1()).isEqualTo(requestDto.addressLine1());
         assertThat(savedAddress.getAddressLine2()).isEqualTo(requestDto.addressLine2());
         assertThat(savedAddress.getBoormiId()).isEqualTo(requestDto.boormiId());
