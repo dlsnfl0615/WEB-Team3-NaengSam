@@ -1,12 +1,14 @@
 package com.naengsam.quick.domain.address.service;
 
-import com.naengsam.quick.domain.address.dto.Addresses;
+import com.naengsam.quick.domain.address.dto.AddressRequestDto;
+import com.naengsam.quick.domain.address.dto.AddressResponseDto;
+import com.naengsam.quick.domain.address.entity.Address;
 import com.naengsam.quick.domain.address.repository.AddressRepository;
-import com.naengsam.quick.domain.order.entity.Orders;
+import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @RequiredArgsConstructor
@@ -14,14 +16,28 @@ public class AddressService {
 
     private final AddressRepository addressRepository;
 
-    @Transactional
-    public void updateAddresses(UUID orderId, Addresses addresses) {
-        Orders order = findById(orderId);
-        order.updateAddresses(addresses);
+    public UUID saveAddress(AddressRequestDto requestDto) {
+        Address address = Address.builder()
+                .addressId(UUID.randomUUID())
+                .addressAlias(requestDto.addressAlias())
+                .latitude(new BigDecimal(requestDto.latitude()))
+                .longitude(new BigDecimal(requestDto.longitude()))
+                .addressLine1(requestDto.addressLine1())
+                .addressLine2(requestDto.addressLine2())
+                .boormiId(requestDto.boormiId())
+                .build();
+
+        return addressRepository.save(address).getAddressId();
     }
 
-    public Orders findById(UUID orderId) {
-        return addressRepository.findById(orderId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않음. id=" + orderId));
+    public List<AddressResponseDto> findAll() {
+        return addressRepository.findAll().stream()
+                .map(address -> new AddressResponseDto(
+                        address.getAddressAlias(),
+                        address.getAddressLine1(),
+                        address.getAddressLine2(),
+                        address.getBoormiId().toString()
+                ))
+                .toList();
     }
 }

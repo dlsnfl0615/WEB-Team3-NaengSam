@@ -1,13 +1,9 @@
 package com.naengsam.quick.domain.address.dto;
 
-import java.util.UUID;
-
-public record AddressRequestDto(
+public record AddressResponseDto(
         String addressAlias,
-        String latitude,
-        String longitude,
         String addressLine1,
         String addressLine2,
-        UUID boormiId
+        String boormiId
 ) {
 }
