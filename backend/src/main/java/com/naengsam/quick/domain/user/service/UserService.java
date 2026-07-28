@@ -5,6 +5,7 @@ import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
+import com.naengsam.quick.domain.user.dto.SignUpRequest;
 import com.naengsam.quick.domain.user.dto.UserDto;
 import com.naengsam.quick.domain.user.entity.UserCd;
 import com.naengsam.quick.domain.user.exception.UserErrorCode;
@@ -22,6 +23,33 @@ public class UserService {
 
     private final BoormiRepository boormiRepository;
     private final DreamiRepository dreamiRepository;
+    private final SmsVerificationService smsVerificationService;
+
+    /**
+     * 휴대폰 인증을 마친 사용자를 가입시킨다. 이메일/휴대폰 중복과 인증 완료 여부를 검증한 뒤 저장한다.
+     */
+    @Transactional
+    public UserDto signup(SignUpRequest request) {
+        String phone = PhoneNumbers.normalize(request.phoneNumber());
+
+        if (boormiRepository.existsByEmail(request.email())) {
+            throw new BusinessException(UserErrorCode.ALREADY_REGISTERED);
+        }
+        if (boormiRepository.existsByPhoneNumber(phone)) {
+            throw new BusinessException(UserErrorCode.PHONE_ALREADY_REGISTERED);
+        }
+        if (!smsVerificationService.isVerified(phone)) {
+            throw new BusinessException(UserErrorCode.PHONE_NOT_VERIFIED);
+        }
+
+        // TODO: 외부 해싱 라이브러리 없이 우선 평문 저장. 후속으로 SHA-256(MessageDigest) 등 해싱 도입 필요.
+        Boormi boormi = Boormi.create(request.email(), request.password(), request.name(), phone,
+                request.birthdate());
+        boormiRepository.save(boormi);
+
+        smsVerificationService.consumeVerified(phone);
+        return UserDto.from(boormi, false);
+    }
 
     /**
      * 이메일/비밀번호를 검증하고 로그인에 성공하면 사용자 식별자를 반환한다. 반환된 식별자는 컨트롤러가 세션에 저장한다.
