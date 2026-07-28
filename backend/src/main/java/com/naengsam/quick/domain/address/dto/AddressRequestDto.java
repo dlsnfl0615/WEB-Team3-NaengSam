@@ -1,6 +1,7 @@
 package com.naengsam.quick.domain.address.dto;
 
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.util.UUID;
 
 /**
@@ -16,7 +17,7 @@ public record AddressRequestDto(
         @NotBlank
         String addressLine2,
 
-        @NotBlank
+        @NotNull
         UUID boormiId
 ) {
 }
