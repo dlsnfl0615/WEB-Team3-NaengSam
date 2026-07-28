@@ -1,6 +1,6 @@
 package com.naengsam.quick.global.session;
 
-import com.naengsam.quick.domain.user.exception.UserErrorCode;
+import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.UUID;
@@ -30,6 +30,6 @@ public class LoginUserArgumentResolver implements HandlerMethodArgumentResolver 
         HttpServletRequest request = webRequest.getNativeRequest(HttpServletRequest.class);
         return LoginSession.current(request)
                 .flatMap(LoginSession::boormiId)
-                .orElseThrow(() -> new BusinessException(UserErrorCode.UNAUTHORIZED));
+                .orElseThrow(() -> new BusinessException(AuthErrorCode.UNAUTHORIZED));
     }
 }

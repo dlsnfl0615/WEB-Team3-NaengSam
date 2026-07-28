@@ -8,21 +8,12 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 @Getter
 public enum UserErrorCode implements BaseErrorCode {
-    UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "AUTH_001", "로그인이 필요합니다."),
-    INVALID_SESSION(HttpStatus.UNAUTHORIZED, "AUTH_002", "다시 로그인해 주세요."),
-    EXPIRED_SESSION(HttpStatus.UNAUTHORIZED, "AUTH_003", "다시 로그인해 주세요."),
-    FORBIDDEN_ROLE(HttpStatus.FORBIDDEN, "AUTH_004", "접근 권한이 없습니다."),
-    NOT_RESOURCE_OWNER(HttpStatus.FORBIDDEN, "AUTH_005", "접근 권한이 없습니다."),
-    LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "AUTH_006", "아이디 또는 비밀번호가 올바르지 않습니다."),
-    ALREADY_REGISTERED(HttpStatus.CONFLICT, "AUTH_007", "이미 가입된 계정입니다."),
-    //    OFFICE_VERIFICATION_FAILED(HttpStatus.FORBIDDEN, "AUTH_008", "사내 인증 후 이용할 수 있어요."), 순서 보장을 위해 주석만 처리함
-    SUSPENDED_ACCOUNT(HttpStatus.FORBIDDEN, "AUTH_009", "이용이 제한된 계정입니다. 고객센터로 문의해 주세요."),
-    WITHDRAWN_ACCOUNT(HttpStatus.FORBIDDEN, "AUTH_010", "이용할 수 없는 계정입니다."),
-    INVALID_VERIFICATION_CODE(HttpStatus.BAD_REQUEST, "AUTH_011", "인증번호가 올바르지 않습니다."),
-    VERIFICATION_CODE_REQUEST_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "AUTH_012", "잠시 후 다시 시도해 주세요."),
-    PHONE_NOT_VERIFIED(HttpStatus.BAD_REQUEST, "AUTH_013", "휴대폰 인증이 필요합니다."),
-    VERIFICATION_CODE_EXPIRED(HttpStatus.BAD_REQUEST, "AUTH_014", "인증번호가 만료되었습니다. 다시 요청해 주세요."),
-    PHONE_ALREADY_REGISTERED(HttpStatus.CONFLICT, "AUTH_015", "이미 가입된 휴대폰 번호입니다.");
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자 정보를 찾을 수 없습니다."),
+    DREAMI_ALREADY_REGISTERED(HttpStatus.CONFLICT, "USER_002", "이미 드리미로 등록되어 있어요."),
+    DREAMI_NOT_REGISTERED(HttpStatus.FORBIDDEN, "USER_003", "드리미 등록 후 이용할 수 있어요."),
+    DREAMI_NOT_APPROVED(HttpStatus.FORBIDDEN, "USER_004", "드리미 승인 후 이용할 수 있어요."),
+    DUPLICATE_NICKNAME(HttpStatus.CONFLICT, "USER_005", "이미 사용 중인 닉네임이에요."),
+    CANNOT_CHANGE_ROLE_WITH_ACTIVE_ORDER(HttpStatus.CONFLICT, "USER_006", "수행 중인 주문이 있어 전환할 수 없어요.");
 
     private final HttpStatus status;
     private final String code;

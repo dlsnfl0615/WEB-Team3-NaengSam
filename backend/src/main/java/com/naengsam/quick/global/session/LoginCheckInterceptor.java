@@ -1,6 +1,6 @@
 package com.naengsam.quick.global.session;
 
-import com.naengsam.quick.domain.user.exception.UserErrorCode;
+import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -30,7 +30,7 @@ public class LoginCheckInterceptor implements HandlerInterceptor {
                 .map(LoginSession::isLoggedIn)
                 .orElse(false);
         if (!loggedIn) {
-            throw new BusinessException(UserErrorCode.UNAUTHORIZED);
+            throw new BusinessException(AuthErrorCode.UNAUTHORIZED);
         }
 
         return true;

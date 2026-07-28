@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.user.service;
 
-import com.naengsam.quick.domain.user.exception.UserErrorCode;
+import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.domain.user.service.VerificationCodeStore.VerifyResult;
 import com.naengsam.quick.domain.user.sms.SmsSender;
 import com.naengsam.quick.global.exception.BusinessException;
@@ -25,7 +25,7 @@ public class SmsVerificationService {
     public void send(String rawPhone) {
         String phone = PhoneNumbers.normalize(rawPhone);
         if (!store.canResend(phone)) {
-            throw new BusinessException(UserErrorCode.VERIFICATION_CODE_REQUEST_EXCEEDED);
+            throw new BusinessException(AuthErrorCode.VERIFICATION_CODE_REQUEST_EXCEEDED);
         }
         String code = store.issue(phone);
         smsSender.send(phone, "[쉼,부름] 인증번호 [" + code + "]를 입력해 주세요.");
@@ -38,8 +38,8 @@ public class SmsVerificationService {
         String phone = PhoneNumbers.normalize(rawPhone);
         VerifyResult result = store.verify(phone, code);
         switch (result) {
-            case EXPIRED -> throw new BusinessException(UserErrorCode.VERIFICATION_CODE_EXPIRED);
-            case MISMATCH -> throw new BusinessException(UserErrorCode.INVALID_VERIFICATION_CODE);
+            case EXPIRED -> throw new BusinessException(AuthErrorCode.VERIFICATION_CODE_EXPIRED);
+            case MISMATCH -> throw new BusinessException(AuthErrorCode.INVALID_VERIFICATION_CODE);
             case OK -> {
                 // 인증완료 상태는 store 에 기록됨
             }
