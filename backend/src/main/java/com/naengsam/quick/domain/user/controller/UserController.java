@@ -4,6 +4,7 @@ import com.naengsam.quick.domain.user.dto.LoginRequest;
 import com.naengsam.quick.domain.user.dto.UserDto;
 import com.naengsam.quick.domain.user.exception.UserErrorCode;
 import com.naengsam.quick.domain.user.service.UserService;
+import com.naengsam.quick.global.session.LoginRequired;
 import com.naengsam.quick.global.session.LoginSession;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
@@ -42,9 +43,10 @@ public class UserController {
     @Operation(summary = "로그아웃", description = "현재 세션을 무효화한다.")
     @PostMapping("/logout")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @LoginRequired
     @ApiErrorCodes(enumClass = UserErrorCode.class,
             codes = {"UNAUTHORIZED"})
-    public void logout(@LoginUser UUID boormiId, HttpServletRequest httpRequest) {
+    public void logout(HttpServletRequest httpRequest) {
         LoginSession.current(httpRequest).ifPresent(LoginSession::invalidate);
     }
 

@@ -2,7 +2,7 @@ package com.naengsam.quick.domain.user.service;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
-import com.naengsam.quick.domain.dreami.entity.Dreami;
+import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
 import com.naengsam.quick.domain.user.dto.UserDto;
@@ -31,17 +31,17 @@ public class UserService {
         Boormi boormi = boormiRepository.findByEmail(request.email())
                 .orElseThrow(() -> new BusinessException(UserErrorCode.LOGIN_FAILED));
 
+        // TODO: 외부 해싱 라이브러리 없이 우선 평문 비교. 후속으로 SHA-256(MessageDigest) 등 해싱 도입 필요.
+        if (!boormi.getPassword().equals(request.password())) {
+            throw new BusinessException(UserErrorCode.LOGIN_FAILED);
+        }
+
         if (boormi.getUserCd().equals(UserCd.RESTRICTED) || boormi.getUserCd().equals(UserCd.BANNED)) {
             throw new BusinessException(UserErrorCode.SUSPENDED_ACCOUNT);
         }
 
         if (boormi.getUserCd().equals(UserCd.DELETED)) {
             throw new BusinessException(UserErrorCode.WITHDRAWN_ACCOUNT);
-        }
-
-        // TODO: 외부 해싱 라이브러리 없이 우선 평문 비교. 후속으로 SHA-256(MessageDigest) 등 해싱 도입 필요.
-        if (!boormi.getPassword().equals(request.password())) {
-            throw new BusinessException(UserErrorCode.LOGIN_FAILED);
         }
 
         return boormi.getBoormiId();
@@ -55,8 +55,12 @@ public class UserService {
         Boormi boormi = boormiRepository.findById(boormiId)
                 .orElseThrow(() -> new BusinessException(UserErrorCode.INVALID_SESSION));
 
-        Dreami dreami = dreamiRepository.findById(boormiId).orElse(null);
-        boolean flag = dreami != null;
+        boolean flag = false;
+        if (boormi.isDreamiActivate()) {
+            flag = dreamiRepository.findById(boormiId)
+                    .map(d -> d.getRequestCd() == DreamiCd.APPROVED)
+                    .orElse(false);
+        }
 
         return UserDto.from(boormi, flag);
     }

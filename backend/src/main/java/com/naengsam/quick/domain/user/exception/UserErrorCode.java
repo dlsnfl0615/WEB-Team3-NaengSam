@@ -15,7 +15,7 @@ public enum UserErrorCode implements BaseErrorCode {
     NOT_RESOURCE_OWNER(HttpStatus.FORBIDDEN, "AUTH_005", "접근 권한이 없습니다."),
     LOGIN_FAILED(HttpStatus.UNAUTHORIZED, "AUTH_006", "아이디 또는 비밀번호가 올바르지 않습니다."),
     ALREADY_REGISTERED(HttpStatus.CONFLICT, "AUTH_007", "이미 가입된 계정입니다."),
-    //    OFFICE_VERIFICATION_FAILED(HttpStatus.FORBIDDEN, "AUTH_008", "사내 인증 후 이용할 수 있어요."),
+    //    OFFICE_VERIFICATION_FAILED(HttpStatus.FORBIDDEN, "AUTH_008", "사내 인증 후 이용할 수 있어요."), 순서 보장을 위해 주석만 처리함
     SUSPENDED_ACCOUNT(HttpStatus.FORBIDDEN, "AUTH_009", "이용이 제한된 계정입니다. 고객센터로 문의해 주세요."),
     WITHDRAWN_ACCOUNT(HttpStatus.FORBIDDEN, "AUTH_010", "이용할 수 없는 계정입니다."),
     INVALID_VERIFICATION_CODE(HttpStatus.BAD_REQUEST, "AUTH_011", "인증번호가 올바르지 않습니다."),

@@ -19,9 +19,14 @@ public class LoginSession {
     }
 
     /**
-     * 세션이 없으면 새로 생성해 감싼다. 로그인 시 사용.
+     * 로그인 시 사용. 세션 고정(Session Fixation) 공격을 막기 위해 기존 세션이 있으면 무효화하고 항상 새 세션을 발급한다. 로그인 이전에 발급됐던 세션
+     * ID 는 인증된 세션으로 이어지지 않는다.
      */
     public static LoginSession create(HttpServletRequest request) {
+        HttpSession existing = request.getSession(false);
+        if (existing != null) {
+            existing.invalidate();
+        }
         return new LoginSession(request.getSession(true));
     }
 
