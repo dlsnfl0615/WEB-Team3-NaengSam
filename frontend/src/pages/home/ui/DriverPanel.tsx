@@ -38,6 +38,7 @@ export function DriverPanel() {
         route="파르나스 24F → 12F"
         status="픽업중"
         progress={40}
+        onClick={() => navigate(ROUTES.deliveryTrack)}
       />
 
       <div className="grid grid-cols-2 gap-3">

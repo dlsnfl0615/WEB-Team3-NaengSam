@@ -34,7 +34,7 @@ export function DeliveryCompleteScreen() {
         </div>
 
         {/* 배송 완료 사진(자리표시) */}
-        <div className="flex h-[210px] flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-line bg-canvas text-muted">
+        <div className="flex h-[210px] flex-col items-center justify-center gap-1.5 rounded-md bg-track text-muted">
           <Icon name="camera" size={22} />
           <span className="text-2xs">배송 완료 사진</span>
         </div>

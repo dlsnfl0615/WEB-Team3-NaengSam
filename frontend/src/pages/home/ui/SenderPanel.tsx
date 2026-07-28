@@ -39,6 +39,7 @@ export function SenderPanel() {
           route="Zone A → Zone C"
           status="배송중"
           progress={55}
+          onClick={() => navigate(ROUTES.deliveryDetail)}
         />
         <DeliveryCard
           icon="package"
@@ -46,6 +47,7 @@ export function SenderPanel() {
           route="Zone A → Zone B"
           status="픽업중"
           progress={25}
+          onClick={() => navigate(ROUTES.deliveryDetail)}
         />
       </div>
 

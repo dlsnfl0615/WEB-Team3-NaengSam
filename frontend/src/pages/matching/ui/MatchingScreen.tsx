@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Card, MapCard, Modal, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
+import { useDeliveryStore } from "@/shared/store/deliveryStore";
 import { CallCard } from "./CallCard";
 import { OfferCard } from "./OfferCard";
 
@@ -14,6 +15,7 @@ import { OfferCard } from "./OfferCard";
 export function MatchingScreen() {
   const navigate = useNavigate();
   const { role } = useRole();
+  const resetDelivery = useDeliveryStore((s) => s.reset);
   const [offerVisible, setOfferVisible] = useState(true);
 
   const isDriver = role === "드리미";
@@ -57,7 +59,10 @@ export function MatchingScreen() {
             dropoffDistance="1.2km"
             itemType="음료"
             onReject={() => navigate(ROUTES.rejectReason)}
-            onAccept={() => setOfferVisible(false)}
+            onAccept={() => {
+              resetDelivery();
+              navigate(ROUTES.deliveryTrack);
+            }}
           />
         ) : (
           <OfferCard

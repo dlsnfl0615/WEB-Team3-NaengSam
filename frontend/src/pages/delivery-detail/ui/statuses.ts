@@ -1,5 +1,7 @@
-/** 드림 상세 화면이 다루는 배달 상태(쿼리스트링 ?status= 로 지정). */
-export type DetailStatus = "픽업중" | "배송중" | "지연";
+import type { DeliveryStatus } from "@/shared/store/deliveryStore";
+
+/** 드림 상세 화면이 다루는 배달 상태(전역 스토어에서 구독). */
+export type DetailStatus = DeliveryStatus;
 
 export const DETAIL_STATUSES: Record<
   DetailStatus,

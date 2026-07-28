@@ -1,33 +1,46 @@
-import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Button, Card, Icon, MapCard, ScreenShell, TopBar } from "@/shared/ui";
+import { Button, Card, Icon, MapCard, ScreenShell } from "@/shared/ui";
+import { ROUTES } from "@/shared/config/routes";
+import { useDeliveryStore } from "@/shared/store/deliveryStore";
+import { TRACK_STAGES, type TrackStage } from "./statuses";
 import { TrackOverlay } from "./TrackOverlay";
 
 /**
  * 실시간 배송 추적 화면(Figma node 191:972, 191:989).
- * 픽업 중 → 배송 중 두 단계를 로컬 상태로 전환합니다(UI 전용).
+ * 지도 풀블리드 + 지도 위 뒤로가기. 픽업 중 → 배송 중을 전역 스토어로 전환합니다(URL 미노출).
  */
 export function DeliveryTrackScreen() {
   const navigate = useNavigate();
-  const [stage, setStage] = useState<"pickup" | "delivery">("pickup");
-  const isPickup = stage === "pickup";
+  const status = useDeliveryStore((s) => s.status);
+  const advance = useDeliveryStore((s) => s.advance);
+
+  // 드리미 화면은 픽업중/배송중만 다룬다(지연 등은 배송중으로 취급).
+  const stage: TrackStage = status === "픽업중" ? "픽업중" : "배송중";
+  const isPickup = stage === "픽업중";
+  const { title, action, cancelable } = TRACK_STAGES[stage];
 
   return (
     <ScreenShell>
-      <TopBar
-        title="실시간 배송 추적"
-        onBack={() => navigate(-1)}
-        actions={[]}
-      />
-
-      <main className="flex flex-1 flex-col gap-4 pt-4">
+      {/* 풀블리드 지도 + 지도 위 뒤로가기 */}
+      <div className="relative -mx-4 -mt-6">
         <MapCard
-          height={380}
+          flat
+          height={440}
           overlay={<TrackOverlay eta="3분" distance="450m" />}
         />
+        <button
+          type="button"
+          onClick={() => navigate(-1)}
+          aria-label="뒤로가기"
+          className="absolute left-4 top-5 text-navy-900"
+        >
+          <Icon name="back" size={20} />
+        </button>
+      </div>
 
+      <main className="flex flex-1 flex-col gap-4 pt-4">
         <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
-          {isPickup ? "물품을 픽업 중이에요" : "물품을 배송 중이에요"}
+          {title}
         </h1>
 
         <Card className="flex items-center gap-3">
@@ -46,12 +59,14 @@ export function DeliveryTrackScreen() {
           <Button variant="outline">연락하기</Button>
           <Button
             block
-            onClick={() => (isPickup ? setStage("delivery") : navigate(-1))}
+            onClick={() =>
+              isPickup ? advance() : navigate(ROUTES.deliveryComplete)
+            }
           >
-            {isPickup ? "픽업 완료" : "전달 완료"}
+            {action}
           </Button>
         </div>
-        {isPickup && (
+        {cancelable && (
           <button
             type="button"
             onClick={() => navigate(-1)}

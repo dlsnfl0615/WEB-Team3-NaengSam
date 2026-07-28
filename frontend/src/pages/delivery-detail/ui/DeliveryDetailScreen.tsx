@@ -1,26 +1,21 @@
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import {
-  Badge,
   Button,
-  IconChip,
   MapCard,
   RouteCard,
   ScreenShell,
   TopBar,
-  toneForStatus,
 } from "@/shared/ui";
-import { DETAIL_STATUSES, type DetailStatus } from "./statuses";
+import { useDeliveryStore } from "@/shared/store/deliveryStore";
+import { DETAIL_STATUSES } from "./statuses";
 
 /**
  * 드림 상세 화면(Figma node 191:802, 827, 849, 870).
- * ?status=픽업중|배송중|지연 으로 상태별 문구·오버레이·액션이 바뀝니다(UI 전용).
+ * 전역 스토어의 배달 상태에 따라 문구·오버레이·액션이 바뀝니다(URL 미노출).
  */
 export function DeliveryDetailScreen() {
   const navigate = useNavigate();
-  const [params] = useSearchParams();
-
-  const raw = params.get("status") as DetailStatus | null;
-  const status: DetailStatus = raw && raw in DETAIL_STATUSES ? raw : "픽업중";
+  const status = useDeliveryStore((s) => s.status);
   const { title, showEta, cancelable } = DETAIL_STATUSES[status];
 
   return (
@@ -29,14 +24,11 @@ export function DeliveryDetailScreen() {
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <div className="flex items-center gap-3">
-          <IconChip name="package" size={44} />
+          <span className="size-11 shrink-0 rounded-pill bg-teal-50" />
           <div className="flex flex-col gap-0.5">
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
-                {title}
-              </h1>
-              <Badge tone={toneForStatus(status)}>{status}</Badge>
-            </div>
+            <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
+              {title}
+            </h1>
             <p className="text-2xs text-muted">드리미 '핀'이 출발지 도착</p>
           </div>
         </div>
