@@ -88,3 +88,18 @@
 
 - 팀 규칙을 위반하면 **경고 1회**가 부여된다.
 - **2아웃** 시 **팀원들에게 밥 사기**.
+
+
+---
+
+
+## 👥 팀원
+
+| [서석희](https://github.com/seoki180) | [이동혁](https://github.com/hyeok2044) | [임현성](https://github.com/hwhyeons) | [정현서](https://github.com/dlsnfl0615) |
+| :---: | :---: | :---: | :---: |
+| <img src="https://github.com/seoki180.png" width="120"> | <img src="https://github.com/hyeok2044.png" width="120"> | <img src="https://github.com/hwhyeons.png" width="120"> | <img src="https://github.com/dlsnfl0615.png" width="120"> |
+
+
+
+<div align="center">
+
