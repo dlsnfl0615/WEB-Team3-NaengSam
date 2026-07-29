@@ -7,6 +7,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.time.LocalDate;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -38,10 +39,34 @@ public class Boormi {
     @Column(name = "name", nullable = false)
     private String name;
 
+    @Column(name = "phone_number", nullable = false)
+    private String phoneNumber;
+
+    @Column(name = "birthdate", nullable = false)
+    private LocalDate birthdate;
+
     @Enumerated(EnumType.STRING)
     @Column(name = "user_cd")
     private UserCd userCd;
 
     @Column(name = "is_dreami_activated", nullable = false)
     private boolean isDreamiActivate;
+
+    /**
+     * 신규 가입 부르미를 생성한다. PK 는 앱에서 생성(BINARY(16), DB 기본값 없음)하며 상태는 ACTIVE 로 시작한다.
+     * {@code boormi_avg_score}/{@code created_dtm} 은 미매핑이므로 INSERT 에서 제외되어 DB 기본값이 적용된다.
+     */
+    public static Boormi create(String email, String password, String name, String phoneNumber,
+            LocalDate birthdate) {
+        Boormi boormi = new Boormi();
+        boormi.boormiId = UUID.randomUUID();
+        boormi.email = email;
+        boormi.password = password;
+        boormi.name = name;
+        boormi.phoneNumber = phoneNumber;
+        boormi.birthdate = birthdate;
+        boormi.userCd = UserCd.ACTIVE;
+        boormi.isDreamiActivate = false;
+        return boormi;
+    }
 }
