@@ -49,7 +49,7 @@ public class UserController {
     @PostMapping("/verification-code/verify")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = AuthErrorCode.class,
-            codes = {"INVALID_VERIFICATION_CODE", "VERIFICATION_CODE_EXPIRED"})
+            codes = {"INVALID_VERIFICATION_CODE", "VERIFICATION_CODE_EXPIRED", "VERIFICATION_CODE_ATTEMPTS_EXCEEDED"})
     public void verifyCode(@Valid @RequestBody VerifyCodeRequest request) {
         smsVerificationService.verify(request.phoneNumber(), request.code());
     }

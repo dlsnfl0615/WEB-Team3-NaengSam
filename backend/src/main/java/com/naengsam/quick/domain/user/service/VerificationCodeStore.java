@@ -12,59 +12,74 @@ import org.springframework.stereotype.Component;
 @Component
 public class VerificationCodeStore {
 
-    static final Duration CODE_TTL = Duration.ofMinutes(5);
-    static final Duration RESEND_COOLDOWN = Duration.ofSeconds(60);
-    static final Duration VERIFIED_TTL = Duration.ofMinutes(30);
-
     public enum VerifyResult {
-        OK, MISMATCH, EXPIRED
+        OK, MISMATCH, EXPIRED, TOO_MANY_ATTEMPTS
     }
 
-    private record CodeEntry(String code, LocalDateTime expiresAt, LocalDateTime lastSentAt) {
+    private record CodeEntry(String code, LocalDateTime expiresAt, LocalDateTime lastSentAt, int attempts) {
     }
 
+    private final VerificationProperties props;
     private final SecureRandom random = new SecureRandom();
     private final ConcurrentHashMap<String, CodeEntry> codes = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, LocalDateTime> verified = new ConcurrentHashMap<>();
 
+    public VerificationCodeStore(VerificationProperties props) {
+        this.props = props;
+    }
+
     /**
-     * 재발송 쿨다운(마지막 발송 후 {@link #RESEND_COOLDOWN}) 경과 여부.
+     * 재발송 쿨다운(마지막 발송 후 {@code resendCooldown}) 경과 여부.
      */
     public boolean canResend(String phone) {
         CodeEntry entry = codes.get(phone);
         return entry == null
-                || Duration.between(entry.lastSentAt(), LocalDateTime.now()).compareTo(RESEND_COOLDOWN) >= 0;
+                || Duration.between(entry.lastSentAt(), LocalDateTime.now()).compareTo(props.resendCooldown()) >= 0;
     }
 
     /**
-     * 6자리 인증번호를 새로 발급해 저장하고 반환한다(TTL·발송시각 갱신).
+     * 6자리 인증번호를 새로 발급해 저장하고 반환한다(TTL·발송시각 갱신, 시도 횟수 초기화).
      */
     public String issue(String phone) {
         String code = String.format("%06d", random.nextInt(1_000_000));
         LocalDateTime now = LocalDateTime.now();
-        codes.put(phone, new CodeEntry(code, now.plus(CODE_TTL), now));
+        codes.put(phone, new CodeEntry(code, now.plus(props.codeTtl()), now, 0));
         return code;
     }
 
     /**
-     * 인증번호를 검증한다. 성공 시 코드를 제거하고 인증완료 상태를 기록한다(1회용).
+     * 인증번호를 검증한다. 성공 시 코드를 제거하고 인증완료 상태를 기록한다(1회용). 불일치가 누적되어
+     * {@code maxVerifyAttempts} 에 도달하면 코드를 폐기해 무한 대입(brute-force)을 차단한다.
+     *
+     * <p>검증·시도횟수 갱신은 {@link ConcurrentHashMap#compute}로 원자적으로 수행한다.
      */
     public VerifyResult verify(String phone, String code) {
-        CodeEntry entry = codes.get(phone);
-        if (entry == null || LocalDateTime.now().isAfter(entry.expiresAt())) {
-            codes.remove(phone);
-            return VerifyResult.EXPIRED;
+        VerifyResult[] result = {VerifyResult.EXPIRED};
+        codes.compute(phone, (key, entry) -> {
+            if (entry == null || LocalDateTime.now().isAfter(entry.expiresAt())) {
+                result[0] = VerifyResult.EXPIRED;
+                return null;
+            }
+            if (entry.code().equals(code)) {
+                result[0] = VerifyResult.OK;
+                return null;
+            }
+            int attempts = entry.attempts() + 1;
+            if (attempts >= props.maxVerifyAttempts()) {
+                result[0] = VerifyResult.TOO_MANY_ATTEMPTS;
+                return null;
+            }
+            result[0] = VerifyResult.MISMATCH;
+            return new CodeEntry(entry.code(), entry.expiresAt(), entry.lastSentAt(), attempts);
+        });
+        if (result[0] == VerifyResult.OK) {
+            verified.put(phone, LocalDateTime.now().plus(props.verifiedTtl()));
         }
-        if (!entry.code().equals(code)) {
-            return VerifyResult.MISMATCH;
-        }
-        codes.remove(phone);
-        verified.put(phone, LocalDateTime.now().plus(VERIFIED_TTL));
-        return VerifyResult.OK;
+        return result[0];
     }
 
     /**
-     * 인증완료 상태이며 아직 유효기간({@link #VERIFIED_TTL}) 내인지.
+     * 인증완료 상태이며 아직 유효기간({@code verifiedTtl}) 내인지.
      */
     public boolean isVerified(String phone) {
         LocalDateTime expiry = verified.get(phone);

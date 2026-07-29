@@ -22,7 +22,8 @@ public enum AuthErrorCode implements BaseErrorCode {
     VERIFICATION_CODE_REQUEST_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "AUTH_012", "잠시 후 다시 시도해 주세요."),
     PHONE_NOT_VERIFIED(HttpStatus.BAD_REQUEST, "AUTH_013", "휴대폰 인증이 필요합니다."),
     VERIFICATION_CODE_EXPIRED(HttpStatus.BAD_REQUEST, "AUTH_014", "인증번호가 만료되었습니다. 다시 요청해 주세요."),
-    PHONE_ALREADY_REGISTERED(HttpStatus.CONFLICT, "AUTH_015", "이미 가입된 휴대폰 번호입니다.");
+    PHONE_ALREADY_REGISTERED(HttpStatus.CONFLICT, "AUTH_015", "이미 가입된 휴대폰 번호입니다."),
+    VERIFICATION_CODE_ATTEMPTS_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "AUTH_016", "인증 시도 횟수를 초과했습니다. 다시 요청해 주세요.");
 
     private final HttpStatus status;
     private final String code;

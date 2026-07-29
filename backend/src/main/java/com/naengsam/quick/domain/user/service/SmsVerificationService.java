@@ -17,14 +17,19 @@ import org.springframework.stereotype.Service;
 public class SmsVerificationService {
 
     private final VerificationCodeStore store;
+    private final SmsSendRateLimiter rateLimiter;
     private final SmsSender smsSender;
 
     /**
-     * 인증번호를 발급해 문자로 발송한다. 쿨다운 이내 재요청은 거부한다.
+     * 인증번호를 발급해 문자로 발송한다. 쿨다운 이내 재요청, 그리고 번호/전역 발송 한도 초과 요청은 거부한다.
      */
     public void send(String rawPhone) {
         String phone = PhoneNumbers.normalize(rawPhone);
         if (!store.canResend(phone)) {
+            throw new BusinessException(AuthErrorCode.VERIFICATION_CODE_REQUEST_EXCEEDED);
+        }
+        // 어떤 한도에 걸렸는지는 노출하지 않는다(정보 누출 방지) — 동일한 429 로 응답한다.
+        if (!rateLimiter.tryAcquire(phone)) {
             throw new BusinessException(AuthErrorCode.VERIFICATION_CODE_REQUEST_EXCEEDED);
         }
         String code = store.issue(phone);
@@ -40,6 +45,7 @@ public class SmsVerificationService {
         switch (result) {
             case EXPIRED -> throw new BusinessException(AuthErrorCode.VERIFICATION_CODE_EXPIRED);
             case MISMATCH -> throw new BusinessException(AuthErrorCode.INVALID_VERIFICATION_CODE);
+            case TOO_MANY_ATTEMPTS -> throw new BusinessException(AuthErrorCode.VERIFICATION_CODE_ATTEMPTS_EXCEEDED);
             case OK -> {
                 // 인증완료 상태는 store 에 기록됨
             }

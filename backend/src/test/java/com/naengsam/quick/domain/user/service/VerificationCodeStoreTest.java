@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.naengsam.quick.domain.user.service.VerificationCodeStore.VerifyResult;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.BeforeEach;
@@ -16,12 +17,20 @@ import org.springframework.test.util.ReflectionTestUtils;
 class VerificationCodeStoreTest {
 
     private static final String PHONE = "01012345678";
+    private static final int MAX_ATTEMPTS = 5;
 
     private VerificationCodeStore store;
 
     @BeforeEach
     void setUp() {
-        store = new VerificationCodeStore();
+        store = new VerificationCodeStore(props());
+    }
+
+    private static VerificationProperties props() {
+        return new VerificationProperties(
+                Duration.ofMinutes(5), Duration.ofSeconds(60), Duration.ofMinutes(30),
+                MAX_ATTEMPTS,
+                Duration.ofHours(24), 5, Duration.ofHours(24), 1000);
     }
 
     @Test
@@ -61,6 +70,42 @@ class VerificationCodeStoreTest {
 
         assertThat(result).isEqualTo(VerifyResult.MISMATCH);
         assertThat(store.isVerified(PHONE)).isFalse();
+    }
+
+    @Test
+    void 오답을_최대_시도횟수만큼_넣으면_마지막에_TOO_MANY_ATTEMPTS_이다() {
+        store.issue(PHONE);
+
+        for (int i = 0; i < MAX_ATTEMPTS - 1; i++) {
+            assertThat(store.verify(PHONE, "000000")).isEqualTo(VerifyResult.MISMATCH);
+        }
+
+        assertThat(store.verify(PHONE, "000000")).isEqualTo(VerifyResult.TOO_MANY_ATTEMPTS);
+    }
+
+    @Test
+    void 최대_시도횟수를_넘긴_코드는_폐기되어_정답이어도_EXPIRED_이다() {
+        String code = store.issue(PHONE);
+        for (int i = 0; i < MAX_ATTEMPTS; i++) {
+            store.verify(PHONE, "000000");
+        }
+
+        VerifyResult result = store.verify(PHONE, code);
+
+        assertThat(result).isEqualTo(VerifyResult.EXPIRED);
+        assertThat(store.isVerified(PHONE)).isFalse();
+    }
+
+    @Test
+    void 재발급하면_시도횟수가_초기화된다() {
+        store.issue(PHONE);
+        for (int i = 0; i < MAX_ATTEMPTS - 1; i++) {
+            store.verify(PHONE, "000000");
+        }
+
+        String code = store.issue(PHONE);
+
+        assertThat(store.verify(PHONE, code)).isEqualTo(VerifyResult.OK);
     }
 
     @Test
