@@ -33,12 +33,13 @@ public class ApiErrorCodeCustomizer implements OperationCustomizer {
 
     @Override
     public Operation customize(Operation operation, HandlerMethod handlerMethod) {
-        ApiErrorCodes annotation = handlerMethod.getMethodAnnotation(ApiErrorCodes.class);
-        if (annotation == null) {
+        ApiErrorCodes[] annotations = handlerMethod.getMethod().getAnnotationsByType(ApiErrorCodes.class);
+        if (annotations.length == 0) {
             return operation;
         }
 
-        Map<Integer, List<BaseErrorCode>> byStatus = resolveErrorCodes(annotation).stream()
+        Map<Integer, List<BaseErrorCode>> byStatus = Arrays.stream(annotations)
+                .flatMap(annotation -> resolveErrorCodes(annotation).stream())
                 .collect(Collectors.groupingBy(code -> code.getStatus().value(),
                         LinkedHashMap::new, Collectors.toList()));
 

@@ -6,6 +6,7 @@ import com.naengsam.quick.global.commonResponse.CommonResponse;
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.TypeMismatchException;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
@@ -63,6 +64,21 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                                                                      HttpServletRequest request) {
         BaseErrorCode errorCode = GeneralErrorCode.CONFLICT;
         log.warn("OptimisticLockingFailure: {} {} (at {})", request.getMethod(), request.getRequestURI(), origin(e));
+        log.debug("", e);
+
+        return ResponseEntity.status(errorCode.getStatus())
+                .body(CommonResponse.onFail(errorCode, null));
+    }
+
+    /**
+     * UNIQUE 제약 위반 등 데이터 무결성 충돌(예: 이메일/휴대폰 동시 가입 경합) → COMMON_008.
+     * 서비스단 사전 검사를 통과한 뒤 발생하는 드문 경합을 500 이 아닌 409 로 응답한다.
+     */
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<CommonResponse<Void>> handleDataIntegrityViolation(DataIntegrityViolationException e,
+                                                                             HttpServletRequest request) {
+        BaseErrorCode errorCode = GeneralErrorCode.CONFLICT;
+        log.warn("DataIntegrityViolation: {} {} (at {})", request.getMethod(), request.getRequestURI(), origin(e));
         log.debug("", e);
 
         return ResponseEntity.status(errorCode.getStatus())
