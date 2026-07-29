@@ -9,8 +9,9 @@ import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
- * {@link LoginRequired} 가 붙은 핸들러(메서드 또는 클래스)에 대해 로그인 세션을 검사한다. 세션에 {@link SessionConst#LOGIN_USER} 가 없으면
- * {@link BusinessException} 을 던지고, 이는 {@code GlobalExceptionHandler} 가 공통 포맷의 401 응답으로 변환한다.
+ * {@code /api/**} 핸들러는 기본적으로 로그인 세션을 요구하며, {@link PublicApi} 가 붙은 핸들러(메서드 또는 클래스)만 검사를 건너뛴다.
+ * 세션에 {@link SessionConst#LOGIN_USER} 가 없으면 {@link BusinessException} 을 던지고, 이는 {@code GlobalExceptionHandler} 가
+ * 공통 포맷의 401 응답으로 변환한다.
  */
 @Component
 public class LoginCheckInterceptor implements HandlerInterceptor {
@@ -37,7 +38,8 @@ public class LoginCheckInterceptor implements HandlerInterceptor {
     }
 
     private boolean requiresLogin(HandlerMethod handlerMethod) {
-        return handlerMethod.hasMethodAnnotation(LoginRequired.class)
-                || handlerMethod.getBeanType().isAnnotationPresent(LoginRequired.class);
+        boolean isPublic = handlerMethod.hasMethodAnnotation(PublicApi.class)
+                || handlerMethod.getBeanType().isAnnotationPresent(PublicApi.class);
+        return !isPublic;
     }
 }
