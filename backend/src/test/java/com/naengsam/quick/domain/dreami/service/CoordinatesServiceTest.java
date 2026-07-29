@@ -1,0 +1,51 @@
+package com.naengsam.quick.domain.dreami.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
+
+import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
+import com.naengsam.quick.domain.address.service.CoordinatesService;
+import java.net.URI;
+import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.client.RestClient;
+
+class CoordinatesServiceTest {
+
+    @Test
+    @SuppressWarnings({"unchecked", "rawtypes"})
+    void 도로명주소로_좌표를_조회한다() {
+        CoordinatesService coordinatesService = new CoordinatesService();
+        ReflectionTestUtils.setField(coordinatesService, "restApiKey", "test-api-key");
+
+        RestClient restClient = mock(RestClient.class);
+        RestClient.RequestHeadersUriSpec uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
+        RestClient.ResponseSpec responseSpec = mock(RestClient.ResponseSpec.class);
+        CoordinatesResponseDto.RoadAddress roadAddress = new CoordinatesResponseDto.RoadAddress(
+                "서울 강남구 테헤란로 1", "서울", "강남구", null,
+                "테헤란로", "1", null, null, "06134",
+                "127.0276", "37.4979"
+        );
+        CoordinatesResponseDto expected = new CoordinatesResponseDto(
+                List.of(new CoordinatesResponseDto.Document(roadAddress))
+        );
+
+        when(restClient.get()).thenReturn(uriSpec);
+        when(uriSpec.uri(any(URI.class))).thenReturn(uriSpec);
+        when(uriSpec.header(any(), any())).thenReturn(uriSpec);
+        when(uriSpec.retrieve()).thenReturn(responseSpec);
+        when(responseSpec.body(CoordinatesResponseDto.class)).thenReturn(expected);
+
+        ReflectionTestUtils.setField(coordinatesService, "restClient", restClient);
+
+        CoordinatesResponseDto result = coordinatesService.getCoordinates("서울시 강남구");
+
+        System.out.println("latitude = " + result.documents().getFirst().roadAddress().y());
+        System.out.println("longitude = " + result.documents().getFirst().roadAddress().x());
+
+        assertThat(result).isSameAs(expected);
+    }
+}
