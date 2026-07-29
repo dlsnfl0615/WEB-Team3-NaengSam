@@ -7,6 +7,8 @@ export interface MapCardProps {
   overlay?: ReactNode
   /** 지도 영역 높이(px) */
   height?: number
+  /** 모서리 반경·테두리 제거(풀블리드 지도용) */
+  flat?: boolean
   className?: string
   /** 실제 지도 타일/이미지를 넣을 때 사용 */
   children?: ReactNode
@@ -19,13 +21,15 @@ export interface MapCardProps {
 export function MapCard({
   overlay,
   height = 220,
+  flat = false,
   className,
   children,
 }: MapCardProps) {
   return (
     <div
       className={cn(
-        'relative overflow-hidden rounded-md border border-line bg-track',
+        'relative overflow-hidden bg-track',
+        flat ? '' : 'rounded-md border border-line',
         className,
       )}
       style={{ height }}
