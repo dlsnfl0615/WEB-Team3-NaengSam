@@ -1,0 +1,23 @@
+# 배포 서버용 compose 파일.
+# CI 가 DockerHub 에 올린 이미지를 pull 해서, .env 를 런타임에 주입해 실행한다.
+# (이미지에는 시크릿이 들어있지 않다 — jar 만 들어있음)
+#
+# 사용법 (배포 서버에서):
+#   1) 같은 폴더에 .env 를 둔다 (.env.example 참고, 실제 운영 값으로 채움)
+#   2) docker compose pull   # 최신 이미지 받기
+#   3) docker compose up -d   # 백그라운드 기동
+#   4) docker compose logs -f # 로그 확인
+#
+# 이미지 태그/계정은 환경변수로 덮어쓸 수 있다:
+#   DOCKERHUB_USERNAME=myid IMAGE_TAG=main docker compose up -d
+
+services:
+  backend:
+    image: seoki/symboorm:${IMAGE_TAG:-main}
+    container_name: symboorm-backend
+    restart: always
+    ports:
+      - "8080:8080"
+    # application.properties 의 ${DATABASE_URL} 등을 이 파일 값으로 주입
+    env_file:
+      - .env
