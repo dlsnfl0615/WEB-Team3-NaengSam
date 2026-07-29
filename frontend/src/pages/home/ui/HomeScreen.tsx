@@ -1,24 +1,18 @@
-import { useState } from 'react'
-import {
-  BottomNav,
-  Button,
-  Card,
-  DeliveryCard,
-  Icon,
-  LocationBar,
-  ScreenShell,
-  SectionHeader,
-  SegmentedToggle,
-  StatCard,
-} from '@/shared/ui'
+import { useNavigate } from "react-router-dom";
+import { BottomNav, Icon, ScreenShell, SegmentedToggle } from "@/shared/ui";
+import { ROUTES } from "@/shared/config/routes";
+import { useRole } from "@/shared/lib/role/useRole";
+import type { Role } from "@/shared/lib/role/RoleContext";
+import { DriverPanel } from "./DriverPanel";
+import { SenderPanel } from "./SenderPanel";
 
 /**
- * 쉼,부름 홈 화면(Figma node 1:1914).
- * 폰 목업 없이 모바일 폭(max-w) 셸로 렌더합니다.
+ * 쉼,부름 홈 화면(Figma node 191:592, 191:1208).
+ * 상단 토글로 부르미·드리미 본문을 같은 화면에서 즉시 전환합니다.
  */
 export function HomeScreen() {
-  const [role, setRole] = useState('부르미')
-  const [tab, setTab] = useState('home')
+  const { role, setRole } = useRole();
+  const navigate = useNavigate();
 
   return (
     <ScreenShell>
@@ -29,57 +23,30 @@ export function HomeScreen() {
         </h1>
         <div className="flex items-center gap-3">
           <Icon name="bell" size={20} className="text-navy-900" />
-          <Icon name="profile" size={20} className="text-navy-900" />
+          <button
+            type="button"
+            aria-label="마이페이지"
+            onClick={() => navigate(ROUTES.mypage)}
+          >
+            <Icon name="profile" size={20} className="text-navy-900" />
+          </button>
         </div>
       </header>
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <SegmentedToggle
-          options={['부르미', '드리미']}
+          options={["부르미", "드리미"]}
           value={role}
-          onChange={setRole}
+          onChange={(value) => setRole(value as Role)}
         />
 
-        <LocationBar location="Office Hub: Zone A" status="Connected" />
-
-        {/* 히어로 카드 */}
-        <Card variant="hero" className="flex flex-col gap-3">
-          <p className="text-xl font-bold tracking-[-0.4px]">물품 보내기</p>
-          <div className="h-[9px] w-3/4 rounded-[5px] bg-navy-700" />
-          <Button variant="primary" arrow className="w-fit">
-            물품 보내기
-          </Button>
-        </Card>
-
-        <SectionHeader title="진행 중인 부름" count={2} action="전체 보기" />
-
-        <div className="flex flex-col gap-3">
-          <DeliveryCard
-            icon="document"
-            title="서류 배송#123"
-            route="Zone A → Zone C"
-            status="배송중"
-            progress={55}
-          />
-          <DeliveryCard
-            icon="package"
-            title="소형 택배"
-            route="Zone A → Zone B"
-            status="픽업중"
-            progress={25}
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-3">
-          <StatCard label="총 이용" value="12건" />
-          <StatCard label="절감 금액" value="₩45,000" variant="accent" />
-        </div>
+        {role === "부르미" ? <SenderPanel /> : <DriverPanel />}
       </main>
 
       {/* 하단 네비 */}
       <div className="pt-4">
-        <BottomNav active={tab} onChange={setTab} />
+        <BottomNav />
       </div>
     </ScreenShell>
-  )
+  );
 }

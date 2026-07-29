@@ -23,7 +23,6 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
     implementation 'com.solapi:sdk:1.0.3'
-    implementation 'me.paulschwarz:spring-dotenv:4.0.0'
     runtimeOnly 'com.h2database:h2'
     runtimeOnly 'org.springframework.boot:spring-boot-h2console'
     compileOnly 'org.projectlombok:lombok'
