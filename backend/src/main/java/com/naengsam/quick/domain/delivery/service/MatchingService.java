@@ -2,6 +2,8 @@ package com.naengsam.quick.domain.delivery.service;
 
 import com.naengsam.quick.domain.delivery.dto.GeoPoint;
 import com.naengsam.quick.domain.delivery.dto.Order;
+import com.naengsam.quick.global.code.GeneralErrorCode;
+import com.naengsam.quick.global.exception.BusinessException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -77,10 +79,10 @@ public class MatchingService {
     }
 
     // 액션 하나 처리
-    void startMatching(Order order) {
+    public void startMatching(Order order) {
         OrderOfferGroup existingGroup = orderOfferGroupsByOrderId.get(order.orderId());
         if (existingGroup != null && existingGroup.status() == OrderOfferGroupStatus.OPEN) {
-            throw new IllegalStateException("이미 진행 중인 매칭 방이 있습니다: orderId=" + order.orderId());
+            throw new BusinessException(GeneralErrorCode.CONFLICT);
         }
 
         List<WaitingDreami> top3List = dreamiMap.values().stream()
@@ -104,20 +106,19 @@ public class MatchingService {
 
         // 드리미 3명에게 status를 변경 요청
         for (WaitingDreami dreami : top3List) {
-            dreamiMap.get(dreami.dreamiId()).changeStatus(WaitingDreamiStatus.PROPOSED);
+            dreamiMap.get(dreami.dreamiId()).markProposed();
         }
         OrderOfferGroup group = new OrderOfferGroup(order.orderId(), matchOfferList); // 방안에상위3명넣기 (사실상 방 만들기)
         if (matchOfferList.isEmpty()) {
             // 제안할 드리미가 한 명도 없으면 이 방은 바로 재매칭 대상이다.
-            group.changeStatus(OrderOfferGroupStatus.CLOSED);
-            group.markRematchRequired();
+            group.closeForRematch();
         }
         orderOfferGroupsByOrderId.put(order.orderId(), group);
         alarmBySocket("드리미에게_제안_팝업_띄우기");
     }
 
     // 팝업에서 수락을 눌렀다는 가정
-    void acceptByDreami(WaitingDreami dreami, UUID offerId) {
+    public void acceptByDreami(UUID offerId) {
         Optional<MatchOffer> optionalMatchOffer = acceptableOffer(offerId);
         if (optionalMatchOffer.isEmpty()) {
             return;
@@ -128,35 +129,34 @@ public class MatchingService {
             alarmBySocket("존재하지 않는 주문입니다.");
             return;
         }
+        UUID acceptedDreamiId = matchOffer.dreamiId();
 
         // 수락한 사람의 상태를 PENDING_BOORMI_CONFIRMATION로 변경
         // 나머지 매칭오퍼 상태를 WITHDRAW로 변경
         for (MatchOffer offer : group.offers()) {
             // 수락한사람은 PENDING_BOORMI_CONFIRMATION
             // 나머지 사람은 WITHDRAWN
-            if (offer.dreamiId().equals(dreami.dreamiId())) {
-                offer.changeStatus(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
-                // 드리미의 status는 PROPOSED 유지
-                assert dreami.status() == WaitingDreamiStatus.PROPOSED;
+            if (offer.dreamiId().equals(acceptedDreamiId)) {
+                offer.acceptByDreami();
                 alarmBySocket("부르미한테_드리미정보_팝업넘기기");
             } else if (offer.status() == MatchOfferStatus.OFFERED) {
                 // 아직 응답 대기중(OFFERED)인 오퍼만 회수한다.
                 // 이미 거절/만료됐거나 다른 방으로 넘어간 드리미의 상태는 건드리지 않는다.
-                offer.changeStatus(MatchOfferStatus.WITHDRAWN);
+                offer.withdraw();
                 // 선착순에서 패배한 드리미를 다시 매칭 수락가능한 상태로 변경
                 findDreami(offer.dreamiId())
-                        .ifPresent(otherDreami -> otherDreami.changeStatus(WaitingDreamiStatus.MATCHING));
+                        .ifPresent(WaitingDreami::markMatching);
                 alarmBySocket("팝업꺼지게(선착순패배)");
             }
         }
     }
 
     // 드리미가 거절하면, DREAMI_REJECTED로 변경 및 다시 대기상태로
-    void rejectByDreami(WaitingDreami dreami, UUID offerId) {
+    public void rejectByDreami(UUID offerId) {
         findOffer(offerId).ifPresentOrElse(
                 offer -> {
-                    dreami.changeStatus(WaitingDreamiStatus.MATCHING);
-                    offer.changeStatus(MatchOfferStatus.DREAMI_REJECTED);
+                    findDreami(offer.dreamiId()).ifPresent(WaitingDreami::markMatching);
+                    offer.rejectByDreami();
                     alarmBySocket("거절했으니 팝업끄면됨");
                     closeGroupIfExhausted(offer.orderId());
                 },
@@ -164,29 +164,27 @@ public class MatchingService {
         );
     }
 
-    void acceptByBoormi(UUID offerId) {
+    public void acceptByBoormi(UUID offerId) {
         findOffer(offerId).ifPresentOrElse(
                 matchOffer -> {
-                    assert matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION;
-                    matchOffer.changeStatus(MatchOfferStatus.MATCHED); // 부르미까지 수락 완료
+                    matchOffer.confirmByBoormi(); // 부르미까지 수락 완료
                     findOrderOfferGroup(matchOffer.orderId())
-                            .ifPresent(group -> group.changeStatus(OrderOfferGroupStatus.MATCHED));
+                            .ifPresent(OrderOfferGroup::markMatched);
                     proceedToDelivery(matchOffer);
                 },
                 () -> alarmBySocket("존재하지 않는 제안입니다.")
         );
     }
 
-    void rejectByBoormi(UUID offerId) {
+    public void rejectByBoormi(UUID offerId) {
         findOffer(offerId).ifPresentOrElse(
                 matchOffer -> {
-                    assert matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION;
-                    matchOffer.changeStatus(MatchOfferStatus.BOORMI_REJECTED);
+                    matchOffer.rejectByBoormi();
 
                     // 거절당한 드리미의 상태를 배달가능 상태로 변경
                     alarmBySocket("거절당한_드리미에게_부르미가_거절했다고_알려주기");
                     findDreami(matchOffer.dreamiId())
-                            .ifPresent(dreami -> dreami.changeStatus(WaitingDreamiStatus.MATCHING));
+                            .ifPresent(WaitingDreami::markMatching);
 
                     closeGroupForRematch(matchOffer.orderId());
                 },
@@ -195,25 +193,24 @@ public class MatchingService {
     }
 
     // 이건 액션에 의해 실행 되어야함
-    void expireDreamiOffer(UUID offerId) {
+    public void expireDreamiOffer(UUID offerId) {
         // 해당 match가 OFFERED 상태가 아니라면 다른 로직에 의해서 처리가 된거임
         findOffer(offerId)
                 .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.OFFERED)
                 .ifPresent(matchOffer -> {
-                    matchOffer.changeStatus(MatchOfferStatus.DREAMI_EXPIRED);
+                    matchOffer.expireByDreami();
                     findDreami(matchOffer.dreamiId())
-                            .ifPresent(dreami -> dreami.changeStatus(WaitingDreamiStatus.MATCHING));
+                            .ifPresent(WaitingDreami::markMatching);
                     closeGroupIfExhausted(matchOffer.orderId());
                 });
     }
 
-    void expireBoormiOffer(UUID offerId) {
-        // TODO: 드리미쪽과 달리 status 가드가 없음. PENDING_BOORMI_CONFIRMATION 체크 필요 여부 확인
+    public void expireBoormiOffer(UUID offerId) {
         findOffer(offerId).ifPresent(matchOffer -> {
             // 드리미가 다시 배달이 가능하게 바꿔야함
-            matchOffer.changeStatus(MatchOfferStatus.BOORMI_EXPIRED);
+            matchOffer.expireByBoormi();
             findDreami(matchOffer.dreamiId())
-                    .ifPresent(dreami -> dreami.changeStatus(WaitingDreamiStatus.MATCHING));
+                    .ifPresent(WaitingDreami::markMatching);
             closeGroupForRematch(matchOffer.orderId());
         });
     }
@@ -233,7 +230,7 @@ public class MatchingService {
         return Optional.ofNullable(dreamiMap.get(dreamiId));
     }
 
-    private Optional<OrderOfferGroup> findOrderOfferGroup(UUID orderId) {
+    public Optional<OrderOfferGroup> findOrderOfferGroup(UUID orderId) {
         return Optional.ofNullable(orderOfferGroupsByOrderId.get(orderId));
     }
 
@@ -241,10 +238,7 @@ public class MatchingService {
      * 확정 후보(수락자)를 부르미가 거절/만료시킨 경우 - 남은 오퍼가 없으므로 재매칭이 필요하다.
      */
     private void closeGroupForRematch(UUID orderId) {
-        findOrderOfferGroup(orderId).ifPresent(group -> {
-            group.changeStatus(OrderOfferGroupStatus.CLOSED);
-            group.markRematchRequired();
-        });
+        findOrderOfferGroup(orderId).ifPresent(OrderOfferGroup::closeForRematch);
     }
 
     /**
@@ -257,8 +251,7 @@ public class MatchingService {
                             || offer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION
                             || offer.status() == MatchOfferStatus.MATCHED);
             if (!anyStillLive) {
-                group.changeStatus(OrderOfferGroupStatus.CLOSED);
-                group.markRematchRequired();
+                group.closeForRematch();
             }
         });
     }
@@ -367,8 +360,46 @@ public class MatchingService {
             return status;
         }
 
-        public void changeStatus(MatchOfferStatus status) {
-            this.status = status;
+        public void acceptByDreami() {
+            requireStatus(MatchOfferStatus.OFFERED);
+            this.status = MatchOfferStatus.PENDING_BOORMI_CONFIRMATION;
+        }
+
+        public void rejectByDreami() {
+            requireStatus(MatchOfferStatus.OFFERED);
+            this.status = MatchOfferStatus.DREAMI_REJECTED;
+        }
+
+        public void withdraw() {
+            requireStatus(MatchOfferStatus.OFFERED);
+            this.status = MatchOfferStatus.WITHDRAWN;
+        }
+
+        public void confirmByBoormi() {
+            requireStatus(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+            this.status = MatchOfferStatus.MATCHED;
+        }
+
+        public void rejectByBoormi() {
+            requireStatus(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+            this.status = MatchOfferStatus.BOORMI_REJECTED;
+        }
+
+        public void expireByDreami() {
+            requireStatus(MatchOfferStatus.OFFERED);
+            this.status = MatchOfferStatus.DREAMI_EXPIRED;
+        }
+
+        public void expireByBoormi() {
+            requireStatus(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+            this.status = MatchOfferStatus.BOORMI_EXPIRED;
+        }
+
+        private void requireStatus(MatchOfferStatus expected) {
+            if (this.status != expected) {
+                throw new IllegalStateException(
+                        "잘못된 상태 전이입니다: offerId=" + offerId + ", 현재상태=" + status + ", 기대상태=" + expected);
+            }
         }
     }
 
@@ -405,9 +436,22 @@ public class MatchingService {
             return updatedAt;
         }
 
-        public void changeStatus(WaitingDreamiStatus status) {
-            this.status = status;
+        public void markProposed() {
+            requireStatus(WaitingDreamiStatus.MATCHING);
+            this.status = WaitingDreamiStatus.PROPOSED;
             this.updatedAt = LocalDateTime.now();
+        }
+
+        public void markMatching() {
+            this.status = WaitingDreamiStatus.MATCHING;
+            this.updatedAt = LocalDateTime.now();
+        }
+
+        private void requireStatus(WaitingDreamiStatus expected) {
+            if (this.status != expected) {
+                throw new IllegalStateException(
+                        "잘못된 상태 전이입니다: dreamiId=" + dreamiId + ", 현재상태=" + status + ", 기대상태=" + expected);
+            }
         }
     }
 
@@ -443,12 +487,21 @@ public class MatchingService {
             return rematchRequired;
         }
 
-        void changeStatus(OrderOfferGroupStatus status) {
-            this.status = status;
+        void markMatched() {
+            requireStatus(OrderOfferGroupStatus.OPEN);
+            this.status = OrderOfferGroupStatus.MATCHED;
         }
 
-        void markRematchRequired() {
+        void closeForRematch() {
+            this.status = OrderOfferGroupStatus.CLOSED;
             this.rematchRequired = true;
+        }
+
+        private void requireStatus(OrderOfferGroupStatus expected) {
+            if (this.status != expected) {
+                throw new IllegalStateException(
+                        "잘못된 상태 전이입니다: orderId=" + orderId + ", 현재상태=" + status + ", 기대상태=" + expected);
+            }
         }
     }
 }

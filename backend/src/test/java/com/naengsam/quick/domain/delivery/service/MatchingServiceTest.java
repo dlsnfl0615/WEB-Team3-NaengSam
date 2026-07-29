@@ -7,6 +7,8 @@ import static org.mockito.Mockito.when;
 
 import com.naengsam.quick.domain.delivery.dto.GeoPoint;
 import com.naengsam.quick.domain.delivery.dto.Order;
+import com.naengsam.quick.global.code.GeneralErrorCode;
+import com.naengsam.quick.global.exception.BusinessException;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -102,10 +104,7 @@ class MatchingServiceTest {
                 getDreamiMap().get(acceptedOffer.dreamiId());
 
         // when
-        matchingService.acceptByDreami(
-                acceptedDreami,
-                acceptedOffer.offerId()
-        );
+        matchingService.acceptByDreami(acceptedOffer.offerId());
 
         // then
         assertThat(acceptedOffer.status())
@@ -152,10 +151,7 @@ class MatchingServiceTest {
         MatchingService.MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
 
-        MatchingService.WaitingDreami dreami =
-                getDreamiMap().get(offer.dreamiId());
-
-        matchingService.acceptByDreami(dreami, offer.offerId());
+        matchingService.acceptByDreami(offer.offerId());
 
         // when
         matchingService.acceptByBoormi(offer.offerId());
@@ -187,7 +183,8 @@ class MatchingServiceTest {
         Throwable thrown = catchThrowable(() -> matchingService.startMatching(order));
 
         // then
-        assertThat(thrown).isInstanceOf(IllegalStateException.class);
+        assertThat(thrown).isInstanceOf(BusinessException.class);
+        assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(GeneralErrorCode.CONFLICT);
         assertThat(getOrderOfferGroups().get(orderId)).isSameAs(originalGroup);
     }
 
@@ -256,9 +253,9 @@ class MatchingServiceTest {
         matchingService.startMatching(orderA);
 
         // 원래라면 PROPOSED 상태라 다음 매칭 후보에서 제외되지만, 드리미 상태 제한이 아직 없다는 것을 보여주기 위해
-        // 공개 API(changeStatus)로 다시 MATCHING 상태로 되돌린다.
+        // 공개 API(markMatching)로 다시 MATCHING 상태로 되돌린다.
         MatchingService.WaitingDreami dreami = getDreamiMap().get(dreamiId);
-        dreami.changeStatus(MatchingService.WaitingDreamiStatus.MATCHING);
+        dreami.markMatching();
 
         // when
         matchingService.startMatching(orderB);
@@ -291,7 +288,7 @@ class MatchingServiceTest {
                 getDreamiMap().get(acceptedOffer.dreamiId());
 
         // when (수락되지 않은 나머지 오퍼가 OFFERED -> WITHDRAWN 으로 바뀜)
-        matchingService.acceptByDreami(acceptedDreami, acceptedOffer.offerId());
+        matchingService.acceptByDreami(acceptedOffer.offerId());
 
         // then
         List<MatchingService.MatchOffer> offersAfter =
@@ -316,9 +313,8 @@ class MatchingServiceTest {
 
         MatchingService.MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
-        MatchingService.WaitingDreami dreami = getDreamiMap().get(offer.dreamiId());
 
-        matchingService.acceptByDreami(dreami, offer.offerId());
+        matchingService.acceptByDreami(offer.offerId());
 
         // when
         matchingService.acceptByBoormi(offer.offerId());
@@ -345,10 +341,7 @@ class MatchingServiceTest {
         MatchingService.MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
 
-        MatchingService.WaitingDreami dreami =
-                getDreamiMap().get(offer.dreamiId());
-
-        matchingService.acceptByDreami(dreami, offer.offerId());
+        matchingService.acceptByDreami(offer.offerId());
 
         // when
         matchingService.rejectByBoormi(offer.offerId());
@@ -381,8 +374,7 @@ class MatchingServiceTest {
 
         // when
         for (MatchingService.MatchOffer offer : offers) {
-            MatchingService.WaitingDreami dreami = getDreamiMap().get(offer.dreamiId());
-            matchingService.rejectByDreami(dreami, offer.offerId());
+            matchingService.rejectByDreami(offer.offerId());
         }
 
         // then
