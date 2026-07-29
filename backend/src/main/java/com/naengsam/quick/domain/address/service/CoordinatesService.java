@@ -4,7 +4,10 @@ import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
@@ -16,8 +19,24 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class CoordinatesService {
 
     private static final String restApiKey = System.getenv("KAKAO_REST_API_KEY");
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
+    private static final Duration READ_TIMEOUT = Duration.ofSeconds(5);
 
-    private final RestClient restClient = RestClient.builder().build();
+    private final RestClient restClient = buildRestClient();
+
+    private static RestClient buildRestClient() {
+        // 연결 자체가 안 되는 상황을 막기 위해
+        HttpClient httpClient = HttpClient.newBuilder()
+                .connectTimeout(CONNECT_TIMEOUT)
+                .build();
+
+        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(httpClient);
+        requestFactory.setReadTimeout(READ_TIMEOUT); // api 요청 타임아웃
+
+        return RestClient.builder()
+                .requestFactory(requestFactory)
+                .build();
+    }
 
     /**
      * 카카오 로컬 API로 도로명주소를 위도/경도로 변환한다.

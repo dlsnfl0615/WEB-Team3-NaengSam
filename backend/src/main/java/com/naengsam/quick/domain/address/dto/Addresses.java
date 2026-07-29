@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.address.dto;
 
+import java.math.BigDecimal;
 import lombok.Builder;
 
 /**
@@ -9,14 +10,14 @@ import lombok.Builder;
 public record Addresses(
         String originAddressLine1, // 기본주소
         String originAddressLine2, // 상세주소
-        String originLatitude,
-        String originLongitude,
+        BigDecimal originLatitude,
+        BigDecimal originLongitude,
         String originAlias,
 
         String destinationAddressLine1,
         String destinationAddressLine2,
-        String destinationLatitude,
-        String destinationLongitude,
+        BigDecimal destinationLatitude,
+        BigDecimal destinationLongitude,
         String destinationAlias
 ) {
 }

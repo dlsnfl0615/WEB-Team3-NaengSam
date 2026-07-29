@@ -4,6 +4,7 @@ import com.naengsam.quick.domain.address.dto.Addresses;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
@@ -15,10 +16,10 @@ public class Orders {
     private String originAddressLine1; // 기본주소
     @Column(name = "origin_address_line2")
     private String originAddressLine2; // 상세주소
-    @Column(name = "origin_latitude")
-    private String originLatitude;
-    @Column(name = "origin_longitude")
-    private String originLongitude;
+    @Column(name = "origin_latitude", precision = 11, scale = 8)
+    private BigDecimal originLatitude;
+    @Column(name = "origin_longitude", precision = 11, scale = 8)
+    private BigDecimal originLongitude;
     @Column(name = "origin_alias")
     private String originAlias;
 
@@ -26,10 +27,10 @@ public class Orders {
     private String destinationAddressLine1;
     @Column(name = "destination_address_line2")
     private String destinationAddressLine2;
-    @Column(name = "destination_latitude")
-    private String destinationLatitude;
-    @Column(name = "destination_longitude")
-    private String destinationLongitude;
+    @Column(name = "destination_latitude", precision = 11, scale = 8)
+    private BigDecimal destinationLatitude;
+    @Column(name = "destination_longitude", precision = 11, scale = 8)
+    private BigDecimal destinationLongitude;
     @Column(name = "destination_alias")
     private String destinationAlias;
 
