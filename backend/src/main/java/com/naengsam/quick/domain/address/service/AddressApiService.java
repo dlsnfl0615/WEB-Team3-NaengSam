@@ -3,6 +3,8 @@ package com.naengsam.quick.domain.address.service;
 import com.naengsam.quick.domain.address.dto.Addresses;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.global.code.GeneralErrorCode;
+import com.naengsam.quick.global.exception.BusinessException;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,6 @@ public class AddressApiService {
      */
     public Orders findById(UUID orderId) {
         return orderRepository.findById(orderId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않음. id=" + orderId));
+                .orElseThrow(() -> new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_ERROR));
     }
 }

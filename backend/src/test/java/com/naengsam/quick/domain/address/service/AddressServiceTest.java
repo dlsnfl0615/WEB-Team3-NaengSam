@@ -33,11 +33,11 @@ class AddressServiceTest {
 
     @Test
     void 주소를_저장하면_좌표가_계산되어_반영된_주소가_저장되고_생성된_id가_반환된다() {
+        UUID boormiId = UUID.randomUUID();
         AddressRequestDto requestDto = new AddressRequestDto(
                 "우리집",
                 "서울시 강남구",
-                "101동 202호",
-                UUID.randomUUID()
+                "101동 202호"
         );
         CoordinatesResponseDto.RoadAddress roadAddress =
                 new CoordinatesResponseDto.RoadAddress(
@@ -51,7 +51,7 @@ class AddressServiceTest {
         when(addressRepository.save(any(Address.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
-        UUID savedId = addressService.saveAddress(requestDto);
+        UUID savedId = addressService.saveAddress(requestDto, boormiId);
 
         ArgumentCaptor<Address> captor = ArgumentCaptor.forClass(Address.class);
         org.mockito.Mockito.verify(addressRepository).save(captor.capture());
@@ -59,15 +59,16 @@ class AddressServiceTest {
 
         assertThat(savedId).isEqualTo(savedAddress.getAddressId());
         assertThat(savedAddress.getAddressAlias()).isEqualTo(requestDto.addressAlias());
-        assertThat(savedAddress.getLatitude()).isEqualTo(new BigDecimal("37.123456"));
-        assertThat(savedAddress.getLongitude()).isEqualTo(new BigDecimal("127.123456"));
+        assertThat(savedAddress.getLatitude()).isEqualByComparingTo(new BigDecimal("37.123456"));
+        assertThat(savedAddress.getLongitude()).isEqualByComparingTo(new BigDecimal("127.123456"));
         assertThat(savedAddress.getAddressLine1()).isEqualTo(requestDto.addressLine1());
         assertThat(savedAddress.getAddressLine2()).isEqualTo(requestDto.addressLine2());
-        assertThat(savedAddress.getBoormiId()).isEqualTo(requestDto.boormiId());
+        assertThat(savedAddress.getBoormiId()).isEqualTo(boormiId);
     }
 
     @Test
     void 전체_주소를_조회하면_응답_dto_목록으로_변환되어_반환된다() {
+        UUID boormiId = UUID.randomUUID();
         Address address = Address.builder()
                 .addressId(UUID.randomUUID())
                 .addressAlias("우리집")
@@ -75,11 +76,11 @@ class AddressServiceTest {
                 .longitude(new BigDecimal("127.123456"))
                 .addressLine1("서울시 강남구")
                 .addressLine2("101동 202호")
-                .boormiId(UUID.randomUUID())
+                .boormiId(boormiId)
                 .build();
-        when(addressRepository.findAll()).thenReturn(List.of(address));
+        when(addressRepository.findAllByBoormiId(boormiId)).thenReturn(List.of(address));
 
-        List<AddressResponseDto> result = addressService.findAll();
+        List<AddressResponseDto> result = addressService.findAll(boormiId);
 
         assertThat(result).containsExactly(new AddressResponseDto(
                 address.getAddressAlias(),
