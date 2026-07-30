@@ -5,8 +5,11 @@ import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import java.util.UUID;
 
 /**
- * 배달 한 건의 상태를 인메모리로 들고 있는 가변 홀더(엔티티/record 아님). 상태 변경은 DeliveryEngine의 단일 스레드에서만 일어나므로,
- * setStatus/setLocation은 패키지 가시성으로 열어 엔진 경유 로직(DeliveryService)만 접근하도록 한다.
+ * 배달 한 건의 상태를 인메모리로 들고 있는 가변 홀더(엔티티/record 아님). 상태 변경은 이 객체를 모니터로 삼는 주문 단위 락
+ * (DeliveryService의 synchronized) 안에서만 일어나므로, setStatus/setLocation은 패키지 가시성으로 열어 DeliveryService만 접근하도록 한다.
+ *
+ * <p>훗날 SSE 등 다른 스레드가 락 없이 status/currentLocation을 읽는다면 가시성을 위해 두 필드를 volatile로 두는 것을 고려한다
+ * (읽는 쪽이 아직 스텁이라 지금은 불필요).
  */
 public class DeliveryStatus {
 

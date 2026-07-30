@@ -6,17 +6,16 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
-import java.util.function.Supplier;
+import java.util.function.Function;
 
 import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
 
 /**
- * 배달 한 건의 상태 전이를 담당한다. 공개 메서드는 동기 요청으로 호출되며, 실제 status 검증+변경은 DeliveryAction으로 감싸
- * DeliveryEngine의 단일 스레드에 직렬화한다. 호출자는 CompletableFuture로 블록해 결과 문자열을 돌려받는다.
+ * 배달 한 건의 상태 전이를 담당한다. 공개 메서드는 동기 요청으로 호출되며, 요청 스레드에서 그대로 실행된다.
+ * 상태 검증+변경(check-then-act)은 해당 주문의 DeliveryStatus 객체를 모니터로 삼아 주문 단위로만 직렬화한다.
+ * 서로 다른 주문은 서로 다른 모니터라 완전히 병렬로 처리된다.
+ *
+ * <p>알림(SSE 스텁)은 전이와 같은 락 안에서 실행해 "처리 순서 == 알림 순서"를 보장한다(순서 역전 방지).
  *
  * <p>부르미는 SSE로 상태를 전달받고(현재는 함수 스텁만), 드리미는 5~10초마다 updateDreamiLocation을 호출해 상태를 전달받는다.
  */
@@ -25,65 +24,54 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
 @RequiredArgsConstructor
 public class DeliveryService {
 
-    private static final long ACTION_TIMEOUT_SECONDS = 3L;
-
-    private final DeliveryEngine engine;
     private final DeliveryStore store;
 
-    // ===== 공개 메서드 (동기 요청) — 상태 변경 로직을 엔진에 제출하고 결과를 기다린다 =====
+    // ===== 공개 메서드 (동기 요청) — 주문 단위 락 안에서 상태 전이를 실행하고 결과를 돌려준다 =====
 
     // 드리미 위치 정보를 전달 (이 메소드를 5~10초마다 드리미가 호출해야함). 동시에 상태 변경이 있다면 응답한다.
     public String updateDreamiLocation(UUID orderId, GeoPoint dreamiGeoPoint) {
-        return submitAndWait(() -> doUpdateDreamiLocation(orderId, dreamiGeoPoint));
+        return transition(orderId, status -> doUpdateDreamiLocation(status, dreamiGeoPoint));
     }
 
     // 픽업 완료
     public String pickupFinishByDreami(UUID orderId) {
-        return submitAndWait(() -> doPickupFinishByDreami(orderId));
+        return transition(orderId, this::doPickupFinishByDreami);
     }
 
     // "픽업" 과정에서 드리미의 취소
     public String cancelByDreami(UUID orderId) {
-        return submitAndWait(() -> doCancelByDreami(orderId));
+        return transition(orderId, this::doCancelByDreami);
     }
 
     // 픽업 중에 부르미가 취소
     public String cancelByBoormi(UUID orderId) {
-        return submitAndWait(() -> doCancelByBoormi(orderId));
+        return transition(orderId, this::doCancelByBoormi);
     }
 
     // 픽업 중에 관리자가 취소
     public String cancelByAdmin(UUID orderId) {
-        return submitAndWait(() -> doCancelByAdmin(orderId));
+        return transition(orderId, this::doCancelByAdmin);
     }
 
     // 드리미가 "배달" 완료 (픽업 아님!!)
     public String finishDelivery(UUID orderId) {
-        return submitAndWait(() -> doFinishDelivery(orderId));
+        return transition(orderId, this::doFinishDelivery);
     }
 
-    // ===== 엔진 배관 =====
+    // ===== 주문 단위 직렬화 =====
 
-    // 큐에 액션을 등록한 뒤, 엔진이 그 액션을 실제로 수행해서 결과를 넣어줄 때까지 리턴하지 않음!!
-    // task : 실제 요청 내용 (eg.. 픽업 완료 요청, 취소 요청 등등)
-    private String submitAndWait(Supplier<String> task) {
-        CompletableFuture<String> future = new CompletableFuture<>();
-        engine.submit(new DeliveryAction(task, future));
-        try {
-            return future.get(ACTION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e); // TODO: BusinessException으로 정렬
-        } catch (ExecutionException | TimeoutException e) {
-            throw new RuntimeException(e); // TODO: BusinessException으로 정렬
+    // 해당 주문의 DeliveryStatus 객체를 모니터로 삼아 check-then-act를 원자적으로 실행한다.
+    // 같은 주문 = 같은 객체 = 직렬화, 다른 주문 = 다른 객체 = 병렬.
+    private String transition(UUID orderId, Function<DeliveryStatus, String> logic) {
+        DeliveryStatus deliveryStatus = store.get(orderId);
+        synchronized (deliveryStatus) {
+            return logic.apply(deliveryStatus);
         }
     }
 
-    // ===== 실제 상태 전이 로직 (엔진 스레드에서 실행) =====
+    // ===== 실제 상태 전이 로직 (주문 락 안에서 실행) =====
 
-    private String doUpdateDreamiLocation(UUID orderId, GeoPoint dreamiGeoPoint) {
-        DeliveryStatus deliveryStatus = store.get(orderId);
-
+    private String doUpdateDreamiLocation(DeliveryStatus deliveryStatus, GeoPoint dreamiGeoPoint) {
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
             alarmDreamiCancelBySSE(); // 드리미에게_SSE로_취소상태_알려주기()
             return "부르미가 취소한 주문입니다";
@@ -99,9 +87,7 @@ public class DeliveryService {
         return "현재 상태: " + deliveryStatus.status(); // 드리미에게 현재 상태 정보제공 (TODO: 상태 DTO로 교체)
     }
 
-    private String doPickupFinishByDreami(UUID orderId) {
-        DeliveryStatus deliveryStatus = store.get(orderId);
-
+    private String doPickupFinishByDreami(DeliveryStatus deliveryStatus) {
         // 부르미가 취소 눌렀는데 드리미는 아직 인지 못하고 픽업 완료를 누름
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
             return "부르미가 이미 취소한 주문입니다";
@@ -126,7 +112,7 @@ public class DeliveryService {
         // 여기까지 왔으면 이제 "픽업중_정상" 상태만 남음
         assert deliveryStatus.status() == PICKUP_NORMAL; // 픽업중_정상
 
-        if (!hasPickupPhoto(orderId)) { // 사진이_없는경우
+        if (!hasPickupPhoto(deliveryStatus.orderId())) { // 사진이_없는경우
             return "픽업 사진이 없습니다";
         }
 
@@ -135,9 +121,7 @@ public class DeliveryService {
         return "픽업 완료";
     }
 
-    private String doCancelByDreami(UUID orderId) {
-        DeliveryStatus deliveryStatus = store.get(orderId);
-
+    private String doCancelByDreami(DeliveryStatus deliveryStatus) {
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
             return "이미 부르미가 먼저 취소한 주문입니다";
         }
@@ -165,9 +149,7 @@ public class DeliveryService {
         return "픽업 취소 완료";
     }
 
-    private String doCancelByBoormi(UUID orderId) {
-        DeliveryStatus deliveryStatus = store.get(orderId);
-
+    private String doCancelByBoormi(DeliveryStatus deliveryStatus) {
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
             return "이미 드리미가 먼저 취소한 주문";
         }
@@ -193,9 +175,7 @@ public class DeliveryService {
         return "픽업 취소 완료";
     }
 
-    private String doCancelByAdmin(UUID orderId) {
-        DeliveryStatus deliveryStatus = store.get(orderId);
-
+    private String doCancelByAdmin(DeliveryStatus deliveryStatus) {
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
             return "이미 드리미가 먼저 취소한 주문";
         }
@@ -223,9 +203,7 @@ public class DeliveryService {
         return "픽업 취소 완료";
     }
 
-    private String doFinishDelivery(UUID orderId) {
-        DeliveryStatus deliveryStatus = store.get(orderId);
-
+    private String doFinishDelivery(DeliveryStatus deliveryStatus) {
         // 아마 드리미가 픽업하자마자 바로 배달완료 처리요청하지 않는 이상 없을듯?
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI
                 || deliveryStatus.status() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_부르미의_취소 || 픽업중_관리자의_취소
@@ -246,7 +224,7 @@ public class DeliveryService {
 
         assert deliveryStatus.status() == DELIVERING; // 배달중_정상
 
-        if (!hasDeliveryPhoto(orderId)) { // 사진이없을때
+        if (!hasDeliveryPhoto(deliveryStatus.orderId())) { // 사진이없을때
             return "배달 완료 인증 사진이 없습니다";
         }
 
