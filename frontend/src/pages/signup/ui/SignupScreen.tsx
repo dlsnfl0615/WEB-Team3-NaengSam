@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, ScreenShell, TextField, TopBar } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
+import { useSessionStore } from '@/shared/store/sessionStore'
 
 /**
  * 회원가입 화면(Figma node 21:62).
@@ -9,6 +10,7 @@ import { ROUTES } from '@/shared/config/routes'
  */
 export function SignupScreen() {
   const navigate = useNavigate()
+  const signup = useSessionStore((s) => s.signup)
   const [form, setForm] = useState({
     name: '',
     birth: '',
@@ -18,9 +20,26 @@ export function SignupScreen() {
     password: '',
   })
   const [agreed, setAgreed] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   const set = (key: keyof typeof form) => (value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }))
+
+  const onSignup = async () => {
+    setSubmitting(true)
+    try {
+      await signup({
+        name: form.name,
+        birth: form.birth,
+        phone: form.phone,
+        email: form.email,
+        password: form.password,
+      })
+      navigate(ROUTES.verify)
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <ScreenShell>
@@ -100,10 +119,10 @@ export function SignupScreen() {
           variant="navy"
           block
           className="mt-6"
-          disabled={!agreed}
-          onClick={() => navigate(ROUTES.verify)}
+          disabled={!agreed || submitting}
+          onClick={onSignup}
         >
-          가입 완료
+          {submitting ? '가입 중…' : '가입 완료'}
         </Button>
       </main>
     </ScreenShell>

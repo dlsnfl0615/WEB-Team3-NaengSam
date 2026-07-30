@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, ScreenShell, TextField } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
+import { useSessionStore } from '@/shared/store/sessionStore'
 
 /**
  * 로그인 화면(Figma node 21:91).
@@ -9,8 +10,20 @@ import { ROUTES } from '@/shared/config/routes'
  */
 export function LoginScreen() {
   const navigate = useNavigate()
+  const login = useSessionStore((s) => s.login)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const onLogin = async () => {
+    setSubmitting(true)
+    try {
+      await login({ email, password })
+      navigate(ROUTES.home)
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <ScreenShell>
@@ -47,9 +60,10 @@ export function LoginScreen() {
           variant="navy"
           block
           className="mt-6"
-          onClick={() => navigate(ROUTES.home)}
+          disabled={submitting}
+          onClick={onLogin}
         >
-          로그인
+          {submitting ? '로그인 중…' : '로그인'}
         </Button>
 
         {/* 하단 링크 */}
