@@ -1,15 +1,13 @@
 package com.naengsam.quick.domain.matching.service;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
-import com.naengsam.quick.domain.matching.dto.Order;
 import com.naengsam.quick.domain.matching.event.BoormiRejectedPayload;
 import com.naengsam.quick.domain.matching.event.DreamiInfoPayload;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.event.NotificationErrorPayload;
 import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
-import com.naengsam.quick.global.code.GeneralErrorCode;
-import com.naengsam.quick.global.exception.BusinessException;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -57,11 +55,6 @@ public class MatchingService {
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
-    }
-
-    void alarmBySocket(String message) {
-        // 소켓을 통해 알림보내기
-        // 아직 코드 구현X
     }
 
     // 외부에서는 이 메서드로 액션을 큐에 넣기만 한다. 실제 상태 변경은 엔진 스레드에서 apply*가 수행한다.
@@ -122,8 +115,8 @@ public class MatchingService {
             return;
         }
 
-        OrderOfferGroup group = new OrderOfferGroup(order.orderId(), order.boormiId(), new ArrayList<>());
-        orderOfferGroupsByOrderId.put(order.orderId(), group);
+        OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), new ArrayList<>());
+        orderOfferGroupsByOrderId.put(order.getOrderId(), group);
         attemptOfferRound(group);
     }
 
@@ -168,13 +161,6 @@ public class MatchingService {
         for (MatchOffer offer : newOffers) {
             sseService.send(offer.dreamiId(), MatchingEventType.OFFER_POPUP, OfferPopupPayload.from(offer));
         }
-        OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), matchOfferList); // 방안에상위3명넣기 (사실상 방 만들기)
-        if (matchOfferList.isEmpty()) {
-            // 제안할 드리미가 한 명도 없으면 이 방은 바로 재매칭 대상이다.
-            group.closeForRematch();
-        }
-        orderOfferGroupsByOrderId.put(order.getOrderId(), group);
-        alarmBySocket("드리미에게_제안_팝업_띄우기");
     }
 
     // 팝업에서 수락을 눌렀다는 가정
@@ -313,6 +299,42 @@ public class MatchingService {
                     .ifPresent(WaitingDreami::markMatching);
             closeGroupForRematch(matchOffer.orderId());
         });
+    }
+
+    /**
+     * 부르미가 매칭 진행 중인 주문을 직접 취소한다. 아직 방이 없거나 이미 종료된 방이면 아무 일도 일어나지 않는다.
+     */
+    public void cancelOrderByBoormi(UUID orderId) {
+        matchingEngine.submit(new CancelOrderByBoormi(this, orderId));
+    }
+
+    void applyCancelOrderByBoormi(UUID orderId) {
+        log.debug("부르미 주문 취소 액션 실행: orderId={}", orderId);
+
+        OrderOfferGroup group = orderOfferGroupsByOrderId.get(orderId);
+        if (group == null) {
+            log.debug("존재하지 않는 주문 취소 요청, 무시: orderId={}", orderId);
+            return;
+        }
+        if (group.status() != OrderOfferGroupStatus.OPEN) {
+            log.debug("이미 종료된 주문 취소 요청, 무시: orderId={}", orderId);
+            return;
+        }
+
+        for (MatchOffer offer : group.offers()) {
+            if (offer.status() == MatchOfferStatus.OFFERED) {
+                offer.withdraw();
+                findDreami(offer.dreamiId()).ifPresent(WaitingDreami::markMatching);
+                sseService.send(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
+                        new OfferClosedPayload(offer.offerId(), "부르미가 주문을 취소함"));
+            } else if (offer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION) {
+                offer.rejectByBoormi();
+                findDreami(offer.dreamiId()).ifPresent(WaitingDreami::markMatching);
+                sseService.send(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
+                        new OfferClosedPayload(offer.offerId(), "부르미가 주문을 취소함"));
+            }
+        }
+        group.cancel();
     }
 
     /**
@@ -645,6 +667,14 @@ public class MatchingService {
         void closeForRematch() {
             this.status = OrderOfferGroupStatus.CLOSED;
             this.rematchRequired = true;
+        }
+
+        /**
+         * 부르미가 직접 주문을 취소한 경우. 재매칭 대상이 아니므로 rematchRequired는 세우지 않는다.
+         */
+        void cancel() {
+            this.status = OrderOfferGroupStatus.CLOSED;
+            this.rematchRequired = false;
         }
 
         private void requireStatus(OrderOfferGroupStatus expected) {
