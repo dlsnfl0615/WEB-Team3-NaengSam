@@ -37,6 +37,8 @@ interface DeliveryState {
   complete: () => Promise<void>;
   /** 활성 배달 취소/사고(사유에 "사고" 포함 시 사고). */
   cancel: (reason: string) => Promise<void>;
+  /** 진행 화면이 구독할 활성 배달을 지정. */
+  setActive: (id: string) => void;
 }
 
 /**
@@ -112,6 +114,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       ),
     }));
   },
+  setActive: (id) => set({ activeId: id }),
 }));
 
 /** 현재 진행 중인 활성 배달(없으면 null). */

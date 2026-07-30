@@ -8,10 +8,30 @@ import {
   StatCard,
 } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
+import { useDeliveryStore } from "@/shared/store/deliveryStore";
+
+/** 진행 중 상태별 진행바 값. */
+const PROGRESS: Record<string, number> = {
+  요청됨: 10,
+  매칭중: 20,
+  픽업중: 45,
+  배송중: 75,
+};
 
 /** 홈 화면의 부르미(발송인) 본문. */
 export function SenderPanel() {
   const navigate = useNavigate();
+  const deliveries = useDeliveryStore((s) => s.deliveries);
+  const setActive = useDeliveryStore((s) => s.setActive);
+
+  const ongoing = deliveries.filter(
+    (d) => d.myRole === "부르미" && d.status in PROGRESS,
+  );
+
+  const openDetail = (id: string) => {
+    setActive(id);
+    navigate(ROUTES.deliveryDetail);
+  };
 
   return (
     <>
@@ -30,26 +50,32 @@ export function SenderPanel() {
         </Button>
       </Card>
 
-      <SectionHeader title="진행 중인 부름" count={2} action="전체 보기" />
+      <SectionHeader
+        title="진행 중인 부름"
+        count={ongoing.length}
+        action="전체 보기"
+        onAction={() => navigate(ROUTES.activity)}
+      />
 
-      <div className="flex flex-col gap-3">
-        <DeliveryCard
-          icon="document"
-          title="서류 배송#123"
-          route="Zone A → Zone C"
-          status="배송중"
-          progress={55}
-          onClick={() => navigate(ROUTES.deliveryDetail)}
-        />
-        <DeliveryCard
-          icon="package"
-          title="소형 택배"
-          route="Zone A → Zone B"
-          status="픽업중"
-          progress={25}
-          onClick={() => navigate(ROUTES.deliveryDetail)}
-        />
-      </div>
+      {ongoing.length > 0 ? (
+        <div className="flex flex-col gap-3">
+          {ongoing.map((d) => (
+            <DeliveryCard
+              key={d.id}
+              icon={d.icon}
+              title={d.title}
+              route={`${d.pickup} → ${d.dropoff}`}
+              status={d.status}
+              progress={PROGRESS[d.status]}
+              onClick={() => openDetail(d.id)}
+            />
+          ))}
+        </div>
+      ) : (
+        <p className="py-6 text-center text-sm text-muted">
+          진행 중인 부름이 없어요.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="총 이용" value="12건" />
