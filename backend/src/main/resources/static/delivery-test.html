@@ -132,9 +132,9 @@
         </div>
         <div class="row">
           <button class="primary" id="btnLoc" style="flex:1">📍 위치 업데이트</button>
-          <button id="btnAuto">▶ 자동 이동(동쪽)</button>
+          <button id="btnAuto">▶ 동쪽 이동 OFF</button>
         </div>
-        <div class="hint">자동 이동 ON → 5초마다 경도를 조금씩 늘려 동쪽으로 전진(지도·API 동시).</div>
+        <div class="hint">배달 시작 시 5초마다 현재 위치를 무조건 전송. 동쪽 이동 ON이면 매 전송마다 경도를 조금씩 늘려 전진.</div>
         <div class="btn-grid">
           <button id="btnPickup">✅ 픽업 완료</button>
           <button id="btnFinish">🏁 배달 완료</button>
@@ -308,6 +308,9 @@
         log(action.actorCls, action.actorLabel, action.title, ok, detail);
         if (ok) applyResult(env.result);
         notify(action, ok, env);
+        // 드리미 본인이 배달을 끝낸 경우에만 폴링 종료. 부르미/관리자 취소는 폴링을 멈추지 않아
+        // 드리미가 다음 위치 전송(1~5초 뒤)에서 스스로 인지하게 둔다.
+        if (ok && (action.key === 'finish' || action.key === 'cancelD')) stopPolling();
         return env;
       } catch (e) {
         log(action.actorCls, action.actorLabel, action.title, false, '네트워크/파싱 오류: ' + e.message);
@@ -316,26 +319,43 @@
 
     // 응답 → 팝업 라우팅. 각 팝업은 해당 주체의 패널 안에서만 뜬다.
     function notify(action, ok, env) {
+      // 위치 전송(5초 폴링)은 "드리미가 상태를 인지하는" 유일한 채널이라 별도 처리.
+      if (action.key === 'location') { handleLocationResult(ok, env); return; }
+
       if (!ok) {
-        // 오류는 요청을 보낸 주체(actor)의 패널에 표시
+        // 그 외 오류는 요청을 보낸 주체(actor)의 패널에 표시
         const panel = action.actorCls === 'side-b' ? 'boormi' : 'dreami';
         showPopup(panel, 'error', `⚠️ 오류 · ${action.actorLabel}측`, `${env.code} · ${env.message}`, env.result);
         return;
       }
-      if (action.key === 'location') {
-        const l = env.result && env.result.currentLocation;
-        locToast(l ? `🛰️ 배달원 위치 수신 (${Number(l.latitude).toFixed(5)}, ${Number(l.longitude).toFixed(5)})`
-                   : '🛰️ 위치 수신');
-        return;
-      }
       if (action.key === 'cancelA') {
-        // 관리자 취소는 양쪽 모두 통지
-        showPopup('dreami', 'error', '⚠️ 관리자 취소', '관리자가 배달을 취소했습니다.', env.result);
-        showPopup('boormi', 'error', '⚠️ 관리자 취소', '관리자가 배달을 취소했습니다.', env.result);
+        // 관리자 취소: 클릭한 관리자(부르미 패널)에 확인 표시. 드리미는 다음 폴링으로 인지.
+        showPopup('boormi', 'error', '⚠️ 관리자 취소', '관리자가 배달을 취소했습니다. (배달원은 다음 위치 전송 시 인지)', env.result);
         return;
       }
+      // 부르미/드리미 본인 액션의 응답으로 해당 패널에만 팝업(SSE 대체 시뮬레이션)
       // target 'boormi' → 부르미 패널, 'dreami' → 드리미 패널
       showPopup(action.target, action.target, action.notifyTitle, action.notifyMsg, env.result);
+    }
+
+    // 5초 폴링(위치 전송)의 응답 = 드리미의 상태 인지 채널.
+    // 취소/완료가 다른 주체에 의해 일어났으면 이 응답이 에러로 돌아오며, 그때 비로소 드리미가 인지한다.
+    function handleLocationResult(ok, env) {
+      if (ok) {
+        const l = env.result && env.result.currentLocation;
+        locToast(l ? `🛰️ 위치 전송 (${Number(l.latitude).toFixed(5)}, ${Number(l.longitude).toFixed(5)})` : '🛰️ 위치 전송');
+        return;
+      }
+      if (env.code === 'DELIVERY_012') {            // 이미 취소됨 → 드리미가 지금 인지
+        showPopup('dreami', 'error', '🛵 드리미 · 취소 감지',
+          '위치 전송 응답에서 취소를 확인했어요. 배달을 중단합니다. (' + env.code + ' · ' + env.message + ')', env.result);
+        stopPolling();
+      } else if (env.code === 'DELIVERY_013') {     // 이미 완료됨
+        showPopup('dreami', 'dreami', '🛵 드리미', '이미 완료된 배달입니다. 위치 전송을 종료합니다.', env.result);
+        stopPolling();
+      } else {                                       // LOCATION_COLLECTION_FAILED 등
+        locToast('⚠️ ' + env.code + ' · ' + env.message);
+      }
     }
 
     // ===== 시딩 =====
@@ -356,7 +376,8 @@
       $('bStatus').textContent = meta.cust;
       $('bSub').textContent = '배달원을 기다리는 중…';
       setLatLng(START[0], START[1]); moveMarkers(START[0], START[1], true);
-      showToast('🆕 새 배달 시작: ' + r.orderId.slice(0, 8) + '…');
+      showToast('🆕 새 배달 시작: ' + r.orderId.slice(0, 8) + '… (5초마다 위치 전송 시작)');
+      startPolling();  // 배달 시작 즉시 5초 주기 위치 전송(폴링) 개시
     };
     $('btnClear').onclick = () => { $('log').innerHTML = ''; };
 
@@ -370,25 +391,34 @@
     }
     $('btnLoc').onclick = sendLocation;
 
-    // ===== 자동 이동(동쪽) =====
-    let autoTimer = null;
-    $('btnAuto').onclick = () => {
-      const btn = $('btnAuto');
-      if (autoTimer) {
-        clearInterval(autoTimer); autoTimer = null;
-        btn.classList.remove('toggle-on'); btn.textContent = '▶ 자동 이동(동쪽)';
-        return;
-      }
-      if (!requireOrder('side-d', '드리미')) return;
-      btn.classList.add('toggle-on'); btn.textContent = '⏸ 이동 중(동쪽)';
-      const stepEast = () => {
+    // ===== 5초 폴링(위치 전송) — 배달 시작 시 개시, 종료/취소 인지 시 중단 =====
+    let pollTimer = null;
+    let autoMove = false; // 매 폴링마다 동쪽으로 전진할지 여부(토글)
+
+    function startPolling() {
+      stopPolling();
+      pollLocation();                        // 즉시 1회
+      pollTimer = setInterval(pollLocation, 5000);
+    }
+    function stopPolling() {
+      if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+    }
+    function pollLocation() {
+      if (!orderId()) { stopPolling(); return; }
+      if (autoMove) {                        // 이동 ON이면 경도를 동쪽으로 한 스텝 전진
         const lat = parseFloat($('lat').value) || START[0];
-        const lng = (parseFloat($('lng').value) || START[1]) + AUTO_STEP; // 동쪽으로 전진
+        const lng = (parseFloat($('lng').value) || START[1]) + AUTO_STEP;
         setLatLng(lat, lng); moveMarkers(lat, lng, true);
-        sendLocation();
-      };
-      stepEast();
-      autoTimer = setInterval(stepEast, 5000);
+      }
+      sendLocation();
+    }
+
+    // ===== 동쪽 이동 토글(폴링은 이미 돌고 있고, 이 버튼은 이동 여부만 바꾼다) =====
+    $('btnAuto').onclick = () => {
+      autoMove = !autoMove;
+      const btn = $('btnAuto');
+      btn.classList.toggle('toggle-on', autoMove);
+      btn.textContent = autoMove ? '⏸ 동쪽 이동 ON' : '▶ 동쪽 이동 OFF';
     };
 
     // ===== 상태 전이 버튼 =====
@@ -400,7 +430,7 @@
       cancelDreami: { key:'cancelD', title:'취소 · 드리미', actorCls:'side-d', actorLabel:'드리미', path:'cancel/dreami',
                       target:'boormi', notifyTitle:'🏠 부르미 알림', notifyMsg:'❌ 배달원이 픽업을 취소했어요.' },
       cancelBoormi: { key:'cancelB', title:'취소 · 부르미', actorCls:'side-b', actorLabel:'부르미', path:'cancel/boormi',
-                      target:'dreami', notifyTitle:'🛵 드리미 알림', notifyMsg:'❌ 주문자가 주문을 취소했어요.' },
+                      target:'boormi', notifyTitle:'🏠 부르미', notifyMsg:'주문을 취소했어요. 배달원은 다음 위치 전송(1~5초 뒤)에 인지합니다.' },
       cancelAdmin:  { key:'cancelA', title:'취소 · 관리자', actorCls:'side-b', actorLabel:'관리자', path:'cancel/admin',
                       target:'error', notifyTitle:'⚠️ 관리자 취소', notifyMsg:'관리자가 배달을 취소했습니다.' },
     };
