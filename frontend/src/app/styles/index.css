@@ -14,9 +14,21 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  min-height: 100svh;
+  overflow: hidden; /* 문서 스크롤 제거 → 앱 전체 러버밴드 방지 */
+  overscroll-behavior: none; /* 당겨서 새로고침·스크롤 체이닝 차단 */
+}
+
+/* 앱 셸: #root 를 뷰포트에 고정하고 스크롤은 ScreenShell 내부에서만 발생 */
+#root {
+  height: 100%;
+  overflow: hidden;
 }
 
 /* 인라인 아이콘: 컨테이너 크기에 맞춰 스케일하고 stroke/fill 을 currentColor 로 재색 */
