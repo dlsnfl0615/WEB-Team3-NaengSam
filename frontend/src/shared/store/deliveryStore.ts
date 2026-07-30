@@ -12,6 +12,7 @@ import type {
   CreateDeliveryRequest,
   Delivery,
 } from "@/shared/mock/types";
+import { useWalletStore } from "./walletStore";
 
 /** 진행 화면(track/detail statuses.ts)이 다루는 축약 상태. */
 export type DeliveryStatus = "픽업중" | "배송중" | "지연";
@@ -68,14 +69,19 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     }));
   },
   complete: async () => {
-    const { activeId } = get();
+    const { activeId, deliveries } = get();
     if (!activeId) return;
     await completeApi(activeId);
+    const delivery = deliveries.find((d) => d.id === activeId);
     set((s) => ({
       deliveries: s.deliveries.map((d) =>
         d.id === activeId ? { ...d, status: "완료", note: "배송 완료" } : d,
       ),
     }));
+    // 완료 배달을 지갑 정산(드리미 수익 / 부르미 결제)에 반영.
+    if (delivery) {
+      useWalletStore.getState().settleDelivery({ ...delivery, status: "완료" });
+    }
   },
   cancel: async (reason) => {
     const { activeId } = get();
