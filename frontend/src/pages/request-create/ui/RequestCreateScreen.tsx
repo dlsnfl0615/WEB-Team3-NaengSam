@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
+import { useDeliveryStore } from "@/shared/store/deliveryStore";
 import { RequestStepper } from "./RequestStepper";
 import { StepLocation } from "./StepLocation";
 import { StepItem } from "./StepItem";
@@ -26,10 +27,15 @@ const INITIAL_FORM: RequestForm = {
  * 부름 등록 화면(Figma node 191:548/475/416/340).
  * 위치 → 물품 → 사진·요청 → 결제 4단계 멀티스텝 폼(UI 전용, API 미연동).
  */
+/** 결제 화면 표시 금액(12,000 P)과 동일한 목 결제액. */
+const REQUEST_PRICE = 12000;
+
 export function RequestCreateScreen() {
   const navigate = useNavigate();
+  const createRequest = useDeliveryStore((s) => s.createRequest);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<RequestForm>(INITIAL_FORM);
+  const [submitting, setSubmitting] = useState(false);
 
   const update = (patch: Partial<RequestForm>) =>
     setForm((prev) => ({ ...prev, ...patch }));
@@ -37,6 +43,25 @@ export function RequestCreateScreen() {
   const next = () => setStep((s) => Math.min(4, s + 1));
   const prev = () => setStep((s) => Math.max(1, s - 1));
   const back = () => (step > 1 ? prev() : navigate(-1));
+
+  const submit = async () => {
+    setSubmitting(true);
+    try {
+      await createRequest({
+        pickup: form.pickup,
+        dropoff: form.dropoff,
+        itemType: form.itemType,
+        itemSize: form.itemSize,
+        itemName: form.itemName,
+        detail: form.detail,
+        requestTag: form.requestTag,
+        price: REQUEST_PRICE,
+      });
+      navigate(ROUTES.matching, { replace: true });
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <ScreenShell>
@@ -74,9 +99,10 @@ export function RequestCreateScreen() {
             variant="navy"
             block
             arrow
-            onClick={() => navigate(ROUTES.matching, { replace: true })}
+            disabled={submitting}
+            onClick={submit}
           >
-            등록 및 결제하기
+            {submitting ? "결제 중…" : "등록 및 결제하기"}
           </Button>
         )}
       </footer>
