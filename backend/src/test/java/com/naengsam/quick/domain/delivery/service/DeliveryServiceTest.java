@@ -46,6 +46,23 @@ class DeliveryServiceTest {
         return store.get(orderId).status();
     }
 
+    // ===== 배달 시작 =====
+
+    @Test
+    void 배달시작하면_PICKUP_NORMAL로_store에_등록된다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+
+        deliveryService.startDelivery(orderId, dreamiId, boormiId);
+
+        DeliveryStatus registered = store.get(orderId);
+        assertThat(registered).isNotNull();
+        assertThat(registered.status()).isEqualTo(DeliveryCd.PICKUP_NORMAL);
+        assertThat(registered.dreamiId()).isEqualTo(dreamiId);
+        assertThat(registered.boormiId()).isEqualTo(boormiId);
+    }
+
     // ===== 상태 전이 단위 테스트 =====
 
     @Test

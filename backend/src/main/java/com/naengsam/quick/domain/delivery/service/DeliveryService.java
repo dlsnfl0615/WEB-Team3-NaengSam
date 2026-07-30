@@ -27,6 +27,15 @@ public class DeliveryService {
 
     private final DeliveryStore store;
 
+    // ===== 배달 시작 (진입점) =====
+
+    // 매칭이 확정된 주문의 배달을 시작한다. 초기 상태 PICKUP_NORMAL로 DeliveryStatus를 만들어 store에 등록해,
+    // 이후 상태 전이 요청들이 store.get(orderId)로 이 주문을 찾을 수 있게 한다.
+    // 호출부(매칭 확정 훅)는 매칭 도메인 담당이며 여기서는 진입점만 제공한다. boormiId는 호출부에서 넘겨받는다.
+    public void startDelivery(UUID orderId, UUID dreamiId, UUID boormiId) {
+        store.register(DeliveryStatus.create(orderId, dreamiId, boormiId));
+    }
+
     // ===== 공개 메서드 (동기 요청) — 주문 단위 락 안에서 상태 전이를 실행하고 결과를 돌려준다 =====
 
     // 드리미 위치 정보를 전달 (이 메소드를 5~10초마다 드리미가 호출해야함). 동시에 상태 변경이 있다면 응답한다.
