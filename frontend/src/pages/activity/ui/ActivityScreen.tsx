@@ -4,9 +4,14 @@ import { BottomNav, ScreenShell, SegmentedToggle, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import type { Role } from "@/shared/lib/role/RoleContext";
+import { useDeliveryStore } from "@/shared/store/deliveryStore";
 import { ActivityItem } from "./ActivityItem";
 import { FilterChips } from "./FilterChips";
-import { DRIVER_RECORDS, SENDER_RECORDS, type ActivityFilter } from "./records";
+import {
+  toActivityRecords,
+  type ActivityFilter,
+  type ActivityRecord,
+} from "./records";
 
 /**
  * 활동 내역 리스트 화면(Figma node 191:266, 191:1118).
@@ -16,19 +21,20 @@ export function ActivityScreen() {
   const navigate = useNavigate();
   const { role, setRole } = useRole();
   const [filter, setFilter] = useState<ActivityFilter>("전체");
+  const deliveries = useDeliveryStore((s) => s.deliveries);
 
   const isDriver = role === "드리미";
-  const records = isDriver ? DRIVER_RECORDS : SENDER_RECORDS;
+  const records = toActivityRecords(deliveries, role);
   const visible =
     filter === "전체" ? records : records.filter((r) => r.filter === filter);
 
   /** 진행 중인 건은 실시간 상세로, 끝난 드리미 건은 드림 상세로 보냅니다. */
-  const detailPath = (recordFilter: ActivityFilter) => {
-    if (recordFilter === "진행중")
-      return `${ROUTES.activityDetail}?status=진행중`;
+  const detailPath = (record: ActivityRecord) => {
+    if (record.filter === "진행중")
+      return `${ROUTES.activityDetail}?status=진행중&id=${record.id}`;
     return isDriver
-      ? ROUTES.activityDetailDriver
-      : `${ROUTES.activityDetail}?status=완료`;
+      ? `${ROUTES.activityDetailDriver}?id=${record.id}`
+      : `${ROUTES.activityDetail}?status=완료&id=${record.id}`;
   };
 
   return (
@@ -45,7 +51,7 @@ export function ActivityScreen() {
         <FilterChips value={filter} onChange={setFilter} />
 
         <p className="text-xs text-muted">
-          {isDriver ? "수행한 배달 · 총 8건" : "요청한 배달 · 총 12건"}
+          {isDriver ? "수행한 배달" : "요청한 배달"} · 총 {records.length}건
         </p>
 
         {visible.length > 0 ? (
@@ -55,7 +61,7 @@ export function ActivityScreen() {
                 key={record.id}
                 record={record}
                 earned={isDriver}
-                onClick={() => navigate(detailPath(record.filter))}
+                onClick={() => navigate(detailPath(record))}
               />
             ))}
           </div>
