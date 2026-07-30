@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
 public class VerificationCodeStore {
 
     public enum VerifyResult {
-        OK, MISMATCH, EXPIRED, TOO_MANY_ATTEMPTS
+        OK, MISMATCH, EXPIRED, TOO_MANY_ATTEMPTS, ALREADY_VERIFIED
     }
 
     private record CodeEntry(String code, LocalDateTime expiresAt, LocalDateTime lastSentAt, int attempts) {
@@ -51,6 +51,10 @@ public class VerificationCodeStore {
      * 인증번호를 검증한다. 성공 시 코드를 제거하고 인증완료 상태를 기록한다(1회용). 불일치가 누적되어
      * {@code maxVerifyAttempts} 에 도달하면 코드를 폐기해 무한 대입(brute-force)을 차단한다.
      *
+     * <p>이미 인증완료 상태({@code verifiedTtl} 내)인 번호를 다시 검증하면(중복 요청·재시도 등)
+     * 만료가 아니라 {@link VerifyResult#ALREADY_VERIFIED}로 멱등하게 처리한다. 번호는 이미 인증된
+     * 상태이므로 이 시점의 코드 값과 무관하게 성공으로 취급해도 새 권한을 부여하지 않는다.
+     *
      * <p>검증·시도횟수 갱신은 {@link ConcurrentHashMap#compute}로 원자적으로 수행한다.
      */
     public VerifyResult verify(String phone, String code) {
@@ -74,6 +78,8 @@ public class VerificationCodeStore {
         });
         if (result[0] == VerifyResult.OK) {
             verified.put(phone, LocalDateTime.now().plus(props.verifiedTtl()));
+        } else if (result[0] == VerifyResult.EXPIRED && isVerified(phone)) {
+            result[0] = VerifyResult.ALREADY_VERIFIED;
         }
         return result[0];
     }

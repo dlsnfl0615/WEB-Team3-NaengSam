@@ -46,8 +46,9 @@ public class SmsVerificationService {
             case EXPIRED -> throw new BusinessException(AuthErrorCode.VERIFICATION_CODE_EXPIRED);
             case MISMATCH -> throw new BusinessException(AuthErrorCode.INVALID_VERIFICATION_CODE);
             case TOO_MANY_ATTEMPTS -> throw new BusinessException(AuthErrorCode.VERIFICATION_CODE_ATTEMPTS_EXCEEDED);
-            case OK -> {
-                // 인증완료 상태는 store 에 기록됨
+            case OK, ALREADY_VERIFIED -> {
+                // OK: 인증완료 상태는 store 에 기록됨
+                // ALREADY_VERIFIED: 이미 인증 완료된 번호 재검증도 멱등하게 성공 처리
             }
         }
     }
