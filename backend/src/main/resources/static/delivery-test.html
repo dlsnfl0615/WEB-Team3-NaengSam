@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>배달 시각 테스트 콘솔</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    :root {
+      --bg: #0f1117; --panel: #1a1d27; --border: #2a2e3a; --text: #e6e8ee;
+      --muted: #8b90a0; --accent: #4f8cff; --ok: #22c55e; --warn: #f59e0b; --err: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg); color: var(--text); }
+    header { padding: 14px 20px; border-bottom: 1px solid var(--border); display: flex;
+      align-items: center; gap: 12px; flex-wrap: wrap; }
+    header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+    .layout { display: grid; grid-template-columns: 1fr 380px; gap: 0; height: calc(100vh - 55px); }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; height: auto; } }
+    #map { width: 100%; height: 100%; min-height: 420px; background: #222; }
+    .side { border-left: 1px solid var(--border); display: flex; flex-direction: column;
+      overflow: hidden; background: var(--panel); }
+    .section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    label.field { font-size: 12px; color: var(--muted); display: block; margin-bottom: 4px; }
+    input[type=text], input[type=number] { background: #0f1117; border: 1px solid var(--border);
+      color: var(--text); border-radius: 6px; padding: 6px 8px; font-size: 12px; width: 100%; }
+    button { background: #262a36; color: var(--text); border: 1px solid var(--border);
+      border-radius: 6px; padding: 8px 12px; font-size: 13px; cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+    button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    button.danger { background: #3a2226; border-color: #5a2a30; }
+    button.danger:hover { border-color: var(--err); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 999px; font-weight: 700;
+      font-size: 13px; letter-spacing: .3px; }
+    .s-none { background: #2a2e3a; color: var(--muted); }
+    .s-pickup { background: #3a3f4b; color: #cdd2df; }
+    .s-delivering { background: #1e3a6b; color: #9dc0ff; }
+    .s-delivered { background: #14532d; color: #86efac; }
+    .s-cancelled { background: #4a1d22; color: #fca5a5; }
+    .kv { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.7; }
+    .kv b { color: var(--text); font-weight: 600; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+    .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .log { flex: 1; overflow-y: auto; padding: 10px 12px; font-family: ui-monospace, Menlo, monospace;
+      font-size: 11.5px; line-height: 1.5; }
+    .log-item { padding: 6px 8px; border-radius: 6px; margin-bottom: 6px; background: #14171f;
+      border-left: 3px solid var(--border); white-space: pre-wrap; word-break: break-all; }
+    .log-item.ok { border-left-color: var(--ok); }
+    .log-item.err { border-left-color: var(--err); }
+    .log-item .t { color: var(--muted); }
+    .log-item .code-ok { color: var(--ok); }
+    .log-item .code-err { color: var(--err); font-weight: 700; }
+    .hint { font-size: 11px; color: var(--muted); margin-top: 6px; }
+    .toggle-on { background: var(--ok) !important; border-color: var(--ok) !important; color: #05240f !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>🛵 배달 시각 테스트 콘솔</h1>
+    <span class="badge s-none" id="statusBadge">배달 없음</span>
+    <span class="mono" id="statusMsg" style="color:var(--muted)"></span>
+  </header>
+
+  <div class="layout">
+    <div id="map"></div>
+
+    <div class="side">
+      <div class="section">
+        <div class="row">
+          <button class="primary" id="btnSeed">＋ 배달 시작 (seed)</button>
+          <button id="btnClear">로그 지우기</button>
+        </div>
+        <div style="margin-top:10px">
+          <label class="field">현재 orderId (수동 지정 가능)</label>
+          <input type="text" id="orderId" placeholder="배달 시작을 누르면 자동 발급"/>
+        </div>
+        <div class="kv" id="ids"></div>
+      </div>
+
+      <div class="section">
+        <label class="field">드리미 위치 (지도 클릭/드래그로 선택)</label>
+        <div class="row">
+          <div style="flex:1"><input type="number" step="0.00000001" id="lat" placeholder="위도"/></div>
+          <div style="flex:1"><input type="number" step="0.00000001" id="lng" placeholder="경도"/></div>
+        </div>
+        <div class="row" style="margin-top:8px">
+          <button class="primary" id="btnLoc" style="flex:1">📍 위치 업데이트</button>
+          <button id="btnAuto">▶ 자동 이동</button>
+        </div>
+        <div class="hint">자동 이동 ON → 5초마다 현재 좌표에 작은 지터를 더해 전송(드리미 폴링 시뮬레이션)</div>
+      </div>
+
+      <div class="section">
+        <label class="field">상태 전이</label>
+        <div class="btn-grid">
+          <button id="btnPickup">✅ 픽업 완료</button>
+          <button id="btnFinish">🏁 배달 완료</button>
+          <button class="danger" id="btnCancelDreami">취소 · 드리미</button>
+          <button class="danger" id="btnCancelBoormi">취소 · 부르미</button>
+          <button class="danger" id="btnCancelAdmin" style="grid-column:1/3">취소 · 관리자</button>
+        </div>
+      </div>
+
+      <div class="log" id="log"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // ===== 상태 라벨/스타일 =====
+    const STATUS_META = {
+      PICKUP_NORMAL:              { label: "픽업중(정상)",       cls: "s-pickup" },
+      DELIVERING:                 { label: "배달중",             cls: "s-delivering" },
+      DELIVERED:                  { label: "배달 완료",          cls: "s-delivered" },
+      PICKUP_CANCELLED_BY_BOORMI: { label: "픽업취소(부르미)",   cls: "s-cancelled" },
+      PICKUP_CANCELLED_BY_DREAMI: { label: "픽업취소(드리미)",   cls: "s-cancelled" },
+      PICKUP_CANCELLED_BY_ADMIN:  { label: "픽업취소(관리자)",   cls: "s-cancelled" },
+    };
+
+    // ===== 지도 초기화 (기본: 강남역 부근) =====
+    const START = [37.49795, 127.02760];
+    const map = L.map('map').setView(START, 15);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '© OpenStreetMap'
+    }).addTo(map);
+    const marker = L.marker(START, { draggable: true }).addTo(map);
+
+    const $ = id => document.getElementById(id);
+    function setLatLng(lat, lng) {
+      $('lat').value = Number(lat).toFixed(8);
+      $('lng').value = Number(lng).toFixed(8);
+    }
+    setLatLng(START[0], START[1]);
+    marker.on('dragend', () => { const p = marker.getLatLng(); setLatLng(p.lat, p.lng); });
+    map.on('click', e => { marker.setLatLng(e.latlng); setLatLng(e.latlng.lat, e.latlng.lng); });
+
+    // ===== 로그 =====
+    function pad(n){ return String(n).padStart(2,'0'); }
+    function now(){ const d=new Date(); return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+    function log(title, ok, detail) {
+      const el = document.createElement('div');
+      el.className = 'log-item ' + (ok ? 'ok' : 'err');
+      el.innerHTML = `<span class="t">${now()}</span>  ${title}\n${detail}`;
+      $('log').prepend(el);
+    }
+
+    // ===== 상태 배지 갱신 =====
+    function applyResult(result) {
+      if (!result) return;
+      const meta = STATUS_META[result.status] || { label: result.status, cls: 's-none' };
+      const badge = $('statusBadge');
+      badge.className = 'badge ' + meta.cls;
+      badge.textContent = meta.label;
+      $('statusMsg').textContent = result.message ? '“' + result.message + '”' : '';
+      if (result.currentLocation) {
+        const { latitude, longitude } = result.currentLocation;
+        marker.setLatLng([latitude, longitude]);
+        setLatLng(latitude, longitude);
+      }
+    }
+
+    // ===== API 호출 =====
+    function orderId() { return $('orderId').value.trim(); }
+    function requireOrder() {
+      if (!orderId()) { log('요청 취소', false, '먼저 [배달 시작]으로 orderId를 발급하세요.'); return false; }
+      return true;
+    }
+
+    async function call(title, path, body) {
+      const opts = { method: 'POST', headers: {} };
+      if (body !== undefined) { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(body); }
+      try {
+        const res = await fetch(path, opts);
+        const env = await res.json();
+        const ok = env.isSuccess === true;
+        const codeCls = ok ? 'code-ok' : 'code-err';
+        const detail = `<span class="${codeCls}">[HTTP ${res.status}] ${env.code} · ${env.message}</span>\n`
+          + JSON.stringify(env.result, null, 2);
+        log(title, ok, detail);
+        if (ok) applyResult(env.result);
+        return env;
+      } catch (e) {
+        log(title, false, '네트워크/파싱 오류: ' + e.message);
+      }
+    }
+
+    // ===== 시딩 =====
+    $('btnSeed').onclick = async () => {
+      const env = await call('배달 시작 (seed)', '/api/v1/delivery/test/seed');
+      if (env && env.isSuccess) {
+        const r = env.result;
+        $('orderId').value = r.orderId;
+        $('ids').innerHTML = `<div>orderId <b class="mono">${r.orderId}</b></div>`
+          + `<div>dreamiId <span class="mono">${r.dreamiId}</span></div>`
+          + `<div>boormiId <span class="mono">${r.boormiId}</span></div>`;
+        const meta = STATUS_META.PICKUP_NORMAL;
+        $('statusBadge').className = 'badge ' + meta.cls;
+        $('statusBadge').textContent = meta.label;
+        $('statusMsg').textContent = '';
+      }
+    };
+    $('btnClear').onclick = () => { $('log').innerHTML = ''; };
+
+    // ===== 위치 업데이트 =====
+    function sendLocation() {
+      if (!requireOrder()) return;
+      const lat = parseFloat($('lat').value), lng = parseFloat($('lng').value);
+      const body = { latitude: isNaN(lat) ? null : lat, longitude: isNaN(lng) ? null : lng };
+      return call('위치 업데이트', `/api/v1/delivery/orders/${orderId()}/dreami-location`, body);
+    }
+    $('btnLoc').onclick = sendLocation;
+
+    // ===== 자동 이동 토글 =====
+    let autoTimer = null;
+    $('btnAuto').onclick = () => {
+      const btn = $('btnAuto');
+      if (autoTimer) {
+        clearInterval(autoTimer); autoTimer = null;
+        btn.classList.remove('toggle-on'); btn.textContent = '▶ 자동 이동';
+        return;
+      }
+      if (!requireOrder()) return;
+      btn.classList.add('toggle-on'); btn.textContent = '⏸ 자동 이동 중';
+      const jitter = () => {
+        const lat = (parseFloat($('lat').value) || START[0]) + (Math.random() - 0.5) * 0.0006;
+        const lng = (parseFloat($('lng').value) || START[1]) + (Math.random() - 0.5) * 0.0006;
+        setLatLng(lat, lng); marker.setLatLng([lat, lng]);
+        sendLocation();
+      };
+      jitter();
+      autoTimer = setInterval(jitter, 5000);
+    };
+
+    // ===== 상태 전이 버튼 =====
+    const guard = fn => () => { if (requireOrder()) fn(); };
+    $('btnPickup').onclick = guard(() =>
+      call('픽업 완료', `/api/v1/delivery/orders/${orderId()}/pickup-finish`, undefined));
+    $('btnFinish').onclick = guard(() =>
+      call('배달 완료', `/api/v1/delivery/orders/${orderId()}/finish`, undefined));
+    $('btnCancelDreami').onclick = guard(() =>
+      call('취소 · 드리미', `/api/v1/delivery/orders/${orderId()}/cancel/dreami`, undefined));
+    $('btnCancelBoormi').onclick = guard(() =>
+      call('취소 · 부르미', `/api/v1/delivery/orders/${orderId()}/cancel/boormi`, undefined));
+    $('btnCancelAdmin').onclick = guard(() =>
+      call('취소 · 관리자', `/api/v1/delivery/orders/${orderId()}/cancel/admin`, undefined));
+  </script>
+</body>
+</html>
