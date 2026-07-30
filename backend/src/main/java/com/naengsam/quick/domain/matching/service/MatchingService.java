@@ -78,11 +78,24 @@ public class MatchingService {
         log.debug("드리미 제거 처리 완료: dreamiId={}", dreamiId);
     }
 
-    // 액션 하나 처리
+    /**
+     * 호출 스레드에서 곧바로 확인 가능한 중복 시작만 빠르게 걸러 409로 응답한다. 실제 방 생성은 엔진 스레드에서 순차 처리되며, 그 결과는 {@link #findOrderOfferGroup(UUID)}로
+     * 별도 조회한다.
+     */
     public void startMatching(Order order) {
-        OrderOfferGroup existingGroup = orderOfferGroupsByOrderId.get(order.orderId());
-        if (existingGroup != null && existingGroup.status() == OrderOfferGroupStatus.OPEN) {
+        if (isOpenGroupExists(order.orderId())) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);
+        }
+        matchingEngine.submit(new StartMatching(this, order));
+    }
+
+    void applyStartMatching(Order order) {
+        log.debug("매칭 시작 액션 실행: orderId={}", order.orderId());
+
+        // 큐에 쌓여 있는 동안 다른 액션이 먼저 방을 만들었을 수 있으므로 엔진 스레드에서 다시 확인한다.
+        if (isOpenGroupExists(order.orderId())) {
+            log.debug("이미 진행 중인 방이 있어 매칭 시작을 건너뜀: orderId={}", order.orderId());
+            return;
         }
 
         List<WaitingDreami> top3List = dreamiMap.values().stream()
@@ -119,6 +132,12 @@ public class MatchingService {
 
     // 팝업에서 수락을 눌렀다는 가정
     public void acceptByDreami(UUID offerId) {
+        matchingEngine.submit(new AcceptByDreami(this, offerId));
+    }
+
+    void applyAcceptByDreami(UUID offerId) {
+        log.debug("드리미 수락 액션 실행: offerId={}", offerId);
+
         Optional<MatchOffer> optionalMatchOffer = acceptableOffer(offerId);
         if (optionalMatchOffer.isEmpty()) {
             return;
@@ -153,6 +172,12 @@ public class MatchingService {
 
     // 드리미가 거절하면, DREAMI_REJECTED로 변경 및 다시 대기상태로
     public void rejectByDreami(UUID offerId) {
+        matchingEngine.submit(new RejectByDreami(this, offerId));
+    }
+
+    void applyRejectByDreami(UUID offerId) {
+        log.debug("드리미 거절 액션 실행: offerId={}", offerId);
+
         findOffer(offerId).ifPresentOrElse(
                 offer -> {
                     findDreami(offer.dreamiId()).ifPresent(WaitingDreami::markMatching);
@@ -165,6 +190,12 @@ public class MatchingService {
     }
 
     public void acceptByBoormi(UUID offerId) {
+        matchingEngine.submit(new AcceptByBoormi(this, offerId));
+    }
+
+    void applyAcceptByBoormi(UUID offerId) {
+        log.debug("부르미 수락 액션 실행: offerId={}", offerId);
+
         findOffer(offerId).ifPresentOrElse(
                 matchOffer -> {
                     matchOffer.confirmByBoormi(); // 부르미까지 수락 완료
@@ -177,6 +208,12 @@ public class MatchingService {
     }
 
     public void rejectByBoormi(UUID offerId) {
+        matchingEngine.submit(new RejectByBoormi(this, offerId));
+    }
+
+    void applyRejectByBoormi(UUID offerId) {
+        log.debug("부르미 거절 액션 실행: offerId={}", offerId);
+
         findOffer(offerId).ifPresentOrElse(
                 matchOffer -> {
                     matchOffer.rejectByBoormi();
@@ -192,8 +229,13 @@ public class MatchingService {
         );
     }
 
-    // 이건 액션에 의해 실행 되어야함
     public void expireDreamiOffer(UUID offerId) {
+        matchingEngine.submit(new ExpireDreamiOffer(this, offerId));
+    }
+
+    void applyExpireDreamiOffer(UUID offerId) {
+        log.debug("드리미 응답시간 만료 액션 실행: offerId={}", offerId);
+
         // 해당 match가 OFFERED 상태가 아니라면 다른 로직에 의해서 처리가 된거임
         findOffer(offerId)
                 .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.OFFERED)
@@ -206,6 +248,12 @@ public class MatchingService {
     }
 
     public void expireBoormiOffer(UUID offerId) {
+        matchingEngine.submit(new ExpireBoormiOffer(this, offerId));
+    }
+
+    void applyExpireBoormiOffer(UUID offerId) {
+        log.debug("부르미 응답시간 만료 액션 실행: offerId={}", offerId);
+
         findOffer(offerId).ifPresent(matchOffer -> {
             // 드리미가 다시 배달이 가능하게 바꿔야함
             matchOffer.expireByBoormi();
@@ -220,6 +268,11 @@ public class MatchingService {
      */
     private Comparator<WaitingDreami> orderingComparator() {
         return Comparator.comparing(WaitingDreami::updatedAt);
+    }
+
+    private boolean isOpenGroupExists(UUID orderId) {
+        OrderOfferGroup existingGroup = orderOfferGroupsByOrderId.get(orderId);
+        return existingGroup != null && existingGroup.status() == OrderOfferGroupStatus.OPEN;
     }
 
     private Optional<MatchOffer> findOffer(UUID offerId) {

@@ -47,7 +47,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(dreamiId4, location);
 
         // when
-        matchingService.startMatching(order);
+        matchingService.applyStartMatching(order);
 
         // then
         Map<UUID, MatchingService.OrderOfferGroup> orderOfferGroups =
@@ -93,7 +93,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
 
-        matchingService.startMatching(order);
+        matchingService.applyStartMatching(order);
 
         List<MatchingService.MatchOffer> offers =
                 getOrderOfferGroups().get(orderId).offers();
@@ -104,7 +104,7 @@ class MatchingServiceTest {
                 getDreamiMap().get(acceptedOffer.dreamiId());
 
         // when
-        matchingService.acceptByDreami(acceptedOffer.offerId());
+        matchingService.applyAcceptByDreami(acceptedOffer.offerId());
 
         // then
         assertThat(acceptedOffer.status())
@@ -146,15 +146,15 @@ class MatchingServiceTest {
         when(order.orderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.startMatching(order);
+        matchingService.applyStartMatching(order);
 
         MatchingService.MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
 
-        matchingService.acceptByDreami(offer.offerId());
+        matchingService.applyAcceptByDreami(offer.offerId());
 
         // when
-        matchingService.acceptByBoormi(offer.offerId());
+        matchingService.applyAcceptByBoormi(offer.offerId());
 
         // then
         assertThat(offer.status())
@@ -175,7 +175,7 @@ class MatchingServiceTest {
         when(order.orderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.startMatching(order);
+        matchingService.applyStartMatching(order);
 
         MatchingService.OrderOfferGroup originalGroup = getOrderOfferGroups().get(orderId);
 
@@ -197,7 +197,7 @@ class MatchingServiceTest {
         when(order.orderId()).thenReturn(orderId);
 
         // when (등록된 드리미가 한 명도 없는 상태에서 매칭 시작)
-        matchingService.startMatching(order);
+        matchingService.applyStartMatching(order);
 
         // then
         MatchingService.OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -220,7 +220,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(dreamiId, location);
 
         // when
-        matchingService.startMatching(order);
+        matchingService.applyStartMatching(order);
 
         // then
         MatchingService.OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -250,7 +250,7 @@ class MatchingServiceTest {
         when(orderB.orderId()).thenReturn(orderIdB);
 
         matchingService.applyRegisterDreami(dreamiId, location);
-        matchingService.startMatching(orderA);
+        matchingService.applyStartMatching(orderA);
 
         // 원래라면 PROPOSED 상태라 다음 매칭 후보에서 제외되지만, 드리미 상태 제한이 아직 없다는 것을 보여주기 위해
         // 공개 API(markMatching)로 다시 MATCHING 상태로 되돌린다.
@@ -258,7 +258,7 @@ class MatchingServiceTest {
         dreami.markMatching();
 
         // when
-        matchingService.startMatching(orderB);
+        matchingService.applyStartMatching(orderB);
 
         // then
         List<MatchingService.MatchOffer> offersA = getOrderOfferGroups().get(orderIdA).offers();
@@ -280,7 +280,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
 
-        matchingService.startMatching(order);
+        matchingService.applyStartMatching(order);
 
         MatchingService.MatchOffer acceptedOffer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -288,7 +288,7 @@ class MatchingServiceTest {
                 getDreamiMap().get(acceptedOffer.dreamiId());
 
         // when (수락되지 않은 나머지 오퍼가 OFFERED -> WITHDRAWN 으로 바뀜)
-        matchingService.acceptByDreami(acceptedOffer.offerId());
+        matchingService.applyAcceptByDreami(acceptedOffer.offerId());
 
         // then
         List<MatchingService.MatchOffer> offersAfter =
@@ -309,15 +309,15 @@ class MatchingServiceTest {
         when(order.orderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.startMatching(order);
+        matchingService.applyStartMatching(order);
 
         MatchingService.MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
 
-        matchingService.acceptByDreami(offer.offerId());
+        matchingService.applyAcceptByDreami(offer.offerId());
 
         // when
-        matchingService.acceptByBoormi(offer.offerId());
+        matchingService.applyAcceptByBoormi(offer.offerId());
 
         // then (그룹이 map에서 삭제되지 않고, 종료 상태로만 남는다)
         assertThat(getOrderOfferGroups()).containsKey(orderId);
@@ -336,15 +336,15 @@ class MatchingServiceTest {
         when(order.orderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.startMatching(order);
+        matchingService.applyStartMatching(order);
 
         MatchingService.MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
 
-        matchingService.acceptByDreami(offer.offerId());
+        matchingService.applyAcceptByDreami(offer.offerId());
 
         // when
-        matchingService.rejectByBoormi(offer.offerId());
+        matchingService.applyRejectByBoormi(offer.offerId());
 
         // then
         MatchingService.OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -367,14 +367,14 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
 
-        matchingService.startMatching(order);
+        matchingService.applyStartMatching(order);
 
         List<MatchingService.MatchOffer> offers =
                 getOrderOfferGroups().get(orderId).offers();
 
         // when
         for (MatchingService.MatchOffer offer : offers) {
-            matchingService.rejectByDreami(offer.offerId());
+            matchingService.applyRejectByDreami(offer.offerId());
         }
 
         // then
