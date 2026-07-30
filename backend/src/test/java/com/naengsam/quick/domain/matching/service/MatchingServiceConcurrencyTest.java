@@ -38,7 +38,7 @@ class MatchingServiceConcurrencyTest {
     void setUp() {
         matchingEngine = new MatchingEngine();
         matchingEngine.start();
-        matchingService = new MatchingService(matchingEngine);
+        matchingService = new MatchingService(matchingEngine, mock(com.naengsam.quick.global.sse.SseService.class));
         requestThreads = Executors.newFixedThreadPool(16);
     }
 
