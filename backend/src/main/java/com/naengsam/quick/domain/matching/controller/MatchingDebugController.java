@@ -11,7 +11,6 @@ import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -63,9 +62,10 @@ public class MatchingDebugController {
     @PostMapping("/orders/{orderId}/start")
     public void startMatching(@PathVariable UUID orderId, @Valid @RequestBody MatchingStartRequest request) {
         Orders order = Orders.create(orderId, request.boormiId(),
-                BigDecimal.valueOf(request.destination().latitude()),
-                BigDecimal.valueOf(request.destination().longitude()));
-        matchingService.startMatching(order);
+                request.destination().latitude(), request.destination().longitude());
+        if (!matchingService.startMatching(order)) {
+            throw new BusinessException(GeneralErrorCode.CONFLICT);
+        }
     }
 
     @Operation(summary = "주문의 매칭 방(OrderOfferGroup) 상태 조회")

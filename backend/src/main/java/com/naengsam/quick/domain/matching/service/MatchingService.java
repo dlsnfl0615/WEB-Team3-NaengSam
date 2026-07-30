@@ -2,8 +2,6 @@ package com.naengsam.quick.domain.matching.service;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.global.code.GeneralErrorCode;
-import com.naengsam.quick.global.exception.BusinessException;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -47,15 +45,6 @@ public class MatchingService {
     private final Map<UUID, WaitingDreami> dreamiMap = new HashMap<>();
     private final MatchingEngine matchingEngine;
 
-    // 외부에서는 이 메서드로 액션을 큐에 넣기만 한다. 실제 상태 변경은 엔진 스레드에서 apply*가 수행한다.
-    public void registerDreami(UUID dreamiId, GeoPoint location) {
-        matchingEngine.submit(new DreamiRegister(this, dreamiId, location));
-    }
-
-    public void removeDreami(UUID dreamiId) {
-        matchingEngine.submit(new DreamiRemove(this, dreamiId));
-    }
-
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
     }
@@ -65,13 +54,20 @@ public class MatchingService {
         // 아직 코드 구현X
     }
 
+    // 외부에서는 이 메서드로 액션을 큐에 넣기만 한다. 실제 상태 변경은 엔진 스레드에서 apply*가 수행한다.
+    public void registerDreami(UUID dreamiId, GeoPoint location) {
+        matchingEngine.submit(new DreamiRegister(this, dreamiId, location));
+    }
+
     void applyRegisterDreami(UUID dreamiId, GeoPoint location) {
         dreamiMap.put(dreamiId,
                 new WaitingDreami(dreamiId, location, WaitingDreamiStatus.MATCHING, LocalDateTime.now()));
         log.debug("드리미 등록 처리 완료: dreamiId={}, location={}", dreamiId, location);
     }
 
-    // ────────────────────────────── 액션 제출 (public API) ──────────────────────────────
+    public void removeDreami(UUID dreamiId) {
+        matchingEngine.submit(new DreamiRemove(this, dreamiId));
+    }
 
     void applyRemoveDreami(UUID dreamiId) {
         dreamiMap.remove(dreamiId);
@@ -79,14 +75,17 @@ public class MatchingService {
     }
 
     /**
-     * 호출 스레드에서 곧바로 확인 가능한 중복 시작만 빠르게 걸러 409로 응답한다. 실제 방 생성은 엔진 스레드에서 순차 처리되며, 그 결과는 {@link #findOrderOfferGroup(UUID)}로
-     * 별도 조회한다.
+     * 매칭 시작을 요청한다. 호출 스레드에서 곧바로 확인 가능한 중복 시작만 빠르게 걸러내며, 이미 진행 중인 방이 있으면 큐에 넣지 않고 false를 반환한다. 실제 방 생성은 엔진 스레드에서 순차
+     * 처리되며, 그 결과는 {@link #findOrderOfferGroup(UUID)}로 별도 조회한다.
+     *
+     * @param order 매칭을 시작할 주문
+     * @return 매칭 시작 액션이 큐에 제출되었으면 true, 이미 진행 중인 방이 있거나 큐 제출에 실패했을 경우 false
      */
-    public void startMatching(Orders order) {
+    public boolean startMatching(Orders order) {
         if (isOpenGroupExists(order.getOrderId())) {
-            throw new BusinessException(GeneralErrorCode.CONFLICT);
+            return false;
         }
-        matchingEngine.submit(new StartMatching(this, order));
+        return matchingEngine.submit(new StartMatching(this, order));
     }
 
     void applyStartMatching(Orders order) {

@@ -2,7 +2,6 @@ package com.naengsam.quick.domain.matching.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -14,11 +13,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
-import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.matching.service.MatchingService;
-import com.naengsam.quick.global.code.GeneralErrorCode;
-import com.naengsam.quick.global.exception.BusinessException;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.exception.GlobalExceptionHandler;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -64,7 +62,8 @@ class MatchingDebugControllerTest {
         verify(matchingService).registerDreami(idCaptor.capture(), locationCaptor.capture());
 
         assertThat(response.replace("\"", "")).isEqualTo(idCaptor.getValue().toString());
-        assertThat(locationCaptor.getValue()).isEqualTo(new GeoPoint(37.5, 127.0));
+        assertThat(locationCaptor.getValue()).isEqualTo(
+                new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)));
     }
 
     @Test
@@ -112,7 +111,7 @@ class MatchingDebugControllerTest {
     @Test
     void 등록후_조회하면_대기중_드리미_목록에_나타난다() throws Exception {
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = new GeoPoint(37.5, 127.0);
+        GeoPoint location = new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0));
         MatchingService.WaitingDreami waitingDreami = new MatchingService.WaitingDreami(
                 dreamiId, location, MatchingService.WaitingDreamiStatus.MATCHING, LocalDateTime.now());
         when(matchingService.waitingDreamis()).thenReturn(List.of(waitingDreami));
@@ -166,7 +165,7 @@ class MatchingDebugControllerTest {
 
     @Test
     void 이미_진행중인_매칭이면_409를_반환한다() throws Exception {
-        doThrow(new BusinessException(GeneralErrorCode.CONFLICT)).when(matchingService).startMatching(any());
+        when(matchingService.startMatching(any())).thenReturn(false);
 
         mockMvcWithExceptionHandler().perform(post("/api/v1/debug/matching/orders/{orderId}/start", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
