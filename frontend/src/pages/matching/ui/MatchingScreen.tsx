@@ -4,8 +4,8 @@ import { Card, MapCard, Modal, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useDeliveryStore } from "@/shared/store/deliveryStore";
-import { getCalls } from "@/shared/mock/matchingService";
-import type { Call } from "@/shared/mock/types";
+import { getCalls, getOffers } from "@/shared/mock/matchingService";
+import type { Call, Offer } from "@/shared/mock/types";
 import { CallCard } from "./CallCard";
 import { OfferCard } from "./OfferCard";
 
@@ -19,8 +19,10 @@ export function MatchingScreen() {
   const { role } = useRole();
   const acceptCall = useDeliveryStore((s) => s.acceptCall);
   const acceptOffer = useDeliveryStore((s) => s.acceptOffer);
-  const [offerVisible, setOfferVisible] = useState(true);
   const [calls, setCalls] = useState<Call[]>([]);
+  const [offers, setOffers] = useState<Offer[]>([]);
+  // 부르미: 0=찾는 중(모달 없음), 1↑=오퍼 표시. 5초마다 증가하며 드리미를 순환.
+  const [tick, setTick] = useState(0);
 
   const isDriver = role === "드리미";
   const counterpart = isDriver ? "부르미" : "드리미";
@@ -31,7 +33,19 @@ export function MatchingScreen() {
     getCalls().then(setCalls);
   }, [isDriver]);
 
+  // 부르미: 오퍼 목록 로드 + 5초마다 새 드리미 오퍼 팝업.
+  useEffect(() => {
+    if (isDriver) return;
+    getOffers().then(setOffers);
+    const timer = setInterval(() => setTick((t) => t + 1), 5000);
+    return () => clearInterval(timer);
+  }, [isDriver]);
+
   const call = calls[0];
+  const offer =
+    tick > 0 && offers.length > 0
+      ? offers[(tick - 1) % offers.length]
+      : undefined;
 
   const onAcceptCall = async () => {
     if (!call) return;
@@ -40,8 +54,8 @@ export function MatchingScreen() {
   };
 
   const onAcceptOffer = async () => {
-    await acceptOffer();
-    setOfferVisible(false);
+    if (!offer) return;
+    await acceptOffer(offer.name);
     navigate(ROUTES.deliveryDetail, { replace: true });
   };
 
@@ -70,7 +84,7 @@ export function MatchingScreen() {
       </main>
 
       <Modal
-        open={offerVisible && (!isDriver || !!call)}
+        open={isDriver ? !!call : !!offer}
         label={isDriver ? "새 부름 요청" : "새 드리미 요청"}
       >
         {isDriver && call ? (
@@ -86,16 +100,18 @@ export function MatchingScreen() {
             onAccept={onAcceptCall}
           />
         ) : (
-          <OfferCard
-            heading="새 드리미 요청 도착!"
-            name="드리미 '핀'"
-            rating={4.9}
-            countLabel="배송"
-            count={132}
-            distance="120m"
-            onReject={() => navigate(ROUTES.rejectReason)}
-            onAccept={onAcceptOffer}
-          />
+          offer && (
+            <OfferCard
+              heading="새 드리미 요청 도착!"
+              name={`드리미 '${offer.name}'`}
+              rating={offer.rating}
+              countLabel="배송"
+              count={offer.count}
+              distance={offer.distance}
+              onReject={() => navigate(ROUTES.rejectReason)}
+              onAccept={onAcceptOffer}
+            />
+          )
         )}
       </Modal>
     </ScreenShell>

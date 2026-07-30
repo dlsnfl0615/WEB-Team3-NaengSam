@@ -30,7 +30,7 @@ interface DeliveryState {
   /** 드리미 콜 수락 → "픽업중" 배달 생성 후 활성 배달로 지정. */
   acceptCall: (call: Call) => Promise<Delivery>;
   /** 부르미 오퍼 수락 → 활성(매칭중) 배달을 "픽업중"으로 전이하고 드리미 배정. */
-  acceptOffer: () => Promise<void>;
+  acceptOffer: (driverName: string) => Promise<void>;
   /** 활성 배달 픽업중 → 배송중. */
   advance: () => Promise<void>;
   /** 활성 배달 → 완료. */
@@ -62,14 +62,14 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     }));
     return delivery;
   },
-  acceptOffer: async () => {
+  acceptOffer: async (driverName) => {
     const { activeId } = get();
     if (!activeId) return;
     await acceptOfferApi(activeId);
     set((s) => ({
       deliveries: s.deliveries.map((d) =>
         d.id === activeId
-          ? { ...d, status: "픽업중", driverName: "핀", note: "드리미 매칭 완료" }
+          ? { ...d, status: "픽업중", driverName, note: "드리미 매칭 완료" }
           : d,
       ),
     }));

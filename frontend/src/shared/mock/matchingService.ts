@@ -1,6 +1,6 @@
 import { mockRequest, nextId } from "./client";
-import { SEED_CALLS } from "./seed";
-import type { Call, Delivery } from "./types";
+import { SEED_CALLS, SEED_OFFERS } from "./seed";
+import type { Call, Delivery, Offer } from "./types";
 
 /**
  * 매칭/콜 목 서비스(#43). 실제 API 연동 시 구현만 교체.
@@ -9,6 +9,11 @@ import type { Call, Delivery } from "./types";
 /** 드리미에게 노출되는 대기 콜 목록. */
 export function getCalls(): Promise<Call[]> {
   return mockRequest(SEED_CALLS);
+}
+
+/** 부르미 매칭중 표시할 드리미 오퍼 목록. */
+export function getOffers(): Promise<Offer[]> {
+  return mockRequest(SEED_OFFERS);
 }
 
 /** 부르미 오퍼 수락 → 매칭중 배달을 드리미와 매칭 확정. */
