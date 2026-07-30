@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button, ScreenShell, TextField } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
 import { useSessionStore } from '@/shared/store/sessionStore'
+import { isEmail, VALIDATION_MESSAGE } from '@/shared/lib/validation'
 
 /**
  * 로그인 화면(Figma node 21:91).
@@ -14,6 +15,10 @@ export function LoginScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
+
+  const emailError =
+    email.trim() && !isEmail(email) ? VALIDATION_MESSAGE.email : undefined
+  const canSubmit = isEmail(email) && !!password.trim() && !submitting
 
   const onLogin = async () => {
     setSubmitting(true)
@@ -46,6 +51,7 @@ export function LoginScreen() {
             placeholder="email@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
+            error={emailError}
           />
           <TextField
             label="비밀번호"
@@ -60,7 +66,7 @@ export function LoginScreen() {
           variant="navy"
           block
           className="mt-6"
-          disabled={submitting}
+          disabled={!canSubmit}
           onClick={onLogin}
         >
           {submitting ? '로그인 중…' : '로그인'}
