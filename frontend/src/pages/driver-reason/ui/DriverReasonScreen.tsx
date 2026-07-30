@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, RadioOption, ScreenShell, TopBar } from "@/shared/ui";
+import { ROUTES } from "@/shared/config/routes";
+import { useDeliveryStore } from "@/shared/store/deliveryStore";
 
 const REASONS = [
   "사고가 났어요",
@@ -11,12 +13,24 @@ const REASONS = [
 
 /**
  * 드리미 배송 사유 선택 화면(Figma node 191:1298).
- * 배송 중 발생한 사고·지연 사유를 하나만 골라 제출합니다(UI 전용).
+ * 배송 중 발생한 사고·지연 사유를 골라 제출하면 활성 배달을 사고/취소 처리합니다.
  */
 export function DriverReasonScreen() {
   const navigate = useNavigate();
+  const cancel = useDeliveryStore((s) => s.cancel);
   const [reason, setReason] = useState<(typeof REASONS)[number]>(REASONS[0]);
   const [etc, setEtc] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const onSubmit = async () => {
+    setSubmitting(true);
+    try {
+      await cancel(etc.trim() ? `${reason} (${etc.trim()})` : reason);
+      navigate(ROUTES.home);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <ScreenShell>
@@ -48,8 +62,8 @@ export function DriverReasonScreen() {
       </main>
 
       <footer className="pt-4">
-        <Button variant="navy" block onClick={() => navigate(-1)}>
-          사고 사유 제출하기
+        <Button variant="navy" block disabled={submitting} onClick={onSubmit}>
+          {submitting ? "제출 중…" : "사고 사유 제출하기"}
         </Button>
       </footer>
     </ScreenShell>
