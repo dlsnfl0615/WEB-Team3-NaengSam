@@ -6,7 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
-import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.matching.dto.Order;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -74,8 +74,8 @@ class MatchingServiceConcurrencyTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
-        when(order.getOrderId()).thenReturn(orderId);
+        Order order = mock(Order.class);
+        when(order.orderId()).thenReturn(orderId);
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
@@ -116,8 +116,8 @@ class MatchingServiceConcurrencyTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
-        when(order.getOrderId()).thenReturn(orderId);
+        Order order = mock(Order.class);
+        when(order.orderId()).thenReturn(orderId);
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
