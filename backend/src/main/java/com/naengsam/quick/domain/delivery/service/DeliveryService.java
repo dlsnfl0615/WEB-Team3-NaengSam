@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.delivery.service;
 
+import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,32 +30,32 @@ public class DeliveryService {
     // ===== 공개 메서드 (동기 요청) — 주문 단위 락 안에서 상태 전이를 실행하고 결과를 돌려준다 =====
 
     // 드리미 위치 정보를 전달 (이 메소드를 5~10초마다 드리미가 호출해야함). 동시에 상태 변경이 있다면 응답한다.
-    public String updateDreamiLocation(UUID orderId, GeoPoint dreamiGeoPoint) {
+    public DeliveryStatusResponseDto updateDreamiLocation(UUID orderId, GeoPoint dreamiGeoPoint) {
         return transition(orderId, status -> doUpdateDreamiLocation(status, dreamiGeoPoint));
     }
 
     // 픽업 완료
-    public String pickupFinishByDreami(UUID orderId) {
+    public DeliveryStatusResponseDto pickupFinishByDreami(UUID orderId) {
         return transition(orderId, this::doPickupFinishByDreami);
     }
 
     // "픽업" 과정에서 드리미의 취소
-    public String cancelByDreami(UUID orderId) {
+    public DeliveryStatusResponseDto cancelByDreami(UUID orderId) {
         return transition(orderId, this::doCancelByDreami);
     }
 
     // 픽업 중에 부르미가 취소
-    public String cancelByBoormi(UUID orderId) {
+    public DeliveryStatusResponseDto cancelByBoormi(UUID orderId) {
         return transition(orderId, this::doCancelByBoormi);
     }
 
     // 픽업 중에 관리자가 취소
-    public String cancelByAdmin(UUID orderId) {
+    public DeliveryStatusResponseDto cancelByAdmin(UUID orderId) {
         return transition(orderId, this::doCancelByAdmin);
     }
 
     // 드리미가 "배달" 완료 (픽업 아님!!)
-    public String finishDelivery(UUID orderId) {
+    public DeliveryStatusResponseDto finishDelivery(UUID orderId) {
         return transition(orderId, this::doFinishDelivery);
     }
 
@@ -62,10 +63,12 @@ public class DeliveryService {
 
     // 해당 주문의 DeliveryStatus 객체를 모니터로 삼아 check-then-act를 원자적으로 실행한다.
     // 같은 주문 = 같은 객체 = 직렬화, 다른 주문 = 다른 객체 = 병렬.
-    private String transition(UUID orderId, Function<DeliveryStatus, String> logic) {
+    // logic이 상태를 바꾼 뒤(여전히 락 안)의 스냅샷으로 응답 DTO를 만들어 status·message 일관성을 보장한다.
+    private DeliveryStatusResponseDto transition(UUID orderId, Function<DeliveryStatus, String> logic) {
         DeliveryStatus deliveryStatus = store.get(orderId);
         synchronized (deliveryStatus) {
-            return logic.apply(deliveryStatus);
+            String message = logic.apply(deliveryStatus);
+            return DeliveryStatusResponseDto.from(deliveryStatus, message);
         }
     }
 
@@ -84,7 +87,7 @@ public class DeliveryService {
 
         deliveryStatus.setLocation(dreamiGeoPoint); // 메모리에_위치정보_수정()
         alarmBoormiLocationBySSE(); // 부르미에게_새로운_위치정보_전달_SSE사용()
-        return "현재 상태: " + deliveryStatus.status(); // 드리미에게 현재 상태 정보제공 (TODO: 상태 DTO로 교체)
+        return "위치 갱신됨"; // 상태는 응답 DTO의 status 필드로 전달된다
     }
 
     private String doPickupFinishByDreami(DeliveryStatus deliveryStatus) {

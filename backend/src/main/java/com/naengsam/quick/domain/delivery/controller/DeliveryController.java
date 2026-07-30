@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.delivery.controller;
 
+import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import io.swagger.v3.oas.annotations.Operation;
@@ -11,7 +12,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.UUID;
 
 /**
- * 배달 진행 중 상태 전이를 트리거하는 API. 각 엔드포인트는 주문(orderId) 단위로 상태를 변경하고, 현재 상태/처리 결과를 문자열로 응답한다.
+ * 배달 진행 중 상태 전이를 트리거하는 API. 각 엔드포인트는 주문(orderId) 단위로 상태를 변경하고, 처리 후 상태 스냅샷(DeliveryStatusResponseDto)을 응답한다.
  * 실제 직렬화는 DeliveryService가 주문 단위 락으로 보장한다.
  */
 @Slf4j
@@ -24,39 +25,39 @@ public class DeliveryController {
     private final DeliveryService deliveryService;
 
     @Operation(summary = "드리미 위치 갱신",
-            description = "드리미가 5~10초마다 호출해 현재 위치를 전달한다. 그 사이 상태 변경이 있었다면 결과 문자열로 응답한다.")
+            description = "드리미가 5~10초마다 호출해 현재 위치를 전달한다. 그 사이 상태 변경이 있었다면 상태 스냅샷으로 응답한다.")
     @PostMapping("/orders/{orderId}/dreami-location")
-    public String updateDreamiLocation(@PathVariable UUID orderId, @RequestBody GeoPoint location) {
+    public DeliveryStatusResponseDto updateDreamiLocation(@PathVariable UUID orderId, @RequestBody GeoPoint location) {
         return deliveryService.updateDreamiLocation(orderId, location);
     }
 
     @Operation(summary = "드리미 픽업 완료", description = "드리미가 픽업을 완료하면 배달중 상태로 전이한다.")
     @PostMapping("/orders/{orderId}/pickup-finish")
-    public String pickupFinishByDreami(@PathVariable UUID orderId) {
+    public DeliveryStatusResponseDto pickupFinishByDreami(@PathVariable UUID orderId) {
         return deliveryService.pickupFinishByDreami(orderId);
     }
 
     @Operation(summary = "드리미의 픽업 취소", description = "픽업 과정에서 드리미가 취소한다.")
     @PostMapping("/orders/{orderId}/cancel/dreami")
-    public String cancelByDreami(@PathVariable UUID orderId) {
+    public DeliveryStatusResponseDto cancelByDreami(@PathVariable UUID orderId) {
         return deliveryService.cancelByDreami(orderId);
     }
 
     @Operation(summary = "부르미의 픽업 취소", description = "픽업 과정에서 부르미가 취소한다.")
     @PostMapping("/orders/{orderId}/cancel/boormi")
-    public String cancelByBoormi(@PathVariable UUID orderId) {
+    public DeliveryStatusResponseDto cancelByBoormi(@PathVariable UUID orderId) {
         return deliveryService.cancelByBoormi(orderId);
     }
 
     @Operation(summary = "관리자의 픽업 취소", description = "픽업 과정에서 관리자가 취소한다.")
     @PostMapping("/orders/{orderId}/cancel/admin")
-    public String cancelByAdmin(@PathVariable UUID orderId) {
+    public DeliveryStatusResponseDto cancelByAdmin(@PathVariable UUID orderId) {
         return deliveryService.cancelByAdmin(orderId);
     }
 
     @Operation(summary = "드리미 배달 완료", description = "드리미가 배달(픽업 아님)을 완료하면 배달 완료 상태로 전이한다.")
     @PostMapping("/orders/{orderId}/finish")
-    public String finishDelivery(@PathVariable UUID orderId) {
+    public DeliveryStatusResponseDto finishDelivery(@PathVariable UUID orderId) {
         return deliveryService.finishDelivery(orderId);
     }
 }

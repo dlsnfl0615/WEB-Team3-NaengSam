@@ -6,6 +6,7 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCEL
 import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_DREAMI;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import java.util.UUID;
@@ -51,9 +52,10 @@ class DeliveryServiceTest {
     void 픽업완료_정상이면_DELIVERING으로_전이() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
-        String result = deliveryService.pickupFinishByDreami(orderId);
+        DeliveryStatusResponseDto result = deliveryService.pickupFinishByDreami(orderId);
 
-        assertThat(result).isEqualTo("픽업 완료");
+        assertThat(result.message()).isEqualTo("픽업 완료");
+        assertThat(result.status()).isEqualTo(DELIVERING);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERING);
     }
 
@@ -61,9 +63,10 @@ class DeliveryServiceTest {
     void 픽업완료_이미_부르미가_취소한주문이면_전이하지않음() {
         UUID orderId = registerDelivery(PICKUP_CANCELLED_BY_BOORMI);
 
-        String result = deliveryService.pickupFinishByDreami(orderId);
+        DeliveryStatusResponseDto result = deliveryService.pickupFinishByDreami(orderId);
 
-        assertThat(result).isEqualTo("부르미가 이미 취소한 주문입니다");
+        assertThat(result.message()).isEqualTo("부르미가 이미 취소한 주문입니다");
+        assertThat(result.status()).isEqualTo(PICKUP_CANCELLED_BY_BOORMI);
         assertThat(statusOf(orderId)).isEqualTo(PICKUP_CANCELLED_BY_BOORMI);
     }
 
@@ -71,9 +74,10 @@ class DeliveryServiceTest {
     void 드리미취소_정상이면_PICKUP_CANCELLED_BY_DREAMI로_전이() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
-        String result = deliveryService.cancelByDreami(orderId);
+        DeliveryStatusResponseDto result = deliveryService.cancelByDreami(orderId);
 
-        assertThat(result).isEqualTo("픽업 취소 완료");
+        assertThat(result.message()).isEqualTo("픽업 취소 완료");
+        assertThat(result.status()).isEqualTo(PICKUP_CANCELLED_BY_DREAMI);
         assertThat(statusOf(orderId)).isEqualTo(PICKUP_CANCELLED_BY_DREAMI);
     }
 
@@ -81,9 +85,10 @@ class DeliveryServiceTest {
     void 배달완료_배달중이면_DELIVERED로_전이() {
         UUID orderId = registerDelivery(DELIVERING);
 
-        String result = deliveryService.finishDelivery(orderId);
+        DeliveryStatusResponseDto result = deliveryService.finishDelivery(orderId);
 
-        assertThat(result).isEqualTo("드리미에게_완료");
+        assertThat(result.message()).isEqualTo("드리미에게_완료");
+        assertThat(result.status()).isEqualTo(DELIVERED);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERED);
     }
 
@@ -91,9 +96,10 @@ class DeliveryServiceTest {
     void 위치갱신_이미_배달완료된주문이면_무시() {
         UUID orderId = registerDelivery(DELIVERED);
 
-        String result = deliveryService.updateDreamiLocation(orderId, new GeoPoint(37.5, 127.0));
+        DeliveryStatusResponseDto result = deliveryService.updateDreamiLocation(orderId, new GeoPoint(37.5, 127.0));
 
-        assertThat(result).isEqualTo("이미 배달 완료된 주문입니다");
+        assertThat(result.message()).isEqualTo("이미 배달 완료된 주문입니다");
+        assertThat(result.status()).isEqualTo(DELIVERED);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERED);
     }
 
@@ -106,23 +112,23 @@ class DeliveryServiceTest {
         for (int i = 0; i < 200; i++) {
             UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
-            AtomicReference<String> pickupResult = new AtomicReference<>();
-            AtomicReference<String> cancelResult = new AtomicReference<>();
+            AtomicReference<DeliveryStatusResponseDto> pickupResult = new AtomicReference<>();
+            AtomicReference<DeliveryStatusResponseDto> cancelResult = new AtomicReference<>();
             runConcurrently(
                     () -> pickupResult.set(deliveryService.pickupFinishByDreami(orderId)),
                     () -> cancelResult.set(deliveryService.cancelByBoormi(orderId)));
 
-            boolean pickupWon = "픽업 완료".equals(pickupResult.get())
-                    && "이미 픽업이 완료된 주문입니다. 다시 시도해주세요".equals(cancelResult.get())
+            boolean pickupWon = "픽업 완료".equals(pickupResult.get().message())
+                    && "이미 픽업이 완료된 주문입니다. 다시 시도해주세요".equals(cancelResult.get().message())
                     && statusOf(orderId) == DELIVERING;
-            boolean cancelWon = "픽업 취소 완료".equals(cancelResult.get())
-                    && "부르미가 이미 취소한 주문입니다".equals(pickupResult.get())
+            boolean cancelWon = "픽업 취소 완료".equals(cancelResult.get().message())
+                    && "부르미가 이미 취소한 주문입니다".equals(pickupResult.get().message())
                     && statusOf(orderId) == PICKUP_CANCELLED_BY_BOORMI;
 
             // 픽업/취소 중 정확히 한쪽만 성공(둘 다 성공하는 레이스가 없어야 함)
             assertThat(pickupWon ^ cancelWon)
                     .as("iteration %d: pickup=%s, cancel=%s, status=%s",
-                            i, pickupResult.get(), cancelResult.get(), statusOf(orderId))
+                            i, pickupResult.get().message(), cancelResult.get().message(), statusOf(orderId))
                     .isTrue();
         }
     }
