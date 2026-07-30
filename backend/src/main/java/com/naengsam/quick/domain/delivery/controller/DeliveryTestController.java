@@ -3,13 +3,13 @@ package com.naengsam.quick.domain.delivery.controller;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
 
 /**
  * 배달 시나리오를 눈으로 확인하기 위한 dev 전용 시딩 API. 매칭 도메인이 호출하는 진입점(startDelivery)이 컨트롤러에 노출돼 있지 않아,
@@ -18,7 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>{@code @Profile("local")}로 게이트되어 운영 프로필에서는 빈으로 등록되지 않는다.
  */
 @Slf4j
-@Profile("local")
+//@Profile("local")
 @RestController
 @RequestMapping("/api/v1/delivery/test")
 @Tag(name = "배달테스트컨트롤러(dev)", description = "시각 테스트용 배달 시딩 API. local 프로필에서만 활성화된다.")
