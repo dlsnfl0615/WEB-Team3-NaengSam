@@ -46,4 +46,19 @@ public class Dreami {
 
     @Column(name = "criminal_record_url", length = 500, nullable = false)
     private String criminalRecordUrl;
+
+    /**
+     * 드리미 인증 신청을 생성한다. {@code dreamiId} 는 부르미와 동일한 사람이므로 boormiId 를 그대로 쓴다.
+     * 신청 상태는 REQUESTED 로 시작하고, 평점은 0점부터 시작한다.
+     */
+    public static Dreami create(UUID dreamiId, String idCardUrl, String criminalRecordUrl) {
+        Dreami dreami = new Dreami();
+        dreami.dreamiId = dreamiId;
+        dreami.requestCd = DreamiCd.REQUESTED;
+        dreami.requestDtm = LocalDateTime.now();
+        dreami.idCardUrl = idCardUrl;
+        dreami.criminalRecordUrl = criminalRecordUrl;
+        dreami.dreamiAvgScore = BigDecimal.ZERO;
+        return dreami;
+    }
 }

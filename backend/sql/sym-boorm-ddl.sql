@@ -292,7 +292,6 @@ CREATE TABLE `DREAMI_REVIEW` (
 
 CREATE TABLE `DREAMI` (
                           `dreami_id` BINARY(16) NOT NULL,
-                          `birthdate` DATE NOT NULL,
                           `reject_detail` VARCHAR(255) NULL,
                           `request_dtm` TIMESTAMP NULL,
                           `review_dtm` TIMESTAMP NULL,
@@ -514,7 +513,7 @@ ALTER TABLE `DREAMI_REVIEW`
 
 ALTER TABLE `DREAMI`
     ADD CONSTRAINT `PK_DREAMI`
-        PRIMARY KEY (`dreami_id`, `birthdate`);
+        PRIMARY KEY (`dreami_id`);
 
 ALTER TABLE `BOORMI`
     ADD CONSTRAINT `PK_BOORMI`
@@ -568,13 +567,6 @@ ALTER TABLE `BOORMI`
 ALTER TABLE `BOORMI`
     ADD CONSTRAINT `UK_BOORMI_PHONE_NUMBER`
         UNIQUE (`phone_number`);
-
--- DREAMI의 PK는 (dreami_id, birthdate) 복합키이므로
--- dreami_id를 단독 외래키로 참조할 수 있게 UNIQUE 인덱스를 추가한다.
-ALTER TABLE `DREAMI`
-    ADD CONSTRAINT `UK_DREAMI_DREAMI_ID`
-        UNIQUE (`dreami_id`);
-
 
 -- =========================================================
 -- FOREIGN KEY
