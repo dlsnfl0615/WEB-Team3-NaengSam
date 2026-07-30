@@ -44,6 +44,14 @@ export function RequestCreateScreen() {
   const prev = () => setStep((s) => Math.max(1, s - 1));
   const back = () => (step > 1 ? prev() : navigate(-1));
 
+  // 스텝별 필수값 검증(스텝2 유형·크기는 기본 선택값 존재).
+  const canProceed =
+    step === 1
+      ? !!form.pickup.trim() && !!form.dropoff.trim()
+      : step === 3
+        ? !!form.itemName.trim()
+        : true;
+
   const submit = async () => {
     setSubmitting(true);
     try {
@@ -80,7 +88,13 @@ export function RequestCreateScreen() {
 
       <footer className="pt-4">
         {step === 1 && (
-          <Button variant="navy" block arrow onClick={next}>
+          <Button
+            variant="navy"
+            block
+            arrow
+            disabled={!canProceed}
+            onClick={next}
+          >
             계속하기
           </Button>
         )}
@@ -89,7 +103,13 @@ export function RequestCreateScreen() {
             <Button variant="outline" className="px-7" onClick={prev}>
               이전
             </Button>
-            <Button variant="navy" arrow className="flex-1" onClick={next}>
+            <Button
+              variant="navy"
+              arrow
+              className="flex-1"
+              disabled={!canProceed}
+              onClick={next}
+            >
               다음으로
             </Button>
           </div>

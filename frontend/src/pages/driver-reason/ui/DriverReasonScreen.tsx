@@ -62,7 +62,12 @@ export function DriverReasonScreen() {
       </main>
 
       <footer className="pt-4">
-        <Button variant="navy" block disabled={submitting} onClick={onSubmit}>
+        <Button
+          variant="navy"
+          block
+          disabled={submitting || (reason === "기타" && !etc.trim())}
+          onClick={onSubmit}
+        >
           {submitting ? "제출 중…" : "사고 사유 제출하기"}
         </Button>
       </footer>
