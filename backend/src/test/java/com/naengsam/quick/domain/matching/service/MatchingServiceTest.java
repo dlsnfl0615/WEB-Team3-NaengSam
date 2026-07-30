@@ -1,12 +1,12 @@
-package com.naengsam.quick.domain.delivery.service;
+package com.naengsam.quick.domain.matching.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.naengsam.quick.domain.delivery.dto.GeoPoint;
-import com.naengsam.quick.domain.delivery.dto.Order;
+import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.dto.Order;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.util.List;

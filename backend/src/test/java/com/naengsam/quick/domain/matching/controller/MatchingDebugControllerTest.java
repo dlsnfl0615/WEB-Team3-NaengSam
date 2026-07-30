@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.delivery.controller;
+package com.naengsam.quick.domain.matching.controller;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -13,9 +13,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.naengsam.quick.domain.delivery.dto.GeoPoint;
-import com.naengsam.quick.domain.delivery.dto.Order;
-import com.naengsam.quick.domain.delivery.service.MatchingService;
+import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.dto.Order;
+import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.exception.GlobalExceptionHandler;
