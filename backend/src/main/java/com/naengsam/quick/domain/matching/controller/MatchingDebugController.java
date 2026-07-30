@@ -2,15 +2,16 @@ package com.naengsam.quick.domain.matching.controller;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.MatchingStartRequest;
-import com.naengsam.quick.domain.matching.dto.Order;
 import com.naengsam.quick.domain.matching.dto.OrderOfferGroupDto;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -61,7 +62,9 @@ public class MatchingDebugController {
     @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
     @PostMapping("/orders/{orderId}/start")
     public void startMatching(@PathVariable UUID orderId, @Valid @RequestBody MatchingStartRequest request) {
-        Order order = new Order(orderId, request.boormiId(), request.destination());
+        Orders order = Orders.create(orderId, request.boormiId(),
+                BigDecimal.valueOf(request.destination().latitude()),
+                BigDecimal.valueOf(request.destination().longitude()));
         matchingService.startMatching(order);
     }
 

@@ -1,7 +1,7 @@
 package com.naengsam.quick.domain.matching.service;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
-import com.naengsam.quick.domain.matching.dto.Order;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.time.Duration;
@@ -82,19 +82,19 @@ public class MatchingService {
      * 호출 스레드에서 곧바로 확인 가능한 중복 시작만 빠르게 걸러 409로 응답한다. 실제 방 생성은 엔진 스레드에서 순차 처리되며, 그 결과는 {@link #findOrderOfferGroup(UUID)}로
      * 별도 조회한다.
      */
-    public void startMatching(Order order) {
-        if (isOpenGroupExists(order.orderId())) {
+    public void startMatching(Orders order) {
+        if (isOpenGroupExists(order.getOrderId())) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);
         }
         matchingEngine.submit(new StartMatching(this, order));
     }
 
-    void applyStartMatching(Order order) {
-        log.debug("매칭 시작 액션 실행: orderId={}", order.orderId());
+    void applyStartMatching(Orders order) {
+        log.debug("매칭 시작 액션 실행: orderId={}", order.getOrderId());
 
         // 큐에 쌓여 있는 동안 다른 액션이 먼저 방을 만들었을 수 있으므로 엔진 스레드에서 다시 확인한다.
-        if (isOpenGroupExists(order.orderId())) {
-            log.debug("이미 진행 중인 방이 있어 매칭 시작을 건너뜀: orderId={}", order.orderId());
+        if (isOpenGroupExists(order.getOrderId())) {
+            log.debug("이미 진행 중인 방이 있어 매칭 시작을 건너뜀: orderId={}", order.getOrderId());
             return;
         }
 
@@ -110,7 +110,7 @@ public class MatchingService {
         for (WaitingDreami dreami : top3List) {
             UUID offerId = UUID.randomUUID(); // 제안UUID (드리미 1명당 1개)
             MatchOffer offer = new MatchOffer(
-                    offerId, order.orderId(), dreami.dreamiId(), MatchOfferStatus.OFFERED, expiresAt);
+                    offerId, order.getOrderId(), dreami.dreamiId(), MatchOfferStatus.OFFERED, expiresAt);
             matchOfferList.add(offer);
 
             offersById.put(offerId, offer);
@@ -121,12 +121,12 @@ public class MatchingService {
         for (WaitingDreami dreami : top3List) {
             dreamiMap.get(dreami.dreamiId()).markProposed();
         }
-        OrderOfferGroup group = new OrderOfferGroup(order.orderId(), matchOfferList); // 방안에상위3명넣기 (사실상 방 만들기)
+        OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), matchOfferList); // 방안에상위3명넣기 (사실상 방 만들기)
         if (matchOfferList.isEmpty()) {
             // 제안할 드리미가 한 명도 없으면 이 방은 바로 재매칭 대상이다.
             group.closeForRematch();
         }
-        orderOfferGroupsByOrderId.put(order.orderId(), group);
+        orderOfferGroupsByOrderId.put(order.getOrderId(), group);
         alarmBySocket("드리미에게_제안_팝업_띄우기");
     }
 

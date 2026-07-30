@@ -1,8 +1,8 @@
 package com.naengsam.quick.domain.matching.service;
 
-import com.naengsam.quick.domain.matching.dto.Order;
+import com.naengsam.quick.domain.order.entity.Orders;
 
-record StartMatching(MatchingService service, Order order) implements Action {
+record StartMatching(MatchingService service, Orders order) implements Action {
 
     @Override
     public void execute() {

@@ -14,7 +14,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
-import com.naengsam.quick.domain.matching.dto.Order;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
@@ -145,12 +145,13 @@ class MatchingDebugControllerTest {
                                 """.formatted(boormiId)))
                 .andExpect(status().isOk());
 
-        ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
+        ArgumentCaptor<Orders> orderCaptor = ArgumentCaptor.forClass(Orders.class);
         verify(matchingService).startMatching(orderCaptor.capture());
 
-        assertThat(orderCaptor.getValue().orderId()).isEqualTo(orderId);
-        assertThat(orderCaptor.getValue().boormiId()).isEqualTo(boormiId);
-        assertThat(orderCaptor.getValue().destination()).isEqualTo(new GeoPoint(37.5, 127.0));
+        assertThat(orderCaptor.getValue().getOrderId()).isEqualTo(orderId);
+        assertThat(orderCaptor.getValue().getBoormiId()).isEqualTo(boormiId);
+        assertThat(orderCaptor.getValue().getDestinationLatitude()).isEqualByComparingTo("37.5");
+        assertThat(orderCaptor.getValue().getDestinationLongitude()).isEqualByComparingTo("127.0");
     }
 
     @Test

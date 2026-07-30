@@ -6,7 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
-import com.naengsam.quick.domain.matching.dto.Order;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.util.List;
@@ -37,9 +37,9 @@ class MatchingServiceTest {
         UUID dreamiId4 = UUID.randomUUID();
 
         GeoPoint location = mock(GeoPoint.class);
-        Order order = mock(Order.class);
+        Orders order = mock(Orders.class);
 
-        when(order.orderId()).thenReturn(orderId);
+        when(order.getOrderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(dreamiId1, location);
         matchingService.applyRegisterDreami(dreamiId2, location);
@@ -85,9 +85,9 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
 
         GeoPoint location = mock(GeoPoint.class);
-        Order order = mock(Order.class);
+        Orders order = mock(Orders.class);
 
-        when(order.orderId()).thenReturn(orderId);
+        when(order.getOrderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
@@ -141,9 +141,9 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
 
         GeoPoint location = mock(GeoPoint.class);
-        Order order = mock(Order.class);
+        Orders order = mock(Orders.class);
 
-        when(order.orderId()).thenReturn(orderId);
+        when(order.getOrderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
@@ -170,9 +170,9 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
 
         GeoPoint location = mock(GeoPoint.class);
-        Order order = mock(Order.class);
+        Orders order = mock(Orders.class);
 
-        when(order.orderId()).thenReturn(orderId);
+        when(order.getOrderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
@@ -193,8 +193,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
 
-        Order order = mock(Order.class);
-        when(order.orderId()).thenReturn(orderId);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
 
         // when (등록된 드리미가 한 명도 없는 상태에서 매칭 시작)
         matchingService.applyStartMatching(order);
@@ -214,8 +214,8 @@ class MatchingServiceTest {
         UUID dreamiId = UUID.randomUUID();
 
         GeoPoint location = mock(GeoPoint.class);
-        Order order = mock(Order.class);
-        when(order.orderId()).thenReturn(orderId);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(dreamiId, location);
 
@@ -244,10 +244,10 @@ class MatchingServiceTest {
 
         UUID orderIdA = UUID.randomUUID();
         UUID orderIdB = UUID.randomUUID();
-        Order orderA = mock(Order.class);
-        Order orderB = mock(Order.class);
-        when(orderA.orderId()).thenReturn(orderIdA);
-        when(orderB.orderId()).thenReturn(orderIdB);
+        Orders orderA = mock(Orders.class);
+        Orders orderB = mock(Orders.class);
+        when(orderA.getOrderId()).thenReturn(orderIdA);
+        when(orderB.getOrderId()).thenReturn(orderIdB);
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderA);
@@ -274,8 +274,8 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
 
         GeoPoint location = mock(GeoPoint.class);
-        Order order = mock(Order.class);
-        when(order.orderId()).thenReturn(orderId);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
@@ -305,8 +305,8 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
 
         GeoPoint location = mock(GeoPoint.class);
-        Order order = mock(Order.class);
-        when(order.orderId()).thenReturn(orderId);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
@@ -331,9 +331,9 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
 
         GeoPoint location = mock(GeoPoint.class);
-        Order order = mock(Order.class);
+        Orders order = mock(Orders.class);
 
-        when(order.orderId()).thenReturn(orderId);
+        when(order.getOrderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
@@ -359,9 +359,9 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
 
         GeoPoint location = mock(GeoPoint.class);
-        Order order = mock(Order.class);
+        Orders order = mock(Orders.class);
 
-        when(order.orderId()).thenReturn(orderId);
+        when(order.getOrderId()).thenReturn(orderId);
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
