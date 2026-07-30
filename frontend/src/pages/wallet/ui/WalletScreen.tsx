@@ -12,7 +12,7 @@ export function WalletScreen() {
   const navigate = useNavigate();
 
   return (
-    <ScreenShell>
+    <ScreenShell footer={<BottomNav />}>
       <TopBar title="내 지갑" actions={["profile"]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
@@ -82,10 +82,6 @@ export function WalletScreen() {
           </div>
         </div>
       </main>
-
-      <div className="pt-4">
-        <BottomNav />
-      </div>
     </ScreenShell>
   );
 }
