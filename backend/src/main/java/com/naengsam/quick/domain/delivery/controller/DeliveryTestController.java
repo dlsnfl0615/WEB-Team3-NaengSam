@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
@@ -30,15 +31,17 @@ public class DeliveryTestController {
     /**
      * PICKUP_NORMAL 상태의 배달 한 건을 새로 만들어 store에 등록하고, 생성한 식별자들을 돌려준다.
      */
-    @Operation(summary = "배달 시딩(dev)", description = "새 orderId/dreamiId/boormiId로 배달을 시작(PICKUP_NORMAL)하고 식별자를 반환한다.")
+    @Operation(summary = "배달 시딩(dev)",
+            description = "orderId/dreamiId/boormiId로 배달을 시작(PICKUP_NORMAL)하고 식별자를 반환한다. "
+                    + "orderId를 넘기면 해당 주문 식별자로 등록하고, 생략하면 새로 발급한다.")
     @PostMapping("/seed")
-    public SeedResponse seed() {
-        UUID orderId = UUID.randomUUID();
+    public SeedResponse seed(@RequestParam(required = false) UUID orderId) {
+        UUID resolvedOrderId = orderId != null ? orderId : UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
-        deliveryService.startDelivery(orderId, dreamiId, boormiId);
-        log.debug("[dev-seed] 배달 시딩 orderId={}", orderId);
-        return new SeedResponse(orderId, dreamiId, boormiId);
+        deliveryService.startDelivery(resolvedOrderId, dreamiId, boormiId);
+        log.debug("[dev-seed] 배달 시딩 orderId={}", resolvedOrderId);
+        return new SeedResponse(resolvedOrderId, dreamiId, boormiId);
     }
 
     public record SeedResponse(UUID orderId, UUID dreamiId, UUID boormiId) {

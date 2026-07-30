@@ -452,10 +452,20 @@
         try {
             await apiFetch(DEBUG + "/offers/" + offerId + "/" + action, { method: "POST" });
             logEvent(action + " 요청됨 offerId=" + offerId.slice(0, 8), "", "meta");
+            if (action === "boormi-accept") openDeliveryTestPopup();
             setTimeout(loadGroup, 300);
         } catch (e) {
             logEvent(action + " 실패: " + e.message, "", "offer_error");
         }
+    }
+
+    // 부르미 수락으로 매칭이 확정되면, 배달 시각 테스트 콘솔을 orderId/좌표를 실어 팝업으로 띄운다.
+    function openDeliveryTestPopup() {
+        const params = new URLSearchParams({
+            orderId: document.getElementById("orderId").value,
+        });
+        window.open("/delivery-test.html?" + params.toString(), "deliveryTest",
+            "width=1100,height=800,noopener,noreferrer");
     }
 
     // ---------- 빠른 시나리오 ----------
