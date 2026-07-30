@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card, MapCard, Modal, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useDeliveryStore } from "@/shared/store/deliveryStore";
+import { getCalls } from "@/shared/mock/matchingService";
+import type { Call } from "@/shared/mock/types";
 import { CallCard } from "./CallCard";
 import { OfferCard } from "./OfferCard";
 
@@ -15,11 +17,26 @@ import { OfferCard } from "./OfferCard";
 export function MatchingScreen() {
   const navigate = useNavigate();
   const { role } = useRole();
-  const resetDelivery = useDeliveryStore((s) => s.reset);
+  const acceptCall = useDeliveryStore((s) => s.acceptCall);
   const [offerVisible, setOfferVisible] = useState(true);
+  const [calls, setCalls] = useState<Call[]>([]);
 
   const isDriver = role === "드리미";
   const counterpart = isDriver ? "부르미" : "드리미";
+
+  // 드리미: 대기 콜 목록을 목 서비스에서 로드.
+  useEffect(() => {
+    if (!isDriver) return;
+    getCalls().then(setCalls);
+  }, [isDriver]);
+
+  const call = calls[0];
+
+  const onAcceptCall = async () => {
+    if (!call) return;
+    await acceptCall(call);
+    navigate(ROUTES.deliveryTrack);
+  };
 
   return (
     <ScreenShell>
@@ -46,23 +63,20 @@ export function MatchingScreen() {
       </main>
 
       <Modal
-        open={offerVisible}
+        open={offerVisible && (!isDriver || !!call)}
         label={isDriver ? "새 부름 요청" : "새 드리미 요청"}
       >
-        {isDriver ? (
+        {isDriver && call ? (
           <CallCard
-            code="#B-882"
-            price="₩3,500"
-            place="파르나스 타워"
-            route="24F → 12F"
-            pickupDistance="120m"
-            dropoffDistance="1.2km"
-            itemType="음료"
+            code={call.code}
+            price={`₩${call.price.toLocaleString()}`}
+            place={call.place}
+            route={call.route}
+            pickupDistance={call.pickupDistance}
+            dropoffDistance={call.dropoffDistance}
+            itemType={call.itemType}
             onReject={() => navigate(ROUTES.rejectReason)}
-            onAccept={() => {
-              resetDelivery();
-              navigate(ROUTES.deliveryTrack);
-            }}
+            onAccept={onAcceptCall}
           />
         ) : (
           <OfferCard

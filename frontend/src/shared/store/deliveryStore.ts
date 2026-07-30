@@ -1,7 +1,12 @@
 import { create } from "zustand";
 import { createDelivery } from "@/shared/mock/requestService";
+import { acceptCall as acceptCallApi } from "@/shared/mock/matchingService";
 import { SEED_DELIVERIES } from "@/shared/mock/seed";
-import type { CreateDeliveryRequest, Delivery } from "@/shared/mock/types";
+import type {
+  Call,
+  CreateDeliveryRequest,
+  Delivery,
+} from "@/shared/mock/types";
 
 /** 배달 진행 상태(레거시, 진행 화면 임시 호환). C5에서 활성 배달 구독으로 대체. */
 export type DeliveryStatus = "픽업중" | "배송중" | "지연";
@@ -21,6 +26,8 @@ interface DeliveryState {
   activeId: string | null;
   /** 부름 등록 → "매칭중" 배달 생성 후 활성 배달로 지정. */
   createRequest: (dto: CreateDeliveryRequest) => Promise<Delivery>;
+  /** 드리미 콜 수락 → "픽업중" 배달 생성 후 활성 배달로 지정. */
+  acceptCall: (call: Call) => Promise<Delivery>;
 }
 
 /**
@@ -41,6 +48,15 @@ export const useDeliveryStore = create<DeliveryState>((set) => ({
     set((s) => ({
       deliveries: [delivery, ...s.deliveries],
       activeId: delivery.id,
+    }));
+    return delivery;
+  },
+  acceptCall: async (call) => {
+    const delivery = await acceptCallApi(call);
+    set((s) => ({
+      deliveries: [delivery, ...s.deliveries],
+      activeId: delivery.id,
+      status: "픽업중", // 레거시 호환(track/detail 화면)
     }));
     return delivery;
   },
