@@ -42,7 +42,7 @@ com.naengsam.quick/
     ├── commonResponse/       # CommonResponse, CommonResponseAdvice
     ├── code/                 # BaseCode, BaseErrorCode, GeneralErrorCode, GeneralSuccessCode
     ├── exception/            # BusinessException, GlobalExceptionHandler
-    ├── session/             # LoginSession, LoginUser, LoginRequired
+    ├── session/             # LoginSession, LoginUser, PublicApi, LoginCheckInterceptor
     ├── swagger/              # ApiErrorCodes, 커스터마이저
     └── config/
 ```
@@ -73,14 +73,22 @@ UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "AUTH_001", "로그인이 필요합니다.
 - `@RestController` + `@RequestMapping("/api/v1/<domain>")` + `@RequiredArgsConstructor` + `@Slf4j`.
 - 요청 바디는 `@Valid @RequestBody <name>Request`.
 - Swagger 문서화: 클래스에 `@Tag`, 메서드에 `@Operation` / `@ApiResponse`, 발생 가능한 에러는 **반복 가능한** `@ApiErrorCodes(enumClass = XxxErrorCode.class, codes = {"..."})`.
-- 인증이 필요한 엔드포인트는 `@LoginRequired` + 파라미터로 `@LoginUser UUID boormiId`. 세션 생성/무효화는 `LoginSession` 사용.
+- 인증은 **기본 필수(opt-out)** 입니다. `/api/**` 핸들러는 `LoginCheckInterceptor`가 자동으로 로그인 세션을 요구하므로, 인증이 필요한 엔드포인트에는 별도 어노테이션 없이 파라미터로 `@LoginUser UUID boormiId`만 받으면 됩니다.
+- 로그인 전에 호출되는 **공개 API**(로그인·회원가입·인증문자 등)에만 메서드 또는 컨트롤러 클래스에 `@PublicApi`를 붙여 세션 검사를 건너뜁니다. 세션 생성/무효화는 `LoginSession` 사용.
 
 ```java
 @Operation(summary = "내 정보", description = "로그인한 사용자 정보를 반환한다.")
 @GetMapping("/me")
 @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"INVALID_SESSION"})
-public UserDto me(@LoginUser UUID boormiId) {
+public UserDto me(@LoginUser UUID boormiId) {   // 별도 어노테이션 없이 로그인 필수
     return userService.getUserInfo(boormiId);
+}
+
+@Operation(summary = "로그인")
+@PostMapping("/login")
+@PublicApi   // 로그인 전 호출되는 공개 API — 세션 검사 건너뜀
+public UserDto login(@Valid @RequestBody LoginRequest request) {
+    return userService.login(request);
 }
 ```
 

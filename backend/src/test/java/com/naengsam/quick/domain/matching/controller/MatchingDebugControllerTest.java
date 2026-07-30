@@ -187,7 +187,7 @@ class MatchingDebugControllerTest {
         MatchingService.MatchOffer offer = new MatchingService.MatchOffer(
                 offerId, orderId, dreamiId, MatchingService.MatchOfferStatus.OFFERED, expiresAt);
         MatchingService.OrderOfferGroup group =
-                new MatchingService.OrderOfferGroup(orderId, List.of(offer));
+                new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(), List.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
 
         mockMvc.perform(get("/api/v1/debug/matching/orders/{orderId}/group", orderId))
