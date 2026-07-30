@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import {
@@ -22,6 +22,7 @@ const POPUP_INTERVAL_MS = 3000;
  */
 export function MatchingPopup() {
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   const { role } = useRole();
   const active = useActiveDelivery();
   const seeking = useDeliveryStore((s) => s.seeking);
@@ -33,8 +34,11 @@ export function MatchingPopup() {
   const [tick, setTick] = useState(0);
 
   const isDriver = role === "드리미";
-  const showSender = !isDriver && active?.status === "매칭중";
-  const showDriver = isDriver && seeking;
+  // 거절/사유 선택 화면에서는 팝업을 숨겨 화면 접근을 막지 않는다.
+  const onReasonScreen =
+    pathname === ROUTES.rejectReason || pathname === ROUTES.driverReason;
+  const showSender = !isDriver && active?.status === "매칭중" && !onReasonScreen;
+  const showDriver = isDriver && seeking && !onReasonScreen;
   const visible = showSender || showDriver;
 
   // 대기 목록 1회 로드.
@@ -75,7 +79,7 @@ export function MatchingPopup() {
 
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-center">
-      <div aria-hidden className="absolute inset-0 bg-surface/70" />
+      <div aria-hidden className="absolute inset-0 bg-ink/40" />
       <div className="ds-sheet-up relative w-full max-w-[420px] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
         {call ? (
           <CallCard
