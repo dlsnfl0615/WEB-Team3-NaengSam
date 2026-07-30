@@ -1,10 +1,10 @@
-package com.naengsam.quick.domain.delivery.controller;
+package com.naengsam.quick.domain.matching.controller;
 
-import com.naengsam.quick.domain.delivery.dto.GeoPoint;
-import com.naengsam.quick.domain.delivery.dto.MatchingStartRequest;
-import com.naengsam.quick.domain.delivery.dto.Order;
-import com.naengsam.quick.domain.delivery.dto.OrderOfferGroupDto;
-import com.naengsam.quick.domain.delivery.service.MatchingService;
+import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.dto.MatchingStartRequest;
+import com.naengsam.quick.domain.matching.dto.Order;
+import com.naengsam.quick.domain.matching.dto.OrderOfferGroupDto;
+import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
@@ -60,7 +60,7 @@ public class MatchingDebugController {
     @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
     @PostMapping("/orders/{orderId}/start")
     public OrderOfferGroupDto startMatching(@PathVariable UUID orderId,
-                                             @Valid @RequestBody MatchingStartRequest request) {
+                                            @Valid @RequestBody MatchingStartRequest request) {
         Order order = new Order(orderId, request.boormiId(), request.destination());
         matchingService.startMatching(order);
         return matchingService.findOrderOfferGroup(orderId)

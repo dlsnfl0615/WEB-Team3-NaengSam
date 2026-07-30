@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.delivery.dto;
+package com.naengsam.quick.domain.matching.dto;
 
 import java.util.UUID;
 

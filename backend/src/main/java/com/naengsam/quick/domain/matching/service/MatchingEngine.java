@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.delivery.service;
+package com.naengsam.quick.domain.matching.service;
 
 import jakarta.annotation.PostConstruct;
 import java.util.concurrent.BlockingQueue;

@@ -1,6 +1,6 @@
-package com.naengsam.quick.domain.delivery.dto;
+package com.naengsam.quick.domain.matching.dto;
 
-import com.naengsam.quick.domain.delivery.service.MatchingService;
+import com.naengsam.quick.domain.matching.service.MatchingService;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
