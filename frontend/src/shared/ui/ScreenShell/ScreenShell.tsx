@@ -21,7 +21,7 @@ export function ScreenShell({ children, footer, className }: ScreenShellProps) {
       <div className="flex h-svh w-full max-w-[420px] flex-col bg-canvas">
         <div
           className={cn(
-            'flex flex-1 flex-col overflow-y-auto px-4 pb-4 pt-6',
+            'flex flex-1 flex-col overflow-y-auto overscroll-contain px-4 pb-4 pt-6',
             className,
           )}
         >
