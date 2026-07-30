@@ -28,9 +28,9 @@ export function SenderPanel() {
     (d) => d.myRole === "부르미" && d.status in PROGRESS,
   );
 
-  const openDetail = (id: string) => {
+  const openDelivery = (id: string, status: string) => {
     setActive(id);
-    navigate(ROUTES.deliveryDetail);
+    navigate(status === "매칭중" ? ROUTES.matching : ROUTES.deliveryDetail);
   };
 
   return (
@@ -67,7 +67,7 @@ export function SenderPanel() {
               route={`${d.pickup} → ${d.dropoff}`}
               status={d.status}
               progress={PROGRESS[d.status]}
-              onClick={() => openDetail(d.id)}
+              onClick={() => openDelivery(d.id, d.status)}
             />
           ))}
         </div>
