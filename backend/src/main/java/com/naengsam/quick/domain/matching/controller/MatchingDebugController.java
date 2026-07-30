@@ -56,16 +56,13 @@ public class MatchingDebugController {
                 .toList();
     }
 
-    @Operation(summary = "주문에 대한 매칭 시작 (제안 방 생성)")
+    @Operation(summary = "주문에 대한 매칭 시작 요청 (제안 방 생성은 비동기로 처리됨)",
+            description = "요청이 수락되면 매칭 엔진 큐에 등록된다. 실제 방 생성 여부는 /orders/{orderId}/group 으로 폴링해 확인한다.")
     @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
     @PostMapping("/orders/{orderId}/start")
-    public OrderOfferGroupDto startMatching(@PathVariable UUID orderId,
-                                            @Valid @RequestBody MatchingStartRequest request) {
+    public void startMatching(@PathVariable UUID orderId, @Valid @RequestBody MatchingStartRequest request) {
         Order order = new Order(orderId, request.boormiId(), request.destination());
         matchingService.startMatching(order);
-        return matchingService.findOrderOfferGroup(orderId)
-                .map(OrderOfferGroupDto::from)
-                .orElseThrow(() -> new BusinessException(GeneralErrorCode.NOT_FOUND));
     }
 
     @Operation(summary = "주문의 매칭 방(OrderOfferGroup) 상태 조회")
