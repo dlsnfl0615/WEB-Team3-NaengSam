@@ -46,14 +46,25 @@ jobs:
 
       - name: Sync to S3
         run: |
-          # 해시가 붙은 정적 에셋: 오래 캐시
+          # 콘텐츠 해시가 붙은 정적 에셋(assets/*, workbox-*.js): 1년 immutable 캐시
           aws s3 sync dist/ s3://${{ secrets.S3_BUCKET }} \
             --delete \
             --cache-control "public,max-age=31536000,immutable" \
-            --exclude "index.html"
-          # index.html: 캐시하지 않음 (항상 최신 배포 참조)
+            --exclude "index.html" \
+            --exclude "sw.js" \
+            --exclude "registerSW.js" \
+            --exclude "manifest.webmanifest"
+          # 항상 최신(재검증 대상): index.html + 서비스워커/등록 스크립트 + 매니페스트
+          # 해시가 없는 파일이라 오래 캐시하면 PWA 업데이트가 사용자에게 전달되지 않는다.
           aws s3 cp dist/index.html s3://${{ secrets.S3_BUCKET }}/index.html \
             --cache-control "no-cache,no-store,must-revalidate"
+          aws s3 cp dist/sw.js s3://${{ secrets.S3_BUCKET }}/sw.js \
+            --cache-control "no-cache,no-store,must-revalidate"
+          aws s3 cp dist/registerSW.js s3://${{ secrets.S3_BUCKET }}/registerSW.js \
+            --cache-control "no-cache,no-store,must-revalidate"
+          aws s3 cp dist/manifest.webmanifest s3://${{ secrets.S3_BUCKET }}/manifest.webmanifest \
+            --cache-control "no-cache,no-store,must-revalidate" \
+            --content-type "application/manifest+json"
 
       - name: Invalidate CloudFront
         run: |
