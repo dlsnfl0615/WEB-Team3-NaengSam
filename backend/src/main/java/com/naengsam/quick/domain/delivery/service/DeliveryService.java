@@ -1,22 +1,18 @@
 package com.naengsam.quick.domain.delivery.service;
 
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERED;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERING;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_ADMIN;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_BOORMI;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_DREAMI;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_NORMAL;
-
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
+
+import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
 
 /**
  * 배달 한 건의 상태 전이를 담당한다. 공개 메서드는 동기 요청으로 호출되며, 실제 status 검증+변경은 DeliveryAction으로 감싸
@@ -68,6 +64,8 @@ public class DeliveryService {
 
     // ===== 엔진 배관 =====
 
+    // 큐에 액션을 등록한 뒤, 엔진이 그 액션을 실제로 수행해서 결과를 넣어줄 때까지 리턴하지 않음!!
+    // task : 실제 요청 내용 (eg.. 픽업 완료 요청, 취소 요청 등등)
     private String submitAndWait(Supplier<String> task) {
         CompletableFuture<String> future = new CompletableFuture<>();
         engine.submit(new DeliveryAction(task, future));

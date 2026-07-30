@@ -12,7 +12,7 @@ record DeliveryAction(Supplier<String> task, CompletableFuture<String> future) i
     @Override
     public void execute() {
         try {
-            future.complete(task.get());
+            future.complete(task.get()); // task.get() 내부에서 작업 완료할 때까지 계속 기다림
         } catch (RuntimeException e) {
             future.completeExceptionally(e);
         }
