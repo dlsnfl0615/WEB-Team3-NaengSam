@@ -2,57 +2,53 @@ name: Claude Code Review
 
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review]
-
-permissions:
-  contents: read
-  pull-requests: write
-  id-token: write
+    types: [opened, ready_for_review]
+  issue_comment:
+    types: [created]
 
 jobs:
-  review:
-    if: github.event.pull_request.draft == false
+  claude-review:
     runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'pull_request' ||
+      (github.event_name == 'issue_comment' &&
+       github.event.issue.pull_request &&
+       contains(github.event.comment.body, '@claude re-review'))
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      id-token: write
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+          ref: ${{ github.event_name == 'issue_comment' && format('refs/pull/{0}/head', github.event.issue.number) || github.ref }}
 
-      # 1단계: Claude는 read-only로 코드만 분석해서 JSON 결과를 파일로 남긴다.
-      #        GitHub에는 아무것도 쓰지 않는다.
-      - name: Run Claude review
+      - name: Run Claude Code Review
         uses: anthropics/claude-code-action@v1
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          claude_args: >-
-            --allowedTools Read,Grep,Glob,"Bash(gh pr diff)","Bash(gh pr diff:*)","Bash(gh pr view:*)","Bash(gh pr comment:*)"
-            --max-turns 15
           prompt: |
-            이 PR(#${{ github.event.pull_request.number }})의 diff를 리뷰하고,
-            결과를 PR에 요약 코멘트로 직접 남겨줘.
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number || github.event.issue.number }}
 
-            진행 순서:
-            1. `gh pr diff ${{ github.event.pull_request.number }}` 로 변경 내용을 확인한다.
-            2. 리포 루트에 CLAUDE.md 가 있으면 그 코딩 컨벤션을 기준으로 검토한다.
-            3. 버그 / 보안 이슈 / 성능 문제 위주로 본다. 단순 스타일·취향 문제는 지적하지 않는다.
-            4. 아래 형식의 한국어 요약 코멘트를 한 번만 남긴다:
+            이 PR의 코드를 리뷰해주세요. 한국어로 답변해주세요.
 
-               gh pr comment ${{ github.event.pull_request.number }} \
-                 --edit-last --create-if-none --body '<본문>'
+            다음 항목들을 확인해주세요:
+            - 코드 품질 및 가독성
+            - 잠재적인 버그나 에러
+            - 성능 이슈
+            - 보안 취약점
+            - 모범 사례 준수 여부
 
-            코멘트 본문 형식:
-            ## 🤖 Claude 리뷰
-            **판정:** approve | comment | request_changes
-            **요약:** (한국어 2~4문장)
+            발견된 문제점과 개선 제안을 구체적으로 설명해주세요.
 
-            ### 발견 사항
-            - `파일:라인` **[critical|high|medium|low]** 구체적인 설명과 개선 제안
-            (문제가 없으면 이 섹션 대신 "특이사항 없음 ✅" 한 줄)
+            Use `gh pr comment` for top-level feedback.
+            Only post GitHub comments - don't submit review text as messages.
 
-            중요:
-            - 반드시 마지막에 `gh pr comment` 를 정확히 1번 실행해서 코멘트를 남겨야 한다.
-            - 문제가 없어도 판정 "approve" 로 코멘트를 반드시 남긴다. 조용히 끝내지 마라.
-            - diff 를 못 가져와도 그 사실을 코멘트로 남긴다.
+          claude_args: |
+            --allowedTools "Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*)"
