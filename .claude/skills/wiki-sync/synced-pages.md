@@ -7,3 +7,5 @@
 | 기능 명세서 | https://app.notion.com/p/5856355dd2fc820eabb6813677aa9dc1 | 2026-07-21 |
 | 07-24 | https://app.notion.com/p/3a719935b8ae8044a6aecd440d08e033 | 2026-07-24 |
 | 07-27 | https://app.notion.com/p/3aa19935b8ae80bbbacddbcdd632e7c8 | 2026-07-27 |
+| 07-28 | https://app.notion.com/p/3ab19935b8ae80afa1e9c7e3d4482e2f | 2026-07-29 |
+| 07-29 | https://app.notion.com/p/3ab19935b8ae80c0bad2d39f2437c646 | 2026-07-29 |
