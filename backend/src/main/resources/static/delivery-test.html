@@ -132,9 +132,15 @@
         </div>
         <div class="row">
           <button class="primary" id="btnLoc" style="flex:1">📍 위치 업데이트</button>
-          <button id="btnAuto">▶ 동쪽 이동 OFF</button>
+          <button id="btnAuto">▶ 자동 이동 OFF</button>
         </div>
-        <div class="hint">배달 시작 시 5초마다 현재 위치를 무조건 전송. 동쪽 이동 ON이면 매 전송마다 경도를 조금씩 늘려 전진.</div>
+        <div class="row" id="wpRow">
+          <span class="field">지점 지정</span>
+          <button id="btnPlaceOrigin">🚩 출발지</button>
+          <button id="btnPlacePickup">📦 픽업지</button>
+          <button id="btnPlaceDest">🏁 도착지</button>
+        </div>
+        <div class="hint">지점 버튼을 누른 뒤 드리미 지도를 클릭해 위치를 지정. 자동 이동 ON이면 픽업중엔 픽업지, 배달중엔 도착지 방향으로 5초마다 전진.</div>
         <div class="btn-grid">
           <button id="btnPickup">✅ 픽업 완료</button>
           <button id="btnFinish">🏁 배달 완료</button>
@@ -190,6 +196,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const $ = id => document.getElementById(id);
+    let currentStatus = null;   // 드리미가 인지한 현재 배달 상태(자동 이동 목표 결정에 사용)
 
     const STATUS_META = {
       PICKUP_NORMAL:              { label: "픽업중(정상)",     cls: "s-pickup",     cust: "배달원이 상품을 픽업하는 중" },
@@ -202,7 +209,14 @@
 
     // ===== 지도 2개 (드리미: 조작 / 부르미: 추적) =====
     const START = [37.49795, 127.02760];
-    const AUTO_STEP = 0.0004; // 한 틱당 동쪽으로 이동하는 경도 증가량(≈35m)
+    const AUTO_STEP = 0.0004; // 자동 이동 한 틱당 목표 방향으로 전진하는 거리(위경도, ≈35m)
+
+    // 배달 경로 3지점(출발지→픽업지→도착지). 기본값은 START 주변, 지도 클릭으로 임의 지정 가능.
+    const wp = {
+      origin: { latlng: [37.49795, 127.02760], emoji: '🚩', label: '출발지', color: '#f59e0b' },
+      pickup: { latlng: [37.50150, 127.03250], emoji: '📦', label: '픽업지', color: '#a855f7' },
+      dest:   { latlng: [37.49380, 127.03680], emoji: '🏁', label: '도착지', color: '#ef4444' },
+    };
 
     const mapD = L.map('mapD').setView(START, 15);
     const mapB = L.map('mapB').setView(START, 15);
@@ -210,6 +224,38 @@
       { maxZoom: 19, attribution: '© OSM' }).addTo(m));
     const markerD = L.marker(START, { draggable: true }).addTo(mapD);
     const markerB = L.marker(START).addTo(mapB).bindTooltip("배달원", { permanent: false });
+
+    // 3지점 마커를 두 지도 모두에 표시(부르미 화면에도 경로 맥락이 보이도록).
+    function wpIcon(w) {
+      return L.divIcon({ className: 'wp-icon', iconSize: [26, 26], iconAnchor: [13, 13],
+        html: `<div style="width:26px;height:26px;border-radius:50%;background:${w.color};`
+          + `display:flex;align-items:center;justify-content:center;font-size:15px;`
+          + `border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)">${w.emoji}</div>` });
+    }
+    function makeWpMarkers(map) {
+      const m = {};
+      for (const k of ['origin', 'pickup', 'dest']) {
+        m[k] = L.marker(wp[k].latlng, { icon: wpIcon(wp[k]) }).addTo(map)
+          .bindTooltip(wp[k].label, { permanent: true, direction: 'top', offset: [0, -14] });
+      }
+      return m;
+    }
+    const wpMarkersD = makeWpMarkers(mapD);
+    const wpMarkersB = makeWpMarkers(mapB);
+    function refreshWp(k) { wpMarkersD[k].setLatLng(wp[k].latlng); wpMarkersB[k].setLatLng(wp[k].latlng); }
+
+    // 지점 지정 모드: 버튼으로 대상 선택 후 드리미 지도 클릭 → 해당 지점 이동. 모드 없으면 클릭은 드리미 위치 지정.
+    let placeMode = null;
+    function setPlaceMode(mode) {
+      placeMode = (placeMode === mode) ? null : mode;
+      [['origin', 'btnPlaceOrigin'], ['pickup', 'btnPlacePickup'], ['dest', 'btnPlaceDest']]
+        .forEach(([k, btn]) => $(btn).classList.toggle('toggle-on', placeMode === k));
+      mapD.getContainer().style.cursor = placeMode ? 'crosshair' : '';
+    }
+    $('btnPlaceOrigin').onclick = () => setPlaceMode('origin');
+    $('btnPlacePickup').onclick = () => setPlaceMode('pickup');
+    $('btnPlaceDest').onclick = () => setPlaceMode('dest');
+
     setTimeout(() => { mapD.invalidateSize(); mapB.invalidateSize(); }, 200);
 
     function setLatLng(lat, lng) {
@@ -224,7 +270,17 @@
     setLatLng(START[0], START[1]);
     // 드리미가 자기 위치를 지정(드리미 지도만 움직임). 부르미 지도는 오직 SSE(delivery_location)로만 갱신된다.
     markerD.on('dragend', () => { const p = markerD.getLatLng(); setLatLng(p.lat, p.lng); });
-    mapD.on('click', e => { markerD.setLatLng(e.latlng); setLatLng(e.latlng.lat, e.latlng.lng); });
+    mapD.on('click', e => {
+      if (placeMode) {
+        wp[placeMode].latlng = [e.latlng.lat, e.latlng.lng];
+        refreshWp(placeMode);
+        log('side-d', '시스템', wp[placeMode].label + ' 지정', true,
+          `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`);
+        setPlaceMode(null);
+        return;
+      }
+      markerD.setLatLng(e.latlng); setLatLng(e.latlng.lat, e.latlng.lng);
+    });
 
     // ===== 로그 =====
     function pad(n){ return String(n).padStart(2,'0'); }
@@ -273,6 +329,7 @@
     // 상단 배지(서버 기준 진실) + 드리미 지도만 갱신. 부르미 카드/지도는 SSE 핸들러가 담당한다.
     function applyGroundTruth(result) {
       if (!result) return;
+      if (result.status) currentStatus = result.status;   // 자동 이동 목표 판단에 사용
       const meta = STATUS_META[result.status] || { label: result.status, cls: 's-none' };
       const badge = $('statusBadge');
       badge.className = 'badge ' + meta.cls;
@@ -446,7 +503,9 @@
       $('statusMsg').textContent = '';
       $('bStatus').textContent = meta.cust;
       $('bSub').textContent = '배달원을 기다리는 중…';
-      setLatLng(START[0], START[1]); moveMarkers(START[0], START[1], true);
+      currentStatus = 'PICKUP_NORMAL';
+      setLatLng(wp.origin.latlng[0], wp.origin.latlng[1]);
+      moveMarkers(wp.origin.latlng[0], wp.origin.latlng[1], true);
       openSse(r.boormiId, r.dreamiId);  // 부르미/드리미 SSE 구독 시작(실제 서버 push 수신)
       showToast('🆕 새 배달 시작: ' + r.orderId.slice(0, 8) + '… (SSE 구독 + 5초 위치 전송)');
       startPolling();  // 배달 시작 즉시 5초 주기 위치 전송(폴링) 개시
@@ -465,7 +524,7 @@
 
     // ===== 5초 폴링(위치 전송) — 배달 시작 시 개시, 종료/취소 인지 시 중단 =====
     let pollTimer = null;
-    let autoMove = false; // 매 폴링마다 동쪽으로 전진할지 여부(토글)
+    let autoMove = false; // 매 폴링마다 목표 지점으로 전진할지 여부(토글)
 
     function startPolling() {
       stopPolling();
@@ -475,22 +534,35 @@
     function stopPolling() {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
+    // 현재 상태에 따른 자동 이동 목표: 배달중 → 도착지, 그 외(픽업중) → 픽업지.
+    function autoTarget() {
+      return currentStatus === 'DELIVERING' ? wp.dest.latlng : wp.pickup.latlng;
+    }
+    // cur에서 target 방향으로 step만큼 전진(한 스텝 이내면 target에 스냅).
+    function stepToward(cur, target, step) {
+      const dLat = target[0] - cur[0], dLng = target[1] - cur[1];
+      const dist = Math.hypot(dLat, dLng);
+      if (dist <= step || dist === 0) return [target[0], target[1]];
+      const r = step / dist;
+      return [cur[0] + dLat * r, cur[1] + dLng * r];
+    }
     function pollLocation() {
       if (!orderId()) { stopPolling(); return; }
-      if (autoMove) {                        // 이동 ON이면 경도를 동쪽으로 한 스텝 전진(드리미 지도만)
-        const lat = parseFloat($('lat').value) || START[0];
-        const lng = (parseFloat($('lng').value) || START[1]) + AUTO_STEP;
+      if (autoMove) {                        // 이동 ON이면 목표 지점 방향으로 한 스텝 전진(드리미 지도만)
+        const cur = [parseFloat($('lat').value) || wp.origin.latlng[0],
+          parseFloat($('lng').value) || wp.origin.latlng[1]];
+        const [lat, lng] = stepToward(cur, autoTarget(), AUTO_STEP);
         setLatLng(lat, lng); markerD.setLatLng([lat, lng]); mapD.panTo([lat, lng], { animate: true });
       }
       sendLocation();
     }
 
-    // ===== 동쪽 이동 토글(폴링은 이미 돌고 있고, 이 버튼은 이동 여부만 바꾼다) =====
+    // ===== 자동 이동 토글(폴링은 이미 돌고 있고, 이 버튼은 이동 여부만 바꾼다) =====
     $('btnAuto').onclick = () => {
       autoMove = !autoMove;
       const btn = $('btnAuto');
       btn.classList.toggle('toggle-on', autoMove);
-      btn.textContent = autoMove ? '⏸ 동쪽 이동 ON' : '▶ 동쪽 이동 OFF';
+      btn.textContent = autoMove ? '⏸ 자동 이동 ON' : '▶ 자동 이동 OFF';
     };
 
     // ===== 상태 전이 버튼 =====
