@@ -4,6 +4,7 @@ import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
+import com.naengsam.quick.global.session.PublicApi;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -25,6 +26,8 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/delivery")
 @Tag(name = "배달컨트롤러", description = "배달 진행 중 상태 전이(위치 갱신/픽업 완료/취소/배달 완료)를 처리한다")
 @RequiredArgsConstructor
+// 배달 엔드포인트는 orderId(PathVariable)로만 식별하며 @LoginUser를 쓰지 않으므로 로그인 세션 없이 호출된다.
+@PublicApi
 public class DeliveryController {
 
     private final DeliveryService deliveryService;
