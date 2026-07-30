@@ -1,7 +1,9 @@
 package com.naengsam.quick.domain.delivery.service;
 
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
+import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -75,6 +77,10 @@ public class DeliveryService {
     // logic이 상태를 바꾼 뒤(여전히 락 안)의 스냅샷으로 응답 DTO를 만들어 status·message 일관성을 보장한다.
     private DeliveryStatusResponseDto transition(UUID orderId, Function<DeliveryStatus, String> logic) {
         DeliveryStatus deliveryStatus = store.get(orderId);
+        if (deliveryStatus == null) {
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND);
+        }
+
         synchronized (deliveryStatus) {
             String message = logic.apply(deliveryStatus);
             return DeliveryStatusResponseDto.from(deliveryStatus, message);
@@ -86,12 +92,21 @@ public class DeliveryService {
     private String doUpdateDreamiLocation(DeliveryStatus deliveryStatus, GeoPoint dreamiGeoPoint) {
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
             alarmDreamiCancelBySSE(); // 드리미에게_SSE로_취소상태_알려주기()
-            return "부르미가 취소한 주문입니다";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
-        // 정상 배달이 아니면 함수 무시 (어차피 조금 지나면 클라이언트에서 이 요청 안보낼거임)
+        if (deliveryStatus.status() == PICKUP_CANCELLED_BY_DREAMI
+                || deliveryStatus.status() == PICKUP_CANCELLED_BY_ADMIN) {
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+        }
+
+        // 이미 완료된 주문이면 위치를 더 이상 갱신하지 않음
         if (deliveryStatus.status() == DELIVERED) { // 배달_완료
-            return "이미 배달 완료된 주문입니다";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+        }
+
+        if (dreamiGeoPoint == null) {
+            throw new BusinessException(DeliveryErrorCode.LOCATION_COLLECTION_FAILED);
         }
 
         deliveryStatus.setLocation(dreamiGeoPoint); // 메모리에_위치정보_수정()
@@ -102,30 +117,34 @@ public class DeliveryService {
     private String doPickupFinishByDreami(DeliveryStatus deliveryStatus) {
         // 부르미가 취소 눌렀는데 드리미는 아직 인지 못하고 픽업 완료를 누름
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
-            return "부르미가 이미 취소한 주문입니다";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
         // 관리자가 취소 했는데 드리미는 아직 인지 못하고 픽업 완료를 누름
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_관리자의_취소
-            return "관리자에 의해 취소한 주문입니다";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
         // 정상 "배달중"이면 이미 픽업 완료를 호출한 상황(버튼 연타 등)
         if (deliveryStatus.status() == DELIVERING) { // 배달중_정상
-            return "이미 처리 된 요청입니다";
+            throw new BusinessException(DeliveryErrorCode.STEP_ALREADY_VERIFIED);
         }
 
         // 드리미가 픽업 완료를 요청했는데 드리미가 취소하는건 안될듯?
-        assert deliveryStatus.status() != PICKUP_CANCELLED_BY_DREAMI; // 픽업중_드리미의_취소
+        if (deliveryStatus.status() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+        }
 
         // 픽업을 완료 하려고 요청했는데 이미 배달이 완료된 건이다?? -> 말이 안됨
-        assert deliveryStatus.status() != DELIVERED; // 배달_완료
+        if (deliveryStatus.status() == DELIVERED) { // 배달_완료
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+        }
 
         // 여기까지 왔으면 이제 "픽업중_정상" 상태만 남음
         assert deliveryStatus.status() == PICKUP_NORMAL; // 픽업중_정상
 
         if (!hasPickupPhoto(deliveryStatus.orderId())) { // 사진이_없는경우
-            return "픽업 사진이 없습니다";
+            throw new BusinessException(DeliveryErrorCode.PICKUP_PHOTO_MISSING);
         }
 
         deliveryStatus.setStatus(DELIVERING); // 배달중_정상
@@ -135,25 +154,27 @@ public class DeliveryService {
 
     private String doCancelByDreami(DeliveryStatus deliveryStatus) {
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
-            return "이미 부르미가 먼저 취소한 주문입니다";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
         // 이미 배달 중 상태라면, 배달 화면에서 고객센터에 연락하거나 화면 갱신 후 시도
         if (deliveryStatus.status() == DELIVERING) { // 배달중_정상
-            return "이미 픽업이 완료된 주문입니다. 다시 시도해주세요";
+            throw new BusinessException(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
         }
 
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_관리자의_취소
-            return "이미 관리자에 의해 취소된 주문입니다";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
         // 이미 드리미가 취소 요청을 보낸 상황(버튼 연타 등)
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
-            return "이미 처리된 요청입니다";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
         // 배달 완료 상태에서는 픽업 취소 호출이 될 수가 없음
-        assert deliveryStatus.status() != DELIVERED; // 배달_완료
+        if (deliveryStatus.status() == DELIVERED) { // 배달_완료
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+        }
 
         assert deliveryStatus.status() == PICKUP_NORMAL; // 픽업중_정상
         deliveryStatus.setStatus(PICKUP_CANCELLED_BY_DREAMI); // 픽업중_드리미의_취소
@@ -163,23 +184,27 @@ public class DeliveryService {
 
     private String doCancelByBoormi(DeliveryStatus deliveryStatus) {
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
-            return "이미 드리미가 먼저 취소한 주문";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_관리자의_취소
-            return "이미 관리자가 먼저 취소한 주문";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
         // 이미 배달 중 상태라면, 배달 화면에서 고객센터에 연락하거나 화면 갱신 후 시도
         if (deliveryStatus.status() == DELIVERING) { // 배달중_정상
-            return "이미 픽업이 완료된 주문입니다. 다시 시도해주세요";
+            throw new BusinessException(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
         }
 
         // 배달 완료 상태에서는 픽업 취소 호출이 될 수가 없음
-        assert deliveryStatus.status() != DELIVERED; // 배달_완료
+        if (deliveryStatus.status() == DELIVERED) { // 배달_완료
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+        }
 
         // 이미 부르미가 취소 요청을 보낸 상황에서 중복 호출될 수 없음
-        assert deliveryStatus.status() != PICKUP_CANCELLED_BY_BOORMI; // 픽업중_부르미의_취소
+        if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+        }
 
         assert deliveryStatus.status() == PICKUP_NORMAL; // 픽업중_정상
         deliveryStatus.setStatus(PICKUP_CANCELLED_BY_BOORMI); // 픽업중_부르미의_취소
@@ -189,23 +214,27 @@ public class DeliveryService {
 
     private String doCancelByAdmin(DeliveryStatus deliveryStatus) {
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
-            return "이미 드리미가 먼저 취소한 주문";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
-            return "이미 부르미가 먼저 취소한 주문";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
         // 이미 배달 중 상태라면 취소할 수 없음
         if (deliveryStatus.status() == DELIVERING) { // 배달중_정상
-            return "이미 픽업이 완료된 주문입니다. 다시 시도해주세요";
+            throw new BusinessException(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
         }
 
         // 배달 완료 상태에서는 픽업 취소 호출이 될 수가 없음
-        assert deliveryStatus.status() != DELIVERED; // 배달_완료
+        if (deliveryStatus.status() == DELIVERED) { // 배달_완료
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+        }
 
         // 이미 관리자가 취소한 상황에서 중복 호출될 수 없음
-        assert deliveryStatus.status() != PICKUP_CANCELLED_BY_ADMIN; // 픽업중_관리자의_취소
+        if (deliveryStatus.status() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_관리자의_취소
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+        }
 
         assert deliveryStatus.status() == PICKUP_NORMAL; // 픽업중_정상
         deliveryStatus.setStatus(PICKUP_CANCELLED_BY_ADMIN); // 픽업중_관리자의_취소
@@ -219,25 +248,27 @@ public class DeliveryService {
         // 아마 드리미가 픽업하자마자 바로 배달완료 처리요청하지 않는 이상 없을듯?
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI
                 || deliveryStatus.status() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_부르미의_취소 || 픽업중_관리자의_취소
-            return "잘못된 접근입니다";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
         if (deliveryStatus.status() == DELIVERED) { // 배달_완료
-            return "이미 배달 완료 처리된 주문입니다";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
         }
 
         // 픽업 중에 배달 완료 요청이 온다?
         if (deliveryStatus.status() == PICKUP_NORMAL) { // 픽업중_정상
-            return "잠시 후 다시 시도해주세요";
+            throw new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED);
         }
 
         // 드리미가 취소 했는데 그 이후에 배달을 완료할 수는 없음
-        assert deliveryStatus.status() != PICKUP_CANCELLED_BY_DREAMI; // 픽업중_드리미의_취소
+        if (deliveryStatus.status() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+        }
 
         assert deliveryStatus.status() == DELIVERING; // 배달중_정상
 
         if (!hasDeliveryPhoto(deliveryStatus.orderId())) { // 사진이없을때
-            return "배달 완료 인증 사진이 없습니다";
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_PHOTO_MISSING);
         }
 
         deliveryStatus.setStatus(DELIVERED); // 배달_완료

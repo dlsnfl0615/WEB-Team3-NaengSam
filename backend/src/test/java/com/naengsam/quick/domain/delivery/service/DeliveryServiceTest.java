@@ -5,14 +5,20 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERING;
 import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_BOORMI;
 import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_DREAMI;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
+import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.global.code.BaseErrorCode;
+import com.naengsam.quick.global.exception.BusinessException;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -46,6 +52,18 @@ class DeliveryServiceTest {
         return store.get(orderId).status();
     }
 
+    private BaseErrorCode errorCodeOf(Throwable thrown) {
+        assertThat(thrown).isInstanceOf(BusinessException.class);
+        return ((BusinessException) thrown).getErrorCode();
+    }
+
+    private List<Function<UUID, DeliveryStatusResponseDto>> cancelOperations() {
+        return List.of(
+                deliveryService::cancelByDreami,
+                deliveryService::cancelByBoormi,
+                deliveryService::cancelByAdmin);
+    }
+
     // ===== 배달 시작 =====
 
     @Test
@@ -77,14 +95,47 @@ class DeliveryServiceTest {
     }
 
     @Test
-    void 픽업완료_이미_부르미가_취소한주문이면_전이하지않음() {
-        UUID orderId = registerDelivery(PICKUP_CANCELLED_BY_BOORMI);
+    void 등록되지않은_배달이면_DELIVERY_NOT_FOUND_예외() {
+        UUID orderId = UUID.randomUUID();
 
-        DeliveryStatusResponseDto result = deliveryService.pickupFinishByDreami(orderId);
+        Throwable thrown = catchThrowable(() -> deliveryService.pickupFinishByDreami(orderId));
 
-        assertThat(result.message()).isEqualTo("부르미가 이미 취소한 주문입니다");
-        assertThat(result.status()).isEqualTo(PICKUP_CANCELLED_BY_BOORMI);
-        assertThat(statusOf(orderId)).isEqualTo(PICKUP_CANCELLED_BY_BOORMI);
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_NOT_FOUND);
+    }
+
+    @Test
+    void 픽업완료_이미_취소된주문이면_DELIVERY_ALREADY_CANCELLED_예외() {
+        for (DeliveryCd cancelledStatus : List.of(
+                DeliveryCd.PICKUP_CANCELLED_BY_BOORMI,
+                DeliveryCd.PICKUP_CANCELLED_BY_DREAMI,
+                DeliveryCd.PICKUP_CANCELLED_BY_ADMIN)) {
+            UUID orderId = registerDelivery(cancelledStatus);
+
+            Throwable thrown = catchThrowable(() -> deliveryService.pickupFinishByDreami(orderId));
+
+            assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+            assertThat(statusOf(orderId)).isEqualTo(cancelledStatus);
+        }
+    }
+
+    @Test
+    void 픽업완료_이미_처리된단계면_STEP_ALREADY_VERIFIED_예외() {
+        UUID orderId = registerDelivery(DELIVERING);
+
+        Throwable thrown = catchThrowable(() -> deliveryService.pickupFinishByDreami(orderId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.STEP_ALREADY_VERIFIED);
+        assertThat(statusOf(orderId)).isEqualTo(DELIVERING);
+    }
+
+    @Test
+    void 픽업완료_이미_배달완료된주문이면_DELIVERY_ALREADY_COMPLETED_예외() {
+        UUID orderId = registerDelivery(DELIVERED);
+
+        Throwable thrown = catchThrowable(() -> deliveryService.pickupFinishByDreami(orderId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+        assertThat(statusOf(orderId)).isEqualTo(DELIVERED);
     }
 
     @Test
@@ -110,13 +161,114 @@ class DeliveryServiceTest {
     }
 
     @Test
-    void 위치갱신_이미_배달완료된주문이면_무시() {
+    void 위치갱신_위치정보가_없으면_LOCATION_COLLECTION_FAILED_예외() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        Throwable thrown = catchThrowable(() -> deliveryService.updateDreamiLocation(orderId, null));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.LOCATION_COLLECTION_FAILED);
+    }
+
+    @Test
+    void 위치갱신_이미_취소된주문이면_DELIVERY_ALREADY_CANCELLED_예외() {
+        for (DeliveryCd cancelledStatus : List.of(
+                DeliveryCd.PICKUP_CANCELLED_BY_BOORMI,
+                DeliveryCd.PICKUP_CANCELLED_BY_DREAMI,
+                DeliveryCd.PICKUP_CANCELLED_BY_ADMIN)) {
+            UUID orderId = registerDelivery(cancelledStatus);
+
+            Throwable thrown = catchThrowable(
+                    () -> deliveryService.updateDreamiLocation(orderId, new GeoPoint(37.5, 127.0)));
+
+            assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+        }
+    }
+
+    @Test
+    void 위치갱신_이미_배달완료된주문이면_DELIVERY_ALREADY_COMPLETED_예외() {
         UUID orderId = registerDelivery(DELIVERED);
 
-        DeliveryStatusResponseDto result = deliveryService.updateDreamiLocation(orderId, new GeoPoint(37.5, 127.0));
+        Throwable thrown = catchThrowable(
+                () -> deliveryService.updateDreamiLocation(orderId, new GeoPoint(37.5, 127.0)));
 
-        assertThat(result.message()).isEqualTo("이미 배달 완료된 주문입니다");
-        assertThat(result.status()).isEqualTo(DELIVERED);
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+        assertThat(statusOf(orderId)).isEqualTo(DELIVERED);
+    }
+
+    @Test
+    void 취소_이미_취소된주문이면_DELIVERY_ALREADY_CANCELLED_예외() {
+        for (Function<UUID, DeliveryStatusResponseDto> cancelOperation : cancelOperations()) {
+            for (DeliveryCd cancelledStatus : List.of(
+                    DeliveryCd.PICKUP_CANCELLED_BY_BOORMI,
+                    DeliveryCd.PICKUP_CANCELLED_BY_DREAMI,
+                    DeliveryCd.PICKUP_CANCELLED_BY_ADMIN)) {
+                UUID orderId = registerDelivery(cancelledStatus);
+
+                Throwable thrown = catchThrowable(() -> cancelOperation.apply(orderId));
+
+                assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+                assertThat(statusOf(orderId)).isEqualTo(cancelledStatus);
+            }
+        }
+    }
+
+    @Test
+    void 취소_배달중인주문이면_CANCELLATION_RESTRICTED_DURING_DELIVERY_예외() {
+        for (Function<UUID, DeliveryStatusResponseDto> cancelOperation : cancelOperations()) {
+            UUID orderId = registerDelivery(DELIVERING);
+
+            Throwable thrown = catchThrowable(() -> cancelOperation.apply(orderId));
+
+            assertThat(errorCodeOf(thrown))
+                    .isEqualTo(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
+            assertThat(statusOf(orderId)).isEqualTo(DELIVERING);
+        }
+    }
+
+    @Test
+    void 취소_배달완료된주문이면_DELIVERY_ALREADY_COMPLETED_예외() {
+        for (Function<UUID, DeliveryStatusResponseDto> cancelOperation : cancelOperations()) {
+            UUID orderId = registerDelivery(DELIVERED);
+
+            Throwable thrown = catchThrowable(() -> cancelOperation.apply(orderId));
+
+            assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+            assertThat(statusOf(orderId)).isEqualTo(DELIVERED);
+        }
+    }
+
+    @Test
+    void 배달완료_픽업전이면_PICKUP_NOT_COMPLETED_예외() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        Throwable thrown = catchThrowable(() -> deliveryService.finishDelivery(orderId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.PICKUP_NOT_COMPLETED);
+        assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
+    }
+
+    @Test
+    void 배달완료_이미_취소된주문이면_DELIVERY_ALREADY_CANCELLED_예외() {
+        for (DeliveryCd cancelledStatus : List.of(
+                DeliveryCd.PICKUP_CANCELLED_BY_BOORMI,
+                DeliveryCd.PICKUP_CANCELLED_BY_DREAMI,
+                DeliveryCd.PICKUP_CANCELLED_BY_ADMIN)) {
+            UUID orderId = registerDelivery(cancelledStatus);
+
+            Throwable thrown = catchThrowable(() -> deliveryService.finishDelivery(orderId));
+
+            assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+            assertThat(statusOf(orderId)).isEqualTo(cancelledStatus);
+        }
+    }
+
+    @Test
+    void 배달완료_이미_완료된주문이면_DELIVERY_ALREADY_COMPLETED_예외() {
+        UUID orderId = registerDelivery(DELIVERED);
+
+        Throwable thrown = catchThrowable(() -> deliveryService.finishDelivery(orderId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERED);
     }
 
@@ -131,21 +283,27 @@ class DeliveryServiceTest {
 
             AtomicReference<DeliveryStatusResponseDto> pickupResult = new AtomicReference<>();
             AtomicReference<DeliveryStatusResponseDto> cancelResult = new AtomicReference<>();
+            AtomicReference<Throwable> pickupError = new AtomicReference<>();
+            AtomicReference<Throwable> cancelError = new AtomicReference<>();
             runConcurrently(
-                    () -> pickupResult.set(deliveryService.pickupFinishByDreami(orderId)),
-                    () -> cancelResult.set(deliveryService.cancelByBoormi(orderId)));
+                    () -> pickupError.set(
+                            catchThrowable(() -> pickupResult.set(deliveryService.pickupFinishByDreami(orderId)))),
+                    () -> cancelError.set(
+                            catchThrowable(() -> cancelResult.set(deliveryService.cancelByBoormi(orderId)))));
 
-            boolean pickupWon = "픽업 완료".equals(pickupResult.get().message())
-                    && "이미 픽업이 완료된 주문입니다. 다시 시도해주세요".equals(cancelResult.get().message())
+            boolean pickupWon = pickupResult.get() != null
+                    && errorCodeOf(cancelError.get())
+                    == DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY
                     && statusOf(orderId) == DELIVERING;
-            boolean cancelWon = "픽업 취소 완료".equals(cancelResult.get().message())
-                    && "부르미가 이미 취소한 주문입니다".equals(pickupResult.get().message())
+            boolean cancelWon = cancelResult.get() != null
+                    && errorCodeOf(pickupError.get()) == DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED
                     && statusOf(orderId) == PICKUP_CANCELLED_BY_BOORMI;
 
             // 픽업/취소 중 정확히 한쪽만 성공(둘 다 성공하는 레이스가 없어야 함)
             assertThat(pickupWon ^ cancelWon)
-                    .as("iteration %d: pickup=%s, cancel=%s, status=%s",
-                            i, pickupResult.get().message(), cancelResult.get().message(), statusOf(orderId))
+                    .as("iteration %d: pickup=%s, pickupError=%s, cancel=%s, cancelError=%s, status=%s",
+                            i, pickupResult.get(), pickupError.get(), cancelResult.get(), cancelError.get(),
+                            statusOf(orderId))
                     .isTrue();
         }
     }
