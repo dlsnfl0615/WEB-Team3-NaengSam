@@ -18,6 +18,7 @@ export function MatchingScreen() {
   const navigate = useNavigate();
   const { role } = useRole();
   const acceptCall = useDeliveryStore((s) => s.acceptCall);
+  const acceptOffer = useDeliveryStore((s) => s.acceptOffer);
   const [offerVisible, setOfferVisible] = useState(true);
   const [calls, setCalls] = useState<Call[]>([]);
 
@@ -35,7 +36,13 @@ export function MatchingScreen() {
   const onAcceptCall = async () => {
     if (!call) return;
     await acceptCall(call);
-    navigate(ROUTES.deliveryTrack);
+    navigate(ROUTES.deliveryTrack, { replace: true });
+  };
+
+  const onAcceptOffer = async () => {
+    await acceptOffer();
+    setOfferVisible(false);
+    navigate(ROUTES.deliveryDetail, { replace: true });
   };
 
   return (
@@ -87,7 +94,7 @@ export function MatchingScreen() {
             count={132}
             distance="120m"
             onReject={() => navigate(ROUTES.rejectReason)}
-            onAccept={() => setOfferVisible(false)}
+            onAccept={onAcceptOffer}
           />
         )}
       </Modal>

@@ -11,6 +11,13 @@ export function getCalls(): Promise<Call[]> {
   return mockRequest(SEED_CALLS);
 }
 
+/** 부르미 오퍼 수락 → 매칭중 배달을 드리미와 매칭 확정. */
+export function acceptOffer(deliveryId: string): Promise<void> {
+  return mockRequest<void>(undefined, {
+    errorMessage: `배달 ${deliveryId} 드리미 매칭에 실패했어요.`,
+  });
+}
+
 /** 콜 수락 → 드리미 관점 "픽업중" 배달 생성. */
 export function acceptCall(call: Call): Promise<Delivery> {
   const id = nextId("d");
