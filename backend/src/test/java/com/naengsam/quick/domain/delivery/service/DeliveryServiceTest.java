@@ -8,11 +8,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
+import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
-import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
@@ -55,6 +56,10 @@ class DeliveryServiceTest {
     private BaseErrorCode errorCodeOf(Throwable thrown) {
         assertThat(thrown).isInstanceOf(BusinessException.class);
         return ((BusinessException) thrown).getErrorCode();
+    }
+
+    private DreamiLocationRequest location(String latitude, String longitude) {
+        return new DreamiLocationRequest(new BigDecimal(latitude), new BigDecimal(longitude));
     }
 
     private List<Function<UUID, DeliveryStatusResponseDto>> cancelOperations() {
@@ -170,6 +175,35 @@ class DeliveryServiceTest {
     }
 
     @Test
+    void 위치갱신_좌표값이_없으면_LOCATION_COLLECTION_FAILED_예외() {
+        for (DreamiLocationRequest invalidLocation : List.of(
+                new DreamiLocationRequest(null, new BigDecimal("127.0")),
+                new DreamiLocationRequest(new BigDecimal("37.5"), null))) {
+            UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+            Throwable thrown = catchThrowable(
+                    () -> deliveryService.updateDreamiLocation(orderId, invalidLocation));
+
+            assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.LOCATION_COLLECTION_FAILED);
+        }
+    }
+
+    @Test
+    void 위치갱신_좌표를_소수점8자리_HALF_UP으로_저장하고_응답한다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        DeliveryStatusResponseDto result = deliveryService.updateDreamiLocation(
+                orderId, location("37.123456789", "127.1"));
+
+        assertThat(result.currentLocation().latitude()).isEqualByComparingTo(new BigDecimal("37.12345679"));
+        assertThat(result.currentLocation().latitude().scale()).isEqualTo(8);
+        assertThat(result.currentLocation().longitude()).isEqualByComparingTo(new BigDecimal("127.10000000"));
+        assertThat(result.currentLocation().longitude().scale()).isEqualTo(8);
+        assertThat(store.get(orderId).currentLatitude()).isEqualByComparingTo(new BigDecimal("37.12345679"));
+        assertThat(store.get(orderId).currentLongitude()).isEqualByComparingTo(new BigDecimal("127.10000000"));
+    }
+
+    @Test
     void 위치갱신_이미_취소된주문이면_DELIVERY_ALREADY_CANCELLED_예외() {
         for (DeliveryCd cancelledStatus : List.of(
                 DeliveryCd.PICKUP_CANCELLED_BY_BOORMI,
@@ -178,7 +212,7 @@ class DeliveryServiceTest {
             UUID orderId = registerDelivery(cancelledStatus);
 
             Throwable thrown = catchThrowable(
-                    () -> deliveryService.updateDreamiLocation(orderId, new GeoPoint(37.5, 127.0)));
+                    () -> deliveryService.updateDreamiLocation(orderId, location("37.5", "127.0")));
 
             assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
@@ -189,7 +223,7 @@ class DeliveryServiceTest {
         UUID orderId = registerDelivery(DELIVERED);
 
         Throwable thrown = catchThrowable(
-                () -> deliveryService.updateDreamiLocation(orderId, new GeoPoint(37.5, 127.0)));
+                () -> deliveryService.updateDreamiLocation(orderId, location("37.5", "127.0")));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERED);

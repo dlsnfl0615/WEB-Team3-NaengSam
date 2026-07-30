@@ -1,17 +1,23 @@
 package com.naengsam.quick.domain.delivery.service;
 
+import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERED;
+import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERING;
+import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_ADMIN;
+import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_BOORMI;
+import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_DREAMI;
+import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_NORMAL;
+
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
+import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
-import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.global.exception.BusinessException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.util.UUID;
+import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-
-import java.util.UUID;
-import java.util.function.Function;
-
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
 
 /**
  * 배달 한 건의 상태 전이를 담당한다. 공개 메서드는 동기 요청으로 호출되며, 요청 스레드에서 그대로 실행된다.
@@ -27,6 +33,8 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
 @RequiredArgsConstructor
 public class DeliveryService {
 
+    private static final int LOCATION_SCALE = 8;
+
     private final DeliveryStore store;
 
     // ===== 배달 시작 (진입점) =====
@@ -41,8 +49,8 @@ public class DeliveryService {
     // ===== 공개 메서드 (동기 요청) — 주문 단위 락 안에서 상태 전이를 실행하고 결과를 돌려준다 =====
 
     // 드리미 위치 정보를 전달 (이 메소드를 5~10초마다 드리미가 호출해야함). 동시에 상태 변경이 있다면 응답한다.
-    public DeliveryStatusResponseDto updateDreamiLocation(UUID orderId, GeoPoint dreamiGeoPoint) {
-        return transition(orderId, status -> doUpdateDreamiLocation(status, dreamiGeoPoint));
+    public DeliveryStatusResponseDto updateDreamiLocation(UUID orderId, DreamiLocationRequest location) {
+        return transition(orderId, status -> doUpdateDreamiLocation(status, location));
     }
 
     // 픽업 완료
@@ -89,7 +97,7 @@ public class DeliveryService {
 
     // ===== 실제 상태 전이 로직 (주문 락 안에서 실행) =====
 
-    private String doUpdateDreamiLocation(DeliveryStatus deliveryStatus, GeoPoint dreamiGeoPoint) {
+    private String doUpdateDreamiLocation(DeliveryStatus deliveryStatus, DreamiLocationRequest location) {
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
             alarmDreamiCancelBySSE(); // 드리미에게_SSE로_취소상태_알려주기()
             throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
@@ -105,11 +113,13 @@ public class DeliveryService {
             throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
         }
 
-        if (dreamiGeoPoint == null) {
+        if (location == null || location.latitude() == null || location.longitude() == null) {
             throw new BusinessException(DeliveryErrorCode.LOCATION_COLLECTION_FAILED);
         }
 
-        deliveryStatus.setLocation(dreamiGeoPoint); // 메모리에_위치정보_수정()
+        BigDecimal latitude = location.latitude().setScale(LOCATION_SCALE, RoundingMode.HALF_UP);
+        BigDecimal longitude = location.longitude().setScale(LOCATION_SCALE, RoundingMode.HALF_UP);
+        deliveryStatus.setLocation(latitude, longitude); // 메모리에_위치정보_수정()
         alarmBoormiLocationBySSE(); // 부르미에게_새로운_위치정보_전달_SSE사용()
         return "위치 갱신됨"; // 상태는 응답 DTO의 status 필드로 전달된다
     }

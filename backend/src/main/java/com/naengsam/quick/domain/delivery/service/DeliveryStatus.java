@@ -1,7 +1,7 @@
 package com.naengsam.quick.domain.delivery.service;
 
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
-import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -17,7 +17,8 @@ public class DeliveryStatus {
     private final UUID dreamiId;
     private final UUID boormiId; // order를 통해 주입
     private DeliveryCd status;
-    private GeoPoint currentLocation;
+    private BigDecimal currentLatitude;
+    private BigDecimal currentLongitude;
 
     private DeliveryStatus(UUID orderId, UUID dreamiId, UUID boormiId) {
         this.orderId = orderId;
@@ -46,15 +47,20 @@ public class DeliveryStatus {
         return status;
     }
 
-    public GeoPoint currentLocation() {
-        return currentLocation;
+    public BigDecimal currentLatitude() {
+        return currentLatitude;
+    }
+
+    public BigDecimal currentLongitude() {
+        return currentLongitude;
     }
 
     void setStatus(DeliveryCd status) {
         this.status = status;
     }
 
-    void setLocation(GeoPoint location) {
-        this.currentLocation = location;
+    void setLocation(BigDecimal latitude, BigDecimal longitude) {
+        this.currentLatitude = latitude;
+        this.currentLongitude = longitude;
     }
 }

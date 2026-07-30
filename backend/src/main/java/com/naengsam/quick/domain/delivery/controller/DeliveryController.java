@@ -1,17 +1,20 @@
 package com.naengsam.quick.domain.delivery.controller;
 
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
+import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
-import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.*;
-
-import java.util.UUID;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 /**
  * 배달 진행 중 상태 전이를 트리거하는 API. 각 엔드포인트는 주문(orderId) 단위로 상태를 변경하고, 처리 후 상태 스냅샷(DeliveryStatusResponseDto)을 응답한다.
@@ -33,7 +36,7 @@ public class DeliveryController {
             codes = {"LOCATION_COLLECTION_FAILED", "DELIVERY_NOT_FOUND", "DELIVERY_ALREADY_CANCELLED",
                     "DELIVERY_ALREADY_COMPLETED"})
     public DeliveryStatusResponseDto updateDreamiLocation(
-            @PathVariable UUID orderId, @RequestBody(required = false) GeoPoint location) {
+            @PathVariable UUID orderId, @RequestBody(required = false) DreamiLocationRequest location) {
         return deliveryService.updateDreamiLocation(orderId, location);
     }
 

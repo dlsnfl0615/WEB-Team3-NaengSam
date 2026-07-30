@@ -1,18 +1,29 @@
 package com.naengsam.quick.domain.delivery.controller;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.naengsam.quick.domain.delivery.dto.DeliveryLocationDto;
+import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
+import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
+import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.exception.GlobalExceptionHandler;
+import java.math.BigDecimal;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -30,6 +41,35 @@ class DeliveryControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(new DeliveryController(deliveryService))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    @Test
+    void 위치정보의_JSON숫자를_BigDecimal로_서비스에_전달한다() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        DeliveryStatusResponseDto response = new DeliveryStatusResponseDto(
+                orderId,
+                DeliveryCd.PICKUP_NORMAL,
+                new DeliveryLocationDto(new BigDecimal("37.12345679"), new BigDecimal("127.10000000")),
+                "위치 갱신됨");
+        when(deliveryService.updateDreamiLocation(eq(orderId), any(DreamiLocationRequest.class)))
+                .thenReturn(response);
+
+        mockMvc.perform(post("/api/v1/delivery/orders/{orderId}/dreami-location", orderId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"latitude": 37.123456789, "longitude": 127.1}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.currentLocation.latitude").value(37.12345679))
+                .andExpect(jsonPath("$.currentLocation.longitude").value(127.1));
+
+        ArgumentCaptor<DreamiLocationRequest> locationCaptor =
+                ArgumentCaptor.forClass(DreamiLocationRequest.class);
+        verify(deliveryService).updateDreamiLocation(eq(orderId), locationCaptor.capture());
+        assertThat(locationCaptor.getValue().latitude())
+                .isEqualByComparingTo(new BigDecimal("37.123456789"));
+        assertThat(locationCaptor.getValue().longitude())
+                .isEqualByComparingTo(new BigDecimal("127.1"));
     }
 
     @Test
