@@ -8,7 +8,6 @@ import {
   ScreenShell,
   TopBar,
 } from "@/shared/ui";
-import { ROUTES } from "@/shared/config/routes";
 
 const REASONS = [
   "별점이 낮아요",
@@ -76,7 +75,7 @@ export function RejectReasonScreen() {
           variant="navy"
           block
           disabled={reason === "기타" && !etc.trim()}
-          onClick={() => navigate(ROUTES.matching)}
+          onClick={() => navigate(-1)}
         >
           사유 제출하고 거절
         </Button>

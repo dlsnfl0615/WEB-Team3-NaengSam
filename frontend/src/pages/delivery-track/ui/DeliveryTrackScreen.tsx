@@ -33,13 +33,13 @@ export function DeliveryTrackScreen() {
       await advance();
     } else {
       await complete();
-      navigate(ROUTES.deliveryComplete);
+      navigate(ROUTES.deliveryComplete, { replace: true });
     }
   };
 
   const onCancel = async () => {
     await cancel("픽업 전 취소");
-    navigate(ROUTES.home);
+    navigate(ROUTES.home, { replace: true });
   };
 
   return (

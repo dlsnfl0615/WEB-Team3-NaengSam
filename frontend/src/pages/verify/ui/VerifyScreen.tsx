@@ -13,7 +13,7 @@ export function VerifyScreen() {
 
   const onVerify = async () => {
     await verify()
-    navigate(ROUTES.home)
+    navigate(ROUTES.home, { replace: true })
   }
 
   return (
@@ -69,7 +69,7 @@ export function VerifyScreen() {
           <button
             type="button"
             className="text-sm text-muted hover:text-navy-900"
-            onClick={() => navigate(ROUTES.home)}
+            onClick={() => navigate(ROUTES.home, { replace: true })}
           >
             나중에 등록 (부르미로 시작)
           </button>

@@ -67,7 +67,7 @@ export function SignupScreen() {
         email: form.email,
         password: form.password,
       })
-      navigate(ROUTES.verify)
+      navigate(ROUTES.verify, { replace: true })
     } finally {
       setSubmitting(false)
     }

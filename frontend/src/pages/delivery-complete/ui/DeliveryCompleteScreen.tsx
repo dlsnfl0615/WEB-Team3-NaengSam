@@ -28,7 +28,11 @@ export function DeliveryCompleteScreen() {
 
   return (
     <ScreenShell>
-      <TopBar title="배달 완료" onBack={() => navigate(-1)} actions={[]} />
+      <TopBar
+        title="배달 완료"
+        onBack={() => navigate(ROUTES.home, { replace: true })}
+        actions={[]}
+      />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <div className="flex items-center gap-3">
@@ -74,7 +78,7 @@ export function DeliveryCompleteScreen() {
       </main>
 
       <footer className="pt-4">
-        <Button block onClick={() => navigate(ROUTES.home)}>
+        <Button block onClick={() => navigate(ROUTES.home, { replace: true })}>
           완료하기
         </Button>
       </footer>

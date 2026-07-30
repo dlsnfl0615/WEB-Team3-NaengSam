@@ -26,7 +26,7 @@ export function DriverReasonScreen() {
     setSubmitting(true);
     try {
       await cancel(etc.trim() ? `${reason} (${etc.trim()})` : reason);
-      navigate(ROUTES.home);
+      navigate(ROUTES.home, { replace: true });
     } finally {
       setSubmitting(false);
     }

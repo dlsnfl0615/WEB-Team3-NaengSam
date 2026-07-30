@@ -24,7 +24,7 @@ export function LoginScreen() {
     setSubmitting(true)
     try {
       await login({ email, password })
-      navigate(ROUTES.home)
+      navigate(ROUTES.home, { replace: true })
     } finally {
       setSubmitting(false)
     }
