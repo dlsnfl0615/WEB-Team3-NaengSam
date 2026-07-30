@@ -25,6 +25,11 @@ interface DeliveryState {
   deliveries: Delivery[];
   /** 현재 진행 중인 배달 id(진행 화면 구독 대상). */
   activeId: string | null;
+  /** 드리미가 콜을 찾는 중인지(전역 콜 팝업 표시 조건). */
+  seeking: boolean;
+  /** 드리미 콜 탐색 시작/종료. */
+  startSeeking: () => void;
+  stopSeeking: () => void;
   /** 부름 등록 → "매칭중" 배달 생성 후 활성 배달로 지정. */
   createRequest: (dto: CreateDeliveryRequest) => Promise<Delivery>;
   /** 드리미 콜 수락 → "픽업중" 배달 생성 후 활성 배달로 지정. */
@@ -48,6 +53,9 @@ interface DeliveryState {
 export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   deliveries: SEED_DELIVERIES,
   activeId: null,
+  seeking: false,
+  startSeeking: () => set({ seeking: true }),
+  stopSeeking: () => set({ seeking: false }),
   createRequest: async (dto) => {
     const delivery = await createDelivery(dto);
     set((s) => ({
@@ -61,6 +69,7 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
     set((s) => ({
       deliveries: [delivery, ...s.deliveries],
       activeId: delivery.id,
+      seeking: false,
     }));
     return delivery;
   },

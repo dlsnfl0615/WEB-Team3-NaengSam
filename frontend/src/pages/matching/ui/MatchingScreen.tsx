@@ -1,67 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, MapCard, Modal, ScreenShell, TopBar } from "@/shared/ui";
-import { ROUTES } from "@/shared/config/routes";
+import { Card, MapCard, ScreenShell, TopBar } from "@/shared/ui";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useDeliveryStore } from "@/shared/store/deliveryStore";
-import { getCalls, getOffers } from "@/shared/mock/matchingService";
-import type { Call, Offer } from "@/shared/mock/types";
-import { CallCard } from "./CallCard";
-import { OfferCard } from "./OfferCard";
-
-/** 매칭 요청 팝업 주기(ms). */
-const POPUP_INTERVAL_MS = 3000;
 
 /**
  * 매칭(찾는 중) 화면(Figma node 191:763).
- * 지도 위에서 대기 상태를 보여주고, 도착한 요청을 수락·거절합니다(UI 전용).
- * 현재 역할에 따라 상대가 바뀝니다 — 부르미는 드리미를, 드리미는 부르미를 찾습니다.
+ * 지도 위에서 대기 상태를 보여준다. 실제 오퍼/콜 팝업은 전역 `MatchingPopup`이
+ * 담당하므로 다른 화면으로 이동해도 이어서 뜬다.
  */
 export function MatchingScreen() {
   const navigate = useNavigate();
   const { role } = useRole();
-  const acceptCall = useDeliveryStore((s) => s.acceptCall);
-  const acceptOffer = useDeliveryStore((s) => s.acceptOffer);
-  const [calls, setCalls] = useState<Call[]>([]);
-  const [offers, setOffers] = useState<Offer[]>([]);
-  // 0=찾는 중(모달 없음), 1↑=팝업 표시. POPUP_INTERVAL_MS마다 증가하며 항목을 순환.
-  const [tick, setTick] = useState(0);
+  const startSeeking = useDeliveryStore((s) => s.startSeeking);
 
   const isDriver = role === "드리미";
   const counterpart = isDriver ? "부르미" : "드리미";
 
-  // 역할별 대기 목록 로드.
+  // 드리미: 매칭 진입 시 콜 탐색 시작(전역 콜 팝업 트리거).
   useEffect(() => {
-    if (isDriver) getCalls().then(setCalls);
-    else getOffers().then(setOffers);
-  }, [isDriver]);
-
-  // 진입 후 3초마다 새 요청 팝업(드리미 콜 / 부르미 오퍼 공통).
-  useEffect(() => {
-    const timer = setInterval(() => setTick((t) => t + 1), POPUP_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, []);
-
-  const call =
-    isDriver && tick > 0 && calls.length > 0
-      ? calls[(tick - 1) % calls.length]
-      : undefined;
-  const offer =
-    !isDriver && tick > 0 && offers.length > 0
-      ? offers[(tick - 1) % offers.length]
-      : undefined;
-
-  const onAcceptCall = async () => {
-    if (!call) return;
-    await acceptCall(call);
-    navigate(ROUTES.deliveryTrack, { replace: true });
-  };
-
-  const onAcceptOffer = async () => {
-    if (!offer) return;
-    await acceptOffer(offer.name);
-    navigate(ROUTES.deliveryDetail, { replace: true });
-  };
+    if (isDriver) startSeeking();
+  }, [isDriver, startSeeking]);
 
   return (
     <ScreenShell>
@@ -86,38 +45,6 @@ export function MatchingScreen() {
           </p>
         </Card>
       </main>
-
-      <Modal
-        open={isDriver ? !!call : !!offer}
-        label={isDriver ? "새 부름 요청" : "새 드리미 요청"}
-      >
-        {isDriver && call ? (
-          <CallCard
-            code={call.code}
-            price={`₩${call.price.toLocaleString()}`}
-            place={call.place}
-            route={call.route}
-            pickupDistance={call.pickupDistance}
-            dropoffDistance={call.dropoffDistance}
-            itemType={call.itemType}
-            onReject={() => navigate(ROUTES.rejectReason)}
-            onAccept={onAcceptCall}
-          />
-        ) : (
-          offer && (
-            <OfferCard
-              heading="새 드리미 요청 도착!"
-              name={`드리미 '${offer.name}'`}
-              rating={offer.rating}
-              countLabel="배송"
-              count={offer.count}
-              distance={offer.distance}
-              onReject={() => navigate(ROUTES.rejectReason)}
-              onAccept={onAcceptOffer}
-            />
-          )
-        )}
-      </Modal>
     </ScreenShell>
   );
 }
