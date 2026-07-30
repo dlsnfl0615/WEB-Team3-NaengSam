@@ -17,11 +17,11 @@ export interface ScreenShellProps {
  */
 export function ScreenShell({ children, footer, className }: ScreenShellProps) {
   return (
-    <div className="flex h-svh justify-center bg-canvas">
-      <div className="flex h-svh w-full max-w-[420px] flex-col bg-canvas">
+    <div className="flex h-dvh justify-center bg-canvas">
+      <div className="flex h-dvh w-full max-w-[420px] flex-col bg-canvas">
         <div
           className={cn(
-            'flex flex-1 flex-col overflow-y-auto overscroll-contain px-4 pb-4 pt-6',
+            'flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 pb-4 pt-6',
             className,
           )}
         >
