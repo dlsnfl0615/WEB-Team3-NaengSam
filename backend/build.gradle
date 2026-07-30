@@ -35,5 +35,14 @@ dependencies {
 }
 
 tasks.named('test') {
-    useJUnitPlatform()
+    useJUnitPlatform {
+        if (project.hasProperty('excludeTags')) {
+            excludeTags(project.property('excludeTags').toString().split(','))
+        }
+    }
+}
+
+// bootJar 만 산출물로 남기고 plain jar 는 생성하지 않는다(Dockerfile 의 *.jar 매칭 충돌 방지).
+tasks.named('jar') {
+    enabled = false
 }

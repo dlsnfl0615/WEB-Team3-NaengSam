@@ -15,7 +15,7 @@ export function HomeScreen() {
   const navigate = useNavigate();
 
   return (
-    <ScreenShell>
+    <ScreenShell footer={<BottomNav />}>
       {/* 헤더 */}
       <header className="flex items-center">
         <h1 className="flex-1 text-xl font-bold tracking-[-0.4px] text-navy-900">
@@ -42,11 +42,6 @@ export function HomeScreen() {
 
         {role === "부르미" ? <SenderPanel /> : <DriverPanel />}
       </main>
-
-      {/* 하단 네비 */}
-      <div className="pt-4">
-        <BottomNav />
-      </div>
     </ScreenShell>
   );
 }

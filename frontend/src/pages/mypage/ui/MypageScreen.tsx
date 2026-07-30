@@ -12,7 +12,7 @@ export function MypageScreen() {
   const [registered, setRegistered] = useState(false);
 
   return (
-    <ScreenShell>
+    <ScreenShell footer={<BottomNav />}>
       <TopBar title="마이페이지" actions={["profile"]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
@@ -35,10 +35,6 @@ export function MypageScreen() {
         <MenuGroup title="계정" items={ACCOUNT_MENU} />
         <MenuGroup title="지원" items={SUPPORT_MENU} />
       </main>
-
-      <div className="pt-4">
-        <BottomNav />
-      </div>
     </ScreenShell>
   );
 }
