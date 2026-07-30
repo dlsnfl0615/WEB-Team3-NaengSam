@@ -74,8 +74,9 @@ export function MatchingPopup() {
   };
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center">
-      <div className="ds-sheet-up pointer-events-auto w-full max-w-[420px] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
+    <div className="fixed inset-0 z-40 flex items-end justify-center">
+      <div aria-hidden className="absolute inset-0 bg-surface/70" />
+      <div className="ds-sheet-up relative w-full max-w-[420px] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
         {call ? (
           <CallCard
             code={call.code}
