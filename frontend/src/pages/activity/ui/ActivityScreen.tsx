@@ -4,7 +4,7 @@ import { BottomNav, ScreenShell, SegmentedToggle, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import type { Role } from "@/shared/lib/role/RoleContext";
-import { useDeliveryStore } from "@/shared/store/deliveryStore";
+import { useDeliveryStore, useRoleLocked } from "@/shared/store/deliveryStore";
 import { ActivityItem } from "./ActivityItem";
 import { FilterChips } from "./FilterChips";
 import {
@@ -22,6 +22,7 @@ export function ActivityScreen() {
   const { role, setRole } = useRole();
   const [filter, setFilter] = useState<ActivityFilter>("전체");
   const deliveries = useDeliveryStore((s) => s.deliveries);
+  const roleLocked = useRoleLocked();
 
   const isDriver = role === "드리미";
   const records = toActivityRecords(deliveries, role);
@@ -46,6 +47,7 @@ export function ActivityScreen() {
           options={["부르미", "드리미"]}
           value={role}
           onChange={(value) => setRole(value as Role)}
+          disabled={roleLocked}
         />
 
         <FilterChips value={filter} onChange={setFilter} />

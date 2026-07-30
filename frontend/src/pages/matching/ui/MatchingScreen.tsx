@@ -9,6 +9,9 @@ import type { Call, Offer } from "@/shared/mock/types";
 import { CallCard } from "./CallCard";
 import { OfferCard } from "./OfferCard";
 
+/** 매칭 요청 팝업 주기(ms). */
+const POPUP_INTERVAL_MS = 3000;
+
 /**
  * 매칭(찾는 중) 화면(Figma node 191:763).
  * 지도 위에서 대기 상태를 보여주고, 도착한 요청을 수락·거절합니다(UI 전용).
@@ -21,29 +24,30 @@ export function MatchingScreen() {
   const acceptOffer = useDeliveryStore((s) => s.acceptOffer);
   const [calls, setCalls] = useState<Call[]>([]);
   const [offers, setOffers] = useState<Offer[]>([]);
-  // 부르미: 0=찾는 중(모달 없음), 1↑=오퍼 표시. 5초마다 증가하며 드리미를 순환.
+  // 0=찾는 중(모달 없음), 1↑=팝업 표시. POPUP_INTERVAL_MS마다 증가하며 항목을 순환.
   const [tick, setTick] = useState(0);
 
   const isDriver = role === "드리미";
   const counterpart = isDriver ? "부르미" : "드리미";
 
-  // 드리미: 대기 콜 목록을 목 서비스에서 로드.
+  // 역할별 대기 목록 로드.
   useEffect(() => {
-    if (!isDriver) return;
-    getCalls().then(setCalls);
+    if (isDriver) getCalls().then(setCalls);
+    else getOffers().then(setOffers);
   }, [isDriver]);
 
-  // 부르미: 오퍼 목록 로드 + 5초마다 새 드리미 오퍼 팝업.
+  // 진입 후 3초마다 새 요청 팝업(드리미 콜 / 부르미 오퍼 공통).
   useEffect(() => {
-    if (isDriver) return;
-    getOffers().then(setOffers);
-    const timer = setInterval(() => setTick((t) => t + 1), 5000);
+    const timer = setInterval(() => setTick((t) => t + 1), POPUP_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [isDriver]);
+  }, []);
 
-  const call = calls[0];
+  const call =
+    isDriver && tick > 0 && calls.length > 0
+      ? calls[(tick - 1) % calls.length]
+      : undefined;
   const offer =
-    tick > 0 && offers.length > 0
+    !isDriver && tick > 0 && offers.length > 0
       ? offers[(tick - 1) % offers.length]
       : undefined;
 
