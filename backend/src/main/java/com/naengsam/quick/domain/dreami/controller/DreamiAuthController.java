@@ -31,19 +31,23 @@ public class DreamiAuthController {
     private final S3PresignService s3PresignService;
     private final DreamiService dreamiService;
 
-    @Operation(summary = "인증 파일 업로드 확인 및 제출",
-            description = "신분증/범죄이력조회서가 S3에 모두 업로드됐는지 확인하고, 둘 다 확인되면 드리미 인증 신청을 저장한다.")
-    @PostMapping("/verification")
+    @Operation(summary = "업로드 확인", description = "presigned URL로 업로드한 신분증/범죄이력조회서 파일이 S3에 실제로 존재하는지 확인한다.")
+    @PostMapping("/check")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})
-    public Boolean isFileUploaded(@Valid @RequestBody UploadRequestDto requestDto, @LoginUser UUID boormiId) {
+    public Boolean checkUpload(@Valid @RequestBody UploadRequestDto requestDto, @LoginUser UUID boormiId) {
+
+        // 하나라도 업로드 완료되지 않은 상태라면
         if (!s3PresignService.isFileUploaded(requestDto.idCardKey())
                 || !s3PresignService.isFileUploaded(requestDto.criminalRecordKey())) {
             return false;
         }
 
+        // 모두 완료됐으면 presigned url의 download url을 위한 key만 db에 저장
+        // 나중에 이 키를 가지고  생성해서 s3에서 다운로드하면 됨
         // todo: 일단 어드민 개입 없이 무조건 허용으로
         dreamiService.saveVerificationFileKeys(boormiId, requestDto.idCardKey(), requestDto.criminalRecordKey());
+
         return true;
     }
 }

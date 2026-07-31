@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import software.amazon.awssdk.services.s3.S3Client;
@@ -23,6 +24,7 @@ import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignReques
  * S3 presigned URL 발급 및 실제 업로드 여부 확인을 담당한다. 파일 바이트 자체는 서버를 거치지 않고 클라이언트가 발급받은 URL로 S3에 직접 PUT/GET 한다.
  */
 @Service
+@RequiredArgsConstructor
 @Slf4j
 public class S3PresignService {
 
@@ -36,12 +38,6 @@ public class S3PresignService {
     private final UploadProperties uploadProperties;
     private final S3Presigner presigner;
     private final S3Client s3Client;
-
-    public S3PresignService(UploadProperties uploadProperties) {
-        this.uploadProperties = uploadProperties;
-        this.presigner = S3Presigner.create(); // 리전/자격증명은 기본 Provider Chain 사용
-        this.s3Client = S3Client.create(); // 리전/자격증명은 기본 Provider Chain 사용
-    }
 
     /**
      * 클라이언트가 이 key로 S3에 직접 PUT 할 수 있는 presigned URL을 발급한다. (10분간 유효)

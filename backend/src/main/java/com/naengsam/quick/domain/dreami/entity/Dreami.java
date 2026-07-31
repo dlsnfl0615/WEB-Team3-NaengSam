@@ -38,26 +38,26 @@ public class Dreami {
     @Column(name = "request_cd", nullable = false)
     private DreamiCd requestCd;
 
-    @Column(name = "id_card_url", length = 500, nullable = false)
-    private String idCardUrl;
+    @Column(name = "id_card_key", length = 500, nullable = false)
+    private String idCardKey;
 
     @Column(name = "dreami_avg_score", nullable = false, columnDefinition = "DECIMAL(3,2) DEFAULT 0")
     private BigDecimal dreamiAvgScore;
 
-    @Column(name = "criminal_record_url", length = 500, nullable = false)
-    private String criminalRecordUrl;
+    @Column(name = "criminal_record_key", length = 500, nullable = false)
+    private String criminalRecordKey;
 
     /**
      * 드리미 인증 신청을 생성한다. {@code dreamiId} 는 부르미와 동일한 사람이므로 boormiId 를 그대로 쓴다.
      * 신청 상태는 REQUESTED 로 시작하고, 평점은 0점부터 시작한다.
      */
-    public static Dreami create(UUID dreamiId, String idCardUrl, String criminalRecordUrl) {
+    public static Dreami create(UUID dreamiId, String idCardKey, String criminalRecordKey) {
         Dreami dreami = new Dreami();
         dreami.dreamiId = dreamiId;
         dreami.requestCd = DreamiCd.REQUESTED;
         dreami.requestDtm = LocalDateTime.now();
-        dreami.idCardUrl = idCardUrl;
-        dreami.criminalRecordUrl = criminalRecordUrl;
+        dreami.idCardKey = idCardKey;
+        dreami.criminalRecordKey = criminalRecordKey;
         dreami.dreamiAvgScore = BigDecimal.ZERO;
         return dreami;
     }

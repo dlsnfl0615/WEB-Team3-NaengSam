@@ -2,22 +2,18 @@ package com.naengsam.quick.domain.upload.controller;
 
 import com.naengsam.quick.domain.dreami.service.DreamiService;
 import com.naengsam.quick.domain.upload.dto.PresignedUrlResponseDto;
-import com.naengsam.quick.domain.upload.dto.UploadRequestDto;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
-import com.naengsam.quick.global.session.LoginUser;
+import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -39,8 +35,10 @@ public class UploadController {
     @GetMapping("/url")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})
-    @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"UNSUPPORTED_FILE_TYPE"})
+    @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"UNSUPPORTED_FILE_TYPE", "INVALID_FILE_NAME"})
     public PresignedUrlResponseDto getPresignedUrl(@RequestParam String fileName) {
+        validateFileName(fileName);
+
         String key = "uploads/" + UUID.randomUUID() + "-" + fileName;
 
         String url = s3PresignService.generateUploadUrl(key);
@@ -48,22 +46,13 @@ public class UploadController {
         return new PresignedUrlResponseDto(url, key);
     }
 
-    @Operation(summary = "업로드 확인", description = "presigned URL로 업로드한 신분증/범죄이력조회서 파일이 S3에 실제로 존재하는지 확인한다.")
-    @PostMapping("/check")
-    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})
-    public Boolean checkUpload(@Valid @RequestBody UploadRequestDto requestDto, @LoginUser UUID boormiId) {
-
-        // 하나라도 업로드 완료되지 않은 상태라면
-        if (!s3PresignService.isFileUploaded(requestDto.idCardKey())
-                || !s3PresignService.isFileUploaded(requestDto.criminalRecordKey())) {
-            return false;
+    /**
+     * fileName이 비어있거나 경로 구분자/상위 디렉토리 참조를 포함하면 거부한다. S3 key에 그대로 이어붙이므로 "/", "\", ".." 가 섞이면 의도하지 않은 key 경로가 만들어질 수 있다.
+     */
+    private void validateFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()
+                || fileName.contains("/") || fileName.contains("\\") || fileName.contains("..")) {
+            throw new BusinessException(UploadErrorCode.INVALID_FILE_NAME);
         }
-
-        // 모두 완료됐으면 presigned url의 download url을 위한 key만 db에 저장
-        // 나중에 이 키를 가지고  생성해서 s3에서 다운로드하면 됨
-        dreamiService.saveVerificationFileKeys(boormiId, requestDto.idCardKey(), requestDto.criminalRecordKey());
-
-        return true;
     }
 }
