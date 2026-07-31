@@ -9,8 +9,10 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_NORMAL
 
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
+import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
+import com.naengsam.quick.global.sse.SseService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.UUID;
@@ -24,9 +26,10 @@ import org.springframework.stereotype.Service;
  * 상태 검증+변경(check-then-act)은 해당 주문의 DeliveryStatus 객체를 모니터로 삼아 주문 단위로만 직렬화한다.
  * 서로 다른 주문은 서로 다른 모니터라 완전히 병렬로 처리된다.
  *
- * <p>알림(SSE 스텁)은 전이와 같은 락 안에서 실행해 "처리 순서 == 알림 순서"를 보장한다(순서 역전 방지).
+ * <p>알림(SSE)은 전이와 같은 락 안에서 불변 스냅샷(DeliveryStatusResponseDto)을 만들어 SseService로 넘긴다.
+ * 실제 전송은 SseService가 단일 가상 스레드로 async 오프로딩하므로 "처리 순서 == 알림 순서"가 보장되고 호출 스레드는 막히지 않는다.
  *
- * <p>부르미는 SSE로 상태를 전달받고(현재는 함수 스텁만), 드리미는 5~10초마다 updateDreamiLocation을 호출해 상태를 전달받는다.
+ * <p>부르미는 SSE로 상태를 전달받고, 드리미는 5~10초마다 updateDreamiLocation을 호출해 상태를 전달받는다.
  */
 @Slf4j
 @Service
@@ -36,6 +39,7 @@ public class DeliveryService {
     private static final int LOCATION_SCALE = 8;
 
     private final DeliveryStore store;
+    private final SseService sseService;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -99,7 +103,7 @@ public class DeliveryService {
 
     private String doUpdateDreamiLocation(DeliveryStatus deliveryStatus, DreamiLocationRequest location) {
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
-            alarmDreamiCancelBySSE(); // 드리미에게_SSE로_취소상태_알려주기()
+            alarmDreamiCancelBySSE(deliveryStatus); // 드리미에게_SSE로_취소상태_알려주기()
             throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
 
@@ -120,7 +124,7 @@ public class DeliveryService {
         BigDecimal latitude = location.latitude().setScale(LOCATION_SCALE, RoundingMode.HALF_UP);
         BigDecimal longitude = location.longitude().setScale(LOCATION_SCALE, RoundingMode.HALF_UP);
         deliveryStatus.setLocation(latitude, longitude); // 메모리에_위치정보_수정()
-        alarmBoormiLocationBySSE(); // 부르미에게_새로운_위치정보_전달_SSE사용()
+        alarmBoormiLocationBySSE(deliveryStatus); // 부르미에게_새로운_위치정보_전달_SSE사용()
         return "위치 갱신됨"; // 상태는 응답 DTO의 status 필드로 전달된다
     }
 
@@ -158,7 +162,7 @@ public class DeliveryService {
         }
 
         deliveryStatus.setStatus(DELIVERING); // 배달중_정상
-        alarmBoormiDeliveringBySSE(); // 부르미에게_배달중_상태로_바뀌었다고_전달_SSE사용()
+        alarmBoormiDeliveringBySSE(deliveryStatus); // 부르미에게_배달중_상태로_바뀌었다고_전달_SSE사용()
         return "픽업 완료";
     }
 
@@ -188,7 +192,7 @@ public class DeliveryService {
 
         assert deliveryStatus.status() == PICKUP_NORMAL; // 픽업중_정상
         deliveryStatus.setStatus(PICKUP_CANCELLED_BY_DREAMI); // 픽업중_드리미의_취소
-        alarmBoormiDreamiCancelBySSE(); // 부르미에게_픽업중에_드리미가_취소했다고_전달_SSE사용()
+        alarmBoormiDreamiCancelBySSE(deliveryStatus); // 부르미에게_픽업중에_드리미가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
 
@@ -250,7 +254,7 @@ public class DeliveryService {
         deliveryStatus.setStatus(PICKUP_CANCELLED_BY_ADMIN); // 픽업중_관리자의_취소
 
         // 드리미는 5초마다 요청하는 과정에서 상태를 전달받게 됨
-        alarmBoormiAdminCancelBySSE(); // 부르미에게_관리자가_취소했다고_전달_SSE사용()
+        alarmBoormiAdminCancelBySSE(deliveryStatus); // 부르미에게_관리자가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
 
@@ -282,40 +286,42 @@ public class DeliveryService {
         }
 
         deliveryStatus.setStatus(DELIVERED); // 배달_완료
-        alarmBoormiDeliveredBySSE(); // 부르미에게_배달완료라고_전달_SSE로()
+        alarmBoormiDeliveredBySSE(deliveryStatus); // 부르미에게_배달완료라고_전달_SSE로()
         return "드리미에게_완료";
     }
 
-    // ===== SSE 알림 스텁 (TODO: SSE 실제 구현) =====
+    // ===== SSE 알림 =====
+    // 모두 락 안에서 호출된다. 불변 스냅샷(DeliveryStatusResponseDto)을 만들어 SseService로 넘기므로
+    // async 전송 스레드는 가변 DeliveryStatus를 건드리지 않는다(추가 동시성 처리 불필요).
 
-    private void alarmDreamiCancelBySSE() {
-        // TODO: SSE로 드리미에게 취소 상태 전달
-        log.debug("[SSE-stub] 드리미에게 취소 상태 알림");
+    private void alarmDreamiCancelBySSE(DeliveryStatus ds) {
+        sseService.send(ds.dreamiId(), DeliveryEventType.DELIVERY_CANCELLED,
+                DeliveryStatusResponseDto.from(ds, "배달이 취소되었습니다"));
     }
 
-    private void alarmBoormiLocationBySSE() {
-        // TODO: SSE로 부르미에게 새 위치 전달
-        log.debug("[SSE-stub] 부르미에게 새 위치 알림");
+    private void alarmBoormiLocationBySSE(DeliveryStatus ds) {
+        sseService.send(ds.boormiId(), DeliveryEventType.DELIVERY_LOCATION,
+                DeliveryStatusResponseDto.from(ds, "위치 갱신됨"));
     }
 
-    private void alarmBoormiDeliveringBySSE() {
-        // TODO: SSE로 부르미에게 배달중 전환 전달
-        log.debug("[SSE-stub] 부르미에게 배달중 전환 알림");
+    private void alarmBoormiDeliveringBySSE(DeliveryStatus ds) {
+        sseService.send(ds.boormiId(), DeliveryEventType.DELIVERY_DELIVERING,
+                DeliveryStatusResponseDto.from(ds, "배달이 시작되었습니다"));
     }
 
-    private void alarmBoormiDreamiCancelBySSE() {
-        // TODO: SSE로 부르미에게 드리미의 취소 전달
-        log.debug("[SSE-stub] 부르미에게 드리미 취소 알림");
+    private void alarmBoormiDreamiCancelBySSE(DeliveryStatus ds) {
+        sseService.send(ds.boormiId(), DeliveryEventType.DELIVERY_CANCELLED,
+                DeliveryStatusResponseDto.from(ds, "드리미가 픽업을 취소했습니다"));
     }
 
-    private void alarmBoormiAdminCancelBySSE() {
-        // TODO: SSE로 부르미에게 관리자의 취소 전달
-        log.debug("[SSE-stub] 부르미에게 관리자 취소 알림");
+    private void alarmBoormiAdminCancelBySSE(DeliveryStatus ds) {
+        sseService.send(ds.boormiId(), DeliveryEventType.DELIVERY_CANCELLED,
+                DeliveryStatusResponseDto.from(ds, "관리자가 배달을 취소했습니다"));
     }
 
-    private void alarmBoormiDeliveredBySSE() {
-        // TODO: SSE로 부르미에게 배달 완료 전달
-        log.debug("[SSE-stub] 부르미에게 배달 완료 알림");
+    private void alarmBoormiDeliveredBySSE(DeliveryStatus ds) {
+        sseService.send(ds.boormiId(), DeliveryEventType.DELIVERY_COMPLETED,
+                DeliveryStatusResponseDto.from(ds, "배달이 완료되었습니다"));
     }
 
     // ===== 사진 확인 스텁 (TODO: 사진 도메인 연동) =====
