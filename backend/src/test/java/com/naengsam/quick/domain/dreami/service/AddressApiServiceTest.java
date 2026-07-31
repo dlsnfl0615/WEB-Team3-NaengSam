@@ -1,7 +1,7 @@
 package com.naengsam.quick.domain.dreami.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -10,6 +10,8 @@ import com.naengsam.quick.domain.address.dto.Addresses;
 import com.naengsam.quick.domain.address.service.AddressApiService;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.global.code.GeneralErrorCode;
+import com.naengsam.quick.global.exception.BusinessException;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -43,8 +45,9 @@ class AddressApiServiceTest {
         UUID orderId = UUID.randomUUID();
         when(orderRepository.findById(orderId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> addressApiService.findById(orderId))
-                .isInstanceOf(IllegalArgumentException.class);
+        Throwable thrown = catchThrowable(() -> addressApiService.findById(orderId));
+
+        assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
     }
 
     @Test
@@ -68,7 +71,8 @@ class AddressApiServiceTest {
         Addresses addresses = Addresses.builder().build();
         when(orderRepository.findById(orderId)).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> addressApiService.updateAddresses(orderId, addresses))
-                .isInstanceOf(IllegalArgumentException.class);
+        Throwable thrown = catchThrowable(() -> addressApiService.updateAddresses(orderId, addresses));
+
+        assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
     }
 }
