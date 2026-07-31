@@ -138,19 +138,12 @@ class MatchingDebugControllerTest {
         UUID orderId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
 
-        MatchingService.OrderOfferGroup group =
-                new MatchingService.OrderOfferGroup(orderId, List.of());
-        when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
-
         mockMvc.perform(post("/api/v1/debug/matching/orders/{orderId}/start", orderId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"boormiId": "%s", "destination": {"latitude": 37.5, "longitude": 127.0}}
                                 """.formatted(boormiId)))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.orderId").value(orderId.toString()))
-                .andExpect(jsonPath("$.status").value("OPEN"))
-                .andExpect(jsonPath("$.rematchRequired").value(false));
+                .andExpect(status().isOk());
 
         ArgumentCaptor<Order> orderCaptor = ArgumentCaptor.forClass(Order.class);
         verify(matchingService).startMatching(orderCaptor.capture());
@@ -194,7 +187,7 @@ class MatchingDebugControllerTest {
         MatchingService.MatchOffer offer = new MatchingService.MatchOffer(
                 offerId, orderId, dreamiId, MatchingService.MatchOfferStatus.OFFERED, expiresAt);
         MatchingService.OrderOfferGroup group =
-                new MatchingService.OrderOfferGroup(orderId, List.of(offer));
+                new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(), List.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
 
         mockMvc.perform(get("/api/v1/debug/matching/orders/{orderId}/group", orderId))

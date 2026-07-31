@@ -5,7 +5,6 @@ import com.naengsam.quick.domain.address.dto.AddressCoordinatesResponseDto;
 import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
 import com.naengsam.quick.domain.address.service.CoordinatesService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
-import com.naengsam.quick.global.session.LoginRequired;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -23,7 +22,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/address")
 @Tag(name = "주소 좌표 변환 컨트롤러", description = "도로명주소를 위도/경도로 변환한다. 결제가 완료되기 전까지는 아무것도 저장하지 않는다.")
 @RequiredArgsConstructor
-@LoginRequired
 public class AddressApiController {
 
     private final CoordinatesService coordinatesService;

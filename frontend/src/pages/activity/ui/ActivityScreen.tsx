@@ -32,7 +32,7 @@ export function ActivityScreen() {
   };
 
   return (
-    <ScreenShell>
+    <ScreenShell footer={<BottomNav />}>
       <TopBar title="활동" actions={["search", "profile"]} />
 
       <main className="flex flex-1 flex-col gap-3 pt-4">
@@ -65,10 +65,6 @@ export function ActivityScreen() {
           </p>
         )}
       </main>
-
-      <div className="pt-4">
-        <BottomNav />
-      </div>
     </ScreenShell>
   );
 }
