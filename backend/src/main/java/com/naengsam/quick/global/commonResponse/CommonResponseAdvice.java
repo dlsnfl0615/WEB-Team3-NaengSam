@@ -12,10 +12,12 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * 컨트롤러가 반환한 값을 {@link CommonResponse} 로 감싼다. 컨트롤러는 DTO 만 반환하면 되고, 공통 포맷은 여기서 씌운다.
+ * 컨트롤러가 반환한 값을 {@link CommonResponse} 로 감싼다.
+ * 컨트롤러는 DTO 만 반환하면 되고, 공통 포맷은 여기서 씌운다.
  *
  * <p>basePackages 를 반드시 도메인으로 한정해야 한다. 범위를 열어두면 springdoc 의
- * {@code OpenApiWebMvcResource} 도 {@code @RestController} 라서 {@code /v3/api-docs} 응답까지 감싸버려 Swagger UI 가 통째로 깨진다.
+ * {@code OpenApiWebMvcResource} 도 {@code @RestController} 라서 {@code /v3/api-docs} 응답까지
+ * 감싸버려 Swagger UI 가 통째로 깨진다.
  */
 @RestControllerAdvice(basePackages = "com.naengsam.quick.domain")
 @RequiredArgsConstructor
@@ -40,6 +42,7 @@ public class CommonResponseAdvice implements ResponseBodyAdvice<Object> {
 
         // String 은 StringHttpMessageConverter 가 쓰기 때문에 객체를 돌려주면 캐스팅에서 터진다
         if (body instanceof String) {
+            response.getHeaders().setContentType(MediaType.APPLICATION_JSON);
             return objectMapper.writeValueAsString(CommonResponse.onSuccess(body));
         }
 
