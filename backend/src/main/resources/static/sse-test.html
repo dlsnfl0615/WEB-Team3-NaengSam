@@ -357,8 +357,15 @@
             longitude: parseFloat(document.getElementById("lng").value),
         };
     }
+    function generateUuid() {
+        return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+            const random = Math.floor(Math.random() * 16);
+            const value = c === "x" ? random : (random & 0x3) | 0x8;
+            return value.toString(16);
+        });
+    }
     function genOrderId() {
-        document.getElementById("orderId").value = crypto.randomUUID();
+        document.getElementById("orderId").value = generateUuid();
     }
     function rememberOrderId() {
         remember("history:orderId", "orderIdHistory", document.getElementById("orderId").value);
