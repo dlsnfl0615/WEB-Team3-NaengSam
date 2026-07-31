@@ -121,6 +121,14 @@ class SmsVerificationServiceTest {
     }
 
     @Test
+    void 검증_결과가_ALREADY_VERIFIED_이면_멱등하게_예외를_던지지_않는다() {
+        given(store.verify("01012345678", "123456")).willReturn(VerifyResult.ALREADY_VERIFIED);
+
+        assertThatCode(() -> smsVerificationService.verify("010-1234-5678", "123456"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
     void isVerified_는_정규화된_번호로_저장소에_위임한다() {
         given(store.isVerified("01011112222")).willReturn(true);
 
