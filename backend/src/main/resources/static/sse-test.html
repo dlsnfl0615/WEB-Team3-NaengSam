@@ -149,9 +149,10 @@
                 로그인하면 세션 쿠키가 SSE 연결에 자동으로 실립니다.
             </div>
             <label>이메일</label>
-            <input id="email" type="email" placeholder="user@test.com"/>
+            <input id="email" type="email" placeholder="user@test.com" list="emailHistory" autocomplete="off"/>
+            <datalist id="emailHistory"></datalist>
             <label>비밀번호</label>
-            <input id="password" type="password" placeholder="비밀번호"/>
+            <input id="password" type="password" placeholder="비밀번호" autocomplete="off"/>
             <div class="btn-group">
                 <button onclick="login()">로그인</button>
                 <button class="secondary" onclick="logout()">로그아웃</button>
@@ -197,14 +198,17 @@
 
             <label style="margin-top:14px">주문 orderId</label>
             <div class="row">
-                <input id="orderId"/>
+                <input id="orderId" list="orderIdHistory" autocomplete="off"/>
                 <button class="secondary small" style="flex:0 0 auto" onclick="genOrderId()">새 UUID</button>
             </div>
+            <datalist id="orderIdHistory"></datalist>
             <label>주문 boormiId (내 userId로 두면 dreami_info 수신)</label>
-            <input id="boormiId"/>
+            <input id="boormiId" list="boormiIdHistory" autocomplete="off"/>
+            <datalist id="boormiIdHistory"></datalist>
             <div class="btn-group">
                 <button onclick="startMatching()">매칭 시작</button>
                 <button class="secondary" onclick="loadGroup()">방(offers) 조회</button>
+                <button class="secondary" onclick="cancelOrder()">주문 취소(부르미)</button>
             </div>
         </div>
     </div>
@@ -254,6 +258,27 @@
     function escapeHtml(s) {
         return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
+    // ---------- 자동완성 히스토리 (localStorage) ----------
+    function loadHistory(key) {
+        try { return JSON.parse(localStorage.getItem(key)) || []; } catch (e) { return []; }
+    }
+    function remember(key, datalistId, value) {
+        if (!value) return;
+        const list = loadHistory(key).filter(v => v !== value);
+        list.unshift(value);
+        localStorage.setItem(key, JSON.stringify(list.slice(0, 20)));
+        renderHistory(key, datalistId);
+    }
+    function renderHistory(key, datalistId) {
+        const datalist = document.getElementById(datalistId);
+        datalist.innerHTML = loadHistory(key).map(v => '<option value="' + escapeHtml(v) + '"></option>').join("");
+    }
+    function initHistories() {
+        renderHistory("history:email", "emailHistory");
+        renderHistory("history:orderId", "orderIdHistory");
+        renderHistory("history:boormiId", "boormiIdHistory");
+    }
+
     async function apiFetch(path, options = {}) {
         const res = await fetch(path, {
             credentials: "same-origin",
@@ -272,13 +297,15 @@
     // ---------- 로그인 ----------
     async function login() {
         try {
+            const email = document.getElementById("email").value;
             await apiFetch(API + "/user/login", {
                 method: "POST",
                 body: JSON.stringify({
-                    email: document.getElementById("email").value,
+                    email: email,
                     password: document.getElementById("password").value,
                 }),
             });
+            remember("history:email", "emailHistory", email);
             logEvent("로그인 성공", "", "meta");
             await fetchMe();
         } catch (e) {
@@ -333,6 +360,12 @@
     function genOrderId() {
         document.getElementById("orderId").value = crypto.randomUUID();
     }
+    function rememberOrderId() {
+        remember("history:orderId", "orderIdHistory", document.getElementById("orderId").value);
+    }
+    function rememberBoormiId() {
+        remember("history:boormiId", "boormiIdHistory", document.getElementById("boormiId").value);
+    }
     async function registerDreami() {
         try {
             const json = await apiFetch(DEBUG + "/dreamis", { method: "POST", body: JSON.stringify(geo()) });
@@ -353,14 +386,28 @@
         const orderId = document.getElementById("orderId").value;
         if (!orderId) { genOrderId(); return startMatching(); }
         try {
+            const boormiId = document.getElementById("boormiId").value;
             await apiFetch(DEBUG + "/orders/" + orderId + "/start", {
                 method: "POST",
-                body: JSON.stringify({ boormiId: document.getElementById("boormiId").value, destination: geo() }),
+                body: JSON.stringify({ boormiId: boormiId, destination: geo() }),
             });
+            rememberOrderId();
+            rememberBoormiId();
             logEvent("매칭 시작 요청됨 orderId=" + orderId, "", "meta");
             setTimeout(loadGroup, 300); // 엔진이 비동기 처리하므로 잠깐 뒤 조회
         } catch (e) {
             logEvent("매칭 시작 실패: " + e.message, "", "offer_error");
+        }
+    }
+    async function cancelOrder() {
+        const orderId = document.getElementById("orderId").value;
+        if (!orderId) return;
+        try {
+            await apiFetch(DEBUG + "/orders/" + orderId + "/cancel", { method: "POST" });
+            logEvent("주문 취소 요청됨 orderId=" + orderId, "", "meta");
+            setTimeout(loadGroup, 300);
+        } catch (e) {
+            logEvent("주문 취소 실패: " + e.message, "", "offer_error");
         }
     }
     async function loadGroup() {
@@ -405,10 +452,20 @@
         try {
             await apiFetch(DEBUG + "/offers/" + offerId + "/" + action, { method: "POST" });
             logEvent(action + " 요청됨 offerId=" + offerId.slice(0, 8), "", "meta");
+            if (action === "boormi-accept") openDeliveryTestPopup();
             setTimeout(loadGroup, 300);
         } catch (e) {
             logEvent(action + " 실패: " + e.message, "", "offer_error");
         }
+    }
+
+    // 부르미 수락으로 매칭이 확정되면, 배달 시각 테스트 콘솔을 orderId/좌표를 실어 팝업으로 띄운다.
+    function openDeliveryTestPopup() {
+        const params = new URLSearchParams({
+            orderId: document.getElementById("orderId").value,
+        });
+        window.open("/delivery-test.html?" + params.toString(), "deliveryTest",
+            "width=1100,height=800,noopener,noreferrer");
     }
 
     // ---------- 빠른 시나리오 ----------
@@ -425,6 +482,7 @@
     }
 
     // 초기값
+    initHistories();
     genOrderId();
 </script>
 </body>
