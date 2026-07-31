@@ -6,7 +6,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
-import com.naengsam.quick.domain.matching.dto.Order;
+import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,7 @@ class MatchingServiceConcurrencyTest {
     void setUp() {
         matchingEngine = new MatchingEngine();
         matchingEngine.start();
-        matchingService = new MatchingService(matchingEngine, mock(com.naengsam.quick.global.sse.SseService.class));
+        matchingService = new MatchingService(matchingEngine, mock(SseService.class));
         requestThreads = Executors.newFixedThreadPool(16);
     }
 
@@ -74,8 +75,8 @@ class MatchingServiceConcurrencyTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         GeoPoint location = mock(GeoPoint.class);
-        Order order = mock(Order.class);
-        when(order.orderId()).thenReturn(orderId);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
@@ -116,8 +117,8 @@ class MatchingServiceConcurrencyTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         GeoPoint location = mock(GeoPoint.class);
-        Order order = mock(Order.class);
-        when(order.orderId()).thenReturn(orderId);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
@@ -149,6 +150,73 @@ class MatchingServiceConcurrencyTest {
 
         assertThat(observedGroups).hasSize(1);
         assertThat(observedGroups.iterator().next().offers()).hasSizeLessThanOrEqualTo(1);
+    }
+
+    @Test
+    void 수락이_취소보다_먼저_큐에_들어오면_수락된_오퍼는_부르미_거절로_반영된다() throws InterruptedException {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+
+        matchingService.registerDreami(dreamiId, location);
+        awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
+
+        matchingService.startMatching(order);
+        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+
+        UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
+                .offers().getFirst().offerId();
+
+        // when (수락을 먼저 제출한 뒤 취소를 제출 - 큐에 들어간 순서대로 처리되어야 한다)
+        matchingService.acceptByDreami(offerId);
+        matchingService.cancelOrderByBoormi(orderId);
+
+        // then
+        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.BOORMI_REJECTED,
+                Duration.ofSeconds(5));
+
+        assertThat(matchingService.findOrderOfferGroup(orderId).orElseThrow().status())
+                .isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
+        assertThat(getDreamiMap().get(dreamiId).status())
+                .isEqualTo(MatchingService.WaitingDreamiStatus.MATCHING);
+    }
+
+    @Test
+    void 취소가_수락보다_먼저_큐에_들어오면_뒤늦은_수락은_반영되지_않는다() throws InterruptedException {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+
+        matchingService.registerDreami(dreamiId, location);
+        awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
+
+        matchingService.startMatching(order);
+        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+
+        UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
+                .offers().getFirst().offerId();
+
+        // when (취소를 먼저 제출한 뒤 수락을 제출 - 취소가 먼저 처리되어 오퍼가 회수된 상태에서 수락이 뒤늦게 도착한다)
+        matchingService.cancelOrderByBoormi(orderId);
+        matchingService.acceptByDreami(offerId);
+
+        // then (취소 처리로 WITHDRAWN 된 뒤, 뒤늦은 수락은 무시되어야 한다)
+        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.WITHDRAWN,
+                Duration.ofSeconds(5));
+
+        assertThat(matchingService.findOrderOfferGroup(orderId).orElseThrow().status())
+                .isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
+
+        // 큐가 완전히 비워질 시간을 준 뒤(추가 액션 하나를 흘려보내 확인), 수락이 뒤늦게 반영되지 않았는지 재확인한다.
+        UUID flushDreamiId = UUID.randomUUID();
+        matchingService.registerDreami(flushDreamiId, location);
+        awaitUntil(() -> getDreamiMap().containsKey(flushDreamiId), Duration.ofSeconds(5));
+
+        assertThat(statusOf(orderId, offerId)).isEqualTo(MatchingService.MatchOfferStatus.WITHDRAWN);
     }
 
     private MatchingService.MatchOfferStatus statusOf(UUID orderId, UUID offerId) {

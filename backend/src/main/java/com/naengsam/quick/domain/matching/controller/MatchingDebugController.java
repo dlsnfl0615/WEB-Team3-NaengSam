@@ -2,11 +2,12 @@ package com.naengsam.quick.domain.matching.controller;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.MatchingStartRequest;
-import com.naengsam.quick.domain.matching.dto.Order;
 import com.naengsam.quick.domain.matching.dto.OrderOfferGroupDto;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
+import com.naengsam.quick.global.session.PublicApi;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -30,6 +31,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/debug/matching")
 @RequiredArgsConstructor
+@PublicApi
 public class MatchingDebugController {
 
     private final MatchingService matchingService;
@@ -61,8 +63,11 @@ public class MatchingDebugController {
     @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
     @PostMapping("/orders/{orderId}/start")
     public void startMatching(@PathVariable UUID orderId, @Valid @RequestBody MatchingStartRequest request) {
-        Order order = new Order(orderId, request.boormiId(), request.destination());
-        matchingService.startMatching(order);
+        Orders order = Orders.create(orderId, request.boormiId(),
+                request.destination().latitude(), request.destination().longitude());
+        if (!matchingService.startMatching(order)) {
+            throw new BusinessException(GeneralErrorCode.CONFLICT);
+        }
     }
 
     @Operation(summary = "주문의 매칭 방(OrderOfferGroup) 상태 조회")
@@ -108,6 +113,12 @@ public class MatchingDebugController {
     @PostMapping("/offers/{offerId}/boormi-expire")
     public void expireBoormiOffer(@PathVariable UUID offerId) {
         matchingService.expireBoormiOffer(offerId);
+    }
+
+    @Operation(summary = "부르미가 매칭 진행 중인 주문을 취소")
+    @PostMapping("/orders/{orderId}/cancel")
+    public void cancelOrderByBoormi(@PathVariable UUID orderId) {
+        matchingService.cancelOrderByBoormi(orderId);
     }
 
     record DreamiView(UUID dreamiId, GeoPoint location,

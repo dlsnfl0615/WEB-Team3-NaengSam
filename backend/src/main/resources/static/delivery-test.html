@@ -210,7 +210,7 @@
       { maxZoom: 19, attribution: '© OSM' }).addTo(m));
     const markerD = L.marker(START, { draggable: true }).addTo(mapD);
     const markerB = L.marker(START).addTo(mapB).bindTooltip("배달원", { permanent: false });
-    setTimeout(() => { mapD.invalidateSize(); mapB.invalidateSize(); }, 200);
+    setTimeout(() => { mapD.invalidateSize(); mapB.invalidateSize(); prefillFromQuery(); }, 200);
 
     function setLatLng(lat, lng) {
       $('lat').value = Number(lat).toFixed(8);
@@ -224,6 +224,13 @@
     setLatLng(START[0], START[1]);
     markerD.on('dragend', () => { const p = markerD.getLatLng(); setLatLng(p.lat, p.lng); markerB.setLatLng(p); });
     mapD.on('click', e => { markerD.setLatLng(e.latlng); markerB.setLatLng(e.latlng); setLatLng(e.latlng.lat, e.latlng.lng); });
+
+    // ===== 쿼리스트링으로 전달받은 orderId 프리필 (sse-test.html 등 외부에서 팝업으로 열 때 사용) =====
+    function prefillFromQuery() {
+      const q = new URLSearchParams(location.search);
+      const qOrderId = q.get('orderId');
+      if (qOrderId) $('orderId').value = qOrderId;
+    }
 
     // ===== 로그 =====
     function pad(n){ return String(n).padStart(2,'0'); }
@@ -360,7 +367,9 @@
 
     // ===== 시딩 =====
     $('btnSeed').onclick = async () => {
-      const res = await fetch('/api/v1/delivery/test/seed', { method: 'POST' });
+      const existingOrderId = $('orderId').value.trim();
+      const qs = existingOrderId ? '?orderId=' + encodeURIComponent(existingOrderId) : '';
+      const res = await fetch('/api/v1/delivery/test/seed' + qs, { method: 'POST' });
       const env = await res.json();
       const ok = env.isSuccess === true;
       log('side-d', '시스템', '배달 시작 (seed)', ok,
@@ -368,7 +377,7 @@
         + JSON.stringify(env.result, null, 2));
       if (!ok) return;
       const r = env.result;
-      $('orderId').value = r.orderId;
+      if (!existingOrderId) $('orderId').value = r.orderId;
       const meta = STATUS_META.PICKUP_NORMAL;
       $('statusBadge').className = 'badge ' + meta.cls;
       $('statusBadge').textContent = meta.label;

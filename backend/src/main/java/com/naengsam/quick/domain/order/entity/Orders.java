@@ -8,11 +8,19 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import java.math.BigDecimal;
 import java.util.UUID;
+import lombok.AccessLevel;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 
 @Entity
+@Getter
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Orders {
     @Id
     private UUID orderId;
+
+    @Column(name = "boormi_id")
+    private UUID boormiId;
 
     @Column(name = "origin_address_line1")
     private String originAddressLine1; // 기본주소
@@ -39,6 +47,26 @@ public class Orders {
     @Enumerated(EnumType.STRING)
     @Column(name = "order_cd")
     private OrderCd orderCd;
+
+    /**
+     * Matching Service의 기존 객체 compatibility를 위한 임시 생성자.
+     *
+     * @param orderId
+     * @param boormiId
+     * @param destinationLatitude
+     * @param destinationLongitude
+     * @return
+     */
+    public static Orders create(UUID orderId, UUID boormiId,
+            BigDecimal destinationLatitude, BigDecimal destinationLongitude) {
+        Orders order = new Orders();
+        order.orderId = orderId;
+        order.boormiId = boormiId;
+        order.destinationLatitude = destinationLatitude;
+        order.destinationLongitude = destinationLongitude;
+        order.orderCd = OrderCd.MATCHING;
+        return order;
+    }
 
     public void updateAddresses(Addresses addresses) {
         this.originAddressLine1 = addresses.originAddressLine1();
