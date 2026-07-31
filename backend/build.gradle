@@ -23,6 +23,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
     implementation 'com.solapi:sdk:1.0.3'
+    implementation 'software.amazon.awssdk:s3:2.29.52' // S3 presigned url
     runtimeOnly 'com.h2database:h2'
     runtimeOnly 'com.mysql:mysql-connector-j'
     runtimeOnly 'org.springframework.boot:spring-boot-h2console'
