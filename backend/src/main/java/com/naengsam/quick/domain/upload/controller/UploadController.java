@@ -36,7 +36,8 @@ public class UploadController {
     @GetMapping("/url")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})
-    @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"UNSUPPORTED_FILE_TYPE", "INVALID_FILE_NAME"})
+    @ApiErrorCodes(enumClass = UploadErrorCode.class,
+            codes = {"NO_FILE_ATTACHED", "INVALID_FILE_NAME", "UNSUPPORTED_FILE_TYPE"})
     public PresignedUrlResponseDto getPresignedUrl(@RequestParam String fileName, @LoginUser UUID boormiId) {
         validateFileName(fileName);
 
@@ -48,11 +49,14 @@ public class UploadController {
     }
 
     /**
-     * fileName이 비어있거나 경로 구분자/상위 디렉토리 참조를 포함하면 거부한다. S3 key에 그대로 이어붙이므로 "/", "\", ".." 가 섞이면 의도하지 않은 key 경로가 만들어질 수 있다.
+     * fileName이 비어있으면 첨부 자체가 없는 것으로 보고 거부한다. 경로 구분자/상위 디렉토리 참조가 섞여있으면
+     * S3 key에 그대로 이어붙이므로 의도하지 않은 key 경로가 만들어질 수 있어 별도로 거부한다.
      */
     private void validateFileName(String fileName) {
-        if (fileName == null || fileName.isBlank()
-                || fileName.contains("/") || fileName.contains("\\") || fileName.contains("..")) {
+        if (fileName == null || fileName.isBlank()) {
+            throw new BusinessException(UploadErrorCode.NO_FILE_ATTACHED);
+        }
+        if (fileName.contains("/") || fileName.contains("\\") || fileName.contains("..")) {
             throw new BusinessException(UploadErrorCode.INVALID_FILE_NAME);
         }
     }

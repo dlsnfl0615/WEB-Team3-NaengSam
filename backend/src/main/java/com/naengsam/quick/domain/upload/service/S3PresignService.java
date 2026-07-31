@@ -80,8 +80,12 @@ public class S3PresignService {
 
     /**
      * 클라이언트가 이 key의 파일을 S3에서 직접 GET 할 수 있는 presigned URL을 발급한다. (5분간 유효)
+     * key가 실제로 존재하지 않으면 예외를 던진다.
      */
     public String generateDownloadUrl(String key) {
+        if (!isFileUploaded(key)) {
+            throw new BusinessException(UploadErrorCode.FILE_NOT_FOUND);
+        }
 
         GetObjectRequest objectRequest = GetObjectRequest.builder()
                 .bucket(uploadProperties.bucketName())
@@ -100,6 +104,7 @@ public class S3PresignService {
 
     /**
      * 이 key로 실제 S3 객체가 존재하는지(=클라이언트가 presigned URL로 업로드를 완료했는지) 확인한다.
+     * 404(아직 업로드 안 됨)는 정상적인 대기 상태라 false로만 반환하고, 그 외 S3 쪽 오류는 예외로 던진다.
      */
     public boolean isFileUploaded(String key) {
         try {
@@ -111,8 +116,11 @@ public class S3PresignService {
             s3Client.headObject(headRequest); // 존재하면 정상 응답, 없으면 예외
             return true;
         } catch (S3Exception e) {
-            log.debug(e.getClass().getName().toString());
-            return false; // 아직 업로드 안 됨
+            if (e.statusCode() == 404) {
+                return false; // 아직 업로드 안 됨
+            }
+            log.warn("S3 HeadObject 실패: key={}", key, e);
+            throw new BusinessException(UploadErrorCode.STORAGE_UPLOAD_FAILED);
         }
     }
 

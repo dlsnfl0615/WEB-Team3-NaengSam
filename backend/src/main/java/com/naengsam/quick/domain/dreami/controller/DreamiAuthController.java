@@ -36,7 +36,7 @@ public class DreamiAuthController {
     @PostMapping("/check")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})
-    @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"KEY_OWNER_MISMATCH"})
+    @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"KEY_OWNER_MISMATCH", "STORAGE_UPLOAD_FAILED"})
     public Boolean checkUpload(@Valid @RequestBody UploadRequestDto requestDto, @LoginUser UUID boormiId) {
         // 다른 사용자에게 발급된 key를 유출/추측해서 제출하는 것을 막는다.
         s3PresignService.validateOwnership(boormiId, requestDto.idCardKey());
