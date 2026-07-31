@@ -4,7 +4,6 @@ import com.naengsam.quick.domain.address.dto.AddressRequestDto;
 import com.naengsam.quick.domain.address.dto.AddressResponseDto;
 import com.naengsam.quick.domain.address.service.AddressService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
-import com.naengsam.quick.global.session.LoginRequired;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
@@ -24,7 +23,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/address")
 @Tag(name = "배송지 컨트롤러", description = "부르미가 등록한 배송지를 저장하고 조회한다.")
-@LoginRequired
 public class AddressController {
 
     private final AddressService addressService;

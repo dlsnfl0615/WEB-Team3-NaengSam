@@ -116,13 +116,13 @@ class VerificationCodeStoreTest {
     }
 
     @Test
-    void 검증_성공한_코드는_1회용이라_재검증하면_EXPIRED_이다() {
+    void 검증_성공한_번호를_재검증하면_ALREADY_VERIFIED_이다() {
         String code = store.issue(PHONE);
         store.verify(PHONE, code);
 
         VerifyResult result = store.verify(PHONE, code);
 
-        assertThat(result).isEqualTo(VerifyResult.EXPIRED);
+        assertThat(result).isEqualTo(VerifyResult.ALREADY_VERIFIED);
     }
 
     @Test
