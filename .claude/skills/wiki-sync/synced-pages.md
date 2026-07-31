@@ -9,3 +9,4 @@
 | 07-27 | https://app.notion.com/p/3aa19935b8ae80bbbacddbcdd632e7c8 | 2026-07-27 |
 | 07-28 | https://app.notion.com/p/3ab19935b8ae80afa1e9c7e3d4482e2f | 2026-07-29 |
 | 07-29 | https://app.notion.com/p/3ab19935b8ae80c0bad2d39f2437c646 | 2026-07-29 |
+| 07-30 | https://app.notion.com/p/3ad19935b8ae8034b2a3e467cd2b565e | 2026-07-30 |
