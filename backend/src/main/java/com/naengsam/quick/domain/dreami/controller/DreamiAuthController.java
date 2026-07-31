@@ -4,7 +4,6 @@ import com.naengsam.quick.domain.dreami.service.DreamiService;
 import com.naengsam.quick.domain.upload.dto.UploadRequestDto;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
-import com.naengsam.quick.global.session.LoginRequired;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
@@ -34,7 +33,6 @@ public class DreamiAuthController {
 
     @Operation(summary = "인증 파일 업로드 확인 및 제출",
             description = "신분증/범죄이력조회서가 S3에 모두 업로드됐는지 확인하고, 둘 다 확인되면 드리미 인증 신청을 저장한다.")
-    @LoginRequired
     @PostMapping("/verification")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})
@@ -44,6 +42,7 @@ public class DreamiAuthController {
             return false;
         }
 
+        // todo: 일단 어드민 개입 없이 무조건 허용으로
         dreamiService.saveVerificationFileKeys(boormiId, requestDto.idCardKey(), requestDto.criminalRecordKey());
         return true;
     }

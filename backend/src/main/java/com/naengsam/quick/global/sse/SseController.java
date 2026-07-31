@@ -1,6 +1,5 @@
 package com.naengsam.quick.global.sse;
 
-import com.naengsam.quick.global.session.LoginRequired;
 import com.naengsam.quick.global.session.LoginUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -25,7 +24,6 @@ public class SseController {
 
     @Operation(summary = "실시간 이벤트 SSE 구독",
             description = "로그인 사용자로 SSE 연결을 맺는다. 최초 connected 이벤트 후, 각 도메인의 이벤트가 이름별로 전달된다.")
-    @LoginRequired
     @GetMapping(value = "/subscribe", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter subscribe(@LoginUser UUID userId) {
         return sseService.subscribe(userId);

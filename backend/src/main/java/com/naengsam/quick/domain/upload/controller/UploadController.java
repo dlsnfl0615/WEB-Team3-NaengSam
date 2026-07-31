@@ -6,7 +6,6 @@ import com.naengsam.quick.domain.upload.dto.UploadRequestDto;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
-import com.naengsam.quick.global.session.LoginRequired;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
@@ -31,7 +30,6 @@ import org.springframework.web.bind.annotation.RestController;
 @Slf4j
 @RequestMapping("/api/v1/upload")
 @Tag(name = "업로드 컨트롤러", description = "S3 presigned URL을 발급하고, 실제로 파일이 업로드됐는지 확인한다.")
-@LoginRequired
 public class UploadController {
 
     private final S3PresignService s3PresignService;
@@ -43,7 +41,7 @@ public class UploadController {
     @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})
     @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"UNSUPPORTED_FILE_TYPE"})
     public PresignedUrlResponseDto getPresignedUrl(@RequestParam String fileName) {
-        String key = "/uploads/" + UUID.randomUUID() + "-" + fileName;
+        String key = "uploads/" + UUID.randomUUID() + "-" + fileName;
 
         String url = s3PresignService.generateUploadUrl(key);
 
