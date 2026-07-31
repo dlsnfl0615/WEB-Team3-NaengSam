@@ -10,7 +10,8 @@ import org.springframework.http.HttpStatus;
 public enum UploadErrorCode implements BaseErrorCode {
 
     UNSUPPORTED_FILE_TYPE(HttpStatus.BAD_REQUEST, "UPLOAD_001", "지원하지 않는 파일 형식입니다."),
-    INVALID_FILE_NAME(HttpStatus.BAD_REQUEST, "UPLOAD_002", "파일 이름이 올바르지 않습니다.");
+    INVALID_FILE_NAME(HttpStatus.BAD_REQUEST, "UPLOAD_002", "파일 이름이 올바르지 않습니다."),
+    KEY_OWNER_MISMATCH(HttpStatus.FORBIDDEN, "UPLOAD_003", "본인이 업로드한 파일만 사용할 수 있습니다.");
 
     private final HttpStatus status;
     private final String code;

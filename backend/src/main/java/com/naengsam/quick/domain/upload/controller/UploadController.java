@@ -6,6 +6,7 @@ import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
+import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -36,10 +37,10 @@ public class UploadController {
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})
     @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"UNSUPPORTED_FILE_TYPE", "INVALID_FILE_NAME"})
-    public PresignedUrlResponseDto getPresignedUrl(@RequestParam String fileName) {
+    public PresignedUrlResponseDto getPresignedUrl(@RequestParam String fileName, @LoginUser UUID boormiId) {
         validateFileName(fileName);
 
-        String key = "uploads/" + UUID.randomUUID() + "-" + fileName;
+        String key = s3PresignService.buildKey(boormiId, fileName);
 
         String url = s3PresignService.generateUploadUrl(key);
 

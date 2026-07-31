@@ -6,6 +6,7 @@ import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -38,6 +39,23 @@ public class S3PresignService {
     private final UploadProperties uploadProperties;
     private final S3Presigner presigner;
     private final S3Client s3Client;
+
+    /**
+     * 업로드 요청자(boormiId)를 key 경로에 포함해 발급한다. key만 알아도 다른 사람이 그 파일을
+     * 자기 것인 양 제출하지 못하도록, key 자체에 소유자를 새겨두고 확인 시점에 {@link #validateOwnership}로 대조한다.
+     */
+    public String buildKey(UUID boormiId, String fileName) {
+        return "uploads/" + boormiId + "/" + UUID.randomUUID() + "-" + fileName;
+    }
+
+    /**
+     * key가 이 boormiId 앞으로 발급된 것인지 확인한다. 아니면(다른 사람 key를 그대로 제출한 경우) 예외를 던진다.
+     */
+    public void validateOwnership(UUID boormiId, String key) {
+        if (!key.startsWith("uploads/" + boormiId + "/")) {
+            throw new BusinessException(UploadErrorCode.KEY_OWNER_MISMATCH);
+        }
+    }
 
     /**
      * 클라이언트가 이 key로 S3에 직접 PUT 할 수 있는 presigned URL을 발급한다. (10분간 유효)

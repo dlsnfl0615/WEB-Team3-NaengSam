@@ -2,6 +2,7 @@ package com.naengsam.quick.domain.dreami.controller;
 
 import com.naengsam.quick.domain.dreami.service.DreamiService;
 import com.naengsam.quick.domain.upload.dto.UploadRequestDto;
+import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
@@ -35,7 +36,11 @@ public class DreamiAuthController {
     @PostMapping("/check")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})
+    @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"KEY_OWNER_MISMATCH"})
     public Boolean checkUpload(@Valid @RequestBody UploadRequestDto requestDto, @LoginUser UUID boormiId) {
+        // 다른 사용자에게 발급된 key를 유출/추측해서 제출하는 것을 막는다.
+        s3PresignService.validateOwnership(boormiId, requestDto.idCardKey());
+        s3PresignService.validateOwnership(boormiId, requestDto.criminalRecordKey());
 
         // 하나라도 업로드 완료되지 않은 상태라면
         if (!s3PresignService.isFileUploaded(requestDto.idCardKey())
