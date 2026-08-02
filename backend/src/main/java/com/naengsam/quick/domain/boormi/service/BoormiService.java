@@ -118,9 +118,11 @@ public class BoormiService {
         if (documents.isEmpty()) {
             throw new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
         }
+        
         CoordinatesResponseDto.RoadAddress address = documents.getFirst().roadAddress();
 
-        return new GeoPoint(new BigDecimal(address.x()), new BigDecimal(address.y()));
+        // x=경도, y=위도 → GeoPoint(latitude, longitude) 순서에 맞춰 매핑
+        return new GeoPoint(new BigDecimal(address.y()), new BigDecimal(address.x()));
     }
 
     /**

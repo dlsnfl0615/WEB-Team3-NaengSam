@@ -17,6 +17,7 @@ import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -120,6 +121,21 @@ BoormiServiceTest {
     }
 
     @Test
+    void 견적_좌표변환시_x는_경도_y는_위도로_매핑한다() {
+        given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
+        given(kakaoDirectionsService.getRoute(any(), any()))
+                .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
+
+        boormiService.expectedValue(request(ItemCd.DOCUMENT));
+
+        ArgumentCaptor<GeoPoint> captor = ArgumentCaptor.forClass(GeoPoint.class);
+        then(kakaoDirectionsService).should().getRoute(captor.capture(), captor.capture());
+        GeoPoint origin = captor.getAllValues().getFirst();
+        assertThat(origin.latitude()).isEqualByComparingTo("37.123456");   // y=위도
+        assertThat(origin.longitude()).isEqualByComparingTo("127.123456"); // x=경도
+    }
+
+    @Test
     void 주문접수_요청필드로_주문을_생성해_저장하고_결제와_매칭을_시작한다() {
         UUID boormiId = UUID.randomUUID();
         given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
@@ -141,8 +157,11 @@ BoormiServiceTest {
         assertThat(saved.getOrderCd()).isEqualTo(OrderCd.MATCHING);
         assertThat(saved.getOriginAddressLine1()).isEqualTo("서울시 강남구");
         assertThat(saved.getDestinationAddressLine2()).isEqualTo("202동");
-        assertThat(saved.getOriginLatitude()).isNotNull();
-        assertThat(saved.getDestinationLongitude()).isNotNull();
+        // x=경도(127.x), y=위도(37.x)가 latitude/longitude 자리에 올바르게 매핑되어야 한다
+        assertThat(saved.getOriginLatitude()).isEqualByComparingTo("37.123456");
+        assertThat(saved.getOriginLongitude()).isEqualByComparingTo("127.123456");
+        assertThat(saved.getDestinationLatitude()).isEqualByComparingTo("37.123456");
+        assertThat(saved.getDestinationLongitude()).isEqualByComparingTo("127.123456");
     }
 
     @Test
