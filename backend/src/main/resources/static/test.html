@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>address / upload 테스트</title>
+    <script src="//t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, sans-serif;
+            max-width: 720px;
+            margin: 40px auto;
+            padding: 0 16px;
+        }
+
+        section {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 18px;
+        }
+
+        h3 {
+            font-size: 15px;
+            color: #444;
+            margin-bottom: 8px;
+        }
+
+        label {
+            display: block;
+            font-size: 13px;
+            color: #666;
+            margin-top: 8px;
+        }
+
+        input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 6px 8px;
+            margin-top: 2px;
+        }
+
+        input[readonly] {
+            background: #f0f0f0;
+        }
+
+        button {
+            margin-top: 10px;
+            padding: 6px 14px;
+            cursor: pointer;
+        }
+
+        pre {
+            background: #f6f6f6;
+            padding: 10px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-size: 12px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+        }
+
+        .row > div {
+            flex: 1;
+        }
+
+        .ok {
+            color: green;
+        }
+
+        .fail {
+            color: crimson;
+        }
+    </style>
+</head>
+<body>
+
+<h1>address / upload 도메인 테스트</h1>
+<p>같은 오리진(<code>localhost:8080</code>)에서 직접 API를 호출합니다. 먼저 로그인해야 나머지가 동작합니다.</p>
+
+<section>
+    <h2>0. 로그인</h2>
+    <label>email</label>
+    <input id="loginEmail" value="test@test.com">
+    <label>password</label>
+    <input id="loginPassword" type="password" value="test1234">
+    <button onclick="login()">로그인</button>
+    <pre id="loginResult"></pre>
+</section>
+
+<section>
+    <h2>1. address</h2>
+
+    <h3>1-1. 좌표 변환 (POST /api/v1/address/place)</h3>
+    <div class="row">
+        <div>
+            <label>origin (건물명으로 검색 가능)</label>
+            <input id="origin" readonly value="서울특별시 강남구 테헤란로 152">
+            <input type="button" onclick="searchAddress('origin')" value="주소 찾기">
+            <label>originDetail</label>
+            <input id="originDetail" value="1층">
+        </div>
+        <div>
+            <label>destination (건물명으로 검색 가능)</label>
+            <input id="destination" readonly value="서울특별시 서초구 서초대로 396">
+            <input type="button" onclick="searchAddress('destination')" value="주소 찾기">
+            <label>destinationDetail</label>
+            <input id="destinationDetail" value="2층" oninput="syncDestinationToSave()">
+        </div>
+    </div>
+    <button onclick="getCoordinates()">좌표 변환 요청</button>
+    <pre id="coordinatesResult"></pre>
+
+    <h3>1-2. 배송지 저장 (POST /api/v1/address)</h3>
+    <p style="font-size:12px;color:#888;margin:4px 0">addressLine1/2는 destination/destinationDetail 값을 자동으로 따라갑니다.</p>
+    <label>addressAlias</label>
+    <input id="addressAlias" value="집">
+    <label>addressLine1</label>
+    <input id="addressLine1" value="서울특별시 서초구 서초대로 396">
+    <label>addressLine2</label>
+    <input id="addressLine2" value="2층">
+    <button onclick="saveAddress()">배송지 저장</button>
+    <pre id="saveAddressResult"></pre>
+
+    <h3>1-3. 배송지 목록 조회 (GET /api/v1/address)</h3>
+    <button onclick="listAddresses()">목록 조회</button>
+    <pre id="listAddressResult"></pre>
+</section>
+
+<section>
+    <h2>2. upload</h2>
+
+    <h3>2-1. 신분증 파일 전송</h3>
+    <input id="idCardFile" type="file">
+    <button onclick="sendFile('idCard')">전송</button>
+    <span id="idCardStatus"></span>
+    <label>idCardKey</label>
+    <input id="idCardKey">
+
+    <h3>2-2. 범죄이력조회서 파일 전송</h3>
+    <input id="criminalRecordFile" type="file">
+    <button onclick="sendFile('criminalRecord')">전송</button>
+    <span id="criminalRecordStatus"></span>
+    <label>criminalRecordKey</label>
+    <input id="criminalRecordKey">
+
+    <h3>2-3. 업로드 확인 (POST /api/v1/dreami/check)</h3>
+    <button onclick="checkUpload()">확인</button>
+    <pre id="checkResult"></pre>
+</section>
+
+<script>
+    const BASE = "";
+
+    async function call(method, path, body) {
+        const res = await fetch(BASE + path, {
+            method,
+            headers: body ? {"Content-Type": "application/json"} : {},
+            credentials: "include",
+            body: body ? JSON.stringify(body) : undefined
+        });
+        let json;
+        try {
+            json = await res.json();
+        } catch (e) {
+            json = {raw: await res.text()};
+        }
+        return {status: res.status, json};
+    }
+
+    function show(elId, status, json) {
+        const el = document.getElementById(elId);
+        const cls = status >= 200 && status < 300 ? "ok" : "fail";
+        el.innerHTML = `<span class="${cls}">HTTP ${status}</span>\n` + JSON.stringify(json, null, 2);
+    }
+
+    async function login() {
+        const {status, json} = await call("POST", "/api/v1/user/login", {
+            email: document.getElementById("loginEmail").value,
+            password: document.getElementById("loginPassword").value
+        });
+        show("loginResult", status, json);
+    }
+
+    // prefix: 'origin' 또는 'destination' - 어느 주소 input에 채울지 구분
+    function searchAddress(prefix) {
+        new daum.Postcode({
+            oncomplete: function (data) {
+                const roadAddr = data.roadAddress || data.jibunAddress;
+                document.getElementById(prefix).value = roadAddr;
+                if (prefix === "destination") {
+                    syncDestinationToSave();
+                }
+            }
+        }).open();
+    }
+
+    // destination / destinationDetail 값을 배송지 저장 폼(addressLine1/2)에 그대로 반영
+    function syncDestinationToSave() {
+        document.getElementById("addressLine1").value = document.getElementById("destination").value;
+        document.getElementById("addressLine2").value = document.getElementById("destinationDetail").value;
+    }
+
+    async function getCoordinates() {
+        const {status, json} = await call("POST", "/api/v1/address/place", {
+            origin: document.getElementById("origin").value,
+            originDetail: document.getElementById("originDetail").value,
+            destination: document.getElementById("destination").value,
+            destinationDetail: document.getElementById("destinationDetail").value
+        });
+        show("coordinatesResult", status, json);
+    }
+
+    async function saveAddress() {
+        const {status, json} = await call("POST", "/api/v1/address", {
+            addressAlias: document.getElementById("addressAlias").value,
+            addressLine1: document.getElementById("addressLine1").value,
+            addressLine2: document.getElementById("addressLine2").value
+        });
+        show("saveAddressResult", status, json);
+    }
+
+    async function listAddresses() {
+        const {status, json} = await call("GET", "/api/v1/address");
+        show("listAddressResult", status, json);
+    }
+
+    const CONTENT_TYPES = {png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp"};
+
+    // slot: 'idCard' 또는 'criminalRecord'
+    async function sendFile(slot) {
+        const statusEl = document.getElementById(slot + "Status");
+        const file = document.getElementById(slot + "File").files[0];
+        if (!file) {
+            statusEl.innerHTML = '<span class="fail">파일을 먼저 선택하세요.</span>';
+            return;
+        }
+
+        statusEl.textContent = "전송 중...";
+
+        // 1. presigned URL 발급 (화면엔 노출 안 함)
+        const {status, json} = await call("GET", "/api/v1/upload/url?fileName=" + encodeURIComponent(file.name));
+        if (status < 200 || status >= 300 || !json.result) {
+            statusEl.innerHTML = `<span class="fail">발급 실패: HTTP ${status}</span>`;
+            return;
+        }
+        const {url, key} = json.result;
+
+        // 2. 발급받은 presigned URL로 그대로 S3에 PUT
+        const ext = file.name.split(".").pop().toLowerCase();
+        const contentType = CONTENT_TYPES[ext] || "application/octet-stream";
+
+        try {
+            const res = await fetch(url, {
+                method: "PUT",
+                headers: {"Content-Type": contentType},
+                body: file
+            });
+
+            if (res.ok) {
+                document.getElementById(slot + "Key").value = key;
+                statusEl.innerHTML = '<span class="ok">전송 완료</span>';
+            } else {
+                statusEl.innerHTML = `<span class="fail">S3 업로드 실패: HTTP ${res.status}</span>`;
+            }
+        } catch (e) {
+            console.error(e);
+            statusEl.innerHTML = `<span class="fail">S3 요청 자체가 막힘 (콘솔 확인 - 보통 CORS): ${e.message}</span>`;
+        }
+    }
+
+    async function checkUpload() {
+        const {status, json} = await call("POST", "/api/v1/dreami/check", {
+            idCardKey: document.getElementById("idCardKey").value,
+            criminalRecordKey: document.getElementById("criminalRecordKey").value
+        });
+        show("checkResult", status, json);
+    }
+</script>
+
+</body>
+</html>

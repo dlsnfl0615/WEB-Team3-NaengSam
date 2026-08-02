@@ -6,13 +6,20 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCEL
 import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_DREAMI;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
+import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
+import com.naengsam.quick.global.sse.SseService;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -30,12 +37,14 @@ import org.springframework.test.util.ReflectionTestUtils;
 class DeliveryServiceTest {
 
     private DeliveryStore store;
+    private SseService sseService;
     private DeliveryService deliveryService;
 
     @BeforeEach
     void setUp() {
         store = new DeliveryStore();
-        deliveryService = new DeliveryService(store);
+        sseService = mock(SseService.class);
+        deliveryService = new DeliveryService(store, sseService);
     }
 
     // ===== 픽스처 =====
@@ -44,6 +53,15 @@ class DeliveryServiceTest {
     private UUID registerDelivery(DeliveryCd status) {
         UUID orderId = UUID.randomUUID();
         DeliveryStatus deliveryStatus = DeliveryStatus.create(orderId, UUID.randomUUID(), UUID.randomUUID());
+        ReflectionTestUtils.setField(deliveryStatus, "status", status);
+        store.register(deliveryStatus);
+        return orderId;
+    }
+
+    // 지정한 dreamiId/boormiId와 상태로 배달을 등록하고 orderId를 돌려준다(SSE 수신자 검증용).
+    private UUID registerDeliveryWith(DeliveryCd status, UUID dreamiId, UUID boormiId) {
+        UUID orderId = UUID.randomUUID();
+        DeliveryStatus deliveryStatus = DeliveryStatus.create(orderId, dreamiId, boormiId);
         ReflectionTestUtils.setField(deliveryStatus, "status", status);
         store.register(deliveryStatus);
         return orderId;
@@ -84,6 +102,74 @@ class DeliveryServiceTest {
         assertThat(registered.status()).isEqualTo(DeliveryCd.PICKUP_NORMAL);
         assertThat(registered.dreamiId()).isEqualTo(dreamiId);
         assertThat(registered.boormiId()).isEqualTo(boormiId);
+    }
+
+    // ===== SSE 알림 =====
+
+    @Test
+    void 위치갱신되면_부르미에게_DELIVERY_LOCATION_SSE전송() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+
+        deliveryService.updateDreamiLocation(orderId, location("37.5", "127.0"));
+
+        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_LOCATION), any());
+    }
+
+    @Test
+    void 픽업완료되면_부르미에게_DELIVERY_DELIVERING_SSE전송() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+
+        deliveryService.pickupFinishByDreami(orderId);
+
+        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_DELIVERING), any());
+    }
+
+    @Test
+    void 배달완료되면_부르미에게_DELIVERY_COMPLETED_SSE전송() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DELIVERING, dreamiId, boormiId);
+
+        deliveryService.finishDelivery(orderId);
+
+        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_COMPLETED), any());
+    }
+
+    @Test
+    void 드리미취소되면_부르미에게_DELIVERY_CANCELLED_SSE전송() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+
+        deliveryService.cancelByDreami(orderId);
+
+        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
+    }
+
+    @Test
+    void 부르미취소는_어떤_SSE도_보내지않는다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        deliveryService.cancelByBoormi(orderId);
+
+        verify(sseService, never()).send(any(), any(), any());
+    }
+
+    @Test
+    void 부르미취소후_드리미가_위치갱신하면_드리미에게_DELIVERY_CANCELLED_SSE전송() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(PICKUP_CANCELLED_BY_BOORMI, dreamiId, boormiId);
+
+        Throwable thrown = catchThrowable(
+                () -> deliveryService.updateDreamiLocation(orderId, location("37.5", "127.0")));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+        verify(sseService).send(eq(dreamiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
     }
 
     // ===== 상태 전이 단위 테스트 =====

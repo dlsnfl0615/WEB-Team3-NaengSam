@@ -18,8 +18,9 @@ class CoordinatesServiceTest {
     @Test
     @SuppressWarnings({"unchecked", "rawtypes"})
     void 도로명주소로_좌표를_조회한다() {
+        // restApiKey는 static final이라 인스턴스 필드처럼 reflection으로 바꿀 수 없고, 아래 mock이
+        // header(any(), any())로 값과 무관하게 매칭하므로 실제 키 값은 이 테스트에 영향을 주지 않는다.
         CoordinatesService coordinatesService = new CoordinatesService();
-        ReflectionTestUtils.setField(coordinatesService, "restApiKey", "test-api-key");
 
         RestClient restClient = mock(RestClient.class);
         RestClient.RequestHeadersUriSpec uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
