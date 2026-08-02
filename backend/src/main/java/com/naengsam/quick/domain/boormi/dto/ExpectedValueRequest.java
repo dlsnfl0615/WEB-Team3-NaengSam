@@ -4,7 +4,8 @@ import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
-public record ExpectedValueRequest(
+public record
+ExpectedValueRequest(
         @NotBlank
         String originAddressLine1,
 
@@ -13,5 +14,5 @@ public record ExpectedValueRequest(
 
         @NotNull
         ItemCd itemCd
-){
+) {
 }
