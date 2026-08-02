@@ -12,6 +12,8 @@ import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.entity.CancelerCd;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.service.OrderService;
@@ -83,6 +85,28 @@ public class BoormiService {
     }
 
     /**
+     * 부르미가 접수한 주문을 취소한다. 매칭 성사 전(MATCHING, PENDING_BOORMI_CONFIRMATION) 상태에서만 취소할 수 있으며, 주문 상태를 CANCELLED 로 바꾸고 매칭 큐에서도 제안을 회수한다.
+     */
+    @Transactional
+    public void unsubscribeOrder(UUID boormiId, UUID orderId) {
+        Orders order = orderService.getOrder(orderId);
+
+        if (!order.getBoormiId().equals(boormiId)) {
+            throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
+        }
+        
+        if (!(order.getOrderCd().equals(OrderCd.MATCHING) 
+        || order.getOrderCd().equals(OrderCd.PENDING_BOORMI_CONFIRMATION)
+        )) {
+            throw new BusinessException(OrderErrorCode.CANNOT_CANCEL_AFTER_PICKUP);
+        }
+
+        orderService.cancel(order, CancelerCd.BOORMI); // 주문 취소 상태 전이 + 취소 이력 저장
+        matchingService.cancelOrderByBoormi(orderId);  // 제안 회수 + 드리미 SSE 알림
+        // TODO: 결제 취소/환불 연동 (PaymentService 구현 후)
+    }
+
+    /**
      * 출발지/도착지 도로명주소를 좌표로 변환한 뒤 카카오 길찾기로 실제 거리·소요시간을 구하고, 물건 유형 배율을 반영한 예상 가격/시간/거리를 반환한다.
      */
     @Transactional(readOnly = true)
@@ -118,7 +142,7 @@ public class BoormiService {
         if (documents.isEmpty()) {
             throw new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
         }
-        
+
         CoordinatesResponseDto.RoadAddress address = documents.getFirst().roadAddress();
 
         // x=경도, y=위도 → GeoPoint(latitude, longitude) 순서에 맞춰 매핑

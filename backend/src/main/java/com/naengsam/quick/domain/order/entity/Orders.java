@@ -126,6 +126,13 @@ public class Orders {
         return order;
     }
 
+    /**
+     * 매칭 대기 중인 주문을 취소 상태로 전이한다.
+     */
+    public void cancel() {
+        this.orderCd = OrderCd.CANCELLED;
+    }
+
     public void updateAddresses(Addresses addresses) {
         this.originAddressLine1 = addresses.originAddressLine1();
         this.originAddressLine2 = addresses.originAddressLine2();

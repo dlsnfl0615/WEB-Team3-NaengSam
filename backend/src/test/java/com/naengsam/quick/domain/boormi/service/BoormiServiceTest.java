@@ -19,6 +19,7 @@ import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
@@ -26,6 +27,7 @@ import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -34,6 +36,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * 예상 견적(가격/시간/거리) 계산 로직 단위 테스트.
@@ -212,5 +215,70 @@ BoormiServiceTest {
         assertThat(thrown).isInstanceOf(BusinessException.class);
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
+    }
+
+    private static Orders order(UUID boormiId, OrderCd orderCd) {
+        GeoPoint point = new GeoPoint(new BigDecimal("37.0"), new BigDecimal("127.0"));
+        Orders order = Orders.create(UUID.randomUUID(), boormiId, point, point);
+        ReflectionTestUtils.setField(order, "orderCd", orderCd);
+        return order;
+    }
+
+    @Test
+    void 취소_주문이_없으면_ORDER_NOT_FOUND_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        given(orderService.getOrder(orderId))
+                .willThrow(new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
+
+        Throwable thrown = catchThrowable(() -> boormiService.unsubscribeOrder(boormiId, orderId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+        then(orderService).should(never()).cancel(any(), any());
+        then(matchingService).should(never()).cancelOrderByBoormi(any());
+    }
+
+    @Test
+    void 취소_주문_소유자가_아니면_NOT_ORDER_OWNER_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Orders order = order(UUID.randomUUID(), OrderCd.MATCHING);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        Throwable thrown = catchThrowable(() -> boormiService.unsubscribeOrder(boormiId, orderId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.NOT_ORDER_OWNER);
+        then(orderService).should(never()).cancel(any(), any());
+        then(matchingService).should(never()).cancelOrderByBoormi(any());
+    }
+
+    @Test
+    void 취소_이미_진행중이면_CANNOT_CANCEL_AFTER_PICKUP_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.IN_PROGRESS);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        Throwable thrown = catchThrowable(() -> boormiService.unsubscribeOrder(boormiId, orderId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.CANNOT_CANCEL_AFTER_PICKUP);
+        then(orderService).should(never()).cancel(any(), any());
+        then(matchingService).should(never()).cancelOrderByBoormi(any());
+    }
+
+    @Test
+    void 취소_정상이면_주문취소와_매칭취소를_호출한다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.MATCHING);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        boormiService.unsubscribeOrder(boormiId, orderId);
+
+        then(orderService).should().cancel(order, CancelerCd.BOORMI);
+        then(matchingService).should().cancelOrderByBoormi(orderId);
     }
 }
