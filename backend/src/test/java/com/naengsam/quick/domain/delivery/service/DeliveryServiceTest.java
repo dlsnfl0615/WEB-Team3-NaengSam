@@ -8,6 +8,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -16,6 +18,8 @@ import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
+import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
+import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
@@ -35,15 +39,21 @@ import org.springframework.test.util.ReflectionTestUtils;
  */
 class DeliveryServiceTest {
 
+    private static final String PHOTO_KEY = "uploads/dreami/photo.png";
+
     private DeliveryStore store;
     private SseService sseService;
+    private S3PresignService s3PresignService;
     private DeliveryService deliveryService;
 
     @BeforeEach
     void setUp() {
         store = new DeliveryStore();
         sseService = mock(SseService.class);
-        deliveryService = new DeliveryService(store, sseService);
+        s3PresignService = mock(S3PresignService.class);
+        deliveryService = new DeliveryService(store, sseService, s3PresignService);
+        // 기본값: 사진 존재. 소유권 검증(validateOwnership)은 void라 기본 no-op(통과).
+        given(s3PresignService.isFileUploaded(any())).willReturn(true);
     }
 
     // ===== 픽스처 =====
@@ -68,6 +78,15 @@ class DeliveryServiceTest {
 
     private DeliveryCd statusOf(UUID orderId) {
         return store.get(orderId).status();
+    }
+
+    // 등록된 주문의 배정 드리미 본인이 유효한 사진 key로 픽업/배달 완료를 요청하는 정상 경로 헬퍼.
+    private DeliveryStatusResponseDto pickupFinish(UUID orderId) {
+        return deliveryService.pickupFinishByDreami(orderId, store.get(orderId).dreamiId(), PHOTO_KEY);
+    }
+
+    private DeliveryStatusResponseDto finish(UUID orderId) {
+        return deliveryService.finishDelivery(orderId, store.get(orderId).dreamiId(), PHOTO_KEY);
     }
 
     private BaseErrorCode errorCodeOf(Throwable thrown) {
@@ -122,7 +141,7 @@ class DeliveryServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
 
-        deliveryService.pickupFinishByDreami(orderId);
+        pickupFinish(orderId);
 
         verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_DELIVERING), any());
     }
@@ -133,7 +152,7 @@ class DeliveryServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = registerDeliveryWith(DELIVERING, dreamiId, boormiId);
 
-        deliveryService.finishDelivery(orderId);
+        finish(orderId);
 
         verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_COMPLETED), any());
     }
@@ -188,7 +207,7 @@ class DeliveryServiceTest {
     void 픽업완료_정상이면_DELIVERING으로_전이() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
-        DeliveryStatusResponseDto result = deliveryService.pickupFinishByDreami(orderId);
+        DeliveryStatusResponseDto result = pickupFinish(orderId);
 
         assertThat(result.message()).isEqualTo("픽업 완료");
         assertThat(result.status()).isEqualTo(DELIVERING);
@@ -199,7 +218,8 @@ class DeliveryServiceTest {
     void 등록되지않은_배달이면_DELIVERY_NOT_FOUND_예외() {
         UUID orderId = UUID.randomUUID();
 
-        Throwable thrown = catchThrowable(() -> deliveryService.pickupFinishByDreami(orderId));
+        Throwable thrown = catchThrowable(
+                () -> deliveryService.pickupFinishByDreami(orderId, UUID.randomUUID(), PHOTO_KEY));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_NOT_FOUND);
     }
@@ -212,7 +232,7 @@ class DeliveryServiceTest {
                 DeliveryCd.PICKUP_CANCELLED_BY_ADMIN)) {
             UUID orderId = registerDelivery(cancelledStatus);
 
-            Throwable thrown = catchThrowable(() -> deliveryService.pickupFinishByDreami(orderId));
+            Throwable thrown = catchThrowable(() -> pickupFinish(orderId));
 
             assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
             assertThat(statusOf(orderId)).isEqualTo(cancelledStatus);
@@ -223,7 +243,7 @@ class DeliveryServiceTest {
     void 픽업완료_이미_처리된단계면_STEP_ALREADY_VERIFIED_예외() {
         UUID orderId = registerDelivery(DELIVERING);
 
-        Throwable thrown = catchThrowable(() -> deliveryService.pickupFinishByDreami(orderId));
+        Throwable thrown = catchThrowable(() -> pickupFinish(orderId));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.STEP_ALREADY_VERIFIED);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERING);
@@ -233,7 +253,7 @@ class DeliveryServiceTest {
     void 픽업완료_이미_배달완료된주문이면_DELIVERY_ALREADY_COMPLETED_예외() {
         UUID orderId = registerDelivery(DELIVERED);
 
-        Throwable thrown = catchThrowable(() -> deliveryService.pickupFinishByDreami(orderId));
+        Throwable thrown = catchThrowable(() -> pickupFinish(orderId));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERED);
@@ -254,11 +274,73 @@ class DeliveryServiceTest {
     void 배달완료_배달중이면_DELIVERED로_전이() {
         UUID orderId = registerDelivery(DELIVERING);
 
-        DeliveryStatusResponseDto result = deliveryService.finishDelivery(orderId);
+        DeliveryStatusResponseDto result = finish(orderId);
 
         assertThat(result.message()).isEqualTo("드리미에게_완료");
         assertThat(result.status()).isEqualTo(DELIVERED);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERED);
+    }
+
+    // ===== 사진 인증 =====
+
+    @Test
+    void 픽업완료_사진이_업로드안됐으면_PICKUP_PHOTO_MISSING_예외() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+        given(s3PresignService.isFileUploaded(PHOTO_KEY)).willReturn(false);
+
+        Throwable thrown = catchThrowable(() -> pickupFinish(orderId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.PICKUP_PHOTO_MISSING);
+        assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
+    }
+
+    @Test
+    void 배달완료_사진이_업로드안됐으면_DELIVERY_COMPLETION_PHOTO_MISSING_예외() {
+        UUID orderId = registerDelivery(DELIVERING);
+        given(s3PresignService.isFileUploaded(PHOTO_KEY)).willReturn(false);
+
+        Throwable thrown = catchThrowable(() -> finish(orderId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_COMPLETION_PHOTO_MISSING);
+        assertThat(statusOf(orderId)).isEqualTo(DELIVERING);
+    }
+
+    @Test
+    void 픽업완료_남의_key를_제출하면_KEY_OWNER_MISMATCH_예외() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+        UUID dreamiId = store.get(orderId).dreamiId();
+        willThrow(new BusinessException(UploadErrorCode.KEY_OWNER_MISMATCH))
+                .given(s3PresignService).validateOwnership(dreamiId, PHOTO_KEY);
+
+        Throwable thrown = catchThrowable(
+                () -> deliveryService.pickupFinishByDreami(orderId, dreamiId, PHOTO_KEY));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(UploadErrorCode.KEY_OWNER_MISMATCH);
+        assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
+    }
+
+    @Test
+    void 픽업완료_배정되지않은_드리미면_NOT_ASSIGNED_DREAMI_예외() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+        UUID otherDreamiId = UUID.randomUUID();
+
+        Throwable thrown = catchThrowable(
+                () -> deliveryService.pickupFinishByDreami(orderId, otherDreamiId, PHOTO_KEY));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.NOT_ASSIGNED_DREAMI);
+        assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
+    }
+
+    @Test
+    void 배달완료_배정되지않은_드리미면_NOT_ASSIGNED_DREAMI_예외() {
+        UUID orderId = registerDelivery(DELIVERING);
+        UUID otherDreamiId = UUID.randomUUID();
+
+        Throwable thrown = catchThrowable(
+                () -> deliveryService.finishDelivery(orderId, otherDreamiId, PHOTO_KEY));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.NOT_ASSIGNED_DREAMI);
+        assertThat(statusOf(orderId)).isEqualTo(DELIVERING);
     }
 
     @Test
@@ -370,7 +452,7 @@ class DeliveryServiceTest {
     void 배달완료_픽업전이면_PICKUP_NOT_COMPLETED_예외() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
-        Throwable thrown = catchThrowable(() -> deliveryService.finishDelivery(orderId));
+        Throwable thrown = catchThrowable(() -> finish(orderId));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.PICKUP_NOT_COMPLETED);
         assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
@@ -384,7 +466,7 @@ class DeliveryServiceTest {
                 DeliveryCd.PICKUP_CANCELLED_BY_ADMIN)) {
             UUID orderId = registerDelivery(cancelledStatus);
 
-            Throwable thrown = catchThrowable(() -> deliveryService.finishDelivery(orderId));
+            Throwable thrown = catchThrowable(() -> finish(orderId));
 
             assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
             assertThat(statusOf(orderId)).isEqualTo(cancelledStatus);
@@ -395,7 +477,7 @@ class DeliveryServiceTest {
     void 배달완료_이미_완료된주문이면_DELIVERY_ALREADY_COMPLETED_예외() {
         UUID orderId = registerDelivery(DELIVERED);
 
-        Throwable thrown = catchThrowable(() -> deliveryService.finishDelivery(orderId));
+        Throwable thrown = catchThrowable(() -> finish(orderId));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERED);
@@ -416,7 +498,7 @@ class DeliveryServiceTest {
             AtomicReference<Throwable> cancelError = new AtomicReference<>();
             runConcurrently(
                     () -> pickupError.set(
-                            catchThrowable(() -> pickupResult.set(deliveryService.pickupFinishByDreami(orderId)))),
+                            catchThrowable(() -> pickupResult.set(pickupFinish(orderId)))),
                     () -> cancelError.set(
                             catchThrowable(() -> cancelResult.set(deliveryService.cancelByBoormi(orderId)))));
 
@@ -443,7 +525,7 @@ class DeliveryServiceTest {
         UUID orderB = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
         runConcurrently(
-                () -> deliveryService.pickupFinishByDreami(orderA),
+                () -> pickupFinish(orderA),
                 () -> deliveryService.cancelByBoormi(orderB));
 
         assertThat(statusOf(orderA)).isEqualTo(DELIVERING);
