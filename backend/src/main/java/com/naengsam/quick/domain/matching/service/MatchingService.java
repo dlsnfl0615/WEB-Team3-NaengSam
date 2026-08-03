@@ -34,7 +34,7 @@ import org.springframework.stereotype.Service;
 public class MatchingService {
 
     /**
-     * 드리미 응답 제한시간. TODO: 정책 확정 후 조정
+     * 드리미 응답 제한시간. 제한은 30초 기준.
      */
     private static final Duration OFFER_TTL = Duration.ofSeconds(30);
     /**
@@ -42,7 +42,7 @@ public class MatchingService {
      */
     private static final int MAX_OFFER_COUNT = 3;
     /**
-     * 재매칭 대기 방을 스캔하는 스케줄 주기. TODO: 정책 확정 후 조정
+     * 재매칭 대기 방을 스캔하는 스케줄 주기. Fallback이기 때문에 10분으로.
      */
     private static final Duration REMATCH_SCAN_INTERVAL = Duration.ofMinutes(10);
 
@@ -79,7 +79,7 @@ public class MatchingService {
      * 드리미 등록 없이도 재매칭 대기 방이 방치되지 않도록, 주기적으로 재매칭을 시도한다. 엔진의 단일 기록자 스레드가 아닌 스케줄러 스레드에서 실행되므로, 상태를 직접 건드리지 않고 다른 액션들과 동일하게
      * 큐에 제출만 한다.
      */
-    @Scheduled(fixedRate = 360_000L) // REMATCH_SCAN_INTERVAL과 동일한 값(ms) — @Scheduled는 상수 표현식만 허용
+    @Scheduled(fixedRate = 600_000L) // REMATCH_SCAN_INTERVAL과 동일한 값(ms) — @Scheduled는 상수 표현식만 허용
     public void scheduleRematchWaitingGroups() {
         matchingEngine.submit(new RematchWaitingGroups(this));
     }
