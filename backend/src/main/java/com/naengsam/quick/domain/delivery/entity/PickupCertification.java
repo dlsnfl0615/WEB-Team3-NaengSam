@@ -26,11 +26,11 @@ public class PickupCertification {
     @Column(name = "is_contact", nullable = false)
     private boolean isContact;
 
-    @Column(name = "image_url", length = 500)
-    private String imageUrl;
+    @Column(name = "image_key", length = 500)
+    private String imageKey;
 
-    @Column(name = "sign_url", length = 500)
-    private String signUrl;
+    @Column(name = "sign_key", length = 500)
+    private String signKey;
 
     @Column(name = "submitted_dtm", nullable = false)
     private LocalDateTime submittedDtm;

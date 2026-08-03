@@ -26,8 +26,8 @@ public class AccidentProof {
     @Column(name = "proof_type", length = 200)
     private String proofType;
 
-    @Column(name = "file_url", length = 500)
-    private String fileUrl;
+    @Column(name = "file_key", length = 500)
+    private String fileKey;
 
     @Column(name = "created_dtm", nullable = false)
     private LocalDateTime createdDtm;
