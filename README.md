@@ -1,6 +1,3 @@
-
-
-
 <div align="center">
 
 ![home.png](docs/img/home.png)
@@ -38,22 +35,21 @@
 
 ## 👥 팀원
 
-|                         [서석희](https://github.com/seoki180)                         | [이동혁](https://github.com/hyeok2044) | [임현성](https://github.com/hwhyeons) | [정현서](https://github.com/dlsnfl0615) |
-|:----------------------------------------------------------------------------------:| :---: | :---: | :---: |
-| <img src="docs/img/seoki.JPG" width="120" height="140" style="object-fit: cover;"> | <img src="https://github.com/hyeok2044.png" width="120" height="140" style="object-fit: cover;"> | <img src="https://github.com/hwhyeons.png" width="120" height="140" style="object-fit: cover;"> | <img src="https://github.com/dlsnfl0615.png" width="120" height="140" style="object-fit: cover;"> |
-
+|                         [서석희](https://github.com/seoki180)                         |                               [이동혁](https://github.com/hyeok2044)                                |                               [임현성](https://github.com/hwhyeons)                                |                               [정현서](https://github.com/dlsnfl0615)                                |
+|:----------------------------------------------------------------------------------:|:------------------------------------------------------------------------------------------------:|:-----------------------------------------------------------------------------------------------:|:-------------------------------------------------------------------------------------------------:|
+| <img src="docs/img/seoki.JPG" width="120" height="140" style="object-fit: cover;"> | <img src="docs/img/hyeok2044.png" width="120" height="140" style="object-fit: cover;"> | <img src="docs/img/hwhyeons.jpeg" width="120" height="140" style="object-fit: cover;"> | <img src="docs/img/dlsnfl0615.png" width="120" height="140" style="object-fit: cover;"> |
 
 ## 👋 어떤 서비스인가요
 
 한 계정으로 **요청자와 수행자 역할을 스와이프로 전환**하며 겸용할 수 있습니다.
 어떤 날은 물건을 보내는 **부르미**, 어떤 날은 오가는 길에 배송하고 보수를 받는 **드리미**가 됩니다.
 
-|                     캐릭터                     | 역할 | 코드명 | 하는 일 |
-|:-------------------------------------------:| :---: | :---: | --- |
-| <img src="docs/img/boormi.png" width="90">  | 🙋 요청자 | **부르미** (P1) | 근거리 서류·샘플·비품 전달이 필요한 사무직 실무자 |
-| <img src="docs/img/dreami.png" width="90">  | 🛵 수행자 | **드리미** (P2) | 동선 중 유휴 시간에 배송을 수행하고 보수를 받는 직장인 |
-| <img src="docs/img/partner.png" width="90"> | 🚚 파트너 기사 | P3 | 미매칭 건을 수주하는 전문 퀵/용달 (폴백 파트너) |
-|                      —                      | 🛠️ 운영자 | Admin | 인증 심사, 신고 처리, 요청 모니터링 |
+|                     캐릭터                     |    역할     |     코드명      | 하는 일                            |
+|:-------------------------------------------:|:---------:|:------------:|---------------------------------|
+| <img src="docs/img/boormi.png" width="90">  |  🙋 요청자   | **부르미** (P1) | 근거리 서류·샘플·비품 전달이 필요한 사무직 실무자    |
+| <img src="docs/img/dreami.png" width="90">  |  🛵 수행자   | **드리미** (P2) | 동선 중 유휴 시간에 배송을 수행하고 보수를 받는 직장인 |
+| <img src="docs/img/partner.png" width="90"> | 🚚 파트너 기사 |      P3      | 미매칭 건을 수주하는 전문 퀵/용달 (폴백 파트너)    |
+|                      —                      |  🛠️ 운영자  |    Admin     | 인증 심사, 신고 처리, 요청 모니터링           |
 
 ---
 
@@ -66,41 +62,41 @@
 
 ---
 
-
 ## 서비스 아키텍쳐
+
 ![img_2.png](docs/img/arch.png)
 
 ### ️ Frontend
 
-| 구분 | 기술 |
-| :---: | --- |
-| **Language** | TypeScript |
-| **Library** | React 19 |
-| **Build** | Vite 8 · pnpm |
-| **State** | Zustand 5 |
-| **Routing** | React Router 7 |
-| **Styling** | Tailwind CSS 4 |
-| **기타** | PWA(vite-plugin-pwa) · ESLint |
+|      구분      | 기술                            |
+|:------------:|-------------------------------|
+| **Language** | TypeScript                    |
+| **Library**  | React 19                      |
+|  **Build**   | Vite 8 · pnpm                 |
+|  **State**   | Zustand 5                     |
+| **Routing**  | React Router 7                |
+| **Styling**  | Tailwind CSS 4                |
+|    **기타**    | PWA(vite-plugin-pwa) · ESLint |
 
 ### Backend
 
-| 구분 | 기술 |
-| :---: | --- |
-| **Language** | Java 21 |
-| **Framework** | Spring Boot 4.1 |
-| **Build** | Gradle |
-| **Persistence** | Spring Data JPA · Hibernate · MySQL · H2(로컬) |
-| **인증 · 실시간** | 세션 기반 인증 · SSE(실시간 알림) |
-| **API 문서** | SpringDoc OpenAPI(Swagger) |
-| **외부 연동** | AWS S3 · Kakao Local API(지오코딩) · Solapi(SMS 인증) |
-| **Test** | JUnit 5 · Mockito · AssertJ |
-| **기타** | Lombok |
+|       구분        | 기술                                              |
+|:---------------:|-------------------------------------------------|
+|  **Language**   | Java 21                                         |
+|  **Framework**  | Spring Boot 4.1                                 |
+|    **Build**    | Gradle                                          |
+| **Persistence** | Spring Data JPA · Hibernate · MySQL             |
+|  **인증 · 실시간**   | 세션 기반 인증 · SSE(실시간 알림)                          |
+|   **API 문서**    | SpringDoc OpenAPI(Swagger)                      |
+|    **외부 연동**    | AWS S3 · Kakao Local API(지오코딩) · Solapi(SMS 인증) |
+|    **Test**     | JUnit 5 · Mockito · AssertJ                     |
+|     **기타**      | Lombok                                          |
 
 ### Infra · DevOps
 
-| 구분 | 기술 |
-| :---: | --- |
+|      구분       | 기술                  |
+|:-------------:|---------------------|
 | **Container** | Docker · Docker Hub |
-| **CI/CD** | GitHub Actions |
-| **Deploy** | AWS S3 · CloudFront |
+|   **CI/CD**   | GitHub Actions      |
+|  **Deploy**   | AWS S3 · CloudFront |
 
