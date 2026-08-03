@@ -37,17 +37,23 @@ public class MatchingDebugController {
     private final MatchingService matchingService;
 
     @Operation(summary = "드리미 등록")
+    @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
     @PostMapping("/dreamis")
     public UUID registerDreami(@RequestBody GeoPoint location) {
         UUID dreamiId = UUID.randomUUID();
-        matchingService.registerDreami(dreamiId, location);
+        if (!matchingService.registerDreami(dreamiId, location)) {
+            throw new BusinessException(GeneralErrorCode.CONFLICT);
+        }
         return dreamiId;
     }
 
     @Operation(summary = "드리미 제거")
+    @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
     @DeleteMapping("/dreamis/{dreamiId}")
     public void removeDreami(@PathVariable UUID dreamiId) {
-        matchingService.removeDreami(dreamiId);
+        if (!matchingService.removeDreami(dreamiId)) {
+            throw new BusinessException(GeneralErrorCode.CONFLICT);
+        }
     }
 
     @Operation(summary = "대기중인 드리미 목록 조회")
@@ -63,8 +69,9 @@ public class MatchingDebugController {
     @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
     @PostMapping("/orders/{orderId}/start")
     public void startMatching(@PathVariable UUID orderId, @Valid @RequestBody MatchingStartRequest request) {
+        // 디버그: 출발지 좌표가 없어 도착지 좌표를 origin/destination 에 동일하게 사용한다.
         Orders order = Orders.create(orderId, request.boormiId(),
-                request.destination().latitude(), request.destination().longitude());
+                request.destination(), request.destination());
         if (!matchingService.startMatching(order)) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);
         }
@@ -116,9 +123,18 @@ public class MatchingDebugController {
     }
 
     @Operation(summary = "부르미가 매칭 진행 중인 주문을 취소")
+    @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
     @PostMapping("/orders/{orderId}/cancel")
     public void cancelOrderByBoormi(@PathVariable UUID orderId) {
-        matchingService.cancelOrderByBoormi(orderId);
+        if (!matchingService.cancelOrderByBoormi(orderId)) {
+            throw new BusinessException(GeneralErrorCode.CONFLICT);
+        }
+    }
+
+    @Operation(summary = "서버 폴백용 모든 요청 재매칭")
+    @PostMapping("/orders/rematch")
+    public void rematchWaitingGroups() {
+        matchingService.scheduleRematchWaitingGroups();
     }
 
     record DreamiView(UUID dreamiId, GeoPoint location,

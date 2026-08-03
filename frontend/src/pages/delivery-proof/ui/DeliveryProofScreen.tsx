@@ -56,7 +56,7 @@ export function DeliveryProofScreen() {
         <Button
           variant="navy"
           block
-          onClick={() => navigate(ROUTES.deliveryComplete)}
+          onClick={() => navigate(ROUTES.deliveryComplete, { replace: true })}
         >
           {isPhoto ? "사진 첨부 · 배송 종료" : "서명 완료 · 배송 종료"}
         </Button>
