@@ -7,7 +7,9 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -52,9 +54,24 @@ public class Boormi {
     @Column(name = "is_dreami_activated", nullable = false)
     private boolean isDreamiActivate;
 
+    @Column(name = "created_dtm", nullable = false, insertable = false, updatable = false)
+    private LocalDateTime createdDtm;
+
+    @Column(name = "updated_dtm")
+    private LocalDateTime updatedDtm;
+
+    @Column(name = "deleted_dtm")
+    private LocalDateTime deletedDtm;
+
+    @Column(name = "boormi_avg_score", nullable = false, insertable = false, updatable = false)
+    private BigDecimal boormiAvgScore;
+
+    @Column(name = "restricted_dtm")
+    private LocalDateTime restrictedDtm;
+
     /**
      * 신규 가입 부르미를 생성한다. PK 는 앱에서 생성(BINARY(16), DB 기본값 없음)하며 상태는 ACTIVE 로 시작한다.
-     * {@code boormi_avg_score}/{@code created_dtm} 은 미매핑이므로 INSERT 에서 제외되어 DB 기본값이 적용된다.
+     * {@code boormi_avg_score}/{@code created_dtm} 은 {@code insertable=false} 이므로 INSERT 에서 제외되어 DB 기본값이 적용된다.
      */
     public static Boormi create(String email, String password, String name, String phoneNumber,
             LocalDate birthdate) {

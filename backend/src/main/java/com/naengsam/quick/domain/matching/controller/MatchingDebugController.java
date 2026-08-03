@@ -63,8 +63,9 @@ public class MatchingDebugController {
     @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
     @PostMapping("/orders/{orderId}/start")
     public void startMatching(@PathVariable UUID orderId, @Valid @RequestBody MatchingStartRequest request) {
+        // 디버그: 출발지 좌표가 없어 도착지 좌표를 origin/destination 에 동일하게 사용한다.
         Orders order = Orders.create(orderId, request.boormiId(),
-                request.destination().latitude(), request.destination().longitude());
+                request.destination(), request.destination());
         if (!matchingService.startMatching(order)) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);
         }
