@@ -1,20 +1,38 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Button, Card, RadioOption, TextField } from "@/shared/ui";
+import { useWalletStore } from "@/shared/store/walletStore";
 
 const QUICK_AMOUNTS = [1000, 5000, 10000];
 
 /** 카드 결제로 포인트를 충전하는 본문. */
 export function ChargeForm() {
+  const navigate = useNavigate();
+  const currentPoints = useWalletStore((s) => s.points);
+  const charge = useWalletStore((s) => s.charge);
   const [amount, setAmount] = useState(5000);
+  const [submitting, setSubmitting] = useState(false);
 
   const add = (value: number) => setAmount((prev) => prev + value);
   const formatted = amount.toLocaleString();
+
+  const onCharge = async () => {
+    setSubmitting(true);
+    try {
+      await charge(amount);
+      navigate(-1);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <>
       <Card variant="accent" className="flex flex-col items-center gap-0.5">
         <span className="text-2xs text-muted">현재 보유</span>
-        <span className="text-2xl font-bold text-teal-700">12,400 P</span>
+        <span className="text-2xl font-bold text-teal-700">
+          {currentPoints.toLocaleString()} P
+        </span>
       </Card>
 
       <div className="flex flex-col gap-2">
@@ -55,8 +73,13 @@ export function ChargeForm() {
         </div>
       </Card>
 
-      <Button variant="navy" block disabled={amount === 0}>
-        {formatted}원 결제하고 충전
+      <Button
+        variant="navy"
+        block
+        disabled={amount === 0 || submitting}
+        onClick={onCharge}
+      >
+        {submitting ? "결제 중…" : `${formatted}원 결제하고 충전`}
       </Button>
     </>
   );

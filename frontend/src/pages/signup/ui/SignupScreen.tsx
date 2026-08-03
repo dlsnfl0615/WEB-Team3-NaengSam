@@ -2,6 +2,15 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Button, ScreenShell, TextField, TopBar } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
+import { useSessionStore } from '@/shared/store/sessionStore'
+import {
+  isBirth,
+  isCode,
+  isEmail,
+  isPassword,
+  isPhone,
+  VALIDATION_MESSAGE,
+} from '@/shared/lib/validation'
 
 /**
  * 회원가입 화면(Figma node 21:62).
@@ -9,6 +18,7 @@ import { ROUTES } from '@/shared/config/routes'
  */
 export function SignupScreen() {
   const navigate = useNavigate()
+  const signup = useSessionStore((s) => s.signup)
   const [form, setForm] = useState({
     name: '',
     birth: '',
@@ -18,9 +28,50 @@ export function SignupScreen() {
     password: '',
   })
   const [agreed, setAgreed] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
 
   const set = (key: keyof typeof form) => (value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }))
+
+  /** 입력값이 있고 형식에 안 맞을 때만 메시지 반환(입력 전엔 undefined). */
+  const errorOf = (value: string, ok: boolean, message: string) =>
+    value.trim() && !ok ? message : undefined
+
+  const errors = {
+    birth: errorOf(form.birth, isBirth(form.birth), VALIDATION_MESSAGE.birth),
+    phone: errorOf(form.phone, isPhone(form.phone), VALIDATION_MESSAGE.phone),
+    code: errorOf(form.code, isCode(form.code), VALIDATION_MESSAGE.code),
+    email: errorOf(form.email, isEmail(form.email), VALIDATION_MESSAGE.email),
+    password: errorOf(
+      form.password,
+      isPassword(form.password),
+      VALIDATION_MESSAGE.password,
+    ),
+  }
+
+  const allValid =
+    !!form.name.trim() &&
+    isBirth(form.birth) &&
+    isPhone(form.phone) &&
+    isCode(form.code) &&
+    isEmail(form.email) &&
+    isPassword(form.password)
+
+  const onSignup = async () => {
+    setSubmitting(true)
+    try {
+      await signup({
+        name: form.name,
+        birth: form.birth,
+        phone: form.phone,
+        email: form.email,
+        password: form.password,
+      })
+      navigate(ROUTES.verify, { replace: true })
+    } finally {
+      setSubmitting(false)
+    }
+  }
 
   return (
     <ScreenShell>
@@ -43,6 +94,7 @@ export function SignupScreen() {
             placeholder="2000.1.1"
             value={form.birth}
             onChange={(e) => set('birth')(e.target.value)}
+            error={errors.birth}
           />
 
           {/* 전화번호 + 인증발송 */}
@@ -54,6 +106,7 @@ export function SignupScreen() {
                 placeholder="010-0000-0000"
                 value={form.phone}
                 onChange={(e) => set('phone')(e.target.value)}
+                error={errors.phone}
               />
             </div>
             <Button variant="primary" size="sm" className="h-11 shrink-0">
@@ -66,6 +119,7 @@ export function SignupScreen() {
             placeholder="문자로 받은 6자리 입력"
             value={form.code}
             onChange={(e) => set('code')(e.target.value)}
+            error={errors.code}
           />
           <TextField
             label="이메일 (인증 필요)"
@@ -73,6 +127,7 @@ export function SignupScreen() {
             placeholder="company@email.com"
             value={form.email}
             onChange={(e) => set('email')(e.target.value)}
+            error={errors.email}
           />
           <TextField
             label="비밀번호"
@@ -80,6 +135,7 @@ export function SignupScreen() {
             placeholder="8~16자 조합"
             value={form.password}
             onChange={(e) => set('password')(e.target.value)}
+            error={errors.password}
           />
         </div>
 
@@ -100,10 +156,10 @@ export function SignupScreen() {
           variant="navy"
           block
           className="mt-6"
-          disabled={!agreed}
-          onClick={() => navigate(ROUTES.verify)}
+          disabled={!agreed || submitting || !allValid}
+          onClick={onSignup}
         >
-          가입 완료
+          {submitting ? '가입 중…' : '가입 완료'}
         </Button>
       </main>
     </ScreenShell>

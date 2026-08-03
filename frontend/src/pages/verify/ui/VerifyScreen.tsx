@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom'
 import { Button, Card, Icon, ScreenShell, TopBar } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
+import { useSessionStore } from '@/shared/store/sessionStore'
 
 /**
  * 본인인증 및 등록 화면(Figma node 21:41).
@@ -8,6 +9,12 @@ import { ROUTES } from '@/shared/config/routes'
  */
 export function VerifyScreen() {
   const navigate = useNavigate()
+  const verify = useSessionStore((s) => s.verify)
+
+  const onVerify = async () => {
+    await verify()
+    navigate(ROUTES.home, { replace: true })
+  }
 
   return (
     <ScreenShell>
@@ -56,13 +63,13 @@ export function VerifyScreen() {
         </Card>
 
         <div className="mt-auto flex flex-col items-center gap-3 pt-2">
-          <Button variant="navy" block onClick={() => navigate(ROUTES.home)}>
+          <Button variant="navy" block onClick={onVerify}>
             드리미 등록을 위한 본인인증
           </Button>
           <button
             type="button"
             className="text-sm text-muted hover:text-navy-900"
-            onClick={() => navigate(ROUTES.home)}
+            onClick={() => navigate(ROUTES.home, { replace: true })}
           >
             나중에 등록 (부르미로 시작)
           </button>

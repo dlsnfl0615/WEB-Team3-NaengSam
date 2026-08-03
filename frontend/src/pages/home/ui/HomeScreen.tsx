@@ -3,6 +3,7 @@ import { BottomNav, Icon, ScreenShell, SegmentedToggle } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import type { Role } from "@/shared/lib/role/RoleContext";
+import { useRoleLocked } from "@/shared/store/deliveryStore";
 import { DriverPanel } from "./DriverPanel";
 import { SenderPanel } from "./SenderPanel";
 
@@ -12,6 +13,7 @@ import { SenderPanel } from "./SenderPanel";
  */
 export function HomeScreen() {
   const { role, setRole } = useRole();
+  const roleLocked = useRoleLocked();
   const navigate = useNavigate();
 
   return (
@@ -38,6 +40,7 @@ export function HomeScreen() {
           options={["부르미", "드리미"]}
           value={role}
           onChange={(value) => setRole(value as Role)}
+          disabled={roleLocked}
         />
 
         {role === "부르미" ? <SenderPanel /> : <DriverPanel />}

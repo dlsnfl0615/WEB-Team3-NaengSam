@@ -1,13 +1,18 @@
 import { Card, IconChip } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
-import type { WalletHistory } from "./history";
+import type { WalletTransaction } from "@/shared/mock/types";
 
 export interface HistoryItemProps {
-  history: WalletHistory;
+  history: WalletTransaction;
 }
 
-/** 지갑 최근 내역 아이템. */
+/** 지갑 거래 내역 아이템. 부호·단위에 맞춰 금액을 표기합니다. */
 export function HistoryItem({ history }: HistoryItemProps) {
+  const amountText =
+    history.unit === "₩"
+      ? `${history.incoming ? "+" : "-"}₩${Math.abs(history.amount).toLocaleString()}`
+      : `${history.amount > 0 ? "+" : ""}${history.amount.toLocaleString()} P`;
+
   return (
     <Card className="flex items-center gap-3">
       <IconChip name={history.icon} />
@@ -23,7 +28,7 @@ export function HistoryItem({ history }: HistoryItemProps) {
           history.incoming ? "text-teal-700" : "text-navy-900",
         )}
       >
-        {history.amount}
+        {amountText}
       </span>
     </Card>
   );

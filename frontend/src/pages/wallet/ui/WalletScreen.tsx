@@ -1,8 +1,8 @@
 import { useNavigate } from "react-router-dom";
 import { BottomNav, Button, Card, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
+import { useWalletStore } from "@/shared/store/walletStore";
 import { HistoryItem } from "./HistoryItem";
-import { WALLET_HISTORY } from "./history";
 
 /**
  * 내 지갑 화면(Figma node 191:1392).
@@ -10,6 +10,9 @@ import { WALLET_HISTORY } from "./history";
  */
 export function WalletScreen() {
   const navigate = useNavigate();
+  const points = useWalletStore((s) => s.points);
+  const money = useWalletStore((s) => s.money);
+  const transactions = useWalletStore((s) => s.transactions);
 
   return (
     <ScreenShell footer={<BottomNav />}>
@@ -23,7 +26,9 @@ export function WalletScreen() {
               P
             </span>
           </div>
-          <p className="text-3xl font-bold tracking-[-0.6px]">12,400 P</p>
+          <p className="text-3xl font-bold tracking-[-0.6px]">
+            {points.toLocaleString()} P
+          </p>
           <p className="text-2xs opacity-70">배송 결제에 사용 가능</p>
           <Button
             block
@@ -43,7 +48,7 @@ export function WalletScreen() {
             </span>
           </div>
           <p className="text-2xl font-bold tracking-[-0.5px] text-navy-900">
-            ₩58,500
+            ₩{money.toLocaleString()}
           </p>
           <div className="mt-2 flex gap-3">
             <Button
@@ -76,7 +81,7 @@ export function WalletScreen() {
             </button>
           </div>
           <div className="flex flex-col gap-3">
-            {WALLET_HISTORY.map((history) => (
+            {transactions.map((history) => (
               <HistoryItem key={history.id} history={history} />
             ))}
           </div>
