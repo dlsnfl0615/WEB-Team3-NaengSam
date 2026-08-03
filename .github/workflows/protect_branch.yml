@@ -1,0 +1,23 @@
+name: Check Merge Source Branch
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  check-source-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify source branch
+        run: |
+          # main으로 머지를 허용할 브랜치명 설정
+          ALLOWED_BRANCH="develop"
+          
+          if [ "${{ github.head_ref }}" != "$ALLOWED_BRANCH" ]; then
+            echo "❌ 에러: main 브랜치로는 '$ALLOWED_BRANCH' 브랜치에서만 PR을 보낼 수 있습니다."
+            echo "현재 요청된 출발지 브랜치: ${{ github.head_ref }}"
+            exit 1
+          fi
+          
+          echo "✅ 허용된 브랜치($ALLOWED_BRANCH)로부터의 PR입니다."
