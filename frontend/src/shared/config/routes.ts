@@ -27,3 +27,13 @@ export const ROUTES = {
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
+
+/**
+ * 로그인 없이 접근 가능한 공개 페이지. 이 목록에 없는 라우트는 RequireAuth로 보호됩니다.
+ * 새 공개 페이지를 만들면 여기에 한 줄 추가하세요.
+ */
+export const PUBLIC_ROUTES: string[] = [
+  ROUTES.onboarding,
+  ROUTES.login,
+  ROUTES.signup,
+];
