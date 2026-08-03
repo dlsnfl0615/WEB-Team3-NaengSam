@@ -72,18 +72,18 @@ BoormiServiceTest {
 
     private static OrderRequest orderRequest() {
         return new OrderRequest("서울시 강남구", "101동", "서울시 서초구", "202동",
-                "서류봉투", ItemCd.DOCUMENT, 5000, 20, "http://img", "계약서", "문 앞에 두세요");
+                "서류봉투", ItemCd.DOCUMENT, "http://img", "계약서", "문 앞에 두세요");
     }
 
     private static OrderRequest sameLocationOrderRequest() {
         return new OrderRequest("서울시 강남구", "101동", "서울시 강남구", "101동",
-                "서류봉투", ItemCd.DOCUMENT, 5000, 20, "http://img", "계약서", "문 앞에 두세요");
+                "서류봉투", ItemCd.DOCUMENT, "http://img", "계약서", "문 앞에 두세요");
     }
 
     // 주소 문자열은 다르지만 좌표는 임계값(50m) 이내로 아주 가까운 요청
     private static OrderRequest nearbyOrderRequest() {
         return new OrderRequest("서울시 강남구 A", "101동", "서울시 강남구 B", "202동",
-                "서류봉투", ItemCd.DOCUMENT, 5000, 20, "http://img", "계약서", "문 앞에 두세요");
+                "서류봉투", ItemCd.DOCUMENT, "http://img", "계약서", "문 앞에 두세요");
     }
 
     private static CoordinatesResponseDto coordinates() {
@@ -154,6 +154,8 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
+        given(kakaoDirectionsService.getRoute(any(), any()))
+                .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
         given(matchingService.startMatching(any())).willReturn(true);
 
         boormiService.subscribeOrder(orderRequest(), boormiId);
@@ -167,8 +169,9 @@ BoormiServiceTest {
         assertThat(saved.getBoormiId()).isEqualTo(boormiId);
         assertThat(saved.getItemName()).isEqualTo("서류봉투");
         assertThat(saved.getItemCd()).isEqualTo(ItemCd.DOCUMENT);
-        assertThat(saved.getDeliveryAmount()).isEqualTo(5000L);
-        assertThat(saved.getDeliveryEta()).isEqualTo(20);
+        // 요금·예상시간은 클라이언트값이 아니라 서버가 좌표·거리로 재계산한 값(5000m DOCUMENT → 10100원, 900초 → 15분)
+        assertThat(saved.getDeliveryAmount()).isEqualTo(10100L);
+        assertThat(saved.getDeliveryEta()).isEqualTo(15);
         assertThat(saved.getOrderCd()).isEqualTo(OrderCd.MATCHING);
         assertThat(saved.getOriginAddressLine1()).isEqualTo("서울시 강남구");
         assertThat(saved.getDestinationAddressLine2()).isEqualTo("202동");
@@ -177,6 +180,27 @@ BoormiServiceTest {
         assertThat(saved.getOriginLongitude()).isEqualByComparingTo("127.0");
         assertThat(saved.getDestinationLatitude()).isEqualByComparingTo("37.6");
         assertThat(saved.getDestinationLongitude()).isEqualByComparingTo("127.1");
+    }
+
+    @Test
+    void 주문접수_배달요금은_클라이언트값이_아니라_서버가_재계산한_값으로_저장된다() {
+        UUID boormiId = UUID.randomUUID();
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
+        // 거리 2000m, PACKAGE(배율 1.5) → (1500/100*100 + 500/100*160 + 3000)=5300 → ×1.5 = 7950원, 660초 → 11분
+        given(kakaoDirectionsService.getRoute(any(), any()))
+                .willReturn(new KakaoDirectionsResponseDto.Properties(2000, 660));
+        given(matchingService.startMatching(any())).willReturn(true);
+
+        OrderRequest packageOrder = new OrderRequest("서울시 강남구", "101동", "서울시 서초구", "202동",
+                "노트북", ItemCd.PACKAGE, "http://img", "파손주의", "문 앞에 두세요");
+        boormiService.subscribeOrder(packageOrder, boormiId);
+
+        ArgumentCaptor<Orders> captor = ArgumentCaptor.forClass(Orders.class);
+        then(orderService).should().createOrders(captor.capture());
+        Orders saved = captor.getValue();
+        assertThat(saved.getDeliveryAmount()).isEqualTo(7950L);
+        assertThat(saved.getDeliveryEta()).isEqualTo(11);
     }
 
     @Test
@@ -227,6 +251,8 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
+        given(kakaoDirectionsService.getRoute(any(), any()))
+                .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
         given(matchingService.startMatching(any())).willReturn(false);
 
         Throwable thrown = catchThrowable(() -> boormiService.subscribeOrder(orderRequest(), boormiId));

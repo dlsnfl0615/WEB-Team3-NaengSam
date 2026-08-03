@@ -39,7 +39,7 @@ public class BoormiController {
         return boormiService.expectedValue(request);
     }
 
-    @Operation(summary = "주문 접수", description = "출발지·도착지·물건 정보로 주문을 생성·저장하고 결제와 매칭을 시작한다.")
+    @Operation(summary = "주문 접수", description = "출발지·도착지·물건 정보로 주문을 생성·저장하고 결제와 매칭을 시작한다. 배달 요금·예상시간은 클라이언트 값을 신뢰하지 않고 서버가 견적과 동일한 로직으로 재계산해 저장한다.")
     @PostMapping("/calls")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = GeneralErrorCode.class,

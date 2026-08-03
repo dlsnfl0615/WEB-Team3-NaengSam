@@ -4,8 +4,6 @@ import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import jakarta.validation.constraints.Positive;
-import jakarta.validation.constraints.PositiveOrZero;
 import jakarta.validation.constraints.Size;
 
 public record OrderRequest(
@@ -35,14 +33,6 @@ public record OrderRequest(
         @Schema(description = "물건 유형", example = "DOCUMENT")
         @NotNull
         ItemCd itemCd,
-
-        @Schema(description = "배달 요금(원)", example = "5000")
-        @PositiveOrZero
-        int deliveryAmount,
-
-        @Schema(description = "예상 소요시간(분)", example = "20")
-        @Positive
-        int deliveryEta,
 
         @Schema(description = "물건 이미지 URL", example = "https://cdn.naengsam.com/orders/sample.jpg")
         @Size(max = 500)

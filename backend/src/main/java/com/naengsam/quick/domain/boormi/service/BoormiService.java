@@ -8,8 +8,8 @@ import com.naengsam.quick.domain.address.service.KakaoDirectionsService;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
+import com.naengsam.quick.domain.boormi.entity.Charge;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
-import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
@@ -39,7 +39,7 @@ public class BoormiService {
     private static final int MAX_ACTIVE_ORDERS = 5; // 동시 진행 가능한 요청 수(정책값)
     private static final int TOO_CLOSE_DISTANCE = 50;   // 출발지-도착지 최소 직선거리(m)
     private static final int EARTH_RADIUS = 6_371_000;  // 지구 반지름(m)
-    
+
     private final CoordinatesService coordinatesService;
     private final KakaoDirectionsService kakaoDirectionsService;
     private final PaymentService paymentService;
@@ -57,10 +57,13 @@ public class BoormiService {
 
         GeoPoint originCoordinate = toGeoPoint(orderRequest.originAddressLine1());
         GeoPoint destinationCoordinate = toGeoPoint(orderRequest.destinationAddressLine1());
-        
+
         if (isTooClose(originCoordinate, destinationCoordinate)) {
             throw new BusinessException(OrderErrorCode.SAME_ORIGIN_DESTINATION);
         }
+
+        // 요금·예상시간은 클라이언트 전송값을 신뢰하지 않고 견적과 동일한 로직으로 서버가 재계산한다.
+        Charge charge = calculatePrice(originCoordinate, destinationCoordinate, orderRequest.itemCd());
 
         UUID orderId = UUID.randomUUID();
 
@@ -77,7 +80,7 @@ public class BoormiService {
 
         Orders orders = Orders.create(orderId, boormiId, orderRequest.itemName(),
                 orderRequest.itemCd(), orderRequest.itemDetail(),
-                (long) orderRequest.deliveryAmount(), orderRequest.deliveryEta(),
+                (long) charge.amount(), charge.eta(),
                 orderRequest.deliveryRequest(), orderRequest.imageUrl(), addresses);
 
         orderService.createOrders(orders);
@@ -89,7 +92,8 @@ public class BoormiService {
     }
 
     /**
-     * 부르미가 접수한 주문을 취소한다. 매칭 성사 전(MATCHING, PENDING_BOORMI_CONFIRMATION) 상태에서만 취소할 수 있으며, 주문 상태를 CANCELLED 로 바꾸고 매칭 큐에서도 제안을 회수한다.
+     * 부르미가 접수한 주문을 취소한다. 매칭 성사 전(MATCHING, PENDING_BOORMI_CONFIRMATION) 상태에서만 취소할 수 있으며, 주문 상태를 CANCELLED 로 바꾸고 매칭 큐에서도
+     * 제안을 회수한다.
      */
     @Transactional
     public void unsubscribeOrder(UUID boormiId, UUID orderId) {
@@ -98,9 +102,9 @@ public class BoormiService {
         if (!order.getBoormiId().equals(boormiId)) {
             throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
         }
-        
-        if (!(order.getOrderCd().equals(OrderCd.MATCHING) 
-        || order.getOrderCd().equals(OrderCd.PENDING_BOORMI_CONFIRMATION)
+
+        if (!(order.getOrderCd().equals(OrderCd.MATCHING)
+                || order.getOrderCd().equals(OrderCd.PENDING_BOORMI_CONFIRMATION)
         )) {
             throw new BusinessException(OrderErrorCode.CANNOT_CANCEL_AFTER_PICKUP);
         }
@@ -118,12 +122,28 @@ public class BoormiService {
         GeoPoint origin = toGeoPoint(request.originAddressLine1());
         GeoPoint destination = toGeoPoint(request.destinationAddressLine1());
 
+        Charge charge = calculatePrice(origin, destination, request.itemCd());
+
+        return new ExpectedValueDto(charge.amount(), charge.eta(), charge.distance());
+    }
+
+    /**
+     * 두 좌표의 실제 도보 거리·소요시간을 카카오 길찾기로 조회한 뒤 요금과 예상시간(분)을 계산한다. 견적 조회와 주문 접수가 같은 요금을 산출하도록 공유한다. 기본 1.5km까지는 100m당 100원,
+     * 초과 구간은 100m당 160원으로 과금하고 물건 유형 배율을 곱한다.
+     */
+    private Charge calculatePrice(GeoPoint origin, GeoPoint destination, ItemCd itemCd) {
         KakaoDirectionsResponseDto.Properties route = kakaoDirectionsService.getRoute(origin, destination);
 
-        int expectedValue = calPrice(route.totalDistance(), request.itemCd());
-        int expectedTime = (int) Math.ceil(route.totalTime() / 60.0);
+        //비용 계산
+        int baseDistance = Math.min(route.totalDistance(), BASE_SECTION);
+        int overDistance = Math.max(route.totalDistance() - BASE_SECTION, 0);
+        int price = (baseDistance / UNIT_DISTANCE) * BASE_RATE
+                + (overDistance / UNIT_DISTANCE) * OVER_RATE
+                + BASE_FEE;
 
-        return new ExpectedValueDto(expectedValue, expectedTime, route.totalDistance());
+        //예상 시간
+        int eta = (int) Math.ceil(route.totalTime() / 60.0);
+        return new Charge(route.totalDistance(), (int) Math.round(price * ItemCd.multiplier(itemCd)), eta);
     }
 
     /**
@@ -157,20 +177,6 @@ public class BoormiService {
 
         // x=경도, y=위도 → GeoPoint(latitude, longitude) 순서에 맞춰 매핑
         return new GeoPoint(new BigDecimal(address.y()), new BigDecimal(address.x()));
-    }
-
-    /**
-     * 거리(m)에 따라 요금을 계산한다. 기본 1.5km까지는 100m당 100원, 초과 구간은 100m당 160원으로 과금하고 물건 유형 배율을 곱한다.
-     */
-    private int calPrice(int distance, ItemCd itemCd) {
-        int baseDistance = Math.min(distance, BASE_SECTION);
-        int overDistance = Math.max(distance - BASE_SECTION, 0);
-
-        int price = (baseDistance / UNIT_DISTANCE) * BASE_RATE
-                + (overDistance / UNIT_DISTANCE) * OVER_RATE
-                + BASE_FEE;
-
-        return (int) Math.round(price * ItemCd.multiplier(itemCd));
     }
 }
 
