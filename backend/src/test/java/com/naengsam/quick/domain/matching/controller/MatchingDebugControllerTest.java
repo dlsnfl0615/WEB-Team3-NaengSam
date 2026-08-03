@@ -50,6 +50,8 @@ class MatchingDebugControllerTest {
 
     @Test
     void 드리미_등록시_생성된_ID와_요청한_위치로_서비스에_위임한다() throws Exception {
+        when(matchingService.registerDreami(any(), any())).thenReturn(true);
+
         String response = mockMvc.perform(post("/api/v1/debug/matching/dreamis")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"latitude\": 37.5, \"longitude\": 127.0}"))
@@ -67,6 +69,7 @@ class MatchingDebugControllerTest {
 
     @Test
     void 드리미_등록_요청마다_서로_다른_ID가_생성된다() throws Exception {
+        when(matchingService.registerDreami(any(), any())).thenReturn(true);
         String body = "{\"latitude\": 37.5, \"longitude\": 127.0}";
 
         String firstId = mockMvc.perform(post("/api/v1/debug/matching/dreamis")
@@ -92,6 +95,7 @@ class MatchingDebugControllerTest {
     @Test
     void 드리미_제거시_경로변수의_ID로_서비스에_위임한다() throws Exception {
         UUID dreamiId = UUID.randomUUID();
+        when(matchingService.removeDreami(dreamiId)).thenReturn(true);
 
         mockMvc.perform(delete("/api/v1/debug/matching/dreamis/{dreamiId}", dreamiId))
                 .andExpect(status().isOk());
@@ -105,6 +109,17 @@ class MatchingDebugControllerTest {
                 .andExpect(status().isBadRequest());
 
         verify(matchingService, never()).removeDreami(any());
+    }
+
+    @Test
+    void 등록되지_않은_드리미를_제거하면_409를_반환한다() throws Exception {
+        UUID dreamiId = UUID.randomUUID();
+        when(matchingService.removeDreami(dreamiId)).thenReturn(false);
+
+        mockMvcWithExceptionHandler().perform(delete("/api/v1/debug/matching/dreamis/{dreamiId}", dreamiId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.isSuccess").value(false))
+                .andExpect(jsonPath("$.code").value("COMMON_008"));
     }
 
     @Test
@@ -171,6 +186,28 @@ class MatchingDebugControllerTest {
                         .content("""
                                 {"boormiId": "%s", "destination": {"latitude": 0, "longitude": 0}}
                                 """.formatted(UUID.randomUUID())))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.isSuccess").value(false))
+                .andExpect(jsonPath("$.code").value("COMMON_008"));
+    }
+
+    @Test
+    void 주문_취소시_경로변수의_orderId로_서비스에_위임한다() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        when(matchingService.cancelOrderByBoormi(orderId)).thenReturn(true);
+
+        mockMvc.perform(post("/api/v1/debug/matching/orders/{orderId}/cancel", orderId))
+                .andExpect(status().isOk());
+
+        verify(matchingService).cancelOrderByBoormi(orderId);
+    }
+
+    @Test
+    void 취소할_진행중인_방이_없으면_주문_취소는_409를_반환한다() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        when(matchingService.cancelOrderByBoormi(orderId)).thenReturn(false);
+
+        mockMvcWithExceptionHandler().perform(post("/api/v1/debug/matching/orders/{orderId}/cancel", orderId))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.isSuccess").value(false))
                 .andExpect(jsonPath("$.code").value("COMMON_008"));

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -1023,18 +1024,36 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 부르미가_주문을_취소하면_엔진_큐에_CancelOrderByBoormi_액션이_제출된다() {
+    void 부르미가_진행중인_방을_취소하면_엔진_큐에_CancelOrderByBoormi_액션이_제출된다() {
         // given
         UUID orderId = UUID.randomUUID();
+        MatchingService.OrderOfferGroup group =
+                new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(), List.of());
+        getOrderOfferGroups().put(orderId, group);
+        when(matchingEngine.submit(any())).thenReturn(true);
 
         // when
-        matchingService.cancelOrderByBoormi(orderId);
+        boolean result = matchingService.cancelOrderByBoormi(orderId);
 
         // then
+        assertThat(result).isTrue();
         ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
         verify(matchingEngine).submit(captor.capture());
         assertThat(captor.getValue()).isInstanceOf(CancelOrderByBoormi.class);
         assertThat(((CancelOrderByBoormi) captor.getValue()).orderId()).isEqualTo(orderId);
+    }
+
+    @Test
+    void 취소할_진행중인_방이_없으면_큐에_제출되지_않고_false를_반환한다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+
+        // when
+        boolean result = matchingService.cancelOrderByBoormi(orderId);
+
+        // then
+        assertThat(result).isFalse();
+        verify(matchingEngine, never()).submit(any());
     }
 
     @Test
