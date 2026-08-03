@@ -72,7 +72,10 @@ pnpm api:gen
 
 ## 배포 · 백엔드 URL 주입
 
+**운영 = 교차 출처(cross-origin) 직접 호출** — 프론트(https)에서 백엔드 API(https)를 직접 부른다.
+
 - `baseURL`은 `import.meta.env.VITE_API_BASE_URL ?? ''`이며 **빌드 타임에 인라인**됩니다(S3 정적 배포는 런타임 변경 불가 — 바꾸려면 재빌드).
 - 생성 요청 URL에 이미 `/api/v1`이 포함되므로 `VITE_API_BASE_URL`에는 **오리진만** 넣습니다.
-- **개발** = Vite 프록시(`/api → localhost:8080`, `DEV_API_TARGET`로 변경), **운영** = CloudFront `/api/*` → EC2. 둘 다 상대경로라 `VITE_API_BASE_URL` **빈값 유지**(같은 출처 → 세션 쿠키 동작, CORS 불필요).
-- **별도 도메인(cross-origin)** 일 때만 `frontend-deploy.yml` Build 스텝 `env`에 `VITE_API_BASE_URL` secret 주입 + 백엔드 CORS(allowCredentials) + 쿠키 `SameSite=None; Secure` 필요.
+- **개발** = Vite 프록시(`/api → localhost:8080`, `DEV_API_TARGET`로 변경) → `VITE_API_BASE_URL` **빈값**(동일 출처).
+- **운영** = `frontend-deploy.yml` Build 스텝 `env`의 `VITE_API_BASE_URL`(secret)에 **백엔드 오리진** 주입. 교차 출처 + 세션 쿠키라 백엔드에 **CORS(allowCredentials) + 쿠키 `SameSite=None; Secure`** 필요(백엔드 이슈 **#141**). 프론트는 이미 `withCredentials: true`.
+- (대안) CloudFront `/api/*` → EC2로 동일 출처를 만들면 CORS 불필요하나, 이번 배포는 교차 출처로 결정.

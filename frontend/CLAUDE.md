@@ -155,10 +155,13 @@ try {
 
 ### 배포 · 백엔드 URL 주입
 
+**운영 배포 방식 = 교차 출처(cross-origin) 직접 호출.** 프론트(S3+CloudFront, https)에서 백엔드 API(EC2, https)를 직접 호출합니다(CloudFront `/api` 프록시 미사용).
+
 - **Vite env는 빌드 타임에 인라인**됩니다. `import.meta.env.VITE_API_BASE_URL`은 `pnpm build` 순간 번들 JS에 문자열로 박히므로, **S3 정적 배포에서는 런타임에 바꿀 수 없습니다**(변경하려면 재빌드).
-- **개발 = Vite 프록시**(`/api → localhost:8080`, `DEV_API_TARGET`로 변경 가능), **운영 = CloudFront `/api/*` behavior → EC2 백엔드**. 둘 다 상대경로라 `VITE_API_BASE_URL`은 **빈값 유지**(같은 출처 → 세션 쿠키 그대로 동작, CORS 불필요).
-- 백엔드를 **별도 도메인(cross-origin)** 으로 붙일 때만: `frontend-deploy.yml`의 Build 스텝 `env`에 `VITE_API_BASE_URL`(secret)을 주입 + 백엔드에 **CORS(allowCredentials + 정확한 origin)** 와 세션쿠키 **`SameSite=None; Secure`** 설정이 필요합니다.
-- 운영에서 상대경로가 백엔드에 닿으려면 **CloudFront에 `/api/*` behavior(오리진=EC2, 쿠키 포워딩 + 캐시 비활성)** 와 **SPA 폴백(403/404 → `/index.html`)** 이 설정돼 있어야 합니다.
+- **개발** = Vite 프록시(`/api → localhost:8080`, `DEV_API_TARGET`로 변경) → `VITE_API_BASE_URL` **빈값**(동일 출처).
+- **운영** = `frontend-deploy.yml` Build 스텝 `env`의 `VITE_API_BASE_URL`(secret)에 **백엔드 오리진**(예: `https://api.example.com`)을 주입. 생성 요청 경로에 이미 `/api/v1`이 포함되므로 **오리진만** 넣습니다.
+- 교차 출처 + 세션 쿠키라 **백엔드 설정이 필수**입니다: **CORS(allowCredentials + 정확한 origin)** 와 세션쿠키 **`SameSite=None; Secure`**(백엔드 HTTPS 필요). → 백엔드 이슈 **#141** 참조. (프론트는 이미 `withCredentials: true`.)
+- (대안) CloudFront에 `/api/*` behavior(오리진=EC2)를 두면 동일 출처가 되어 CORS 없이 동작하지만, 이번 배포는 교차 출처 방식으로 결정.
 
 ## 새 아이콘 추가 절차
 
