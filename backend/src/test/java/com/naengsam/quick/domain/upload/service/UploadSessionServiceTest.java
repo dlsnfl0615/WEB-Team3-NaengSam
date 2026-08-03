@@ -113,10 +113,8 @@ class UploadSessionServiceTest {
     // ---------- consume ----------
 
     @Test
-    void 처음_소비하면_true를_반환한다() {
-        UploadSession session = UploadSession.issue(UploadPurpose.DREAMI_ID_CARD, UUID.randomUUID(), null,
-                "uploads/x/y-a.png");
-        given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
+    void 조건부_UPDATE가_1행을_바꾸면_true를_반환한다() {
+        given(uploadSessionRepository.markConsumedIfIssued("uploads/x/y-a.png")).willReturn(1);
 
         boolean result = uploadSessionService.consume("uploads/x/y-a.png");
 
@@ -124,14 +122,25 @@ class UploadSessionServiceTest {
     }
 
     @Test
-    void 이미_소비된_세션을_다시_소비하면_예외없이_false를_반환한다() {
+    void 이미_소비돼_조건부_UPDATE가_0행이면_예외없이_false를_반환한다() {
         UploadSession session = UploadSession.issue(UploadPurpose.DREAMI_ID_CARD, UUID.randomUUID(), null,
                 "uploads/x/y-a.png");
         session.consume();
+        given(uploadSessionRepository.markConsumedIfIssued("uploads/x/y-a.png")).willReturn(0);
         given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
 
         boolean result = uploadSessionService.consume("uploads/x/y-a.png");
 
         assertThat(result).isFalse();
+    }
+
+    @Test
+    void 발급된_적_없는_key를_소비하려하면_FILE_NOT_FOUND_예외() {
+        given(uploadSessionRepository.markConsumedIfIssued("uploads/x/y-a.png")).willReturn(0);
+        given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> uploadSessionService.consume("uploads/x/y-a.png"));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(UploadErrorCode.FILE_NOT_FOUND);
     }
 }

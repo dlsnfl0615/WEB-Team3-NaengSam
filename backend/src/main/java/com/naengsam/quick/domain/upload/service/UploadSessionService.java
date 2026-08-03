@@ -45,13 +45,18 @@ public class UploadSessionService {
     }
 
     /**
-     * 세션을 소비 처리한다.
+     * 세션을 소비 처리한다. 조건부 UPDATE(ISSUED일 때만 CONSUMED로) 하나로 전이시키므로, 동시에 같은 key로 호출돼도
+     * 단 하나의 호출만 true를 받는다.
      *
      * @return 이번 호출로 새로 소비됐으면 true, 이미 소비된 상태(재시도)라 아무것도 하지 않았으면 false
      */
     @Transactional
     public boolean consume(String key) {
-        return findByKey(key).consume();
+        if (uploadSessionRepository.markConsumedIfIssued(key) == 1) {
+            return true;
+        }
+        findByKey(key); // 세션 자체가 없으면 FILE_NOT_FOUND, 있으면(이미 CONSUMED) 그냥 통과
+        return false;
     }
 
     private UploadSession findByKey(String key) {
