@@ -26,12 +26,13 @@
 rematchRequired 상태의 방을 다시 오퍼 라운드에 태운다"는 동일한 판정 로직에 대한 서로 다른 트리거일 뿐이다. 트리거가 하나 늘었다고 판정 로직까지 복제하면, 두 트리거의 조건이 시간이 지나며 조용히
 벌어지는 위험이 생긴다. 그래서 새 액션(`RematchWaitingGroups`)은 얇은 래퍼(`applyRematchWaitingGroups`)를 거쳐 기존 private 메서드를 그대로 호출하도록 만들었다.
 
-## 왜 1시간 간격이고, 왜 임시값인가
+## 왜 10분 간격이고, 왜 임시값인가
 
 드리미가 새로 등록될 때마다 이미 재매칭이 시도되므로, 스케줄러는 "정상 경로"가 아니라 안전망(safety net)이다 — 드리미 등록이 뜸한 시간대에 재매칭 대기 방이 무기한 방치되는 사각지대를 메우기 위한
 것이다. 그런 성격상 정확한 주기가 중요한 요구사항은 아니며, `MAX_OFFER_COUNT`나 `OFFER_TTL`처럼 이 도메인의 다른 매직 넘버들과 마찬가지로 정책이 확정되기 전의 잠정값이다(
 `REMATCH_SCAN_INTERVAL`, `MatchingService.java`).
 
 `@Scheduled`의 `fixedRate`/`fixedDelay` 속성은 상수 표현식만 허용하므로 `Duration` 필드를 애노테이션에 직접 넣을 수 없다. `REMATCH_SCAN_INTERVAL` 필드는
-그래서 실행에 관여하지 않는 문서화 목적의 상수이고, 실제 값은 애노테이션에 리터럴(`360_000L`)로 중복 기재된다 — 같은 패턴이 이미 `SmsSendRateLimiter.sweepExpired()`(
-`@Scheduled(fixedDelay = 360_000L)`)에도 쓰이고 있어, 이 코드베이스의 기존 관례를 그대로 따른 것이다.
+그래서 실행에 관여하지 않는 문서화 목적의 상수이고, 실제 값은 애노테이션에 리터럴(`600_000L`, 10분)로 중복 기재된다. `@Scheduled`에 밀리초 리터럴을 직접 넣는 패턴 자체는
+`SmsSendRateLimiter.sweepExpired()`(`@Scheduled(fixedDelay = 3_600_000L)`, 1시간 주기)에도 이미 쓰이고 있다 — 다만 그쪽은 주기가 다르므로 "같은 주기를
+관례로 따랐다"는 근거로 삼을 수는 없고, "리터럴 중복 기재 패턴이 기존에도 있었다"는 근거로만 참고한다.

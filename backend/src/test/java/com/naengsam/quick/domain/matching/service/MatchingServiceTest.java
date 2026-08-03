@@ -575,7 +575,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 이미_확정된_오퍼에_부르미_timeout이_뒤늦게_도착하면_예외가_발생하고_상태는_그대로_유지된다() {
+    void 이미_확정된_오퍼에_부르미_timeout이_뒤늦게_도착하면_무시한다() {
         // given
         UUID orderId = UUID.randomUUID();
         GeoPoint location = mock(GeoPoint.class);
@@ -590,11 +590,11 @@ class MatchingServiceTest {
         matchingService.applyAcceptByDreami(offer.offerId());
         matchingService.applyAcceptByBoormi(offer.offerId());
 
-        // when (부르미 응답 timeout이 이미 MATCHED된 뒤 뒤늦게 도착. 실제 엔진에서는 이 예외가 캐치되어 로깅만 되고 무시된다)
+        // when (부르미 응답 timeout이 이미 MATCHED된 뒤 뒤늦게 도착 - PENDING_BOORMI_CONFIRMATION 상태가 아니므로 조용히 무시되어야 한다)
         Throwable thrown = catchThrowable(() -> matchingService.applyExpireBoormiOffer(offer.offerId()));
 
         // then
-        assertThat(thrown).isInstanceOf(IllegalStateException.class);
+        assertThat(thrown).isNull();
         assertThat(offer.status()).isEqualTo(MatchingService.MatchOfferStatus.MATCHED);
     }
 

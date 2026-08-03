@@ -396,13 +396,16 @@ public class MatchingService {
     void applyExpireBoormiOffer(UUID offerId) {
         log.debug("부르미 응답시간 만료 액션 실행: offerId={}", offerId);
 
-        findOffer(offerId).ifPresent(matchOffer -> {
-            // 드리미가 다시 배달이 가능하게 바꿔야함
-            matchOffer.expireByBoormi();
-            findDreami(matchOffer.dreamiId())
-                    .ifPresent(WaitingDreami::markMatching);
-            closeGroupForRematch(matchOffer.orderId());
-        });
+        // 해당 match가 PENDING_BOORMI_CONFIRMATION 상태가 아니라면 이미 수락/거절/취소 등으로 처리가 된거임
+        findOffer(offerId)
+                .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION)
+                .ifPresent(matchOffer -> {
+                    // 드리미가 다시 배달이 가능하게 바꿔야함
+                    matchOffer.expireByBoormi();
+                    findDreami(matchOffer.dreamiId())
+                            .ifPresent(WaitingDreami::markMatching);
+                    closeGroupForRematch(matchOffer.orderId());
+                });
     }
 
     /**
