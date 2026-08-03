@@ -16,7 +16,8 @@ public enum UploadErrorCode implements BaseErrorCode {
     STORAGE_UPLOAD_FAILED(HttpStatus.INTERNAL_SERVER_ERROR, "FILE_004", "업로드에 실패했어요. 다시 시도해 주세요."),
     FILE_NOT_FOUND(HttpStatus.NOT_FOUND, "FILE_005", "파일을 찾을 수 없습니다."),
     INVALID_FILE_NAME(HttpStatus.NOT_FOUND, "FILE_006", "파일 이름이 올바르지 않아요."),
-    KEY_OWNER_MISMATCH(HttpStatus.FORBIDDEN, "FILE_007", "본인이 업로드한 파일만 사용할 수 있어요.");
+    KEY_OWNER_MISMATCH(HttpStatus.FORBIDDEN, "FILE_007", "본인이 업로드한 파일만 사용할 수 있어요."),
+    MISSING_RESOURCE_ID(HttpStatus.BAD_REQUEST, "FILE_008", "이 용도로 업로드하려면 대상 정보가 필요해요.");
 
     private final HttpStatus status;
     private final String code;

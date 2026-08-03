@@ -25,12 +25,12 @@ public class UploadSessionService {
     @Transactional
     public PresignedUrlResponseDto issue(UploadPurpose purpose, UUID boormiId, UUID resourceId, String fileName) {
         if (purpose.isResourceScopeRequired() && resourceId == null) {
-            throw new IllegalStateException("resourceId가 필요한 purpose입니다: " + purpose);
+            throw new BusinessException(UploadErrorCode.MISSING_RESOURCE_ID);
         }
 
         String key = buildKey(purpose, fileName);
         String url = s3PresignService.generateUploadUrl(key);
-        uploadSessionRepository.save(UploadSession.issue(purpose, boormiId, resourceId, key));
+        uploadSessionRepository.save(UploadSession.create(purpose, boormiId, resourceId, key));
         return new PresignedUrlResponseDto(url, key);
     }
 

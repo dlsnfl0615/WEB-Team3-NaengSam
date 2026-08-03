@@ -68,7 +68,7 @@ class UploadSessionServiceTest {
     @Test
     void 발급된_purpose_boormiId_resourceId가_모두_일치하면_예외없이_통과한다() {
         UUID boormiId = UUID.randomUUID();
-        UploadSession session = UploadSession.issue(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "uploads/x/y-a.png");
+        UploadSession session = UploadSession.create(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "uploads/x/y-a.png");
         given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
 
         assertThatCode(() -> uploadSessionService.validateScope(UploadPurpose.DREAMI_ID_CARD, boormiId, null,
@@ -78,7 +78,7 @@ class UploadSessionServiceTest {
     @Test
     void 다른_용도로_발급된_key면_KEY_OWNER_MISMATCH_예외() {
         UUID boormiId = UUID.randomUUID();
-        UploadSession session = UploadSession.issue(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "uploads/x/y-a.png");
+        UploadSession session = UploadSession.create(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "uploads/x/y-a.png");
         given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
 
         Throwable thrown = catchThrowable(() -> uploadSessionService.validateScope(
@@ -91,7 +91,7 @@ class UploadSessionServiceTest {
     void 다른_사람에게_발급된_key면_KEY_OWNER_MISMATCH_예외() {
         UUID owner = UUID.randomUUID();
         UUID attacker = UUID.randomUUID();
-        UploadSession session = UploadSession.issue(UploadPurpose.DREAMI_ID_CARD, owner, null, "uploads/x/y-a.png");
+        UploadSession session = UploadSession.create(UploadPurpose.DREAMI_ID_CARD, owner, null, "uploads/x/y-a.png");
         given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
 
         Throwable thrown = catchThrowable(() -> uploadSessionService.validateScope(UploadPurpose.DREAMI_ID_CARD,
@@ -123,7 +123,7 @@ class UploadSessionServiceTest {
 
     @Test
     void 이미_소비돼_조건부_UPDATE가_0행이면_예외없이_false를_반환한다() {
-        UploadSession session = UploadSession.issue(UploadPurpose.DREAMI_ID_CARD, UUID.randomUUID(), null,
+        UploadSession session = UploadSession.create(UploadPurpose.DREAMI_ID_CARD, UUID.randomUUID(), null,
                 "uploads/x/y-a.png");
         session.consume();
         given(uploadSessionRepository.markConsumedIfIssued("uploads/x/y-a.png")).willReturn(0);

@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.dreami.controller;
 
+import com.naengsam.quick.domain.dreami.dto.DreamiOnlineRequest;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.service.DreamiService;
@@ -10,6 +11,7 @@ import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -40,8 +42,8 @@ public class DreamiController {
             description = "드리미가 콜 수신 가능한 온라인 상태로 전환하고 현재 위치를 등록한다. 온라인 상태의 드리미에게만 주변 콜이 노출된다.")
     @PostMapping("/status/online")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    public void goOnline(@LoginUser UUID dreamiId, @RequestBody GeoPoint location) {
-        matchingService.registerDreami(dreamiId, location);
+    public void goOnline(@LoginUser UUID dreamiId, @Valid @RequestBody DreamiOnlineRequest request) {
+        matchingService.registerDreami(dreamiId, new GeoPoint(request.latitude(), request.longitude()));
     }
 
     @Operation(summary = "드리미 오프라인 전환", description = "드리미가 콜 수신 불가능한 오프라인 상태로 전환한다.")

@@ -55,7 +55,7 @@ public class UploadSession {
     @Column(name = "consumed_dtm")
     private LocalDateTime consumedDtm;
 
-    public static UploadSession issue(UploadPurpose purpose, UUID boormiId, UUID resourceId, String s3Key) {
+    public static UploadSession create(UploadPurpose purpose, UUID boormiId, UUID resourceId, String s3Key) {
         UploadSession session = new UploadSession();
         session.uploadSessionId = UUID.randomUUID();
         session.boormiId = boormiId;
