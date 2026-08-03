@@ -13,13 +13,14 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -34,9 +35,13 @@ import org.springframework.stereotype.Service;
 public class MatchingService {
 
     /**
-     * 드리미 응답 제한시간. 제한은 30초 기준.
+     * 드리미 응답 제한시간. 제한은 30초 기준. //TODO: 현재 디버깅을 위해서 timeout을 3000초로 설정. 배포시 수정 필요.
      */
-    private static final Duration OFFER_TTL = Duration.ofSeconds(30);
+    private static final Duration OFFER_TTL = Duration.ofSeconds(3000);
+    /**
+     * 부르미 응답 제한시간. 제한은 30초 기준.
+     */
+    private static final Duration BOORMI_OFFER_TTL = Duration.ofSeconds(3000);
     /**
      * 한 주문에 동시에 제안할 최대 드리미 수
      */
@@ -47,16 +52,20 @@ public class MatchingService {
     private static final Duration REMATCH_SCAN_INTERVAL = Duration.ofMinutes(10);
 
     // ────────────────────────────── 도메인 타입 ──────────────────────────────
-    private final Map<UUID, MatchOffer> offersById = new HashMap<>();           // Map<OfferUUID, MatchOffer>
-    private final Map<UUID, Set<UUID>> offerIdsByDreamiId = new HashMap<>();    // Map<DreamiUUID, Set<OfferUUID>>
+    // 모든 mutation은 엔진 스레드 하나에서만 일어나지만, 조회(findOrderOfferGroup 등)는 호출 스레드에서 직접 일어난다.
+    // 맵 자체의 내부 구조 변경(put에 의한 리사이즈 등)이 다른 스레드의 읽기와 겹치면 HashMap은 안전하지 않으므로
+    // 단일 기록자/다중 판독자 상황에서도 안전한 ConcurrentHashMap을 쓴다.
+    private final Map<UUID, MatchOffer> offersById = new ConcurrentHashMap<>();           // Map<OfferUUID, MatchOffer>
+    private final Map<UUID, Set<UUID>> offerIdsByDreamiId = new ConcurrentHashMap<>();    // Map<DreamiUUID, Set<OfferUUID>>
 
     // 하나의 주문에 대해 동시에 뿌린 제안 묶음 = "방"
-    private final Map<UUID, OrderOfferGroup> orderOfferGroupsByOrderId = new HashMap<>();
+    private final Map<UUID, OrderOfferGroup> orderOfferGroupsByOrderId = new ConcurrentHashMap<>();
 
     // ────────────────────────────── 저장소 ──────────────────────────────
-    private final Map<UUID, WaitingDreami> dreamiMap = new HashMap<>();
+    private final Map<UUID, WaitingDreami> dreamiMap = new ConcurrentHashMap<>();
     private final MatchingEngine matchingEngine;
     private final SseService sseService;
+    private final OfferTimeoutScheduler offerTimeoutScheduler;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -72,7 +81,7 @@ public class MatchingService {
                 new WaitingDreami(dreamiId, location, WaitingDreamiStatus.MATCHING, LocalDateTime.now()));
         log.debug("드리미 등록 처리 완료: dreamiId={}, location={}", dreamiId, location);
         // 재매칭 대기 중인 주문이 있으면 방금 등록된 드리미에게 오퍼를 시도한다.
-        retryRematchWaitingGroups();
+//        retryRematchWaitingGroups();
     }
 
     /**
@@ -172,6 +181,7 @@ public class MatchingService {
             offersById.put(offerId, offer);
             offerIdsByDreamiId.computeIfAbsent(dreami.dreamiId(), k -> new HashSet<>()).add(offerId);
             dreami.markProposed();
+            offerTimeoutScheduler.scheduleDreamiOfferTimeout(offerId, expiresAt);
         }
         group.addOffersAndOpen(newOffers);
 
@@ -209,6 +219,8 @@ public class MatchingService {
             // 나머지 사람은 WITHDRAWN
             if (offer.dreamiId().equals(acceptedDreamiId)) {
                 offer.acceptByDreami();
+                offerTimeoutScheduler.scheduleBoormiOfferTimeout(offer.offerId(),
+                        LocalDateTime.now().plus(BOORMI_OFFER_TTL));
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
                 sseService.send(group.boormiId(), MatchingEventType.DREAMI_INFO, DreamiInfoPayload.from(offer));
             } else if (offer.status() == MatchOfferStatus.OFFERED) {
@@ -503,7 +515,8 @@ public class MatchingService {
         private final UUID orderId;
         private final UUID dreamiId;
         private final LocalDateTime expiresAt;
-        private MatchOfferStatus status;
+        // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
+        private volatile MatchOfferStatus status;
 
         public MatchOffer(UUID offerId, UUID orderId, UUID dreamiId,
                           MatchOfferStatus status, LocalDateTime expiresAt) {
@@ -583,8 +596,9 @@ public class MatchingService {
     public static final class WaitingDreami {
         private final UUID dreamiId;
         private final GeoPoint location;
-        private WaitingDreamiStatus status;
-        private LocalDateTime updatedAt;
+        // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
+        private volatile WaitingDreamiStatus status;
+        private volatile LocalDateTime updatedAt;
 
         public WaitingDreami(UUID dreamiId, GeoPoint location,
                              WaitingDreamiStatus status, LocalDateTime updatedAt) {
@@ -636,14 +650,16 @@ public class MatchingService {
         private final UUID orderId;
         private final UUID boormiId;
         private final List<MatchOffer> offers;
-        private OrderOfferGroupStatus status;
-        private boolean rematchRequired;
+        // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
+        private volatile OrderOfferGroupStatus status;
+        private volatile boolean rematchRequired;
 
         public OrderOfferGroup(UUID orderId, UUID boormiId, List<MatchOffer> offers) {
             this.orderId = orderId;
             this.boormiId = boormiId;
-            // 라운드마다 새 오퍼를 append하므로 내부는 항상 가변 리스트로 보관한다.
-            this.offers = new ArrayList<>(offers);
+            // 라운드마다 엔진 스레드가 append하는 동시에 다른 스레드가 offers()로 읽으므로,
+            // ArrayList가 아닌 CopyOnWriteArrayList로 보관해 순회/복사 중 경합을 피한다.
+            this.offers = new CopyOnWriteArrayList<>(offers);
             this.status = OrderOfferGroupStatus.OPEN;
             this.rematchRequired = false;
         }

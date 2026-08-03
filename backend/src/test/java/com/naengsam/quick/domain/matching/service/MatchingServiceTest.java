@@ -26,12 +26,14 @@ class MatchingServiceTest {
     private MatchingService matchingService;
     private MatchingEngine matchingEngine;
     private SseService sseService;
+    private OfferTimeoutScheduler offerTimeoutScheduler;
 
     @BeforeEach
     void setUp() {
         matchingEngine = mock(MatchingEngine.class);
         sseService = mock(SseService.class);
-        matchingService = new MatchingService(matchingEngine, sseService);
+        offerTimeoutScheduler = mock(OfferTimeoutScheduler.class);
+        matchingService = new MatchingService(matchingEngine, sseService, offerTimeoutScheduler);
     }
 
     @Test
