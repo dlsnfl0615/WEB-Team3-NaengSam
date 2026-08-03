@@ -1,8 +1,7 @@
 package com.naengsam.quick.domain.matching.service;
 
 import jakarta.annotation.PostConstruct;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
+import java.time.Duration;
 import java.util.UUID;
 import java.util.concurrent.DelayQueue;
 import lombok.extern.slf4j.Slf4j;
@@ -46,15 +45,11 @@ public class OfferTimeoutScheduler {
         }
     }
 
-    public void scheduleDreamiOfferTimeout(UUID offerId, LocalDateTime expiresAt) {
-        timeoutQueue.put(new DreamiOfferTimeout(offerId, toEpochMilli(expiresAt)));
+    public void scheduleDreamiOfferTimeout(UUID offerId, Duration ttl) {
+        timeoutQueue.put(DreamiOfferTimeout.after(offerId, ttl));
     }
 
-    public void scheduleBoormiOfferTimeout(UUID offerId, LocalDateTime expiresAt) {
-        timeoutQueue.put(new BoormiOfferTimeout(offerId, toEpochMilli(expiresAt)));
-    }
-
-    private static long toEpochMilli(LocalDateTime dateTime) {
-        return dateTime.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();
+    public void scheduleBoormiOfferTimeout(UUID offerId, Duration ttl) {
+        timeoutQueue.put(BoormiOfferTimeout.after(offerId, ttl));
     }
 }

@@ -181,10 +181,9 @@ class MatchingDebugControllerTest {
         UUID orderId = UUID.randomUUID();
         UUID offerId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        LocalDateTime expiresAt = LocalDateTime.now().plusSeconds(30);
 
         MatchingService.MatchOffer offer = new MatchingService.MatchOffer(
-                offerId, orderId, dreamiId, MatchingService.MatchOfferStatus.OFFERED, expiresAt);
+                offerId, orderId, dreamiId, MatchingService.MatchOfferStatus.OFFERED);
         MatchingService.OrderOfferGroup group =
                 new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(), List.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));

@@ -231,6 +231,58 @@ class MatchingServiceConcurrencyTest {
         assertThat(statusOf(orderId, offerId)).isEqualTo(MatchingService.MatchOfferStatus.WITHDRAWN);
     }
 
+    @Test
+    void timeout과_사용자_응답이_거의_동시에_들어와도_큐_처리_순서대로_단_한번만_유효하게_전이된다() throws InterruptedException {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+
+        matchingService.registerDreami(dreamiId, location);
+        awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
+
+        matchingService.startMatching(order);
+        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+
+        UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
+                .offers().getFirst().offerId();
+
+        // when (DelayQueue timeout 워커와 사용자 응답 스레드가 거의 동시에 같은 오퍼에 대해 서로 다른 액션을 제출한다)
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch go = new CountDownLatch(1);
+        requestThreads.submit(() -> {
+            ready.countDown();
+            awaitLatch(go);
+            matchingService.expireDreamiOffer(offerId);
+        });
+        requestThreads.submit(() -> {
+            ready.countDown();
+            awaitLatch(go);
+            matchingService.acceptByDreami(offerId);
+        });
+        assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+        go.countDown();
+
+        // then (엔진 큐에 도착한 순서대로 처리되어, 둘 중 하나만 유효하게 반영된다)
+        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.DREAMI_EXPIRED
+                        || statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.PENDING_BOORMI_CONFIRMATION,
+                Duration.ofSeconds(5));
+
+        MatchingService.MatchOfferStatus finalStatus = statusOf(orderId, offerId);
+        assertThat(finalStatus).isIn(
+                MatchingService.MatchOfferStatus.DREAMI_EXPIRED,
+                MatchingService.MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+
+        // 나중에 도착한 액션은 잘못된 상태 전이 예외로 무시될 뿐, 엔진 스레드는 죽지 않고 이후 액션을 계속 처리해야 한다.
+        UUID flushDreamiId = UUID.randomUUID();
+        matchingService.registerDreami(flushDreamiId, location);
+        awaitUntil(() -> getDreamiMap().containsKey(flushDreamiId), Duration.ofSeconds(5));
+
+        // 상태가 그 사이 다시 바뀌지 않았는지(단 한 번만 전이) 재확인한다.
+        assertThat(statusOf(orderId, offerId)).isEqualTo(finalStatus);
+    }
+
     private MatchingService.MatchOfferStatus statusOf(UUID orderId, UUID offerId) {
         return matchingService.findOrderOfferGroup(orderId).orElseThrow()
                 .offers().stream()
