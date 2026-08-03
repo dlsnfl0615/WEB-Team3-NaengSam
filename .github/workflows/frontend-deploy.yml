@@ -32,7 +32,9 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        # --ignore-scripts: pnpm 11이 승인되지 않은 빌드 스크립트(esbuild 등)에 ERR_PNPM_IGNORED_BUILDS로
+        # 실패하므로 생략한다. esbuild·tailwind·rolldown은 prebuilt 바이너리(optional dep)라 빌드 스크립트가 불필요.
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build
         run: pnpm build
