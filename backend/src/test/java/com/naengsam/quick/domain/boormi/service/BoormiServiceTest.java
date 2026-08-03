@@ -80,11 +80,22 @@ BoormiServiceTest {
                 "서류봉투", ItemCd.DOCUMENT, 5000, 20, "http://img", "계약서", "문 앞에 두세요");
     }
 
+    // 주소 문자열은 다르지만 좌표는 임계값(50m) 이내로 아주 가까운 요청
+    private static OrderRequest nearbyOrderRequest() {
+        return new OrderRequest("서울시 강남구 A", "101동", "서울시 강남구 B", "202동",
+                "서류봉투", ItemCd.DOCUMENT, 5000, 20, "http://img", "계약서", "문 앞에 두세요");
+    }
+
     private static CoordinatesResponseDto coordinates() {
+        return coordinatesAt("127.123456", "37.123456");
+    }
+
+    // x=경도(longitude), y=위도(latitude)
+    private static CoordinatesResponseDto coordinatesAt(String longitudeX, String latitudeY) {
         CoordinatesResponseDto.RoadAddress roadAddress =
                 new CoordinatesResponseDto.RoadAddress(
                         null, null, null, null, null, null, null, null, null,
-                        "127.123456", "37.123456");
+                        longitudeX, latitudeY);
         return new CoordinatesResponseDto(List.of(new CoordinatesResponseDto.Document(roadAddress)));
     }
 
@@ -141,7 +152,8 @@ BoormiServiceTest {
     @Test
     void 주문접수_요청필드로_주문을_생성해_저장하고_결제와_매칭을_시작한다() {
         UUID boormiId = UUID.randomUUID();
-        given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(matchingService.startMatching(any())).willReturn(true);
 
         boormiService.subscribeOrder(orderRequest(), boormiId);
@@ -161,18 +173,35 @@ BoormiServiceTest {
         assertThat(saved.getOriginAddressLine1()).isEqualTo("서울시 강남구");
         assertThat(saved.getDestinationAddressLine2()).isEqualTo("202동");
         // x=경도(127.x), y=위도(37.x)가 latitude/longitude 자리에 올바르게 매핑되어야 한다
-        assertThat(saved.getOriginLatitude()).isEqualByComparingTo("37.123456");
-        assertThat(saved.getOriginLongitude()).isEqualByComparingTo("127.123456");
-        assertThat(saved.getDestinationLatitude()).isEqualByComparingTo("37.123456");
-        assertThat(saved.getDestinationLongitude()).isEqualByComparingTo("127.123456");
+        assertThat(saved.getOriginLatitude()).isEqualByComparingTo("37.5");
+        assertThat(saved.getOriginLongitude()).isEqualByComparingTo("127.0");
+        assertThat(saved.getDestinationLatitude()).isEqualByComparingTo("37.6");
+        assertThat(saved.getDestinationLongitude()).isEqualByComparingTo("127.1");
     }
 
     @Test
     void 주문접수_출발지와_도착지가_같으면_SAME_ORIGIN_DESTINATION() {
         UUID boormiId = UUID.randomUUID();
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
 
         Throwable thrown = catchThrowable(
                 () -> boormiService.subscribeOrder(sameLocationOrderRequest(), boormiId));
+
+        assertThat(thrown).isInstanceOf(BusinessException.class);
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.SAME_ORIGIN_DESTINATION);
+        then(orderService).should(never()).createOrders(any());
+    }
+
+    @Test
+    void 주문접수_주소는_달라도_좌표가_임계값이내면_SAME_ORIGIN_DESTINATION() {
+        UUID boormiId = UUID.randomUUID();
+        // 위도 0.00036도 차 ≈ 약 40m < 50m 임계값 (주소 문자열은 서로 다름)
+        given(coordinatesService.getCoordinates("서울시 강남구 A")).willReturn(coordinatesAt("127.0", "37.50000"));
+        given(coordinatesService.getCoordinates("서울시 강남구 B")).willReturn(coordinatesAt("127.0", "37.50036"));
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.subscribeOrder(nearbyOrderRequest(), boormiId));
 
         assertThat(thrown).isInstanceOf(BusinessException.class);
         assertThat(((BusinessException) thrown).getErrorCode())
@@ -196,7 +225,8 @@ BoormiServiceTest {
     @Test
     void 주문접수_매칭시작이_실패하면_CONFLICT() {
         UUID boormiId = UUID.randomUUID();
-        given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(matchingService.startMatching(any())).willReturn(false);
 
         Throwable thrown = catchThrowable(() -> boormiService.subscribeOrder(orderRequest(), boormiId));

@@ -37,8 +37,9 @@ public class BoormiService {
     private static final int BASE_FEE = 3000;       // 기본요금 3000원
     private static final int OVER_RATE = 160;       // 초과 구간 100m당 요금(원)
     private static final int MAX_ACTIVE_ORDERS = 5; // 동시 진행 가능한 요청 수(정책값)
-
-    private final BoormiRepository boormiRepository;
+    private static final int TOO_CLOSE_DISTANCE = 50;   // 출발지-도착지 최소 직선거리(m)
+    private static final int EARTH_RADIUS = 6_371_000;  // 지구 반지름(m)
+    
     private final CoordinatesService coordinatesService;
     private final KakaoDirectionsService kakaoDirectionsService;
     private final PaymentService paymentService;
@@ -50,16 +51,18 @@ public class BoormiService {
      */
     @Transactional
     public void subscribeOrder(OrderRequest orderRequest, UUID boormiId) {
-        if (isSameLocation(orderRequest)) {
-            throw new BusinessException(OrderErrorCode.SAME_ORIGIN_DESTINATION);
-        }
         if (orderService.countActiveOrders(boormiId) >= MAX_ACTIVE_ORDERS) {
             throw new BusinessException(OrderErrorCode.TOO_MANY_ACTIVE_ORDERS);
         }
 
-        UUID orderId = UUID.randomUUID();
         GeoPoint originCoordinate = toGeoPoint(orderRequest.originAddressLine1());
         GeoPoint destinationCoordinate = toGeoPoint(orderRequest.destinationAddressLine1());
+        
+        if (isTooClose(originCoordinate, destinationCoordinate)) {
+            throw new BusinessException(OrderErrorCode.SAME_ORIGIN_DESTINATION);
+        }
+
+        UUID orderId = UUID.randomUUID();
 
         Addresses addresses = Addresses.builder()
                 .originAddressLine1(orderRequest.originAddressLine1())
@@ -123,17 +126,23 @@ public class BoormiService {
     }
 
     /**
-     * 출발지와 도착지가 같은 위치인지 판단한다. 기본주소와 상세주소가 모두 같을 때만 동일한 것으로 본다(같은 도로명의 다른 상세주소는 허용).
+     * 출발지와 도착지가 너무 가까운지 판단한다. 두 좌표의 직선거리가 {@link #TOO_CLOSE_DISTANCE}m 미만이면 사실상 같은 위치로 본다.
      */
-    private boolean isSameLocation(OrderRequest request) {
-        return equalsNormalized(request.originAddressLine1(), request.destinationAddressLine1())
-                && equalsNormalized(request.originAddressLine2(), request.destinationAddressLine2());
+    private boolean isTooClose(GeoPoint origin, GeoPoint destination) {
+        return distanceMeters(origin, destination) < TOO_CLOSE_DISTANCE;
     }
 
-    private boolean equalsNormalized(String a, String b) {
-        String left = a == null ? "" : a.trim();
-        String right = b == null ? "" : b.trim();
-        return left.equals(right);
+    /**
+     * 두 좌표 사이의 하버사인 직선거리(m)를 계산한다.
+     */
+    private double distanceMeters(GeoPoint a, GeoPoint b) {
+        double lat1 = Math.toRadians(a.latitude().doubleValue());
+        double lat2 = Math.toRadians(b.latitude().doubleValue());
+        double dLat = lat2 - lat1;
+        double dLon = Math.toRadians(b.longitude().doubleValue() - a.longitude().doubleValue());
+        double h = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return 2 * EARTH_RADIUS * Math.asin(Math.sqrt(h));
     }
 
     private GeoPoint toGeoPoint(String roadAddress) {
