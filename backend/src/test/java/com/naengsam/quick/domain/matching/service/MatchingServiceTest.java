@@ -24,11 +24,12 @@ import org.springframework.test.util.ReflectionTestUtils;
 class MatchingServiceTest {
 
     private MatchingService matchingService;
+    private MatchingEngine matchingEngine;
     private SseService sseService;
 
     @BeforeEach
     void setUp() {
-        MatchingEngine matchingEngine = mock(MatchingEngine.class);
+        matchingEngine = mock(MatchingEngine.class);
         sseService = mock(SseService.class);
         matchingService = new MatchingService(matchingEngine, sseService);
     }
@@ -761,6 +762,77 @@ class MatchingServiceTest {
                 .isEqualTo(MatchingService.WaitingDreamiStatus.MATCHING);
         assertThat(group.status()).isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
         assertThat(group.rematchRequired()).isFalse();
+    }
+
+    @Test
+    void 부르미가_주문을_취소하면_엔진_큐에_CancelOrderByBoormi_액션이_제출된다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+
+        // when
+        matchingService.cancelOrderByBoormi(orderId);
+
+        // then
+        ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
+        verify(matchingEngine).submit(captor.capture());
+        assertThat(captor.getValue()).isInstanceOf(CancelOrderByBoormi.class);
+        assertThat(((CancelOrderByBoormi) captor.getValue()).orderId()).isEqualTo(orderId);
+    }
+
+    @Test
+    void 스케줄된_재매칭_트리거는_엔진_큐에_RematchWaitingGroups_액션을_제출한다() {
+        // when
+        matchingService.scheduleRematchWaitingGroups();
+
+        // then
+        ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
+        verify(matchingEngine).submit(captor.capture());
+        assertThat(captor.getValue()).isInstanceOf(RematchWaitingGroups.class);
+    }
+
+    @Test
+    void 재매칭_대상_그룹이_있으면_스케줄된_재매칭_실행시_대기중인_드리미에게_오퍼가_간다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+
+        matchingService.applyRegisterDreami(dreamiId, location);
+
+        MatchingService.OrderOfferGroup group =
+                new MatchingService.OrderOfferGroup(orderId, boormiId, List.of());
+        group.closeForRematch();
+        getOrderOfferGroups().put(orderId, group);
+
+        // when
+        matchingService.applyRematchWaitingGroups();
+
+        // then
+        assertThat(group.status()).isEqualTo(MatchingService.OrderOfferGroupStatus.OPEN);
+        assertThat(group.rematchRequired()).isFalse();
+        assertThat(group.offers())
+                .extracting(MatchingService.MatchOffer::dreamiId)
+                .containsExactly(dreamiId);
+        verify(sseService).send(eq(dreamiId), eq(MatchingEventType.OFFER_POPUP), any());
+    }
+
+    @Test
+    void 재매칭_대상_그룹이_없으면_스케줄된_재매칭_실행시_아무일도_일어나지_않는다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+
+        MatchingService.OrderOfferGroup group =
+                new MatchingService.OrderOfferGroup(orderId, boormiId, List.of());
+        group.markMatched();
+        getOrderOfferGroups().put(orderId, group);
+
+        // when
+        matchingService.applyRematchWaitingGroups();
+
+        // then (대기 대상이 아니므로 상태가 그대로 보존된다)
+        assertThat(group.status()).isEqualTo(MatchingService.OrderOfferGroupStatus.MATCHED);
     }
 
     @SuppressWarnings("unchecked")
