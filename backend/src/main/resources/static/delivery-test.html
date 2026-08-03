@@ -132,9 +132,15 @@
         </div>
         <div class="row">
           <button class="primary" id="btnLoc" style="flex:1">📍 위치 업데이트</button>
-          <button id="btnAuto">▶ 동쪽 이동 OFF</button>
+          <button id="btnAuto">▶ 자동 이동 OFF</button>
         </div>
-        <div class="hint">배달 시작 시 5초마다 현재 위치를 무조건 전송. 동쪽 이동 ON이면 매 전송마다 경도를 조금씩 늘려 전진.</div>
+        <div class="row" id="wpRow">
+          <span class="field">지점 지정</span>
+          <button id="btnPlaceOrigin">🚩 출발지</button>
+          <button id="btnPlacePickup">📦 픽업지</button>
+          <button id="btnPlaceDest">🏁 도착지</button>
+        </div>
+        <div class="hint">지점 버튼을 누른 뒤 드리미 지도를 클릭해 위치를 지정. 자동 이동 ON이면 픽업중엔 픽업지, 배달중엔 도착지 방향으로 5초마다 전진.</div>
         <div class="btn-grid">
           <button id="btnPickup">✅ 픽업 완료</button>
           <button id="btnFinish">🏁 배달 완료</button>
@@ -190,6 +196,7 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script>
     const $ = id => document.getElementById(id);
+    let currentStatus = null;   // 드리미가 인지한 현재 배달 상태(자동 이동 목표 결정에 사용)
 
     const STATUS_META = {
       PICKUP_NORMAL:              { label: "픽업중(정상)",     cls: "s-pickup",     cust: "배달원이 상품을 픽업하는 중" },
@@ -202,7 +209,14 @@
 
     // ===== 지도 2개 (드리미: 조작 / 부르미: 추적) =====
     const START = [37.49795, 127.02760];
-    const AUTO_STEP = 0.0004; // 한 틱당 동쪽으로 이동하는 경도 증가량(≈35m)
+    const AUTO_STEP = 0.0004; // 자동 이동 한 틱당 목표 방향으로 전진하는 거리(위경도, ≈35m)
+
+    // 배달 경로 3지점(출발지→픽업지→도착지). 기본값은 START 주변, 지도 클릭으로 임의 지정 가능.
+    const wp = {
+      origin: { latlng: [37.49795, 127.02760], emoji: '🚩', label: '출발지', color: '#f59e0b' },
+      pickup: { latlng: [37.50150, 127.03250], emoji: '📦', label: '픽업지', color: '#a855f7' },
+      dest:   { latlng: [37.49380, 127.03680], emoji: '🏁', label: '도착지', color: '#ef4444' },
+    };
 
     const mapD = L.map('mapD').setView(START, 15);
     const mapB = L.map('mapB').setView(START, 15);
@@ -210,6 +224,38 @@
       { maxZoom: 19, attribution: '© OSM' }).addTo(m));
     const markerD = L.marker(START, { draggable: true }).addTo(mapD);
     const markerB = L.marker(START).addTo(mapB).bindTooltip("배달원", { permanent: false });
+
+    // 3지점 마커를 두 지도 모두에 표시(부르미 화면에도 경로 맥락이 보이도록).
+    function wpIcon(w) {
+      return L.divIcon({ className: 'wp-icon', iconSize: [26, 26], iconAnchor: [13, 13],
+        html: `<div style="width:26px;height:26px;border-radius:50%;background:${w.color};`
+          + `display:flex;align-items:center;justify-content:center;font-size:15px;`
+          + `border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)">${w.emoji}</div>` });
+    }
+    function makeWpMarkers(map) {
+      const m = {};
+      for (const k of ['origin', 'pickup', 'dest']) {
+        m[k] = L.marker(wp[k].latlng, { icon: wpIcon(wp[k]) }).addTo(map)
+          .bindTooltip(wp[k].label, { permanent: true, direction: 'top', offset: [0, -14] });
+      }
+      return m;
+    }
+    const wpMarkersD = makeWpMarkers(mapD);
+    const wpMarkersB = makeWpMarkers(mapB);
+    function refreshWp(k) { wpMarkersD[k].setLatLng(wp[k].latlng); wpMarkersB[k].setLatLng(wp[k].latlng); }
+
+    // 지점 지정 모드: 버튼으로 대상 선택 후 드리미 지도 클릭 → 해당 지점 이동. 모드 없으면 클릭은 드리미 위치 지정.
+    let placeMode = null;
+    function setPlaceMode(mode) {
+      placeMode = (placeMode === mode) ? null : mode;
+      [['origin', 'btnPlaceOrigin'], ['pickup', 'btnPlacePickup'], ['dest', 'btnPlaceDest']]
+        .forEach(([k, btn]) => $(btn).classList.toggle('toggle-on', placeMode === k));
+      mapD.getContainer().style.cursor = placeMode ? 'crosshair' : '';
+    }
+    $('btnPlaceOrigin').onclick = () => setPlaceMode('origin');
+    $('btnPlacePickup').onclick = () => setPlaceMode('pickup');
+    $('btnPlaceDest').onclick = () => setPlaceMode('dest');
+
     setTimeout(() => { mapD.invalidateSize(); mapB.invalidateSize(); }, 200);
 
     function setLatLng(lat, lng) {
@@ -222,8 +268,19 @@
       if (pan) mapB.panTo([lat, lng], { animate: true });
     }
     setLatLng(START[0], START[1]);
-    markerD.on('dragend', () => { const p = markerD.getLatLng(); setLatLng(p.lat, p.lng); markerB.setLatLng(p); });
-    mapD.on('click', e => { markerD.setLatLng(e.latlng); markerB.setLatLng(e.latlng); setLatLng(e.latlng.lat, e.latlng.lng); });
+    // 드리미가 자기 위치를 지정(드리미 지도만 움직임). 부르미 지도는 오직 SSE(delivery_location)로만 갱신된다.
+    markerD.on('dragend', () => { const p = markerD.getLatLng(); setLatLng(p.lat, p.lng); });
+    mapD.on('click', e => {
+      if (placeMode) {
+        wp[placeMode].latlng = [e.latlng.lat, e.latlng.lng];
+        refreshWp(placeMode);
+        log('side-d', '시스템', wp[placeMode].label + ' 지정', true,
+          `${e.latlng.lat.toFixed(5)}, ${e.latlng.lng.toFixed(5)}`);
+        setPlaceMode(null);
+        return;
+      }
+      markerD.setLatLng(e.latlng); setLatLng(e.latlng.lat, e.latlng.lng);
+    });
 
     // ===== 로그 =====
     function pad(n){ return String(n).padStart(2,'0'); }
@@ -269,23 +326,96 @@
     }
 
     // ===== 화면 상태 반영 =====
-    function applyResult(result) {
+    // 상단 배지(서버 기준 진실) + 드리미 지도만 갱신. 부르미 카드/지도는 SSE 핸들러가 담당한다.
+    function applyGroundTruth(result) {
       if (!result) return;
-      const meta = STATUS_META[result.status] || { label: result.status, cls: 's-none', cust: result.status };
+      if (result.status) currentStatus = result.status;   // 자동 이동 목표 판단에 사용
+      const meta = STATUS_META[result.status] || { label: result.status, cls: 's-none' };
       const badge = $('statusBadge');
       badge.className = 'badge ' + meta.cls;
       badge.textContent = meta.label;
       $('statusMsg').textContent = result.message ? '“' + result.message + '”' : '';
-      // 부르미 화면(주문자 관점)
+      if (result.currentLocation) {
+        const { latitude, longitude } = result.currentLocation;
+        markerD.setLatLng([latitude, longitude]);  // 드리미 자기 지도만
+        setLatLng(latitude, longitude);
+      }
+    }
+
+    // ===== SSE 수신 (실제 서버 push) =====
+    // 부르미: boormiId로 구독해 실시간 알림/위치 수신. 드리미: dreamiId로 구독(부르미 취소 후 폴링 시 서버가 보내는 취소 SSE).
+    let esBoormi = null, esDreami = null;
+    let boormiEnded = false, dreamiEnded = false;
+
+    function closeBoormiSse() { if (esBoormi) { esBoormi.close(); esBoormi = null; } }
+    function closeDreamiSse() { if (esDreami) { esDreami.close(); esDreami = null; } }
+    function closeSse() { closeBoormiSse(); closeDreamiSse(); }
+
+    function openSse(boormiId, dreamiId) {
+      closeSse();
+      boormiEnded = false; dreamiEnded = false;
+      esBoormi = new EventSource('/api/v1/delivery/test/subscribe/' + boormiId);
+      esBoormi.addEventListener('connected', () => log('side-b', '부르미(SSE)', '구독 연결됨', true, 'event: connected'));
+      esBoormi.addEventListener('delivery_location',   e => onBoormiLocation(JSON.parse(e.data)));
+      esBoormi.addEventListener('delivery_delivering', e => onBoormiDelivering(JSON.parse(e.data)));
+      esBoormi.addEventListener('delivery_cancelled',  e => onBoormiCancelled(JSON.parse(e.data)));
+      esBoormi.addEventListener('delivery_completed',  e => onBoormiCompleted(JSON.parse(e.data)));
+
+      esDreami = new EventSource('/api/v1/delivery/test/subscribe/' + dreamiId);
+      esDreami.addEventListener('connected', () => log('side-d', '드리미(SSE)', '구독 연결됨', true, 'event: connected'));
+      esDreami.addEventListener('delivery_cancelled', e => onDreamiCancelled(JSON.parse(e.data)));
+    }
+
+    function boormiCard(result) {
+      const meta = STATUS_META[result.status] || { cust: result.status };
       $('bStatus').textContent = meta.cust;
       $('bSub').textContent = result.currentLocation
         ? `배달원 위치: ${Number(result.currentLocation.latitude).toFixed(5)}, ${Number(result.currentLocation.longitude).toFixed(5)}`
         : '위치 정보 없음';
+    }
+    function onBoormiLocation(result) {
+      boormiCard(result);
       if (result.currentLocation) {
         const { latitude, longitude } = result.currentLocation;
-        moveMarkers(latitude, longitude, true);
-        setLatLng(latitude, longitude);
+        markerB.setLatLng([latitude, longitude]);           // 부르미 지도는 SSE로만 움직인다
+        mapB.panTo([latitude, longitude], { animate: true });
+        locToast(`🛰️ (SSE) 배달원 위치 (${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)})`);
       }
+      log('side-b', '부르미(SSE)', 'delivery_location', true, JSON.stringify(result));
+    }
+    function onBoormiDelivering(result) {
+      boormiCard(result);
+      showPopup('boormi', 'boormi', '🏠 부르미 알림', '🛵 배달원이 픽업을 완료했어요! 배달이 시작됩니다.', result);
+      log('side-b', '부르미(SSE)', 'delivery_delivering', true, JSON.stringify(result));
+    }
+    function onBoormiCancelled(result) {
+      if (boormiEnded) return; boormiEnded = true;
+      boormiCard(result);
+      showPopup('boormi', 'error', '🏠 부르미 알림', '❌ ' + (result.message || '배달이 취소되었어요.'), result);
+      log('side-b', '부르미(SSE)', 'delivery_cancelled', true, JSON.stringify(result));
+      closeBoormiSse();
+    }
+    function onBoormiCompleted(result) {
+      if (boormiEnded) return; boormiEnded = true;
+      boormiCard(result);
+      showPopup('boormi', 'boormi', '🏠 부르미 알림', '📦 배달이 완료되었어요! 맛있게 드세요.', result);
+      log('side-b', '부르미(SSE)', 'delivery_completed', true, JSON.stringify(result));
+      closeBoormiSse();
+    }
+    function onDreamiCancelled(result) {
+      endDreami('error', '🛵 드리미 · 취소(SSE)', '❌ ' + (result.message || '배달이 취소되었어요.'), result);
+      log('side-d', '드리미(SSE)', 'delivery_cancelled', true, JSON.stringify(result));
+    }
+
+    // 드리미 종료 처리(중복 방지). 폴링 응답(012/013)과 드리미 SSE 취소가 겹칠 수 있어 첫 번째만 팝업.
+    function endDreami(kind, title, msg, payload) {
+      if (dreamiEnded) return; dreamiEnded = true;
+      showPopup('dreami', kind, title, msg, payload);
+      stopPolling(); closeDreamiSse();
+    }
+    // 드리미 본인이 끝낸 경우(픽업 후 배달완료/드리미 취소): 팝업 없이 정리만.
+    function endDreamiSilently() {
+      dreamiEnded = true; stopPolling(); closeDreamiSse();
     }
 
     // ===== API =====
@@ -306,56 +436,54 @@
         const detail = `<span class="${ok ? 'code-ok' : 'code-err'}">[HTTP ${res.status}] ${env.code} · ${env.message}</span>\n`
           + JSON.stringify(env.result, null, 2);
         log(action.actorCls, action.actorLabel, action.title, ok, detail);
-        if (ok) applyResult(env.result);
+        if (ok) applyGroundTruth(env.result);
         notify(action, ok, env);
-        // 드리미 본인이 배달을 끝낸 경우에만 폴링 종료. 부르미/관리자 취소는 폴링을 멈추지 않아
+        // 드리미 본인이 배달을 끝낸 경우에만 폴링/드리미 구독 정리. 부르미/관리자 취소는 폴링을 멈추지 않아
         // 드리미가 다음 위치 전송(1~5초 뒤)에서 스스로 인지하게 둔다.
-        if (ok && (action.key === 'finish' || action.key === 'cancelD')) stopPolling();
+        if (ok && (action.key === 'finish' || action.key === 'cancelD')) endDreamiSilently();
         return env;
       } catch (e) {
         log(action.actorCls, action.actorLabel, action.title, false, '네트워크/파싱 오류: ' + e.message);
       }
     }
 
-    // 응답 → 팝업 라우팅. 각 팝업은 해당 주체의 패널 안에서만 뜬다.
+    // HTTP 응답 처리. 부르미 알림은 이제 실제 SSE가 담당하므로 여기서 만들지 않는다.
     function notify(action, ok, env) {
-      // 위치 전송(5초 폴링)은 "드리미가 상태를 인지하는" 유일한 채널이라 별도 처리.
+      // 위치 전송(5초 폴링)은 "드리미가 상태를 인지하는" 채널이라 별도 처리.
       if (action.key === 'location') { handleLocationResult(ok, env); return; }
 
       if (!ok) {
-        // 그 외 오류는 요청을 보낸 주체(actor)의 패널에 표시
+        // 오류는 요청을 보낸 주체(actor)의 패널에 표시
         const panel = action.actorCls === 'side-b' ? 'boormi' : 'dreami';
         showPopup(panel, 'error', `⚠️ 오류 · ${action.actorLabel}측`, `${env.code} · ${env.message}`, env.result);
         return;
       }
-      if (action.key === 'cancelA') {
-        // 관리자 취소: 클릭한 관리자(부르미 패널)에 확인 표시. 드리미는 다음 폴링으로 인지.
-        showPopup('boormi', 'error', '⚠️ 관리자 취소', '관리자가 배달을 취소했습니다. (배달원은 다음 위치 전송 시 인지)', env.result);
+      if (action.key === 'cancelB') {
+        // 부르미 본인 취소 — 서버가 SSE를 안 보냄(드리미는 폴링으로 인지). 본인 확인 팝업만 띄운다.
+        if (!boormiEnded) {
+          boormiEnded = true;
+          showPopup('boormi', 'boormi', '🏠 부르미', '주문을 취소했어요. 배달원은 다음 위치 전송(1~5초 뒤)에 인지합니다.', env.result);
+          closeBoormiSse();
+        }
         return;
       }
-      // 부르미/드리미 본인 액션의 응답으로 해당 패널에만 팝업(SSE 대체 시뮬레이션)
-      // target 'boormi' → 부르미 패널, 'dreami' → 드리미 패널
-      showPopup(action.target, action.target, action.notifyTitle, action.notifyMsg, env.result);
+      // pickup / finish / cancelD / cancelA 성공 → 부르미 알림은 SSE(delivery_*)로 도착하므로 여기선 아무 것도 안 함.
     }
 
     // 5초 폴링(위치 전송)의 응답 = 드리미의 상태 인지 채널.
     // 취소/완료가 다른 주체에 의해 일어났으면 이 응답이 에러로 돌아오며, 그때 비로소 드리미가 인지한다.
     function handleLocationResult(ok, env) {
       if (ok) {
-        const l = env.result && env.result.currentLocation;
-        locToast(l ? `🛰️ 위치 전송 (${Number(l.latitude).toFixed(5)}, ${Number(l.longitude).toFixed(5)})` : '🛰️ 위치 전송');
+        // 위치 전송 성공. 부르미 지도는 서버가 보내는 SSE(delivery_location)로 갱신되므로 여기선 처리 없음.
         return;
       }
-      if (env.code === 'DELIVERY_012') {            // 이미 취소됨 → 드리미가 지금 인지
-        showPopup('dreami', 'error', '🛵 드리미 · 취소 감지',
+      if (env.code === 'DELIVERY_012') {            // 이미 취소됨 → 드리미가 지금 인지(폴링 채널)
+        endDreami('error', '🛵 드리미 · 취소 감지',
           '위치 전송 응답에서 취소를 확인했어요. 배달을 중단합니다. (' + env.code + ' · ' + env.message + ')', env.result);
-        stopPolling();
       } else if (env.code === 'DELIVERY_013') {     // 이미 완료됨
-        showPopup('dreami', 'dreami', '🛵 드리미', '이미 완료된 배달입니다. 위치 전송을 종료합니다.', env.result);
-        stopPolling();
-      } else {                                       // LOCATION_COLLECTION_FAILED 등
-        locToast('⚠️ ' + env.code + ' · ' + env.message);
+        endDreami('dreami', '🛵 드리미', '이미 완료된 배달입니다. 위치 전송을 종료합니다.', env.result);
       }
+      // LOCATION_COLLECTION_FAILED 등은 로그에만 남김(call에서 이미 기록).
     }
 
     // ===== 시딩 =====
@@ -375,8 +503,11 @@
       $('statusMsg').textContent = '';
       $('bStatus').textContent = meta.cust;
       $('bSub').textContent = '배달원을 기다리는 중…';
-      setLatLng(START[0], START[1]); moveMarkers(START[0], START[1], true);
-      showToast('🆕 새 배달 시작: ' + r.orderId.slice(0, 8) + '… (5초마다 위치 전송 시작)');
+      currentStatus = 'PICKUP_NORMAL';
+      setLatLng(wp.origin.latlng[0], wp.origin.latlng[1]);
+      moveMarkers(wp.origin.latlng[0], wp.origin.latlng[1], true);
+      openSse(r.boormiId, r.dreamiId);  // 부르미/드리미 SSE 구독 시작(실제 서버 push 수신)
+      showToast('🆕 새 배달 시작: ' + r.orderId.slice(0, 8) + '… (SSE 구독 + 5초 위치 전송)');
       startPolling();  // 배달 시작 즉시 5초 주기 위치 전송(폴링) 개시
     };
     $('btnClear').onclick = () => { $('log').innerHTML = ''; };
@@ -393,7 +524,7 @@
 
     // ===== 5초 폴링(위치 전송) — 배달 시작 시 개시, 종료/취소 인지 시 중단 =====
     let pollTimer = null;
-    let autoMove = false; // 매 폴링마다 동쪽으로 전진할지 여부(토글)
+    let autoMove = false; // 매 폴링마다 목표 지점으로 전진할지 여부(토글)
 
     function startPolling() {
       stopPolling();
@@ -403,22 +534,35 @@
     function stopPolling() {
       if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
     }
+    // 현재 상태에 따른 자동 이동 목표: 배달중 → 도착지, 그 외(픽업중) → 픽업지.
+    function autoTarget() {
+      return currentStatus === 'DELIVERING' ? wp.dest.latlng : wp.pickup.latlng;
+    }
+    // cur에서 target 방향으로 step만큼 전진(한 스텝 이내면 target에 스냅).
+    function stepToward(cur, target, step) {
+      const dLat = target[0] - cur[0], dLng = target[1] - cur[1];
+      const dist = Math.hypot(dLat, dLng);
+      if (dist <= step || dist === 0) return [target[0], target[1]];
+      const r = step / dist;
+      return [cur[0] + dLat * r, cur[1] + dLng * r];
+    }
     function pollLocation() {
       if (!orderId()) { stopPolling(); return; }
-      if (autoMove) {                        // 이동 ON이면 경도를 동쪽으로 한 스텝 전진
-        const lat = parseFloat($('lat').value) || START[0];
-        const lng = (parseFloat($('lng').value) || START[1]) + AUTO_STEP;
-        setLatLng(lat, lng); moveMarkers(lat, lng, true);
+      if (autoMove) {                        // 이동 ON이면 목표 지점 방향으로 한 스텝 전진(드리미 지도만)
+        const cur = [parseFloat($('lat').value) || wp.origin.latlng[0],
+          parseFloat($('lng').value) || wp.origin.latlng[1]];
+        const [lat, lng] = stepToward(cur, autoTarget(), AUTO_STEP);
+        setLatLng(lat, lng); markerD.setLatLng([lat, lng]); mapD.panTo([lat, lng], { animate: true });
       }
       sendLocation();
     }
 
-    // ===== 동쪽 이동 토글(폴링은 이미 돌고 있고, 이 버튼은 이동 여부만 바꾼다) =====
+    // ===== 자동 이동 토글(폴링은 이미 돌고 있고, 이 버튼은 이동 여부만 바꾼다) =====
     $('btnAuto').onclick = () => {
       autoMove = !autoMove;
       const btn = $('btnAuto');
       btn.classList.toggle('toggle-on', autoMove);
-      btn.textContent = autoMove ? '⏸ 동쪽 이동 ON' : '▶ 동쪽 이동 OFF';
+      btn.textContent = autoMove ? '⏸ 자동 이동 ON' : '▶ 자동 이동 OFF';
     };
 
     // ===== 상태 전이 버튼 =====

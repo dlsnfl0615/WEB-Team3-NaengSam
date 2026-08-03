@@ -32,7 +32,7 @@ class AddressApiServiceTest {
     @Test
     void 존재하는_주문을_조회하면_해당_행을_반환한다() {
         UUID orderId = UUID.randomUUID();
-        Orders order = new Orders();
+        Orders order = Orders.create(orderId, null, null, null);
         when(orderRepository.findById(orderId)).thenReturn(Optional.of(order));
 
         Orders result = addressApiService.findById(orderId);

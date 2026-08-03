@@ -1,13 +1,20 @@
 package com.naengsam.quick.domain.delivery.controller;
 
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
+import com.naengsam.quick.global.session.PublicApi;
+import com.naengsam.quick.global.sse.SseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.util.UUID;
 
@@ -23,24 +30,38 @@ import java.util.UUID;
 @RequestMapping("/api/v1/delivery/test")
 @Tag(name = "배달테스트컨트롤러(dev)", description = "시각 테스트용 배달 시딩 API. local 프로필에서만 활성화된다.")
 @RequiredArgsConstructor
+@PublicApi   // 테스트 콘솔 전용 — 로그인 없이 seed/SSE 구독
 public class DeliveryTestController {
 
     private final DeliveryService deliveryService;
+    private final SseService sseService;
 
     /**
      * PICKUP_NORMAL 상태의 배달 한 건을 새로 만들어 store에 등록하고, 생성한 식별자들을 돌려준다.
      */
-    @Operation(summary = "배달 시딩(dev)", description = "새 orderId/dreamiId/boormiId로 배달을 시작(PICKUP_NORMAL)하고 식별자를 반환한다.")
+    @Operation(summary = "배달 시딩(dev)",
+            description = "orderId/dreamiId/boormiId로 배달을 시작(PICKUP_NORMAL)하고 식별자를 반환한다. "
+                    + "orderId를 넘기면 해당 주문 식별자로 등록하고, 생략하면 새로 발급한다.")
     @PostMapping("/seed")
-    public SeedResponse seed() {
-        UUID orderId = UUID.randomUUID();
+    public SeedResponse seed(@RequestParam(required = false) UUID orderId) {
+        UUID resolvedOrderId = orderId != null ? orderId : UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
-        deliveryService.startDelivery(orderId, dreamiId, boormiId);
-        log.debug("[dev-seed] 배달 시딩 orderId={}", orderId);
-        return new SeedResponse(orderId, dreamiId, boormiId);
+        deliveryService.startDelivery(resolvedOrderId, dreamiId, boormiId);
+        log.debug("[dev-seed] 배달 시딩 orderId={}", resolvedOrderId);
+        return new SeedResponse(resolvedOrderId, dreamiId, boormiId);
     }
 
     public record SeedResponse(UUID orderId, UUID dreamiId, UUID boormiId) {
+    }
+
+    /**
+     * 로그인 없이 임의 UUID로 SSE를 구독하는 dev 전용 엔드포인트. 실제 구독(/api/v1/sse/subscribe)은 로그인 필수라
+     * seed가 만든 랜덤 boormiId/dreamiId로는 구독할 수 없어, 테스트 콘솔이 이 경로로 구독한다. 실제 SSE 경로를 그대로 태운다.
+     */
+    @Operation(summary = "SSE 구독(dev)", description = "임의 userId(boormiId/dreamiId)로 로그인 없이 SSE를 구독한다. 테스트 콘솔 전용.")
+    @GetMapping(value = "/subscribe/{userId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter devSubscribe(@PathVariable UUID userId) {
+        return sseService.subscribe(userId);
     }
 }

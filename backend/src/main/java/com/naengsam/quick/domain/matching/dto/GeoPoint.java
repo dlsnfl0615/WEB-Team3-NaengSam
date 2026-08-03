@@ -1,4 +1,6 @@
 package com.naengsam.quick.domain.matching.dto;
 
-public record GeoPoint(double latitude, double longitude) {
+import java.math.BigDecimal;
+
+public record GeoPoint(BigDecimal latitude, BigDecimal longitude) {
 }

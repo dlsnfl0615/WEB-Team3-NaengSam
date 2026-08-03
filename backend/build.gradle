@@ -25,6 +25,7 @@ dependencies {
     implementation 'com.solapi:sdk:1.0.3'
     implementation 'software.amazon.awssdk:s3:2.29.52' // S3 presigned url
     runtimeOnly 'com.h2database:h2'
+    runtimeOnly 'com.mysql:mysql-connector-j'
     runtimeOnly 'org.springframework.boot:spring-boot-h2console'
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

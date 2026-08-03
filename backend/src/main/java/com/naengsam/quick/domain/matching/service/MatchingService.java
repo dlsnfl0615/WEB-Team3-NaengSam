@@ -1,15 +1,13 @@
 package com.naengsam.quick.domain.matching.service;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
-import com.naengsam.quick.domain.matching.dto.Order;
 import com.naengsam.quick.domain.matching.event.BoormiRejectedPayload;
 import com.naengsam.quick.domain.matching.event.DreamiInfoPayload;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.event.NotificationErrorPayload;
 import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
-import com.naengsam.quick.global.code.GeneralErrorCode;
-import com.naengsam.quick.global.exception.BusinessException;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -55,17 +53,13 @@ public class MatchingService {
     private final MatchingEngine matchingEngine;
     private final SseService sseService;
 
+    public List<WaitingDreami> waitingDreamis() {
+        return List.copyOf(dreamiMap.values());
+    }
+
     // 외부에서는 이 메서드로 액션을 큐에 넣기만 한다. 실제 상태 변경은 엔진 스레드에서 apply*가 수행한다.
     public void registerDreami(UUID dreamiId, GeoPoint location) {
         matchingEngine.submit(new DreamiRegister(this, dreamiId, location));
-    }
-
-    public void removeDreami(UUID dreamiId) {
-        matchingEngine.submit(new DreamiRemove(this, dreamiId));
-    }
-
-    public List<WaitingDreami> waitingDreamis() {
-        return List.copyOf(dreamiMap.values());
     }
 
     void applyRegisterDreami(UUID dreamiId, GeoPoint location) {
@@ -89,7 +83,9 @@ public class MatchingService {
         }
     }
 
-    // ────────────────────────────── 액션 제출 (public API) ──────────────────────────────
+    public void removeDreami(UUID dreamiId) {
+        matchingEngine.submit(new DreamiRemove(this, dreamiId));
+    }
 
     void applyRemoveDreami(UUID dreamiId) {
         dreamiMap.remove(dreamiId);
@@ -97,27 +93,30 @@ public class MatchingService {
     }
 
     /**
-     * 호출 스레드에서 곧바로 확인 가능한 중복 시작만 빠르게 걸러 409로 응답한다. 실제 방 생성은 엔진 스레드에서 순차 처리되며, 그 결과는 {@link #findOrderOfferGroup(UUID)}로
-     * 별도 조회한다.
+     * 매칭 시작을 요청한다. 호출 스레드에서 곧바로 확인 가능한 중복 시작만 빠르게 걸러내며, 이미 진행 중인 방이 있으면 큐에 넣지 않고 false를 반환한다. 실제 방 생성은 엔진 스레드에서 순차
+     * 처리되며, 그 결과는 {@link #findOrderOfferGroup(UUID)}로 별도 조회한다.
+     *
+     * @param order 매칭을 시작할 주문
+     * @return 매칭 시작 액션이 큐에 제출되었으면 true, 이미 진행 중인 방이 있거나 큐 제출에 실패했을 경우 false
      */
-    public void startMatching(Order order) {
-        if (isOpenGroupExists(order.orderId())) {
-            throw new BusinessException(GeneralErrorCode.CONFLICT);
+    public boolean startMatching(Orders order) {
+        if (isOpenGroupExists(order.getOrderId())) {
+            return false;
         }
-        matchingEngine.submit(new StartMatching(this, order));
+        return matchingEngine.submit(new StartMatching(this, order));
     }
 
-    void applyStartMatching(Order order) {
-        log.debug("매칭 시작 액션 실행: orderId={}", order.orderId());
+    void applyStartMatching(Orders order) {
+        log.debug("매칭 시작 액션 실행: orderId={}", order.getOrderId());
 
         // 큐에 쌓여 있는 동안 다른 액션이 먼저 방을 만들었을 수 있으므로 엔진 스레드에서 다시 확인한다.
-        if (isOpenGroupExists(order.orderId())) {
-            log.debug("이미 진행 중인 방이 있어 매칭 시작을 건너뜀: orderId={}", order.orderId());
+        if (isOpenGroupExists(order.getOrderId())) {
+            log.debug("이미 진행 중인 방이 있어 매칭 시작을 건너뜀: orderId={}", order.getOrderId());
             return;
         }
 
-        OrderOfferGroup group = new OrderOfferGroup(order.orderId(), order.boormiId(), new ArrayList<>());
-        orderOfferGroupsByOrderId.put(order.orderId(), group);
+        OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), new ArrayList<>());
+        orderOfferGroupsByOrderId.put(order.getOrderId(), group);
         attemptOfferRound(group);
     }
 
@@ -300,6 +299,42 @@ public class MatchingService {
                     .ifPresent(WaitingDreami::markMatching);
             closeGroupForRematch(matchOffer.orderId());
         });
+    }
+
+    /**
+     * 부르미가 매칭 진행 중인 주문을 직접 취소한다. 아직 방이 없거나 이미 종료된 방이면 아무 일도 일어나지 않는다.
+     */
+    public void cancelOrderByBoormi(UUID orderId) {
+        matchingEngine.submit(new CancelOrderByBoormi(this, orderId));
+    }
+
+    void applyCancelOrderByBoormi(UUID orderId) {
+        log.debug("부르미 주문 취소 액션 실행: orderId={}", orderId);
+
+        OrderOfferGroup group = orderOfferGroupsByOrderId.get(orderId);
+        if (group == null) {
+            log.debug("존재하지 않는 주문 취소 요청, 무시: orderId={}", orderId);
+            return;
+        }
+        if (group.status() != OrderOfferGroupStatus.OPEN) {
+            log.debug("이미 종료된 주문 취소 요청, 무시: orderId={}", orderId);
+            return;
+        }
+
+        for (MatchOffer offer : group.offers()) {
+            if (offer.status() == MatchOfferStatus.OFFERED) {
+                offer.withdraw();
+                findDreami(offer.dreamiId()).ifPresent(WaitingDreami::markMatching);
+                sseService.send(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
+                        new OfferClosedPayload(offer.offerId(), "부르미가 주문을 취소함"));
+            } else if (offer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION) {
+                offer.rejectByBoormi();
+                findDreami(offer.dreamiId()).ifPresent(WaitingDreami::markMatching);
+                sseService.send(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
+                        new OfferClosedPayload(offer.offerId(), "부르미가 주문을 취소함"));
+            }
+        }
+        group.cancel();
     }
 
     /**
@@ -632,6 +667,14 @@ public class MatchingService {
         void closeForRematch() {
             this.status = OrderOfferGroupStatus.CLOSED;
             this.rematchRequired = true;
+        }
+
+        /**
+         * 부르미가 직접 주문을 취소한 경우. 재매칭 대상이 아니므로 rematchRequired는 세우지 않는다.
+         */
+        void cancel() {
+            this.status = OrderOfferGroupStatus.CLOSED;
+            this.rematchRequired = false;
         }
 
         private void requireStatus(OrderOfferGroupStatus expected) {
