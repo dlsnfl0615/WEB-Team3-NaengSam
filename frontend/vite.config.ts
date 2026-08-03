@@ -43,4 +43,15 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  server: {
+    // 세션 쿠키(JSESSIONID)를 동일 출처로 흐르게 하는 개발 프록시(개발 전용 — 운영엔 없음).
+    // 생성 클라이언트의 요청 URL이 `/api/v1/...` 이므로 그대로 백엔드로 전달된다.
+    // 원격 백엔드로 붙일 땐 DEV_API_TARGET 환경변수로 타깃을 바꾼다(기본 로컬 8080).
+    proxy: {
+      '/api': {
+        target: process.env.DEV_API_TARGET ?? 'http://localhost:8080',
+        changeOrigin: true,
+      },
+    },
+  },
 })

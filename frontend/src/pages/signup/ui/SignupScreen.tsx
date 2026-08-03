@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button, ScreenShell, TextField, TopBar } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
 import { useSessionStore } from '@/shared/store/sessionStore'
+import { api, isApiError } from '@/shared/api'
 import {
   isBirth,
   isCode,
@@ -29,6 +30,12 @@ export function SignupScreen() {
   })
   const [agreed, setAgreed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
+  const [sending, setSending] = useState(false)
+  /** 인증번호 발송 여부(발송 후에만 인증확인 가능). */
+  const [codeSent, setCodeSent] = useState(false)
+  /** 서버 휴대폰 인증 완료 여부(가입의 전제 조건). */
+  const [phoneVerified, setPhoneVerified] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const set = (key: keyof typeof form) => (value: string) =>
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -55,9 +62,38 @@ export function SignupScreen() {
     isPhone(form.phone) &&
     isCode(form.code) &&
     isEmail(form.email) &&
-    isPassword(form.password)
+    isPassword(form.password) &&
+    phoneVerified
+
+  /** 인증번호 발송. */
+  const onSendCode = async () => {
+    setError(null)
+    setSending(true)
+    try {
+      await api.sendVerificationCode({ phoneNumber: form.phone })
+      setCodeSent(true)
+      setPhoneVerified(false)
+    } catch (e) {
+      setError(isApiError(e) ? e.message : '인증번호 발송에 실패했어요.')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  /** 인증번호 검증(서버에서 휴대폰 인증 완료 처리). */
+  const onVerifyCode = async () => {
+    setError(null)
+    try {
+      await api.verifyCode({ phoneNumber: form.phone, code: form.code })
+      setPhoneVerified(true)
+    } catch (e) {
+      setPhoneVerified(false)
+      setError(isApiError(e) ? e.message : '인증번호 확인에 실패했어요.')
+    }
+  }
 
   const onSignup = async () => {
+    setError(null)
     setSubmitting(true)
     try {
       await signup({
@@ -68,6 +104,8 @@ export function SignupScreen() {
         password: form.password,
       })
       navigate(ROUTES.verify, { replace: true })
+    } catch (e) {
+      setError(isApiError(e) ? e.message : '가입에 실패했어요. 다시 시도해주세요.')
     } finally {
       setSubmitting(false)
     }
@@ -86,12 +124,14 @@ export function SignupScreen() {
           <TextField
             label="이름"
             placeholder="이름을 입력해 주세요"
+            maxLength={50}
             value={form.name}
             onChange={(e) => set('name')(e.target.value)}
           />
           <TextField
             label="생년월일"
             placeholder="2000.1.1"
+            maxLength={10}
             value={form.birth}
             onChange={(e) => set('birth')(e.target.value)}
             error={errors.birth}
@@ -104,27 +144,54 @@ export function SignupScreen() {
                 label="전화번호"
                 type="tel"
                 placeholder="010-0000-0000"
+                maxLength={13}
                 value={form.phone}
                 onChange={(e) => set('phone')(e.target.value)}
                 error={errors.phone}
               />
             </div>
-            <Button variant="primary" size="sm" className="h-11 shrink-0">
-              인증발송
+            <Button
+              variant="primary"
+              size="sm"
+              className="h-11 shrink-0"
+              disabled={!isPhone(form.phone) || sending}
+              onClick={onSendCode}
+            >
+              {sending ? '발송 중…' : codeSent ? '재발송' : '인증발송'}
+            </Button>
+          </div>
+
+          {/* 인증번호 + 인증확인 */}
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <TextField
+                label="인증번호"
+                placeholder="문자로 받은 6자리 입력"
+                maxLength={6}
+                value={form.code}
+                onChange={(e) => {
+                  set('code')(e.target.value)
+                  setPhoneVerified(false)
+                }}
+                error={errors.code}
+              />
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              className="h-11 shrink-0"
+              disabled={!codeSent || !isCode(form.code) || phoneVerified}
+              onClick={onVerifyCode}
+            >
+              {phoneVerified ? '인증완료' : '인증확인'}
             </Button>
           </div>
 
           <TextField
-            label="인증번호"
-            placeholder="문자로 받은 6자리 입력"
-            value={form.code}
-            onChange={(e) => set('code')(e.target.value)}
-            error={errors.code}
-          />
-          <TextField
-            label="이메일 (인증 필요)"
+            label="이메일"
             type="email"
             placeholder="company@email.com"
+            maxLength={254}
             value={form.email}
             onChange={(e) => set('email')(e.target.value)}
             error={errors.email}
@@ -132,7 +199,8 @@ export function SignupScreen() {
           <TextField
             label="비밀번호"
             type="password"
-            placeholder="8~16자 조합"
+            placeholder="5~20자 조합"
+            maxLength={20}
             value={form.password}
             onChange={(e) => set('password')(e.target.value)}
             error={errors.password}
@@ -151,6 +219,8 @@ export function SignupScreen() {
             서비스 이용약관 및 개인정보 처리방침에 동의합니다.
           </span>
         </label>
+
+        {error && <p className="mt-4 text-sm text-status-danger">{error}</p>}
 
         <Button
           variant="navy"

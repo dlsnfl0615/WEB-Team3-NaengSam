@@ -42,6 +42,7 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
       <TextField
         label="물건명"
         placeholder="한줄로 설명해주세요"
+        maxLength={50}
         value={form.itemName}
         onChange={(e) => update({ itemName: e.target.value })}
       />
@@ -51,6 +52,7 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
         <span className="text-sm font-semibold text-navy-900">상세 설명</span>
         <textarea
           rows={3}
+          maxLength={255}
           placeholder="물품 상태·주의사항을 적어주세요 (예: 유리컵, 파손주의)"
           value={form.detail}
           onChange={(e) => update({ detail: e.target.value })}
@@ -85,6 +87,7 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
         </div>
         <TextField
           placeholder="추가 요청사항 직접 입력"
+          maxLength={255}
           value={form.etc}
           onChange={(e) => update({ etc: e.target.value })}
         />
