@@ -50,7 +50,7 @@ public class BoormiService {
      * 부르미의 주문 요청을 접수한다. 출발지/도착지 도로명주소를 좌표로 변환해 주문(ORDERS)을 생성·저장한 뒤 결제를 시작하고 매칭 큐에 등록한다.
      */
     @Transactional
-    public void subscribeOrder(OrderRequest orderRequest, UUID boormiId) {
+    public UUID subscribeOrder(OrderRequest orderRequest, UUID boormiId) {
         if (orderService.countActiveOrders(boormiId) >= MAX_ACTIVE_ORDERS) {
             throw new BusinessException(OrderErrorCode.TOO_MANY_ACTIVE_ORDERS);
         }
@@ -85,6 +85,7 @@ public class BoormiService {
         if (!matchingService.startMatching(orders)) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);
         }
+        return orders.getOrderId();
     }
 
     /**
