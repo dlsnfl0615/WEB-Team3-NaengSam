@@ -39,7 +39,7 @@ class MatchingServiceConcurrencyTest {
     void setUp() {
         matchingEngine = new MatchingEngine();
         matchingEngine.start();
-        matchingService = new MatchingService(matchingEngine, mock(SseService.class));
+        matchingService = new MatchingService(matchingEngine, mock(SseService.class), mock(OfferTimeoutScheduler.class));
         requestThreads = Executors.newFixedThreadPool(16);
     }
 
@@ -87,7 +87,8 @@ class MatchingServiceConcurrencyTest {
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
                 .offers().getFirst().offerId();
 
-        int concurrentAccepts = 50;
+        // requestThreads 풀 크기(16)를 넘으면 ready/go 래치 장벽에서 데드락이 나므로 풀 크기 이하로 제한한다.
+        int concurrentAccepts = 16;
         CountDownLatch ready = new CountDownLatch(concurrentAccepts);
         CountDownLatch go = new CountDownLatch(1);
         for (int i = 0; i < concurrentAccepts; i++) {
@@ -123,7 +124,8 @@ class MatchingServiceConcurrencyTest {
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
-        int concurrentStarts = 30;
+        // requestThreads 풀 크기(16)를 넘으면 ready/go 래치 장벽에서 데드락이 나므로 풀 크기 이하로 제한한다.
+        int concurrentStarts = 16;
         CountDownLatch ready = new CountDownLatch(concurrentStarts);
         CountDownLatch go = new CountDownLatch(1);
         Set<MatchingService.OrderOfferGroup> observedGroups = new CopyOnWriteArraySet<>();
@@ -174,7 +176,12 @@ class MatchingServiceConcurrencyTest {
         matchingService.cancelOrderByBoormi(orderId);
 
         // then
-        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.BOORMI_REJECTED,
+        // 오퍼 상태(BOORMI_REJECTED)와 방 상태(CLOSED)는 applyCancelOrderByBoormi 한 액션 안에서 순차적으로
+        // 바뀌므로, 오퍼 상태만 기다리면 방 상태가 아직 갱신되기 전(OPEN)을 관찰할 수 있다. 최종적으로 확인할
+        // 조건(그룹 CLOSED)까지 함께 기다려야 한다.
+        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.BOORMI_REJECTED
+                        && matchingService.findOrderOfferGroup(orderId).orElseThrow().status()
+                        == MatchingService.OrderOfferGroupStatus.CLOSED,
                 Duration.ofSeconds(5));
 
         assertThat(matchingService.findOrderOfferGroup(orderId).orElseThrow().status())
@@ -205,7 +212,12 @@ class MatchingServiceConcurrencyTest {
         matchingService.acceptByDreami(offerId);
 
         // then (취소 처리로 WITHDRAWN 된 뒤, 뒤늦은 수락은 무시되어야 한다)
-        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.WITHDRAWN,
+        // 오퍼 상태(WITHDRAWN)와 방 상태(CLOSED)는 applyCancelOrderByBoormi 한 액션 안에서 순차적으로
+        // 바뀌므로, 오퍼 상태만 기다리면 방 상태가 아직 갱신되기 전(OPEN)을 관찰할 수 있다. 최종적으로 확인할
+        // 조건(그룹 CLOSED)까지 함께 기다려야 한다.
+        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.WITHDRAWN
+                        && matchingService.findOrderOfferGroup(orderId).orElseThrow().status()
+                        == MatchingService.OrderOfferGroupStatus.CLOSED,
                 Duration.ofSeconds(5));
 
         assertThat(matchingService.findOrderOfferGroup(orderId).orElseThrow().status())
@@ -217,6 +229,58 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(flushDreamiId), Duration.ofSeconds(5));
 
         assertThat(statusOf(orderId, offerId)).isEqualTo(MatchingService.MatchOfferStatus.WITHDRAWN);
+    }
+
+    @Test
+    void timeout과_사용자_응답이_거의_동시에_들어와도_큐_처리_순서대로_단_한번만_유효하게_전이된다() throws InterruptedException {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+
+        matchingService.registerDreami(dreamiId, location);
+        awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
+
+        matchingService.startMatching(order);
+        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+
+        UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
+                .offers().getFirst().offerId();
+
+        // when (DelayQueue timeout 워커와 사용자 응답 스레드가 거의 동시에 같은 오퍼에 대해 서로 다른 액션을 제출한다)
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch go = new CountDownLatch(1);
+        requestThreads.submit(() -> {
+            ready.countDown();
+            awaitLatch(go);
+            matchingService.expireDreamiOffer(offerId);
+        });
+        requestThreads.submit(() -> {
+            ready.countDown();
+            awaitLatch(go);
+            matchingService.acceptByDreami(offerId);
+        });
+        assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+        go.countDown();
+
+        // then (엔진 큐에 도착한 순서대로 처리되어, 둘 중 하나만 유효하게 반영된다)
+        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.DREAMI_EXPIRED
+                        || statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.PENDING_BOORMI_CONFIRMATION,
+                Duration.ofSeconds(5));
+
+        MatchingService.MatchOfferStatus finalStatus = statusOf(orderId, offerId);
+        assertThat(finalStatus).isIn(
+                MatchingService.MatchOfferStatus.DREAMI_EXPIRED,
+                MatchingService.MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+
+        // 나중에 도착한 액션은 잘못된 상태 전이 예외로 무시될 뿐, 엔진 스레드는 죽지 않고 이후 액션을 계속 처리해야 한다.
+        UUID flushDreamiId = UUID.randomUUID();
+        matchingService.registerDreami(flushDreamiId, location);
+        awaitUntil(() -> getDreamiMap().containsKey(flushDreamiId), Duration.ofSeconds(5));
+
+        // 상태가 그 사이 다시 바뀌지 않았는지(단 한 번만 전이) 재확인한다.
+        assertThat(statusOf(orderId, offerId)).isEqualTo(finalStatus);
     }
 
     private MatchingService.MatchOfferStatus statusOf(UUID orderId, UUID offerId) {
