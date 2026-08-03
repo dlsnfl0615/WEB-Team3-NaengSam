@@ -36,7 +36,7 @@ public record OrderRequest(
 
         @Schema(description = "물건 이미지 URL", example = "https://cdn.naengsam.com/orders/sample.jpg")
         @Size(max = 500)
-        String imageUrl,
+        String imageKey,
 
         @Schema(description = "물건 상세 설명", example = "파손 주의 계약서")
         @Size(max = 255)

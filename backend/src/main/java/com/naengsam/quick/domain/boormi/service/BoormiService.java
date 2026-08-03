@@ -81,7 +81,7 @@ public class BoormiService {
         Orders orders = Orders.create(orderId, boormiId, orderRequest.itemName(),
                 orderRequest.itemCd(), orderRequest.itemDetail(),
                 (long) charge.amount(), charge.eta(),
-                orderRequest.deliveryRequest(), orderRequest.imageUrl(), addresses);
+                orderRequest.deliveryRequest(), orderRequest.imageKey(), addresses);
 
         orderService.createOrders(orders);
         paymentService.startPayment();
