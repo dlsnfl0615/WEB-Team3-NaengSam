@@ -211,6 +211,23 @@
                 <button class="secondary" onclick="cancelOrder()">주문 취소(부르미)</button>
             </div>
         </div>
+
+        <div class="panel" style="margin-top:16px">
+            <h2>4. Timeout / 재매칭 디버그</h2>
+            <div class="callout">
+                실제 DelayQueue timeout(<code>OFFER_TTL</code>/<code>BOORMI_OFFER_TTL</code>)을 기다리지 않고,
+                아래 표의 <b>D만료</b>/<b>B만료</b> 버튼으로 <code>ExpireDreamiOffer</code>/<code>ExpireBoormiOffer</code>를
+                즉시 트리거해 재매칭 로직을 테스트할 수 있습니다. 이미 종료된 오퍼에 뒤늦게 눌러도(stale timeout 재현) 서버가
+                무시하거나 상태 전이 예외만 로그로 남기고 무시합니다.
+            </div>
+            <div class="btn-group">
+                <button class="secondary" onclick="scanRematch()">전역 재매칭 스캔 실행</button>
+                <label style="display:flex;align-items:center;gap:6px;margin:0;font-size:12px;color:var(--muted)">
+                    <input type="checkbox" id="autoRefresh" style="width:auto" onchange="toggleAutoRefresh()"/>
+                    자동 새로고침(1초)
+                </label>
+            </div>
+        </div>
     </div>
 
     <!-- 우측: 이벤트 로그 + offers -->
@@ -436,16 +453,19 @@
             document.getElementById("offers").innerHTML = '<p class="muted">offer 없음</p>';
             return;
         }
-        let html = "<table><tr><th>dreamiId</th><th>상태</th><th>액션</th></tr>";
+        let html = "<table><tr><th>offerId</th><th>dreamiId</th><th>상태</th><th>액션</th></tr>";
         g.offers.forEach(o => {
             html += "<tr>" +
-                '<td class="mono">' + o.dreamiId.slice(0, 8) + "…</td>" +
+                '<td class="mono" title="' + o.offerId + '">' + o.offerId.slice(0, 8) + "…</td>" +
+                '<td class="mono" title="' + o.dreamiId + '">' + o.dreamiId.slice(0, 8) + "…</td>" +
                 '<td><span class="tag">' + o.status + "</span></td>" +
                 '<td>' +
                 actBtn(o.offerId, "dreami-accept", "D수락") +
                 actBtn(o.offerId, "dreami-reject", "D거절") +
                 actBtn(o.offerId, "boormi-accept", "B수락") +
                 actBtn(o.offerId, "boormi-reject", "B거절") +
+                actBtn(o.offerId, "dreami-expire", "D만료") +
+                actBtn(o.offerId, "boormi-expire", "B만료") +
                 "</td></tr>";
         });
         html += "</table>";
@@ -473,6 +493,23 @@
         });
         window.open("/delivery-test.html?" + params.toString(), "deliveryTest",
             "width=1100,height=800,noopener,noreferrer");
+    }
+
+    // ---------- Timeout / 재매칭 디버그 ----------
+    async function scanRematch() {
+        try {
+            await apiFetch(DEBUG + "/orders/rematch", { method: "POST" });
+            logEvent("전역 재매칭 스캔 요청됨", "", "meta");
+            setTimeout(loadGroup, 300);
+        } catch (e) {
+            logEvent("전역 재매칭 스캔 실패: " + e.message, "", "offer_error");
+        }
+    }
+    let autoRefreshTimer = null;
+    function toggleAutoRefresh() {
+        const on = document.getElementById("autoRefresh").checked;
+        if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+        if (on) autoRefreshTimer = setInterval(loadGroup, 1000);
     }
 
     // ---------- 빠른 시나리오 ----------
