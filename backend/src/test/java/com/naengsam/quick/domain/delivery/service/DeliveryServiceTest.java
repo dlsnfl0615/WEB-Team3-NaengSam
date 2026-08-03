@@ -9,7 +9,6 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
@@ -151,25 +150,36 @@ class DeliveryServiceTest {
     }
 
     @Test
-    void 부르미취소는_어떤_SSE도_보내지않는다() {
-        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+    void 부르미취소되면_드리미에게_DELIVERY_CANCELLED_SSE전송() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
 
         deliveryService.cancelByBoormi(orderId);
 
-        verify(sseService, never()).send(any(), any(), any());
+        verify(sseService).send(eq(dreamiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
     }
 
     @Test
-    void 부르미취소후_드리미가_위치갱신하면_드리미에게_DELIVERY_CANCELLED_SSE전송() {
+    void 관리자취소되면_부르미와_드리미에게_DELIVERY_CANCELLED_SSE전송() {
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
-        UUID orderId = registerDeliveryWith(PICKUP_CANCELLED_BY_BOORMI, dreamiId, boormiId);
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+
+        deliveryService.cancelByAdmin(orderId);
+
+        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
+        verify(sseService).send(eq(dreamiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
+    }
+
+    @Test
+    void 부르미취소된주문에_드리미가_위치갱신하면_DELIVERY_ALREADY_CANCELLED_예외() {
+        UUID orderId = registerDelivery(PICKUP_CANCELLED_BY_BOORMI);
 
         Throwable thrown = catchThrowable(
                 () -> deliveryService.updateDreamiLocation(orderId, location("37.5", "127.0")));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        verify(sseService).send(eq(dreamiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
     }
 
     // ===== 상태 전이 단위 테스트 =====
@@ -275,18 +285,17 @@ class DeliveryServiceTest {
     }
 
     @Test
-    void 위치갱신_좌표를_소수점8자리_HALF_UP으로_저장하고_응답한다() {
+    void 위치갱신_좌표를_소수점8자리_HALF_UP으로_저장한다() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
-        DeliveryStatusResponseDto result = deliveryService.updateDreamiLocation(
-                orderId, location("37.123456789", "127.1"));
+        deliveryService.updateDreamiLocation(orderId, location("37.123456789", "127.1"));
 
-        assertThat(result.currentLocation().latitude()).isEqualByComparingTo(new BigDecimal("37.12345679"));
-        assertThat(result.currentLocation().latitude().scale()).isEqualTo(8);
-        assertThat(result.currentLocation().longitude()).isEqualByComparingTo(new BigDecimal("127.10000000"));
-        assertThat(result.currentLocation().longitude().scale()).isEqualTo(8);
-        assertThat(store.get(orderId).currentLatitude()).isEqualByComparingTo(new BigDecimal("37.12345679"));
-        assertThat(store.get(orderId).currentLongitude()).isEqualByComparingTo(new BigDecimal("127.10000000"));
+        BigDecimal storedLatitude = store.get(orderId).currentLatitude();
+        BigDecimal storedLongitude = store.get(orderId).currentLongitude();
+        assertThat(storedLatitude).isEqualByComparingTo(new BigDecimal("37.12345679"));
+        assertThat(storedLatitude.scale()).isEqualTo(8);
+        assertThat(storedLongitude).isEqualByComparingTo(new BigDecimal("127.10000000"));
+        assertThat(storedLongitude.scale()).isEqualTo(8);
     }
 
     @Test

@@ -4,18 +4,14 @@ import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
-import com.naengsam.quick.global.session.PublicApi;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 /**
  * 배달 진행 중 상태 전이를 트리거하는 API. 각 엔드포인트는 주문(orderId) 단위로 상태를 변경하고, 처리 후 상태 스냅샷(DeliveryStatusResponseDto)을 응답한다.
@@ -27,20 +23,21 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "배달컨트롤러", description = "배달 진행 중 상태 전이(위치 갱신/픽업 완료/취소/배달 완료)를 처리한다")
 @RequiredArgsConstructor
 // 배달 엔드포인트는 orderId(PathVariable)로만 식별하며 @LoginUser를 쓰지 않으므로 로그인 세션 없이 호출된다.
-@PublicApi
+//@PublicApi
 public class DeliveryController {
 
     private final DeliveryService deliveryService;
 
     @Operation(summary = "드리미 위치 갱신",
-            description = "드리미가 5~10초마다 호출해 현재 위치를 전달한다. 그 사이 상태 변경이 있었다면 상태 스냅샷으로 응답한다.")
+            description = "드리미가 5~10초마다 호출해 현재 위치만 전달한다. 성공 시 ack만 응답하고, 상태 변경은 SSE로 전달된다. "
+                    + "이미 취소/완료된 주문이면 폴링 중단 신호로 에러를 응답한다.")
     @PostMapping("/orders/{orderId}/dreami-location")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
             codes = {"LOCATION_COLLECTION_FAILED", "DELIVERY_NOT_FOUND", "DELIVERY_ALREADY_CANCELLED",
                     "DELIVERY_ALREADY_COMPLETED"})
-    public DeliveryStatusResponseDto updateDreamiLocation(
+    public void updateDreamiLocation(
             @PathVariable UUID orderId, @RequestBody(required = false) DreamiLocationRequest location) {
-        return deliveryService.updateDreamiLocation(orderId, location);
+        deliveryService.updateDreamiLocation(orderId, location);
     }
 
     @Operation(summary = "드리미 픽업 완료", description = "드리미가 픽업을 완료하면 배달중 상태로 전이한다.")

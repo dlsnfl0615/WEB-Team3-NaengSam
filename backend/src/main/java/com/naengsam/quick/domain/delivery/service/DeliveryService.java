@@ -16,6 +16,7 @@ import com.naengsam.quick.global.sse.SseService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -29,7 +30,8 @@ import org.springframework.stereotype.Service;
  * <p>알림(SSE)은 전이와 같은 락 안에서 불변 스냅샷(DeliveryStatusResponseDto)을 만들어 SseService로 넘긴다.
  * 실제 전송은 SseService가 단일 가상 스레드로 async 오프로딩하므로 "처리 순서 == 알림 순서"가 보장되고 호출 스레드는 막히지 않는다.
  *
- * <p>부르미는 SSE로 상태를 전달받고, 드리미는 5~10초마다 updateDreamiLocation을 호출해 상태를 전달받는다.
+ * <p>부르미·드리미 모두 상태 변경은 SSE로 전달받는다. updateDreamiLocation은 드리미가 5~10초마다 호출해
+ * 위치만 전송하는 용도이며(응답은 ack), 취소/완료된 주문에 대한 가드 예외는 폴링 중단 신호로만 남긴다.
  */
 @Slf4j
 @Service
@@ -52,9 +54,11 @@ public class DeliveryService {
 
     // ===== 공개 메서드 (동기 요청) — 주문 단위 락 안에서 상태 전이를 실행하고 결과를 돌려준다 =====
 
-    // 드리미 위치 정보를 전달 (이 메소드를 5~10초마다 드리미가 호출해야함). 동시에 상태 변경이 있다면 응답한다.
-    public DeliveryStatusResponseDto updateDreamiLocation(UUID orderId, DreamiLocationRequest location) {
-        return transition(orderId, status -> doUpdateDreamiLocation(status, location));
+    // 드리미 위치 정보를 전달 (이 메소드를 5~10초마다 드리미가 호출해야함). 위치만 갱신하고 응답은 ack(void)다.
+    public void updateDreamiLocation(UUID orderId, DreamiLocationRequest location) {
+        transition(orderId, status -> {
+            doUpdateDreamiLocation(status, location);
+        });
     }
 
     // 픽업 완료
@@ -99,15 +103,26 @@ public class DeliveryService {
         }
     }
 
-    // ===== 실제 상태 전이 로직 (주문 락 안에서 실행) =====
-
-    private String doUpdateDreamiLocation(DeliveryStatus deliveryStatus, DreamiLocationRequest location) {
-        if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
-            alarmDreamiCancelBySSE(deliveryStatus); // 드리미에게_SSE로_취소상태_알려주기()
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+    // 상태 스냅샷 DTO가 필요 없는 전이(위치 갱신 등)용. 주문 단위 락은 위와 동일하게 잡고, 응답 DTO는 만들지 않는다
+    // (컨트롤러가 void를 반환하면 CommonResponse가 result=null 성공 봉투로 감싼다).
+    private void transition(UUID orderId, Consumer<DeliveryStatus> logic) {
+        DeliveryStatus deliveryStatus = store.get(orderId);
+        if (deliveryStatus == null) {
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND);
         }
 
-        if (deliveryStatus.status() == PICKUP_CANCELLED_BY_DREAMI
+        synchronized (deliveryStatus) {
+            logic.accept(deliveryStatus);
+        }
+    }
+
+    // ===== 실제 상태 전이 로직 (주문 락 안에서 실행) =====
+
+    // 위치만 갱신하고 부르미에게 SSE로 전달한다. 취소/완료 상태에 대한 예외는 드리미 폴링을 멈추게 하는 신호로 남긴다
+    // (취소 알림 자체는 취소 시점에 이미 드리미에게 SSE로 push된다).
+    private void doUpdateDreamiLocation(DeliveryStatus deliveryStatus, DreamiLocationRequest location) {
+        if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI // 픽업중_부르미의_취소
+                || deliveryStatus.status() == PICKUP_CANCELLED_BY_DREAMI
                 || deliveryStatus.status() == PICKUP_CANCELLED_BY_ADMIN) {
             throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
         }
@@ -125,7 +140,6 @@ public class DeliveryService {
         BigDecimal longitude = location.longitude().setScale(LOCATION_SCALE, RoundingMode.HALF_UP);
         deliveryStatus.setLocation(latitude, longitude); // 메모리에_위치정보_수정()
         alarmBoormiLocationBySSE(deliveryStatus); // 부르미에게_새로운_위치정보_전달_SSE사용()
-        return "위치 갱신됨"; // 상태는 응답 DTO의 status 필드로 전달된다
     }
 
     private String doPickupFinishByDreami(DeliveryStatus deliveryStatus) {
@@ -222,7 +236,7 @@ public class DeliveryService {
 
         assert deliveryStatus.status() == PICKUP_NORMAL; // 픽업중_정상
         deliveryStatus.setStatus(PICKUP_CANCELLED_BY_BOORMI); // 픽업중_부르미의_취소
-        // 드리미는 updateDreamiLocation 폴링으로 인지하므로 SSE 알림 없음
+        alarmDreamiBoormiCancelBySSE(deliveryStatus); // 드리미에게_부르미가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
 
@@ -253,8 +267,8 @@ public class DeliveryService {
         assert deliveryStatus.status() == PICKUP_NORMAL; // 픽업중_정상
         deliveryStatus.setStatus(PICKUP_CANCELLED_BY_ADMIN); // 픽업중_관리자의_취소
 
-        // 드리미는 5초마다 요청하는 과정에서 상태를 전달받게 됨
         alarmBoormiAdminCancelBySSE(deliveryStatus); // 부르미에게_관리자가_취소했다고_전달_SSE사용()
+        alarmDreamiAdminCancelBySSE(deliveryStatus); // 드리미에게_관리자가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
 
@@ -294,9 +308,14 @@ public class DeliveryService {
     // 모두 락 안에서 호출된다. 불변 스냅샷(DeliveryStatusResponseDto)을 만들어 SseService로 넘기므로
     // async 전송 스레드는 가변 DeliveryStatus를 건드리지 않는다(추가 동시성 처리 불필요).
 
-    private void alarmDreamiCancelBySSE(DeliveryStatus ds) {
+    private void alarmDreamiBoormiCancelBySSE(DeliveryStatus ds) {
         sseService.send(ds.dreamiId(), DeliveryEventType.DELIVERY_CANCELLED,
-                DeliveryStatusResponseDto.from(ds, "배달이 취소되었습니다"));
+                DeliveryStatusResponseDto.from(ds, "고객이 주문을 취소했습니다"));
+    }
+
+    private void alarmDreamiAdminCancelBySSE(DeliveryStatus ds) {
+        sseService.send(ds.dreamiId(), DeliveryEventType.DELIVERY_CANCELLED,
+                DeliveryStatusResponseDto.from(ds, "관리자가 배달을 취소했습니다"));
     }
 
     private void alarmBoormiLocationBySSE(DeliveryStatus ds) {
