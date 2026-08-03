@@ -10,7 +10,7 @@
 - 폰트: `@fontsource-variable/inter`
 
 ```bash
-pnpm install
+pnpm install --ignore-scripts   # pnpm 11의 빌드 스크립트 승인 오류 회피(esbuild 등은 prebuilt라 불필요)
 pnpm dev        # 개발 서버 (진입: / → src/pages/onboarding)
 pnpm build      # tsc -b && vite build
 pnpm lint       # eslint
