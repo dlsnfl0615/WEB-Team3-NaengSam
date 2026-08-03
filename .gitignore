@@ -9,3 +9,6 @@
 
 # secrets
 .env
+
+# 위키 동기화
+.claude/skills/wiki-sync/synced-pages.md

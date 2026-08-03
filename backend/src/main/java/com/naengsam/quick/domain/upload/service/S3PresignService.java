@@ -2,7 +2,6 @@ package com.naengsam.quick.domain.upload.service;
 
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
-import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -10,19 +9,10 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import software.amazon.awssdk.services.s3.S3Client;
-import software.amazon.awssdk.services.s3.model.GetObjectRequest;
-import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
-import software.amazon.awssdk.services.s3.model.PutObjectRequest;
-import software.amazon.awssdk.services.s3.model.S3Exception;
-import software.amazon.awssdk.services.s3.presigner.S3Presigner;
-import software.amazon.awssdk.services.s3.presigner.model.GetObjectPresignRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedGetObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PresignedPutObjectRequest;
-import software.amazon.awssdk.services.s3.presigner.model.PutObjectPresignRequest;
 
 /**
  * S3 presigned URL 발급 및 실제 업로드 여부 확인을 담당한다. 파일 바이트 자체는 서버를 거치지 않고 클라이언트가 발급받은 URL로 S3에 직접 PUT/GET 한다.
+ * 실제 스토리지 호출은 {@link Uploader}(운영: {@link S3Uploader}, 로컬: {@link DevUploader})에 위임한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -36,9 +26,7 @@ public class S3PresignService {
             "webp", "image/webp"
     );
 
-    private final UploadProperties uploadProperties;
-    private final S3Presigner presigner;
-    private final S3Client s3Client;
+    private final Uploader uploader;
 
     /**
      * 업로드 요청자(boormiId)를 key 경로에 포함해 발급한다. key만 알아도 다른 사람이 그 파일을
@@ -58,70 +46,28 @@ public class S3PresignService {
     }
 
     /**
-     * 클라이언트가 이 key로 S3에 직접 PUT 할 수 있는 presigned URL을 발급한다. (10분간 유효)
+     * 클라이언트가 이 key로 S3에 직접 PUT 할 수 있는 presigned URL을 발급한다.
      */
     public String generateUploadUrl(String key) {
-
-        PutObjectRequest objectRequest = PutObjectRequest.builder()
-                .bucket(uploadProperties.bucketName())
-                .key(key)
-                .contentType(resolveContentType(key))
-                .build();
-
-        PutObjectPresignRequest presignRequest = PutObjectPresignRequest.builder()
-                .signatureDuration(Duration.ofMinutes(10)) // 만료 10분
-                .putObjectRequest(objectRequest)
-                .build();
-
-        PresignedPutObjectRequest presignedRequest = presigner.presignPutObject(presignRequest);
-
-        return presignedRequest.url().toString();
+        return uploader.generateUploadUrl(key, resolveContentType(key));
     }
 
     /**
-     * 클라이언트가 이 key의 파일을 S3에서 직접 GET 할 수 있는 presigned URL을 발급한다. (5분간 유효)
+     * 클라이언트가 이 key의 파일을 S3에서 직접 GET 할 수 있는 presigned URL을 발급한다.
      * key가 실제로 존재하지 않으면 예외를 던진다.
      */
     public String generateDownloadUrl(String key) {
         if (!isFileUploaded(key)) {
             throw new BusinessException(UploadErrorCode.FILE_NOT_FOUND);
         }
-
-        GetObjectRequest objectRequest = GetObjectRequest.builder()
-                .bucket(uploadProperties.bucketName())
-                .key(key)
-                .build();
-
-        GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
-                .signatureDuration(Duration.ofMinutes(5)) // 만료 5분
-                .getObjectRequest(objectRequest)
-                .build();
-
-        PresignedGetObjectRequest presignedRequest = presigner.presignGetObject(presignRequest);
-
-        return presignedRequest.url().toString();
+        return uploader.generateDownloadUrl(key);
     }
 
     /**
-     * 이 key로 실제 S3 객체가 존재하는지(=클라이언트가 presigned URL로 업로드를 완료했는지) 확인한다.
-     * 404(아직 업로드 안 됨)는 정상적인 대기 상태라 false로만 반환하고, 그 외 S3 쪽 오류는 예외로 던진다.
+     * 이 key로 실제 파일이 존재하는지(=클라이언트가 presigned URL로 업로드를 완료했는지) 확인한다.
      */
     public boolean isFileUploaded(String key) {
-        try {
-            HeadObjectRequest headRequest = HeadObjectRequest.builder()
-                    .bucket(uploadProperties.bucketName())
-                    .key(key)
-                    .build();
-
-            s3Client.headObject(headRequest); // 존재하면 정상 응답, 없으면 예외
-            return true;
-        } catch (S3Exception e) {
-            if (e.statusCode() == 404) {
-                return false; // 아직 업로드 안 됨
-            }
-            log.warn("S3 HeadObject 실패: key={}", key, e);
-            throw new BusinessException(UploadErrorCode.STORAGE_UPLOAD_FAILED);
-        }
+        return uploader.exists(key);
     }
 
     /**
