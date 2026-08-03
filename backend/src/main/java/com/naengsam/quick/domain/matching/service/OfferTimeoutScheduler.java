@@ -35,11 +35,7 @@ public class OfferTimeoutScheduler {
         while (true) {
             try {
                 MatchingTimeout timeout = timeoutQueue.take();
-                if (timeout instanceof DreamiOfferTimeout dreamiTimeout) {
-                    matchingEngine.submit(new ExpireDreamiOffer(matchingService, dreamiTimeout.offerId()));
-                } else if (timeout instanceof BoormiOfferTimeout boormiTimeout) {
-                    matchingEngine.submit(new ExpireBoormiOffer(matchingService, boormiTimeout.offerId()));
-                }
+                timeout.execute(matchingEngine, matchingService);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
