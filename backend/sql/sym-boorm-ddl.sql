@@ -258,12 +258,16 @@ CREATE TABLE `SETTLEMENT_DETAILS` (
 
 CREATE TABLE `DELIVERY` (
                             `delivery_id`         binary(16)  NOT NULL,
-                            `delivery_cd`         enum('PICKING_UP', 'DELIVERING', 'DELAYED', 'SUSPENDED', 'PARTNER_HANDOFF_PENDING', 'TRANSFERRED_TO_PARTNER', 'RETURNING', 'RETURNED', 'COMPLETED', 'TERMINATED' )  NOT NULL,
+                            `delivery_cd`         enum('PICKUP_NORMAL', 'PICKUP_DELAYED', 'PICKUP_CANCELLED_BY_BOORMI', 'PICKUP_CANCELLED_BY_DREAMI', 'PICKUP_CANCELLED_BY_ADMIN', 'DELIVERING', 'DELIVERED', 'PARTNER_HANDOFF_PENDING', 'TRANSFERRED_TO_PARTNER', 'RETURNING', 'RETURNED', 'TERMINATED' )  NOT NULL,
+                            `order_id`            binary(16)  NOT NULL,
+                            `dreami_id`           binary(16)  NOT NULL,
+                            `boormi_id`           binary(16)  NOT NULL,
+                            `current_latitude`    decimal(11,8)  NULL,
+                            `current_longitude`   decimal(11,8)  NULL,
                             `picked_up_dtm`       timestamp   NULL,
                             `delivery_start_dtm`  timestamp   NULL,
                             `delivery_end_dtm`    timestamp   NULL,
-                            `received_dtm`        timestamp   NULL,
-                            `order_id`            binary(16)  NOT NULL
+                            `received_dtm`        timestamp   NULL
 );
 
 CREATE TABLE `DELIVERY_ACCIDENT` (
@@ -439,6 +443,10 @@ ALTER TABLE `WALLET` ADD CONSTRAINT `FK_DREAMI_TO_WALLET_1` FOREIGN KEY (`dreami
 ALTER TABLE `POINT_WALLET` ADD CONSTRAINT `FK_WALLET_TO_POINT_WALLET_1` FOREIGN KEY (`wallet_id`) REFERENCES `WALLET` (`wallet_id`);
 
 ALTER TABLE `SETTLEMENT_DETAILS` ADD CONSTRAINT `FK_DREAMI_TO_SETTLEMENT_DETAILS_1` FOREIGN KEY (`dreami_id`) REFERENCES `DREAMI` (`dreami_id`);
+
+-- 배송 정보를 order_id로 조회 + 비관적 락(SELECT ... FOR UPDATE)이 주문 1행에만 걸리도록 인덱스를 명시한다(FK 자동 인덱스에 의존하지 않음).
+-- FK보다 먼저 생성해 MySQL이 이 인덱스를 재사용하도록 한다(중복 인덱스 방지).
+CREATE INDEX `IX_DELIVERY_ORDER_ID` ON `DELIVERY` (`order_id`);
 
 ALTER TABLE `DELIVERY` ADD CONSTRAINT `FK_ORDERS_TO_DELIVERY_1` FOREIGN KEY (`order_id`) REFERENCES `ORDERS` (`order_id`);
 
