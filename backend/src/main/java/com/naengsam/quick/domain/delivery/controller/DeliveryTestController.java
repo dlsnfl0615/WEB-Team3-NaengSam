@@ -11,7 +11,6 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.context.annotation.Profile;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
@@ -26,7 +25,7 @@ import java.util.UUID;
  * <p>{@code @Profile("local")}로 게이트되어 운영 프로필에서는 빈으로 등록되지 않는다.
  */
 @Slf4j
-@Profile("local")
+//@Profile("local")
 @RestController
 @RequestMapping("/api/v1/delivery/test")
 @Tag(name = "배달테스트컨트롤러(dev)", description = "시각 테스트용 배달 시딩 API. local 프로필에서만 활성화된다.")
