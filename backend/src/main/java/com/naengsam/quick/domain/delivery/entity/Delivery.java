@@ -64,7 +64,37 @@ public class Delivery {
     @Column(name = "received_dtm")
     private LocalDateTime receivedDtm;
 
-    @JdbcTypeCode(SqlTypes.BINARY)
-    @Column(name = "order_id", columnDefinition = "BINARY(16)", nullable = false)
-    private UUID orderId;
+    // 매칭이 확정된 주문의 배달을 시작한다. PK는 앱에서 생성(BINARY(16))하며 상태는 PICKUP_NORMAL로 시작한다.
+    public static Delivery create(UUID orderId, UUID dreamiId, UUID boormiId) {
+        Delivery delivery = new Delivery();
+        delivery.deliveryId = UUID.randomUUID();
+        delivery.orderId = orderId;
+        delivery.dreamiId = dreamiId;
+        delivery.boormiId = boormiId;
+        delivery.deliveryCd = DeliveryCd.PICKUP_NORMAL;
+        return delivery;
+    }
+
+    public void updateLocation(BigDecimal latitude, BigDecimal longitude) {
+        this.currentLatitude = latitude;
+        this.currentLongitude = longitude;
+    }
+
+    // 픽업 완료 → 배달중 전이. 픽업/배달 시작 시각을 기록한다.
+    public void markDelivering() {
+        this.deliveryCd = DeliveryCd.DELIVERING;
+        LocalDateTime now = LocalDateTime.now();
+        this.pickedUpDtm = now;
+        this.deliveryStartDtm = now;
+    }
+
+    // 배달 완료 전이. 배달 종료 시각을 기록한다.
+    public void markDelivered() {
+        this.deliveryCd = DeliveryCd.DELIVERED;
+        this.deliveryEndDtm = LocalDateTime.now();
+    }
+
+    public void cancelBy(DeliveryCd cancelStatus) {
+        this.deliveryCd = cancelStatus;
+    }
 }
