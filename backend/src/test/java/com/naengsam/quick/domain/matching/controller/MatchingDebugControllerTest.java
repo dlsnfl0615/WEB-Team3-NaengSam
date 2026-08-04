@@ -14,6 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.matching.service.NearbyBoormiFinder;
+import com.naengsam.quick.domain.matching.service.NearbyDreamiFinder;
 import com.naengsam.quick.global.exception.GlobalExceptionHandler;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -34,16 +36,22 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class MatchingDebugControllerTest {
 
     private MatchingService matchingService;
+    private NearbyDreamiFinder nearbyDreamiFinder;
+    private NearbyBoormiFinder nearbyBoormiFinder;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         matchingService = mock(MatchingService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new MatchingDebugController(matchingService)).build();
+        nearbyDreamiFinder = mock(NearbyDreamiFinder.class);
+        nearbyBoormiFinder = mock(NearbyBoormiFinder.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                new MatchingDebugController(matchingService, nearbyDreamiFinder, nearbyBoormiFinder)).build();
     }
 
     private MockMvc mockMvcWithExceptionHandler() {
-        return MockMvcBuilders.standaloneSetup(new MatchingDebugController(matchingService))
+        return MockMvcBuilders.standaloneSetup(
+                        new MatchingDebugController(matchingService, nearbyDreamiFinder, nearbyBoormiFinder))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -222,7 +230,8 @@ class MatchingDebugControllerTest {
         MatchingService.MatchOffer offer = new MatchingService.MatchOffer(
                 offerId, orderId, dreamiId, MatchingService.MatchOfferStatus.OFFERED);
         MatchingService.OrderOfferGroup group =
-                new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(), List.of(offer));
+                new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(),
+                        new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)), List.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
 
         mockMvc.perform(get("/api/v1/debug/matching/orders/{orderId}/group", orderId))
