@@ -2,8 +2,14 @@ package com.naengsam.quick.domain.matching.controller;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.MatchingStartRequest;
+import com.naengsam.quick.domain.matching.dto.NearbyDreamiDto;
+import com.naengsam.quick.domain.matching.dto.NearbyDreamiRequest;
+import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
+import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
 import com.naengsam.quick.domain.matching.dto.OrderOfferGroupDto;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.matching.service.NearbyDreamiFinder;
+import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
@@ -35,6 +41,30 @@ import org.springframework.web.bind.annotation.RestController;
 public class MatchingDebugController {
 
     private final MatchingService matchingService;
+    private final NearbyDreamiFinder nearbyDreamiFinder;
+    private final NearbyOrderFinder nearbyOrderFinder;
+
+    @Operation(summary = "반경 내 드리미 위치 조회",
+            description = "기준 좌표에서 반경(m) 이내에 있는 드리미를 최대 10명까지 가까운 순으로 반환한다.")
+    @PostMapping("/dreamis/nearby")
+    public List<NearbyDreamiDto> findNearbyDreamis(@Valid @RequestBody NearbyDreamiRequest request) {
+        return nearbyDreamiFinder.find(request);
+    }
+
+    @Operation(summary = "반경 내 주문 위치 조회",
+            description = "기준 좌표에서 반경(m) 이내에 있는 대기중인 주문을 최대 10개까지 가까운 순으로 반환한다. 한 부르미가 여러 주문을 가질 수 있으므로 주문 단위로 조회한다.")
+    @PostMapping("/orders/nearby")
+    public List<NearbyOrderDto> findNearbyOrders(@Valid @RequestBody NearbyOrderRequest request) {
+        return nearbyOrderFinder.find(request);
+    }
+
+    @Operation(summary = "대기중인 주문 목록 조회")
+    @GetMapping("/orders/waiting")
+    public List<OrderView> waitingOrders() {
+        return matchingService.waitingOrders().stream()
+                .map(OrderView::from)
+                .toList();
+    }
 
     @Operation(summary = "드리미 등록")
     @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
@@ -142,6 +172,13 @@ public class MatchingDebugController {
 
         static DreamiView from(MatchingService.WaitingDreami dreami) {
             return new DreamiView(dreami.dreamiId(), dreami.location(), dreami.status(), dreami.updatedAt());
+        }
+    }
+
+    record OrderView(UUID orderId, GeoPoint location) {
+
+        static OrderView from(MatchingService.WaitingOrder order) {
+            return new OrderView(order.orderId(), order.location());
         }
     }
 }

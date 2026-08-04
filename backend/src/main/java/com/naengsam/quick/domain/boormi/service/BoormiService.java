@@ -168,7 +168,7 @@ public class BoormiService {
     /**
      * 두 좌표 사이의 하버사인 직선거리(m)를 계산한다.
      */
-    private double distanceMeters(GeoPoint a, GeoPoint b) {
+    public double distanceMeters(GeoPoint a, GeoPoint b) {
         double lat1 = Math.toRadians(a.latitude().doubleValue());
         double lat2 = Math.toRadians(b.latitude().doubleValue());
         double dLat = lat2 - lat1;
