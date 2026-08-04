@@ -449,3 +449,24 @@ ALTER TABLE `COMPENSATION_CLAIM` ADD CONSTRAINT `FK_DELIVERY_ACCIDENT_TO_COMPENS
 ALTER TABLE `DREAMI_REQUEST_DENIED_DETAILS` ADD CONSTRAINT `FK_DREAMI_TO_DREAMI_REQUEST_DENIED_DETAILS_1` FOREIGN KEY (`dreami_id`) REFERENCES `DREAMI` (`dreami_id`);
 
 ALTER TABLE `DREAMI_REVIEW` ADD CONSTRAINT `FK_ORDERS_TO_DREAMI_REVIEW_1` FOREIGN KEY (`order_id`) REFERENCES `ORDERS` (`order_id`);
+
+-- ============================================================
+-- ERD 도구 생성분 이후 추가 (presigned URL 업로드 세션 추적용)
+-- ============================================================
+
+CREATE TABLE `UPLOAD_SESSION` (
+                                  `upload_session_id`  binary(16)    NOT NULL,
+                                  `boormi_id`          binary(16)    NOT NULL,
+                                  `purpose`            varchar(50)   NOT NULL,
+                                  `resource_id`        binary(16)    NULL,
+                                  `s3_key`             varchar(500)  NOT NULL,
+                                  `status`             enum('ISSUED', 'CONSUMED')  NOT NULL  DEFAULT 'ISSUED',
+                                  `issued_dtm`         timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+                                  `consumed_dtm`       timestamp     NULL
+);
+
+ALTER TABLE `UPLOAD_SESSION` ADD CONSTRAINT `PK_UPLOAD_SESSION` PRIMARY KEY (`upload_session_id`);
+
+ALTER TABLE `UPLOAD_SESSION` ADD CONSTRAINT `UQ_UPLOAD_SESSION_S3_KEY` UNIQUE (`s3_key`);
+
+ALTER TABLE `UPLOAD_SESSION` ADD CONSTRAINT `FK_BOORMI_TO_UPLOAD_SESSION_1` FOREIGN KEY (`boormi_id`) REFERENCES `BOORMI` (`boormi_id`);

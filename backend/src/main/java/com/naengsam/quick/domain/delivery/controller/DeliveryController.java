@@ -1,12 +1,16 @@
 package com.naengsam.quick.domain.delivery.controller;
 
+import com.naengsam.quick.domain.delivery.dto.DeliveryPhotoRequest;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
+import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
+import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -22,8 +26,6 @@ import java.util.UUID;
 @RequestMapping("/api/v1/delivery")
 @Tag(name = "배달컨트롤러", description = "배달 진행 중 상태 전이(위치 갱신/픽업 완료/취소/배달 완료)를 처리한다")
 @RequiredArgsConstructor
-// 배달 엔드포인트는 orderId(PathVariable)로만 식별하며 @LoginUser를 쓰지 않으므로 로그인 세션 없이 호출된다.
-//@PublicApi
 public class DeliveryController {
 
     private final DeliveryService deliveryService;
@@ -40,13 +42,17 @@ public class DeliveryController {
         deliveryService.updateDreamiLocation(orderId, location);
     }
 
-    @Operation(summary = "드리미 픽업 완료", description = "드리미가 픽업을 완료하면 배달중 상태로 전이한다.")
+    @Operation(summary = "드리미 픽업 완료",
+            description = "드리미가 픽업을 완료하면 배달중 상태로 전이한다. 업로드한 픽업 인증 사진의 key를 함께 보낸다.")
     @PostMapping("/orders/{orderId}/pickup-finish")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
-            codes = {"PICKUP_PHOTO_MISSING", "STEP_ALREADY_VERIFIED", "DELIVERY_NOT_FOUND",
+            codes = {"NOT_ASSIGNED_DREAMI", "PICKUP_PHOTO_MISSING", "STEP_ALREADY_VERIFIED", "DELIVERY_NOT_FOUND",
                     "DELIVERY_ALREADY_CANCELLED", "DELIVERY_ALREADY_COMPLETED"})
-    public DeliveryStatusResponseDto pickupFinishByDreami(@PathVariable UUID orderId) {
-        return deliveryService.pickupFinishByDreami(orderId);
+    @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"KEY_OWNER_MISMATCH", "STORAGE_UPLOAD_FAILED"})
+    public DeliveryStatusResponseDto pickupFinishByDreami(
+            @PathVariable UUID orderId, @LoginUser UUID dreamiId,
+            @Valid @RequestBody DeliveryPhotoRequest request) {
+        return deliveryService.pickupFinishByDreami(orderId, dreamiId, request.photoKey());
     }
 
     @Operation(summary = "드리미의 픽업 취소", description = "픽업 과정에서 드리미가 취소한다.")
@@ -76,12 +82,16 @@ public class DeliveryController {
         return deliveryService.cancelByAdmin(orderId);
     }
 
-    @Operation(summary = "드리미 배달 완료", description = "드리미가 배달(픽업 아님)을 완료하면 배달 완료 상태로 전이한다.")
+    @Operation(summary = "드리미 배달 완료",
+            description = "드리미가 배달(픽업 아님)을 완료하면 배달 완료 상태로 전이한다. 업로드한 배달 완료 인증 사진의 key를 함께 보낸다.")
     @PostMapping("/orders/{orderId}/finish")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
-            codes = {"DELIVERY_NOT_FOUND", "DELIVERY_COMPLETION_PHOTO_MISSING", "DELIVERY_ALREADY_CANCELLED",
-                    "DELIVERY_ALREADY_COMPLETED", "PICKUP_NOT_COMPLETED"})
-    public DeliveryStatusResponseDto finishDelivery(@PathVariable UUID orderId) {
-        return deliveryService.finishDelivery(orderId);
+            codes = {"NOT_ASSIGNED_DREAMI", "DELIVERY_NOT_FOUND", "DELIVERY_COMPLETION_PHOTO_MISSING",
+                    "DELIVERY_ALREADY_CANCELLED", "DELIVERY_ALREADY_COMPLETED", "PICKUP_NOT_COMPLETED"})
+    @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"KEY_OWNER_MISMATCH", "STORAGE_UPLOAD_FAILED"})
+    public DeliveryStatusResponseDto finishDelivery(
+            @PathVariable UUID orderId, @LoginUser UUID dreamiId,
+            @Valid @RequestBody DeliveryPhotoRequest request) {
+        return deliveryService.finishDelivery(orderId, dreamiId, request.photoKey());
     }
 }

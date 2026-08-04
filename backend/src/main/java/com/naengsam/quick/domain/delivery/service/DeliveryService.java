@@ -11,6 +11,9 @@ import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
+import com.naengsam.quick.domain.upload.entity.UploadPurpose;
+import com.naengsam.quick.domain.upload.service.S3PresignService;
+import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
 import java.math.BigDecimal;
@@ -42,6 +45,8 @@ public class DeliveryService {
 
     private final DeliveryStore store;
     private final SseService sseService;
+    private final S3PresignService s3PresignService;
+    private final UploadSessionService uploadSessionService;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -61,9 +66,11 @@ public class DeliveryService {
         });
     }
 
-    // 픽업 완료
-    public DeliveryStatusResponseDto pickupFinishByDreami(UUID orderId) {
-        return transition(orderId, this::doPickupFinishByDreami);
+    // 픽업 완료 (드리미가 업로드한 픽업 인증 사진 key를 함께 받아 검증한다)
+    public DeliveryStatusResponseDto pickupFinishByDreami(UUID orderId, UUID dreamiId, String photoKey) {
+        return transition(orderId, deliveryStatus -> {
+            return doPickupFinishByDreami(deliveryStatus, dreamiId, photoKey);
+        });
     }
 
     // "픽업" 과정에서 드리미의 취소
@@ -81,9 +88,11 @@ public class DeliveryService {
         return transition(orderId, this::doCancelByAdmin);
     }
 
-    // 드리미가 "배달" 완료 (픽업 아님!!)
-    public DeliveryStatusResponseDto finishDelivery(UUID orderId) {
-        return transition(orderId, this::doFinishDelivery);
+    // 드리미가 "배달" 완료 (픽업 아님!!) — 배달 완료 인증 사진 key를 함께 받아 검증한다
+    public DeliveryStatusResponseDto finishDelivery(UUID orderId, UUID dreamiId, String photoKey) {
+        return transition(orderId, deliveryStatus -> {
+            return doFinishDelivery(deliveryStatus, dreamiId, photoKey);
+        });
     }
 
     // ===== 주문 단위 직렬화 =====
@@ -142,7 +151,12 @@ public class DeliveryService {
         alarmBoormiLocationBySSE(deliveryStatus); // 부르미에게_새로운_위치정보_전달_SSE사용()
     }
 
-    private String doPickupFinishByDreami(DeliveryStatus deliveryStatus) {
+    private String doPickupFinishByDreami(DeliveryStatus deliveryStatus, UUID dreamiId, String photoKey) {
+        // 이 주문에 배정된 드리미 본인만 픽업 완료를 처리할 수 있다
+        if (!deliveryStatus.dreamiId().equals(dreamiId)) {
+            throw new BusinessException(DeliveryErrorCode.NOT_ASSIGNED_DREAMI);
+        }
+
         // 부르미가 취소 눌렀는데 드리미는 아직 인지 못하고 픽업 완료를 누름
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
             throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
@@ -171,7 +185,7 @@ public class DeliveryService {
         // 여기까지 왔으면 이제 "픽업중_정상" 상태만 남음
         assert deliveryStatus.status() == PICKUP_NORMAL; // 픽업중_정상
 
-        if (!hasPickupPhoto(deliveryStatus.orderId())) { // 사진이_없는경우
+        if (!hasPickupPhoto(deliveryStatus.orderId(), dreamiId, photoKey)) { // 사진이_없는경우
             throw new BusinessException(DeliveryErrorCode.PICKUP_PHOTO_MISSING);
         }
 
@@ -272,7 +286,12 @@ public class DeliveryService {
         return "픽업 취소 완료";
     }
 
-    private String doFinishDelivery(DeliveryStatus deliveryStatus) {
+    private String doFinishDelivery(DeliveryStatus deliveryStatus, UUID dreamiId, String photoKey) {
+        // 이 주문에 배정된 드리미 본인만 배달 완료를 처리할 수 있다
+        if (!deliveryStatus.dreamiId().equals(dreamiId)) {
+            throw new BusinessException(DeliveryErrorCode.NOT_ASSIGNED_DREAMI);
+        }
+
         // 아마 드리미가 픽업하자마자 바로 배달완료 처리요청하지 않는 이상 없을듯?
         if (deliveryStatus.status() == PICKUP_CANCELLED_BY_BOORMI
                 || deliveryStatus.status() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_부르미의_취소 || 픽업중_관리자의_취소
@@ -295,7 +314,7 @@ public class DeliveryService {
 
         assert deliveryStatus.status() == DELIVERING; // 배달중_정상
 
-        if (!hasDeliveryPhoto(deliveryStatus.orderId())) { // 사진이없을때
+        if (!hasDeliveryPhoto(deliveryStatus.orderId(), dreamiId, photoKey)) { // 사진이없을때
             throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_PHOTO_MISSING);
         }
 
@@ -343,15 +362,18 @@ public class DeliveryService {
                 DeliveryStatusResponseDto.from(ds, "배달이 완료되었습니다"));
     }
 
-    // ===== 사진 확인 스텁 (TODO: 사진 도메인 연동) =====
+    // ===== 사진 확인 (upload 도메인 연동) =====
+    // 드리미가 자기 세션으로 발급받아 업로드한 key인지(소유권) 확인한 뒤, 그 파일이 S3에 실제 존재하는지 검사한다.
 
-    private boolean hasPickupPhoto(UUID orderId) {
-        // TODO: 픽업 인증 사진 존재 여부 확인
-        return true;
+    private boolean hasPickupPhoto(UUID orderId, UUID dreamiId, String photoKey) {
+        // 본인이, 이 주문에 대해, 픽업 인증사진 용도로 발급받은 key가 아니면 KEY_OWNER_MISMATCH
+        uploadSessionService.validateScope(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, orderId, photoKey);
+        return s3PresignService.isFileUploaded(photoKey);
     }
 
-    private boolean hasDeliveryPhoto(UUID orderId) {
-        // TODO: 배달 완료 인증 사진 존재 여부 확인
-        return true;
+    private boolean hasDeliveryPhoto(UUID orderId, UUID dreamiId, String photoKey) {
+        // 본인이, 이 주문에 대해, 배달완료 인증사진 용도로 발급받은 key가 아니면 KEY_OWNER_MISMATCH
+        uploadSessionService.validateScope(UploadPurpose.DELIVERY_CERTIFICATION_IMAGE, dreamiId, orderId, photoKey);
+        return s3PresignService.isFileUploaded(photoKey);
     }
 }

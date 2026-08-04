@@ -1,9 +1,9 @@
 package com.naengsam.quick.domain.upload.controller;
 
-import com.naengsam.quick.domain.dreami.service.DreamiService;
 import com.naengsam.quick.domain.upload.dto.PresignedUrlResponseDto;
+import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
-import com.naengsam.quick.domain.upload.service.S3PresignService;
+import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.session.LoginUser;
@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 업로드 컨트롤러. presigned URL 발급과, 클라이언트가 그 URL로 S3에 실제 파일을 올렸는지 확인하는 것을 담당한다.
+ * 업로드 컨트롤러. presigned URL 발급과, 클라이언트가 그 URL로 S3에 실제로 파일이 업로드됐는지 확인한다.
  */
 @RestController
 @RequiredArgsConstructor
@@ -29,23 +29,20 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "업로드 컨트롤러", description = "S3 presigned URL을 발급하고, 실제로 파일이 업로드됐는지 확인한다.")
 public class UploadController {
 
-    private final S3PresignService s3PresignService;
-    private final DreamiService dreamiService;
+    private final UploadSessionService uploadSessionService;
 
-    @Operation(summary = "업로드용 presigned URL 발급", description = "이 fileName으로 S3에 직접 PUT 할 수 있는 presigned URL과, 그 파일의 S3 key를 발급한다.")
+    @Operation(summary = "업로드용 presigned URL 발급",
+            description = "이 fileName/purpose로 S3에 직접 PUT 할 수 있는 presigned URL과, 그 파일의 S3 key를 발급한다.")
     @GetMapping("/url")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})
     @ApiErrorCodes(enumClass = UploadErrorCode.class,
             codes = {"NO_FILE_ATTACHED", "INVALID_FILE_NAME", "UNSUPPORTED_FILE_TYPE"})
-    public PresignedUrlResponseDto getPresignedUrl(@RequestParam String fileName, @LoginUser UUID boormiId) {
+    public PresignedUrlResponseDto getPresignedUrl(@RequestParam String fileName, @RequestParam UploadPurpose purpose,
+            @RequestParam(required = false) UUID resourceId, @LoginUser UUID boormiId) {
         validateFileName(fileName);
 
-        String key = s3PresignService.buildKey(boormiId, fileName);
-
-        String url = s3PresignService.generateUploadUrl(key);
-
-        return new PresignedUrlResponseDto(url, key);
+        return uploadSessionService.issue(purpose, boormiId, resourceId, fileName);
     }
 
     /**
