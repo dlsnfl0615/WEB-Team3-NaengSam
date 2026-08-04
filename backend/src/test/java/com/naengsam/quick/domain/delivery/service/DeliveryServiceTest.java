@@ -18,8 +18,10 @@ import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
+import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
+import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
@@ -44,6 +46,7 @@ class DeliveryServiceTest {
     private DeliveryStore store;
     private SseService sseService;
     private S3PresignService s3PresignService;
+    private UploadSessionService uploadSessionService;
     private DeliveryService deliveryService;
 
     @BeforeEach
@@ -51,8 +54,9 @@ class DeliveryServiceTest {
         store = new DeliveryStore();
         sseService = mock(SseService.class);
         s3PresignService = mock(S3PresignService.class);
-        deliveryService = new DeliveryService(store, sseService, s3PresignService);
-        // 기본값: 사진 존재. 소유권 검증(validateOwnership)은 void라 기본 no-op(통과).
+        uploadSessionService = mock(UploadSessionService.class);
+        deliveryService = new DeliveryService(store, sseService, s3PresignService, uploadSessionService);
+        // 기본값: 사진 존재. 스코프 검증(validateScope)은 void라 기본 no-op(통과).
         given(s3PresignService.isFileUploaded(any())).willReturn(true);
     }
 
@@ -310,7 +314,8 @@ class DeliveryServiceTest {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
         UUID dreamiId = store.get(orderId).dreamiId();
         willThrow(new BusinessException(UploadErrorCode.KEY_OWNER_MISMATCH))
-                .given(s3PresignService).validateOwnership(dreamiId, PHOTO_KEY);
+                .given(uploadSessionService)
+                .validateScope(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, orderId, PHOTO_KEY);
 
         Throwable thrown = catchThrowable(
                 () -> deliveryService.pickupFinishByDreami(orderId, dreamiId, PHOTO_KEY));

@@ -11,7 +11,9 @@ import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
+import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
+import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
 import java.math.BigDecimal;
@@ -44,6 +46,7 @@ public class DeliveryService {
     private final DeliveryStore store;
     private final SseService sseService;
     private final S3PresignService s3PresignService;
+    private final UploadSessionService uploadSessionService;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -182,7 +185,7 @@ public class DeliveryService {
         // 여기까지 왔으면 이제 "픽업중_정상" 상태만 남음
         assert deliveryStatus.status() == PICKUP_NORMAL; // 픽업중_정상
 
-        if (!hasPickupPhoto(dreamiId, photoKey)) { // 사진이_없는경우
+        if (!hasPickupPhoto(deliveryStatus.orderId(), dreamiId, photoKey)) { // 사진이_없는경우
             throw new BusinessException(DeliveryErrorCode.PICKUP_PHOTO_MISSING);
         }
 
@@ -311,7 +314,7 @@ public class DeliveryService {
 
         assert deliveryStatus.status() == DELIVERING; // 배달중_정상
 
-        if (!hasDeliveryPhoto(dreamiId, photoKey)) { // 사진이없을때
+        if (!hasDeliveryPhoto(deliveryStatus.orderId(), dreamiId, photoKey)) { // 사진이없을때
             throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_PHOTO_MISSING);
         }
 
@@ -362,13 +365,15 @@ public class DeliveryService {
     // ===== 사진 확인 (upload 도메인 연동) =====
     // 드리미가 자기 세션으로 발급받아 업로드한 key인지(소유권) 확인한 뒤, 그 파일이 S3에 실제 존재하는지 검사한다.
 
-    private boolean hasPickupPhoto(UUID dreamiId, String photoKey) {
-        s3PresignService.validateOwnership(dreamiId, photoKey); // 본인 key 아니면 KEY_OWNER_MISMATCH
+    private boolean hasPickupPhoto(UUID orderId, UUID dreamiId, String photoKey) {
+        // 본인이, 이 주문에 대해, 픽업 인증사진 용도로 발급받은 key가 아니면 KEY_OWNER_MISMATCH
+        uploadSessionService.validateScope(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, orderId, photoKey);
         return s3PresignService.isFileUploaded(photoKey);
     }
 
-    private boolean hasDeliveryPhoto(UUID dreamiId, String photoKey) {
-        s3PresignService.validateOwnership(dreamiId, photoKey); // 본인 key 아니면 KEY_OWNER_MISMATCH
+    private boolean hasDeliveryPhoto(UUID orderId, UUID dreamiId, String photoKey) {
+        // 본인이, 이 주문에 대해, 배달완료 인증사진 용도로 발급받은 key가 아니면 KEY_OWNER_MISMATCH
+        uploadSessionService.validateScope(UploadPurpose.DELIVERY_CERTIFICATION_IMAGE, dreamiId, orderId, photoKey);
         return s3PresignService.isFileUploaded(photoKey);
     }
 }
