@@ -78,8 +78,8 @@ public class Orders {
     @Column(name = "delivery_request")
     private String deliveryRequest;
 
-    @Column(name = "image_url", length = 500)
-    private String imageUrl;
+    @Column(name = "image_key", length = 500)
+    private String imageKey;
 
     @Column(name = "delivery_request_dtm", nullable = false, insertable = false, updatable = false)
     private LocalDateTime deliveryRequestDtm;
@@ -90,7 +90,7 @@ public class Orders {
      */
     public static Orders create(UUID orderId, UUID boormiId, String itemName, ItemCd itemCd,
                                 String itemDetail, Long deliveryAmount, int deliveryEta, String deliveryRequest,
-                                String imageUrl, Addresses addresses) {
+                                String imageKey, Addresses addresses) {
         Orders order = new Orders();
         order.orderId = orderId;
         order.boormiId = boormiId;
@@ -100,7 +100,7 @@ public class Orders {
         order.deliveryAmount = deliveryAmount;
         order.deliveryEta = deliveryEta;
         order.deliveryRequest = deliveryRequest;
-        order.imageUrl = imageUrl;
+        order.imageKey = imageKey;
         order.orderCd = OrderCd.MATCHING;
         order.updateAddresses(addresses);
         return order;
