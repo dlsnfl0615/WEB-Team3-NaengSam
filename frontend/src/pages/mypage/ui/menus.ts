@@ -5,6 +5,8 @@ export interface MenuItem {
   badge?: string;
   /** 로그아웃처럼 비중이 낮은 항목은 흐린 글자색으로. */
   muted?: boolean;
+  /** 클릭 시 동작(예: 로그아웃). 없으면 표시만 하고 아무 동작 안 함. */
+  onClick?: () => void;
 }
 
 export const ACCOUNT_MENU: MenuItem[] = [
