@@ -84,7 +84,7 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+        awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
                 .offers().getFirst().offerId();
@@ -168,7 +168,7 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+        awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
                 .offers().getFirst().offerId();
@@ -204,7 +204,7 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+        awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
                 .offers().getFirst().offerId();
@@ -245,7 +245,7 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+        awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
                 .offers().getFirst().offerId();
@@ -292,6 +292,13 @@ class MatchingServiceConcurrencyTest {
                 .findFirst()
                 .orElseThrow()
                 .status();
+    }
+
+    private void awaitFirstOfferCreated(UUID orderId) {
+        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId)
+                        .map(group -> !group.offers().isEmpty())
+                        .orElse(false),
+                Duration.ofSeconds(5));
     }
 
     private void awaitLatch(CountDownLatch latch) {
