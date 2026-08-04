@@ -6,15 +6,15 @@ import { isApiError } from "@/shared/api";
 import { axiosInstance } from "@/shared/api/http/axiosInstance";
 import { ProofPhoto } from "./ProofPhoto";
 import { ProofSignature } from "./ProofSignature";
-import { PickupProof } from "./PickupProof";
+import { ProofUpload } from "./ProofUpload";
 
 /**
  * 배송 완료 인증 화면(Figma node 191:1322, 191:1352).
  * ?mode=photo 면 사진 인증, 기본은 수령인 서명 인증입니다(UI 전용).
  *
- * 실 백엔드 모드: `?orderId=&intent=pickup` 이 있으면 /delivery-test → /delivery-track 에서 넘어온
- * 실제 픽업 인증이다. 실제 사진 파일을 골라 presign(GET /upload/url) → dev-storage PUT →
- * pickup-finish(POST) 를 순서대로 호출해 배달중으로 전이시키고, 배송중 상태의 추적 화면으로 돌아간다.
+ * 실 백엔드 모드: `?orderId=&intent=pickup|finish` 가 있으면 /delivery-track 에서 넘어온 실제 인증이다.
+ * 실제 사진 파일을 골라 presign(GET /upload/url) → dev-storage PUT → 전이 API(pickup-finish/finish)를
+ * 순서대로 호출한다. pickup 은 배달중(track 배송중)으로, finish 는 배달 완료(complete)로 이어진다.
  */
 export function DeliveryProofScreen() {
   const navigate = useNavigate();
@@ -23,10 +23,12 @@ export function DeliveryProofScreen() {
 
   const isPhoto = params.get("mode") === "photo";
   const orderId = params.get("orderId");
-  const isRealPickup = params.get("intent") === "pickup" && Boolean(orderId);
+  const intent = params.get("intent");
+  const isRealProof =
+    (intent === "pickup" || intent === "finish") && Boolean(orderId);
 
-  if (isRealPickup && orderId) {
-    return <RealPickupProof orderId={orderId} />;
+  if (isRealProof && orderId) {
+    return <RealDeliveryProof orderId={orderId} intent={intent as ProofIntent} />;
   }
 
   return (
@@ -78,30 +80,66 @@ export function DeliveryProofScreen() {
   );
 }
 
+type ProofIntent = "pickup" | "finish";
+
+/** intent 별 백엔드 전이 설정(사진 용도·엔드포인트·완료 후 이동·문구). */
+const PROOF_CONFIG: Record<
+  ProofIntent,
+  {
+    title: string;
+    heading: string;
+    purpose: string;
+    endpoint: (orderId: string) => string;
+    button: string;
+    next: (orderId: string) => string;
+  }
+> = {
+  pickup: {
+    title: "픽업 인증",
+    heading: "픽업한 물품을\n촬영해주세요",
+    purpose: "PICKUP_CERTIFICATION_IMAGE",
+    endpoint: (orderId) => `/api/v1/delivery/orders/${orderId}/pickup-finish`,
+    button: "픽업 완료 · 사진 첨부",
+    next: (orderId) =>
+      `${ROUTES.deliveryTrack}?orderId=${orderId}&status=DELIVERING`,
+  },
+  finish: {
+    title: "배달 완료 인증",
+    heading: "전달 완료 사진을\n촬영해주세요",
+    purpose: "DELIVERY_CERTIFICATION_IMAGE",
+    endpoint: (orderId) => `/api/v1/delivery/orders/${orderId}/finish`,
+    button: "전달 완료 · 사진 첨부",
+    next: () => ROUTES.deliveryComplete,
+  },
+};
+
 /**
- * 실제 픽업 인증: 파일 선택 → presign → dev-storage PUT → pickup-finish.
+ * 실제 인증(픽업/전달 완료): 파일 선택 → presign → dev-storage PUT → 전이 API.
  * 세 호출 모두 공통 axios 인스턴스로 직접 호출한다(생성 클라이언트의 upload/delivery 시그니처가
  * 아직 낡아 purpose/resourceId·photoKey 바디를 실을 수 없기 때문 — 임시 테스트 흐름 한정).
  */
-function RealPickupProof({ orderId }: { orderId: string }) {
+function RealDeliveryProof({
+  orderId,
+  intent,
+}: {
+  orderId: string;
+  intent: ProofIntent;
+}) {
   const navigate = useNavigate();
+  const cfg = PROOF_CONFIG[intent];
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFinish = async () => {
+  const handleSubmit = async () => {
     if (!file) return;
     setLoading(true);
     setError(null);
     try {
-      // 1) presign 발급 — 픽업 인증 용도 + 해당 주문(resourceId=orderId) 으로 스코프 지정.
-      const fileName = file.name.replace(/[\\/.]{2,}|[\\/]/g, "_") || "pickup.jpg";
+      // 1) presign 발급 — 인증 용도 + 해당 주문(resourceId=orderId) 으로 스코프 지정.
+      const fileName = file.name.replace(/[\\/.]{2,}|[\\/]/g, "_") || "proof.jpg";
       const presign = await axiosInstance.get("/api/v1/upload/url", {
-        params: {
-          fileName,
-          purpose: "PICKUP_CERTIFICATION_IMAGE",
-          resourceId: orderId,
-        },
+        params: { fileName, purpose: cfg.purpose, resourceId: orderId },
       });
       const { url, key } = presign.data?.result ?? {};
       if (!url || !key) throw new Error("presign 발급에 실패했습니다.");
@@ -113,18 +151,12 @@ function RealPickupProof({ orderId }: { orderId: string }) {
         headers: { "Content-Type": file.type || "application/octet-stream" },
       });
 
-      // 3) 픽업 완료 — photoKey 를 실어 실제 상태 전이(PICKUP_NORMAL → DELIVERING).
-      await axiosInstance.post(
-        `/api/v1/delivery/orders/${orderId}/pickup-finish`,
-        { photoKey: key },
-      );
+      // 3) 전이 API 호출 — photoKey 를 실어 실제 상태 전이(DB 반영).
+      await axiosInstance.post(cfg.endpoint(orderId), { photoKey: key });
 
-      // 배송중 상태로 추적 화면 복귀.
-      navigate(`${ROUTES.deliveryTrack}?orderId=${orderId}&status=DELIVERING`, {
-        replace: true,
-      });
+      navigate(cfg.next(orderId), { replace: true });
     } catch (e) {
-      setError(isApiError(e) ? e.message : "픽업 완료 처리에 실패했습니다.");
+      setError(isApiError(e) ? e.message : "처리에 실패했습니다.");
     } finally {
       setLoading(false);
     }
@@ -132,22 +164,20 @@ function RealPickupProof({ orderId }: { orderId: string }) {
 
   return (
     <ScreenShell>
-      <TopBar title="픽업 인증" onBack={() => navigate(-1)} actions={[]} />
+      <TopBar title={cfg.title} onBack={() => navigate(-1)} actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <Card className="flex flex-col items-center gap-2">
           <IconChip name="package" size={36} />
-          <p className="text-base font-bold text-navy-900">픽업 인증 사진</p>
+          <p className="text-base font-bold text-navy-900">{cfg.title}</p>
           <p className="break-all text-2xs text-muted">주문 {orderId}</p>
         </Card>
 
-        <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
-          픽업한 물품을
-          <br />
-          촬영해주세요
+        <h1 className="whitespace-pre-line text-lg font-bold tracking-[-0.4px] text-navy-900">
+          {cfg.heading}
         </h1>
 
-        <PickupProof
+        <ProofUpload
           fileName={file?.name ?? null}
           onFileSelected={(f) => {
             setFile(f);
@@ -161,9 +191,9 @@ function RealPickupProof({ orderId }: { orderId: string }) {
           variant="navy"
           block
           disabled={!file || loading}
-          onClick={handleFinish}
+          onClick={handleSubmit}
         >
-          {loading ? "처리 중…" : "픽업 완료 · 사진 첨부"}
+          {loading ? "처리 중…" : cfg.button}
         </Button>
       </main>
     </ScreenShell>

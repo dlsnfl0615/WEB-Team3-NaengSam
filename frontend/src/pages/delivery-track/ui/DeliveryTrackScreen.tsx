@@ -44,15 +44,12 @@ export function DeliveryTrackScreen() {
 
   const onAction = async () => {
     if (isRealMode) {
-      // 실 모드: 픽업 완료는 사진 인증 화면에서 presign+업로드 후 pickup-finish 로 처리한다.
-      if (isPickup) {
-        navigate(
-          `${ROUTES.deliveryProof}?mode=photo&orderId=${orderId}&intent=pickup`,
-        );
-      } else {
-        // 배송중 이후(전달 완료)는 이번 범위 밖 — 완료 화면으로만 보낸다.
-        navigate(ROUTES.deliveryComplete, { replace: true });
-      }
+      // 실 모드: 픽업 완료/전달 완료 모두 사진 인증 화면에서 presign+업로드 후
+      // pickup-finish / finish 로 처리한다(둘 다 인증 사진 필수).
+      const intent = isPickup ? "pickup" : "finish";
+      navigate(
+        `${ROUTES.deliveryProof}?mode=photo&orderId=${orderId}&intent=${intent}`,
+      );
       return;
     }
     if (isPickup) {
