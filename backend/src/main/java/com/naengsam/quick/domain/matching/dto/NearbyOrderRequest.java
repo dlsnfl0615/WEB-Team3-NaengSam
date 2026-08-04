@@ -4,7 +4,7 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import java.math.BigDecimal;
 
-public record NearbyBoormiRequest(
+public record NearbyOrderRequest(
         @NotNull BigDecimal lat,
         @NotNull BigDecimal lng,
         @NotNull @Positive Double radius,

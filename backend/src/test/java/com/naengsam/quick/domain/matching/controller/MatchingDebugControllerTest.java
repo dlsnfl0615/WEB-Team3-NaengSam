@@ -14,8 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.service.MatchingService;
-import com.naengsam.quick.domain.matching.service.NearbyBoormiFinder;
 import com.naengsam.quick.domain.matching.service.NearbyDreamiFinder;
+import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.global.exception.GlobalExceptionHandler;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -37,21 +37,21 @@ class MatchingDebugControllerTest {
 
     private MatchingService matchingService;
     private NearbyDreamiFinder nearbyDreamiFinder;
-    private NearbyBoormiFinder nearbyBoormiFinder;
+    private NearbyOrderFinder nearbyOrderFinder;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         matchingService = mock(MatchingService.class);
         nearbyDreamiFinder = mock(NearbyDreamiFinder.class);
-        nearbyBoormiFinder = mock(NearbyBoormiFinder.class);
+        nearbyOrderFinder = mock(NearbyOrderFinder.class);
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new MatchingDebugController(matchingService, nearbyDreamiFinder, nearbyBoormiFinder)).build();
+                new MatchingDebugController(matchingService, nearbyDreamiFinder, nearbyOrderFinder)).build();
     }
 
     private MockMvc mockMvcWithExceptionHandler() {
         return MockMvcBuilders.standaloneSetup(
-                        new MatchingDebugController(matchingService, nearbyDreamiFinder, nearbyBoormiFinder))
+                        new MatchingDebugController(matchingService, nearbyDreamiFinder, nearbyOrderFinder))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
