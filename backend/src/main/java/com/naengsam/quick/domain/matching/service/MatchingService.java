@@ -72,6 +72,17 @@ public class MatchingService {
         return List.copyOf(dreamiMap.values());
     }
 
+    /**
+     * 매칭 시작 후(OPEN) 아직 확정되지 않은, 대기 중인 부르미 목록을 조회한다. 부르미는 별도 등록 큐 없이 {@link #startMatching}/
+     * {@link #cancelOrderByBoormi}로만 대기 상태가 결정되므로, 진행 중인 {@link OrderOfferGroup}에서 직접 도출한다.
+     */
+    public List<WaitingBoormi> waitingBoormis() {
+        return orderOfferGroupsByOrderId.values().stream()
+                .filter(group -> group.status() == OrderOfferGroupStatus.OPEN)
+                .map(group -> new WaitingBoormi(group.boormiId(), group.location()))
+                .toList();
+    }
+
     // ────────────────────────────── 외부 API ──────────────────────────────
     // 외부에서는 이 메서드로 액션을 큐에 넣기만 한다. 실제 상태 변경은 엔진 스레드에서 apply*가 수행한다.
     /**
@@ -189,7 +200,8 @@ public class MatchingService {
             return;
         }
 
-        OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), new ArrayList<>());
+        GeoPoint boormiLocation = new GeoPoint(order.getOriginLatitude(), order.getOriginLongitude());
+        OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), boormiLocation, new ArrayList<>());
         orderOfferGroupsByOrderId.put(order.getOrderId(), group);
         attemptOfferRound(group);
     }
@@ -691,19 +703,27 @@ public class MatchingService {
     }
 
     /**
+     * 대기 중인 부르미(매칭 시작 후 아직 확정되지 않은 주문의 부르미). 별도 등록 큐 없이 {@link OrderOfferGroup}에서 그대로 도출되는 값이라 불변으로 둔다.
+     */
+    public record WaitingBoormi(UUID boormiId, GeoPoint location) {
+    }
+
+    /**
      * 한 주문에 대해 동시에 뿌린 제안 묶음("방"). 방 자체의 상태(OPEN/MATCHED/CLOSED)와 재매칭 필요 여부를 여기서 관리한다.
      */
     public static final class OrderOfferGroup {
         private final UUID orderId;
         private final UUID boormiId;
+        private final GeoPoint location;
         private final List<MatchOffer> offers;
         // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
         private volatile OrderOfferGroupStatus status;
         private volatile boolean rematchRequired;
 
-        public OrderOfferGroup(UUID orderId, UUID boormiId, List<MatchOffer> offers) {
+        public OrderOfferGroup(UUID orderId, UUID boormiId, GeoPoint location, List<MatchOffer> offers) {
             this.orderId = orderId;
             this.boormiId = boormiId;
+            this.location = location;
             // 라운드마다 엔진 스레드가 append하는 동시에 다른 스레드가 offers()로 읽으므로,
             // ArrayList가 아닌 CopyOnWriteArrayList로 보관해 순회/복사 중 경합을 피한다.
             this.offers = new CopyOnWriteArrayList<>(offers);
@@ -717,6 +737,10 @@ public class MatchingService {
 
         public UUID boormiId() {
             return boormiId;
+        }
+
+        public GeoPoint location() {
+            return location;
         }
 
         public List<MatchOffer> offers() {
