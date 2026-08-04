@@ -1,9 +1,11 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { BottomNav, Icon, ScreenShell, SegmentedToggle } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import type { Role } from "@/shared/lib/role/RoleContext";
 import { useRoleLocked } from "@/shared/store/deliveryStore";
+import { useSessionStore } from "@/shared/store/sessionStore";
 import { DriverPanel } from "./DriverPanel";
 import { SenderPanel } from "./SenderPanel";
 
@@ -15,6 +17,23 @@ export function HomeScreen() {
   const { role, setRole } = useRole();
   const roleLocked = useRoleLocked();
   const navigate = useNavigate();
+  // 드리미 가능 여부(=/me의 isDreami). roles에 "드리미"가 있으면 등록된 드리미.
+  const canBeDriver = useSessionStore((s) => s.user?.roles.includes("드리미") ?? false);
+
+  // 미등록 상태에서 드리미로 전환 시도 → 등록/본인인증 화면으로 유도(전환은 막음).
+  const handleRoleChange = (value: string) => {
+    const next = value as Role;
+    if (next === "드리미" && !canBeDriver) {
+      navigate(ROUTES.verify);
+      return;
+    }
+    setRole(next);
+  };
+
+  // 계정 전환 등으로 드리미 상태가 남아있어도 미등록이면 부르미로 되돌린다.
+  useEffect(() => {
+    if (!canBeDriver && role === "드리미") setRole("부르미");
+  }, [canBeDriver, role, setRole]);
 
   return (
     <ScreenShell footer={<BottomNav />}>
@@ -39,7 +58,7 @@ export function HomeScreen() {
         <SegmentedToggle
           options={["부르미", "드리미"]}
           value={role}
-          onChange={(value) => setRole(value as Role)}
+          onChange={handleRoleChange}
           disabled={roleLocked}
         />
 
