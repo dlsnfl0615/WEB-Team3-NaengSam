@@ -73,21 +73,23 @@ public class MatchingService {
     }
 
     /**
-     * 매칭 시작 후(OPEN) 아직 확정되지 않은, 대기 중인 부르미 목록을 조회한다. 부르미는 별도 등록 큐 없이 {@link #startMatching}/
-     * {@link #cancelOrderByBoormi}로만 대기 상태가 결정되므로, 진행 중인 {@link OrderOfferGroup}에서 직접 도출한다.
+     * 매칭 시작 후(OPEN) 아직 확정되지 않은, 대기 중인 주문 목록을 조회한다. 한 부르미가 여러 주문을 동시에 가질 수 있으므로 부르미 단위가 아니라 주문 단위로 도출한다.
+     * 별도 등록 큐 없이 {@link #startMatching}/{@link #cancelOrderByBoormi}로만 대기 상태가 결정되므로, 진행 중인 {@link OrderOfferGroup}에서
+     * 직접 도출한다.
      */
-    public List<WaitingBoormi> waitingBoormis() {
+    public List<WaitingOrder> waitingOrders() {
         return orderOfferGroupsByOrderId.values().stream()
                 .filter(group -> group.status() == OrderOfferGroupStatus.OPEN)
-                .map(group -> new WaitingBoormi(group.boormiId(), group.location()))
+                .map(group -> new WaitingOrder(group.orderId(), group.location()))
                 .toList();
     }
 
     // ────────────────────────────── 외부 API ──────────────────────────────
     // 외부에서는 이 메서드로 액션을 큐에 넣기만 한다. 실제 상태 변경은 엔진 스레드에서 apply*가 수행한다.
+
     /**
-     * 드리미를 대기열에 등록한다. 호출 스레드에서 곧바로 확인 가능한 중복 등록만 빠르게 걸러내며, 이미 등록되어 있는 드리미면 큐에 넣지 않고 false를 반환하면서 실패 사유를
-     * SSE로 알린다. 실제 등록은 엔진 스레드에서 순차 처리된다.
+     * 드리미를 대기열에 등록한다. 호출 스레드에서 곧바로 확인 가능한 중복 등록만 빠르게 걸러내며, 이미 등록되어 있는 드리미면 큐에 넣지 않고 false를 반환하면서 실패 사유를 SSE로 알린다. 실제
+     * 등록은 엔진 스레드에서 순차 처리된다.
      *
      * @param dreamiId 등록할 드리미 UUID
      * @param location 드리미의 현재 위치
@@ -103,8 +105,8 @@ public class MatchingService {
     }
 
     /**
-     * 드리미 등록을 해제한다. 호출 스레드에서 곧바로 확인 가능한 존재 여부만 빠르게 걸러내며, 등록되어 있지 않은 드리미면 큐에 넣지 않고 false를 반환하면서 실패 사유를 SSE로
-     * 알린다. 실제 제거는 엔진 스레드에서 순차 처리된다.
+     * 드리미 등록을 해제한다. 호출 스레드에서 곧바로 확인 가능한 존재 여부만 빠르게 걸러내며, 등록되어 있지 않은 드리미면 큐에 넣지 않고 false를 반환하면서 실패 사유를 SSE로 알린다. 실제 제거는
+     * 엔진 스레드에서 순차 처리된다.
      *
      * @param dreamiId 제거할 드리미 UUID
      * @return 드리미 제거 액션이 큐에 제출되었으면 true, 등록되어 있지 않거나 큐 제출에 실패했을 경우 false
@@ -133,8 +135,8 @@ public class MatchingService {
     }
 
     /**
-     * 부르미가 매칭 진행 중인 주문을 직접 취소한다. 호출 스레드에서 곧바로 확인 가능한 취소 가능 여부(진행 중인 방이 있는지)만 빠르게 걸러내며, 취소할 방이 없거나 이미 종료된
-     * 방이면 큐에 넣지 않고 false를 반환한다. 방이 존재했다면 실패 사유를 부르미에게 SSE로 알린다. 실제 취소는 엔진 스레드에서 순차 처리된다.
+     * 부르미가 매칭 진행 중인 주문을 직접 취소한다. 호출 스레드에서 곧바로 확인 가능한 취소 가능 여부(진행 중인 방이 있는지)만 빠르게 걸러내며, 취소할 방이 없거나 이미 종료된 방이면 큐에 넣지 않고
+     * false를 반환한다. 방이 존재했다면 실패 사유를 부르미에게 SSE로 알린다. 실제 취소는 엔진 스레드에서 순차 처리된다.
      *
      * @param orderId 취소할 주문 UUID
      * @return 주문 취소 액션이 큐에 제출되었으면 true, 취소 가능한 진행 중인 방이 없거나 큐 제출에 실패했을 경우 false
@@ -149,6 +151,43 @@ public class MatchingService {
             return false;
         }
         return matchingEngine.submit(new CancelOrderByBoormi(this, orderId));
+    }
+
+    /**
+     * 드리미가 제안(팝업)을 수락한다. 큐 제출 전에는 유효성을 검사하지 않으며, 이미 종료/회수된 제안이거나 존재하지 않는 제안이면 엔진 스레드에서 실패를 판단해 SSE로 알린다. 수락이 확정되면 나머지
+     * 오퍼는 회수(WITHDRAWN)되고 부르미에게 확인 팝업이 전달된다.
+     *
+     * @param offerId 수락할 제안 UUID
+     */
+    public void acceptByDreami(UUID offerId) {
+        matchingEngine.submit(new AcceptByDreami(this, offerId));
+    }
+
+    /**
+     * 드리미가 제안(팝업)을 거절한다. 거절한 드리미는 다시 매칭 대기(MATCHING) 상태로 돌아가고, 방에 더 이상 진행 중인 오퍼가 없으면 즉시 재오퍼를 시도한다.
+     *
+     * @param offerId 거절할 제안 UUID
+     */
+    public void rejectByDreami(UUID offerId) {
+        matchingEngine.submit(new RejectByDreami(this, offerId));
+    }
+
+    /**
+     * 부르미가 드리미의 수락을 최종 승인한다. 승인되면 해당 오퍼는 확정(MATCHED)되고 방도 매칭 완료 상태가 된다.
+     *
+     * @param offerId 승인할 제안 UUID
+     */
+    public void acceptByBoormi(UUID offerId) {
+        matchingEngine.submit(new AcceptByBoormi(this, offerId));
+    }
+
+    /**
+     * 부르미가 드리미의 수락을 거절한다. 거절당한 드리미는 다시 매칭 대기(MATCHING) 상태로 돌아가고, 방은 재오퍼를 즉시 시도한다.
+     *
+     * @param offerId 거절할 제안 UUID
+     */
+    public void rejectByBoormi(UUID offerId) {
+        matchingEngine.submit(new RejectByBoormi(this, offerId));
     }
 
     // ────────────────────────────── 내부 구현체 ──────────────────────────────
@@ -201,7 +240,8 @@ public class MatchingService {
         }
 
         GeoPoint boormiLocation = new GeoPoint(order.getOriginLatitude(), order.getOriginLongitude());
-        OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), boormiLocation, new ArrayList<>());
+        OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), boormiLocation,
+                new ArrayList<>());
         orderOfferGroupsByOrderId.put(order.getOrderId(), group);
         attemptOfferRound(group);
     }
@@ -278,11 +318,6 @@ public class MatchingService {
         group.cancel();
     }
 
-    // 팝업에서 수락을 눌렀다는 가정
-    public void acceptByDreami(UUID offerId) {
-        matchingEngine.submit(new AcceptByDreami(this, offerId));
-    }
-
     void applyAcceptByDreami(UUID offerId) {
         log.debug("드리미 수락 액션 실행: offerId={}", offerId);
 
@@ -322,11 +357,6 @@ public class MatchingService {
         }
     }
 
-    // 드리미가 거절하면, DREAMI_REJECTED로 변경 및 다시 대기상태로
-    public void rejectByDreami(UUID offerId) {
-        matchingEngine.submit(new RejectByDreami(this, offerId));
-    }
-
     void applyRejectByDreami(UUID offerId) {
         log.debug("드리미 거절 액션 실행: offerId={}", offerId);
 
@@ -342,10 +372,6 @@ public class MatchingService {
         );
     }
 
-    public void acceptByBoormi(UUID offerId) {
-        matchingEngine.submit(new AcceptByBoormi(this, offerId));
-    }
-
     void applyAcceptByBoormi(UUID offerId) {
         log.debug("부르미 수락 액션 실행: offerId={}", offerId);
 
@@ -358,10 +384,6 @@ public class MatchingService {
                 },
                 () -> log.debug("존재하지 않는 제안 부르미 수락 요청, 무시: offerId={}", offerId)
         );
-    }
-
-    public void rejectByBoormi(UUID offerId) {
-        matchingEngine.submit(new RejectByBoormi(this, offerId));
     }
 
     void applyRejectByBoormi(UUID offerId) {
@@ -703,9 +725,9 @@ public class MatchingService {
     }
 
     /**
-     * 대기 중인 부르미(매칭 시작 후 아직 확정되지 않은 주문의 부르미). 별도 등록 큐 없이 {@link OrderOfferGroup}에서 그대로 도출되는 값이라 불변으로 둔다.
+     * 대기 중인 주문(매칭 시작 후 아직 확정되지 않은 주문). 별도 등록 큐 없이 {@link OrderOfferGroup}에서 그대로 도출되는 값이라 불변으로 둔다.
      */
-    public record WaitingBoormi(UUID boormiId, GeoPoint location) {
+    public record WaitingOrder(UUID orderId, GeoPoint location) {
     }
 
     /**
