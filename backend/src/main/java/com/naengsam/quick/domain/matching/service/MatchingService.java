@@ -7,6 +7,7 @@ import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.event.NotificationErrorPayload;
 import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
+import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
@@ -67,6 +68,7 @@ public class MatchingService {
     private final MatchingEngine matchingEngine;
     private final SseService sseService;
     private final OfferTimeoutScheduler offerTimeoutScheduler;
+    private final DeliveryService deliveryService;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -379,8 +381,10 @@ public class MatchingService {
                 matchOffer -> {
                     matchOffer.confirmByBoormi(); // 부르미까지 수락 완료
                     findOrderOfferGroup(matchOffer.orderId())
-                            .ifPresent(OrderOfferGroup::markMatched);
-                    proceedToDelivery(matchOffer);
+                            .ifPresent(group -> {
+                                group.markMatched();
+                                proceedToDelivery(matchOffer, group.boormiId());
+                            });
                 },
                 () -> log.debug("존재하지 않는 제안 부르미 수락 요청, 무시: offerId={}", offerId)
         );
@@ -467,6 +471,31 @@ public class MatchingService {
     }
 
     /**
+     * 해당 제안이 주어진 드리미에게 온 것인지 확인한다. 제안이 존재하지 않으면 false.
+     *
+     * @param offerId 확인할 제안 UUID
+     * @param dreamiId 요청한 드리미 UUID
+     * @return 제안의 대상 드리미가 dreamiId와 일치하면 true
+     */
+    public boolean isDreamiOfferOwner(UUID offerId, UUID dreamiId) {
+        return findOffer(offerId).map(offer -> offer.dreamiId().equals(dreamiId)).orElse(false);
+    }
+
+    /**
+     * 해당 제안이 속한 주문이 주어진 부르미의 것인지 확인한다. 제안이나 방이 존재하지 않으면 false.
+     *
+     * @param offerId 확인할 제안 UUID
+     * @param boormiId 요청한 부르미 UUID
+     * @return 제안이 속한 방의 부르미가 boormiId와 일치하면 true
+     */
+    public boolean isBoormiOfferOwner(UUID offerId, UUID boormiId) {
+        return findOffer(offerId)
+                .flatMap(offer -> findOrderOfferGroup(offer.orderId()))
+                .map(group -> group.boormiId().equals(boormiId))
+                .orElse(false);
+    }
+
+    /**
      * 확정 후보(수락자)를 부르미가 거절/만료시킨 경우 - 남은 오퍼가 없으므로 아직 제안받지 않은 드리미에게 즉시 재오퍼를 시도한다. 후보가 없으면 재매칭 대기 상태가 된다.
      */
     private void closeGroupForRematch(UUID orderId) {
@@ -513,10 +542,10 @@ public class MatchingService {
         return Optional.of(offer);
     }
 
-    // ────────────────────────────── 미구현 ──────────────────────────────
+    // ────────────────────────────── 배달 연동 ──────────────────────────────
 
-    private void proceedToDelivery(MatchOffer matchOffer) {
-        // 아직 코드 구현X
+    private void proceedToDelivery(MatchOffer matchOffer, UUID boormiId) {
+        deliveryService.startDelivery(matchOffer.orderId(), matchOffer.dreamiId(), boormiId);
     }
 
     // ────────────────────────────── 조회 헬퍼 ──────────────────────────────
