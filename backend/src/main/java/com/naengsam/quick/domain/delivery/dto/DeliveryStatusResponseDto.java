@@ -1,7 +1,7 @@
 package com.naengsam.quick.domain.delivery.dto;
 
+import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
-import com.naengsam.quick.domain.delivery.service.DeliveryStatus;
 import java.util.UUID;
 
 /**
@@ -14,16 +14,16 @@ public record DeliveryStatusResponseDto(
         DeliveryLocationDto currentLocation,
         String message
 ) {
-    public static DeliveryStatusResponseDto from(DeliveryStatus deliveryStatus, String message) {
-        DeliveryLocationDto currentLocation = deliveryStatus.currentLatitude() == null
+    public static DeliveryStatusResponseDto from(Delivery delivery, String message) {
+        DeliveryLocationDto currentLocation = delivery.getCurrentLatitude() == null
                 ? null
                 : new DeliveryLocationDto(
-                        deliveryStatus.currentLatitude(),
-                        deliveryStatus.currentLongitude());
+                        delivery.getCurrentLatitude(),
+                        delivery.getCurrentLongitude());
 
         return new DeliveryStatusResponseDto(
-                deliveryStatus.orderId(),
-                deliveryStatus.status(),
+                delivery.getOrderId(),
+                delivery.getDeliveryCd(),
                 currentLocation,
                 message);
     }
