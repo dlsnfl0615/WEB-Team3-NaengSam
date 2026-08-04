@@ -18,6 +18,7 @@ import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -29,6 +30,7 @@ import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -63,6 +65,9 @@ BoormiServiceTest {
     @Mock
     private OrderService orderService;
 
+    @Mock
+    private MatchingRepository matchingRepository;
+
     @InjectMocks
     private BoormiService boormiService;
 
@@ -86,10 +91,6 @@ BoormiServiceTest {
                 "서류봉투", ItemCd.DOCUMENT, "http://img", "계약서", "문 앞에 두세요");
     }
 
-    private static CoordinatesResponseDto coordinates() {
-        return coordinatesAt("127.123456", "37.123456");
-    }
-
     // x=경도(longitude), y=위도(latitude)
     private static CoordinatesResponseDto coordinatesAt(String longitudeX, String latitudeY) {
         CoordinatesResponseDto.RoadAddress roadAddress =
@@ -101,7 +102,8 @@ BoormiServiceTest {
 
     @Test
     void 문서_5km면_기본요금과_거리요금을_합산한다() {
-        given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
                 .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
 
@@ -114,7 +116,8 @@ BoormiServiceTest {
 
     @Test
     void PACKAGE는_배율15이_곱해진다() {
-        given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
                 .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
 
@@ -125,7 +128,8 @@ BoormiServiceTest {
 
     @Test
     void ETA는_초를_분으로_올림한다() {
-        given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
                 .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 901));
 
@@ -136,7 +140,8 @@ BoormiServiceTest {
 
     @Test
     void 견적_좌표변환시_x는_경도_y는_위도로_매핑한다() {
-        given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
                 .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
 
@@ -145,8 +150,8 @@ BoormiServiceTest {
         ArgumentCaptor<GeoPoint> captor = ArgumentCaptor.forClass(GeoPoint.class);
         then(kakaoDirectionsService).should().getRoute(captor.capture(), captor.capture());
         GeoPoint origin = captor.getAllValues().getFirst();
-        assertThat(origin.latitude()).isEqualByComparingTo("37.123456");   // y=위도
-        assertThat(origin.longitude()).isEqualByComparingTo("127.123456"); // x=경도
+        assertThat(origin.latitude()).isEqualByComparingTo("37.5");   // y=위도
+        assertThat(origin.longitude()).isEqualByComparingTo("127.0"); // x=경도
     }
 
     @Test
@@ -262,6 +267,20 @@ BoormiServiceTest {
     }
 
     @Test
+    void 견적_출발지와_도착지가_같으면_카카오호출없이_SAME_ORIGIN_DESTINATION() {
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+
+        ExpectedValueRequest sameLocation =
+                new ExpectedValueRequest("서울시 강남구", "서울시 강남구", ItemCd.DOCUMENT);
+        Throwable thrown = catchThrowable(() -> boormiService.expectedValue(sameLocation));
+
+        assertThat(thrown).isInstanceOf(BusinessException.class);
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.SAME_ORIGIN_DESTINATION);
+        then(kakaoDirectionsService).should(never()).getRoute(any(), any());
+    }
+
+    @Test
     void 좌표변환_결과가_비면_EXTERNAL_SERVICE_ERROR() {
         given(coordinatesService.getCoordinates(anyString()))
                 .willReturn(new CoordinatesResponseDto(List.of()));
@@ -336,5 +355,78 @@ BoormiServiceTest {
 
         then(orderService).should().cancel(order, CancelerCd.BOORMI);
         then(matchingService).should().cancelOrderByBoormi(orderId);
+    }
+
+    private static Orders confirmableOrder(UUID boormiId, UUID dreamiId, OrderCd orderCd) {
+        Orders order = order(boormiId, orderCd);
+        ReflectionTestUtils.setField(order, "dreamiId", dreamiId);
+        return order;
+    }
+
+    @Test
+    void 확정_정상이면_dreamiId를_채우고_IN_PROGRESS_전이하며_MATCHING을_저장한다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION); // dreamiId 미설정 상태로 시작
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(matchingService.findDreamiIdByOfferId(offerId)).willReturn(Optional.of(dreamiId));
+
+        boormiService.confirmDreami(boormiId, orderId, offerId);
+
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.IN_PROGRESS);
+        assertThat(order.getDreamiId()).isEqualTo(dreamiId);
+        then(matchingRepository).should().save(any());
+        then(matchingService).should().acceptByBoormi(offerId);
+    }
+
+    @Test
+    void 확정_비소유자면_NOT_ORDER_OWNER_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Orders order = confirmableOrder(UUID.randomUUID(), UUID.randomUUID(),
+                OrderCd.PENDING_BOORMI_CONFIRMATION);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.confirmDreami(boormiId, orderId, UUID.randomUUID()));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.NOT_ORDER_OWNER);
+        then(matchingService).should(never()).acceptByBoormi(any());
+    }
+
+    @Test
+    void 확정_상태가_PENDING_BOORMI_CONFIRMATION이_아니면_INVALID_DREAMI_CONFIRMATION_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Orders order = confirmableOrder(boormiId, UUID.randomUUID(), OrderCd.MATCHING);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.confirmDreami(boormiId, orderId, UUID.randomUUID()));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.INVALID_DREAMI_CONFIRMATION);
+        then(matchingService).should(never()).acceptByBoormi(any());
+    }
+
+    @Test
+    void 확정_offer에_드리미가_없으면_NO_DREAMI_TO_CONFIRM_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID offerId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(matchingService.findDreamiIdByOfferId(offerId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.confirmDreami(boormiId, orderId, offerId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.NO_DREAMI_TO_CONFIRM);
+        then(matchingRepository).should(never()).save(any());
+        then(matchingService).should(never()).acceptByBoormi(any());
     }
 }

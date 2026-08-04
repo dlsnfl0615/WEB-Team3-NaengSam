@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
@@ -8,30 +9,25 @@ import {
   StatCard,
 } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
-import { useDeliveryStore } from "@/shared/store/deliveryStore";
+import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
+import {
+  ONGOING_ORDER_CDS,
+  ORDER_PROGRESS,
+} from "@/shared/store/boormiOrderAdapter";
 
-/** 진행 중 상태별 진행바 값. */
-const PROGRESS: Record<string, number> = {
-  요청됨: 10,
-  매칭중: 20,
-  픽업중: 45,
-  배송중: 75,
-};
-
-/** 홈 화면의 부르미(발송인) 본문. */
+/** 홈 화면의 부르미(발송인) 본문. 현재 진행 중인 부름을 실제 API로 조회한다. */
 export function SenderPanel() {
   const navigate = useNavigate();
-  const deliveries = useDeliveryStore((s) => s.deliveries);
-  const setActive = useDeliveryStore((s) => s.setActive);
+  const orders = useBoormiOrderStore((s) => s.orders);
+  const loading = useBoormiOrderStore((s) => s.loading);
+  const error = useBoormiOrderStore((s) => s.error);
+  const load = useBoormiOrderStore((s) => s.load);
 
-  const ongoing = deliveries.filter(
-    (d) => d.myRole === "부르미" && d.status in PROGRESS,
-  );
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  const openDelivery = (id: string, status: string) => {
-    setActive(id);
-    navigate(status === "매칭중" ? ROUTES.matching : ROUTES.deliveryDetail);
-  };
+  const ongoing = orders.filter((o) => ONGOING_ORDER_CDS.has(o.orderCd));
 
   return (
     <>
@@ -57,17 +53,21 @@ export function SenderPanel() {
         onAction={() => navigate(ROUTES.activity)}
       />
 
-      {ongoing.length > 0 ? (
+      {loading && ongoing.length === 0 ? (
+        <p className="py-6 text-center text-sm text-muted">불러오는 중…</p>
+      ) : error ? (
+        <p className="py-6 text-center text-sm text-status-danger">{error}</p>
+      ) : ongoing.length > 0 ? (
         <div className="flex flex-col gap-3">
-          {ongoing.map((d) => (
+          {ongoing.map((o) => (
+            // 상세/진행 화면은 아직 mock 영역이라 클릭 이동은 연결하지 않는다.
             <DeliveryCard
-              key={d.id}
-              icon={d.icon}
-              title={d.title}
-              route={`${d.pickup} → ${d.dropoff}`}
-              status={d.status}
-              progress={PROGRESS[d.status]}
-              onClick={() => openDelivery(d.id, d.status)}
+              key={o.id}
+              icon={o.icon}
+              title={o.title}
+              route={o.route}
+              status={o.statusLabel}
+              progress={ORDER_PROGRESS[o.statusLabel]}
             />
           ))}
         </div>
@@ -78,7 +78,7 @@ export function SenderPanel() {
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="총 이용" value="12건" />
+        <StatCard label="총 이용" value={`${orders.length}건`} />
         <StatCard label="절감 금액" value="₩45,000" variant="accent" />
       </div>
     </>

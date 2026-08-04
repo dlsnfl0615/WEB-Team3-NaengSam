@@ -38,4 +38,14 @@ public class PickupCertification {
     @JdbcTypeCode(SqlTypes.BINARY)
     @Column(name = "order_id", columnDefinition = "BINARY(16)", nullable = false)
     private UUID orderId;
+
+    public static PickupCertification create(String imageKey, LocalDateTime submittedDtm, UUID orderId) {
+        PickupCertification certification = new PickupCertification();
+        certification.certificationId = UUID.randomUUID();
+        certification.isContact = false;
+        certification.imageKey = imageKey;
+        certification.submittedDtm = submittedDtm;
+        certification.orderId = orderId;
+        return certification;
+    }
 }

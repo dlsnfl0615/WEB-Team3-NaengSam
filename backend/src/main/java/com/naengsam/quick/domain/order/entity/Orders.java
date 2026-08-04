@@ -82,8 +82,8 @@ public class Orders {
     @Column(name = "delivery_request")
     private String deliveryRequest;
 
-    @Column(name = "image_url", length = 500)
-    private String imageUrl;
+    @Column(name = "image_key", length = 500)
+    private String imageKey;
 
     @Column(name = "delivery_request_dtm", nullable = false, insertable = false, updatable = false)
     private LocalDateTime deliveryRequestDtm;
@@ -93,8 +93,8 @@ public class Orders {
      * {@code dreami_id} 는 매칭 성사 시 채워지고, {@code delivery_request_dtm} 은 DB 기본값(CURRENT_TIMESTAMP)이 적용된다.
      */
     public static Orders create(UUID orderId, UUID boormiId, String itemName, ItemCd itemCd,
-            String itemDetail, Long deliveryAmount, int deliveryEta, String deliveryRequest,
-            String imageUrl, Addresses addresses) {
+                                String itemDetail, Long deliveryAmount, int deliveryEta, String deliveryRequest,
+                                String imageKey, Addresses addresses) {
         Orders order = new Orders();
         order.orderId = orderId;
         order.boormiId = boormiId;
@@ -104,7 +104,7 @@ public class Orders {
         order.deliveryAmount = deliveryAmount;
         order.deliveryEta = deliveryEta;
         order.deliveryRequest = deliveryRequest;
-        order.imageUrl = imageUrl;
+        order.imageKey = imageKey;
         order.orderCd = OrderCd.MATCHING;
         order.updateAddresses(addresses);
         return order;
@@ -131,6 +131,14 @@ public class Orders {
      */
     public void cancel() {
         this.orderCd = OrderCd.CANCELLED;
+    }
+
+    /**
+     * 부르미가 드리미를 최종 확정한다. 확정된 드리미로 dreami_id 를 채우고 IN_PROGRESS 로 전이한다(dirty checking 반영). 검증은 서비스에서 수행한다.
+     */
+    public void confirmDreami(UUID dreamiId) {
+        this.dreamiId = dreamiId;
+        this.orderCd = OrderCd.IN_PROGRESS;
     }
 
     public void updateAddresses(Addresses addresses) {

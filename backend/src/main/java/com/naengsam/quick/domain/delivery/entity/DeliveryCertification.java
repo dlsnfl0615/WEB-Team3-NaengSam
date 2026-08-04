@@ -38,4 +38,14 @@ public class DeliveryCertification {
 
     @Column(name = "submitted_dtm", nullable = false)
     private LocalDateTime submittedDtm;
+
+    public static DeliveryCertification create(String imageKey, LocalDateTime submittedDtm, UUID deliveryId) {
+        DeliveryCertification certification = new DeliveryCertification();
+        certification.certificationId = UUID.randomUUID();
+        certification.isContact = false;
+        certification.imageKey = imageKey;
+        certification.submittedDtm = submittedDtm;
+        certification.deliveryId = deliveryId;
+        return certification;
+    }
 }
