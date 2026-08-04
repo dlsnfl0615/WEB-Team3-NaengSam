@@ -1,10 +1,10 @@
 package com.naengsam.quick.domain.delivery.exception;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.tuple;
-
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 /**
  * 배달 에러코드의 코드값과 HTTP 상태 매핑을 검증한다.
@@ -28,6 +28,7 @@ class DeliveryErrorCodeTest {
                         tuple("DELIVERY_011", HttpStatus.BAD_REQUEST),
                         tuple("DELIVERY_012", HttpStatus.CONFLICT),
                         tuple("DELIVERY_013", HttpStatus.CONFLICT),
-                        tuple("DELIVERY_014", HttpStatus.CONFLICT));
+                        tuple("DELIVERY_014", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_015", HttpStatus.INTERNAL_SERVER_ERROR));
     }
 }

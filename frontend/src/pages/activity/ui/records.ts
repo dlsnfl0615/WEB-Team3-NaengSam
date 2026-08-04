@@ -1,6 +1,7 @@
 import type { IconName } from "@/shared/ui";
 import type { Role } from "@/shared/lib/role/RoleContext";
 import type { Delivery, DeliveryStatus } from "@/shared/mock/types";
+import type { BoormiOrder } from "@/shared/store/boormiOrderAdapter";
 
 /** 활동 내역 필터 칩 목록. */
 export const ACTIVITY_FILTERS = ["전체", "진행중", "완료", "취소"] as const;
@@ -52,4 +53,19 @@ export function toActivityRecords(
           ? `+₩${d.price.toLocaleString()}`
           : `₩${d.price.toLocaleString()}`,
     }));
+}
+
+/** 부르미 주문(실제 API) → 활동 내역 레코드(부르미 관점). */
+export function toActivityRecordFromOrder(order: BoormiOrder): ActivityRecord {
+  return {
+    id: order.id,
+    icon: order.icon,
+    title: order.title,
+    route: order.route,
+    status: order.statusLabel,
+    filter: order.filter,
+    time: order.time,
+    note: "",
+    amount: `₩${order.amount.toLocaleString()}`,
+  };
 }

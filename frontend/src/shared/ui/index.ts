@@ -77,5 +77,8 @@ export type { ModalProps } from "./Modal/Modal";
 export { DestinationPicker } from "./DestinationPicker/DestinationPicker";
 export type { DestinationPickerProps } from "./DestinationPicker/DestinationPicker";
 
+export { PlaceItem } from "./DestinationPicker/PlaceItem";
+export type { PlaceItemProps } from "./DestinationPicker/PlaceItem";
+
 export { ScreenShell } from "./ScreenShell/ScreenShell";
 export type { ScreenShellProps } from "./ScreenShell/ScreenShell";

@@ -86,10 +86,6 @@ BoormiServiceTest {
                 "서류봉투", ItemCd.DOCUMENT, "http://img", "계약서", "문 앞에 두세요");
     }
 
-    private static CoordinatesResponseDto coordinates() {
-        return coordinatesAt("127.123456", "37.123456");
-    }
-
     // x=경도(longitude), y=위도(latitude)
     private static CoordinatesResponseDto coordinatesAt(String longitudeX, String latitudeY) {
         CoordinatesResponseDto.RoadAddress roadAddress =
@@ -101,7 +97,8 @@ BoormiServiceTest {
 
     @Test
     void 문서_5km면_기본요금과_거리요금을_합산한다() {
-        given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
                 .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
 
@@ -114,7 +111,8 @@ BoormiServiceTest {
 
     @Test
     void PACKAGE는_배율15이_곱해진다() {
-        given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
                 .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
 
@@ -125,7 +123,8 @@ BoormiServiceTest {
 
     @Test
     void ETA는_초를_분으로_올림한다() {
-        given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
                 .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 901));
 
@@ -136,7 +135,8 @@ BoormiServiceTest {
 
     @Test
     void 견적_좌표변환시_x는_경도_y는_위도로_매핑한다() {
-        given(coordinatesService.getCoordinates(anyString())).willReturn(coordinates());
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
                 .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
 
@@ -145,8 +145,8 @@ BoormiServiceTest {
         ArgumentCaptor<GeoPoint> captor = ArgumentCaptor.forClass(GeoPoint.class);
         then(kakaoDirectionsService).should().getRoute(captor.capture(), captor.capture());
         GeoPoint origin = captor.getAllValues().getFirst();
-        assertThat(origin.latitude()).isEqualByComparingTo("37.123456");   // y=위도
-        assertThat(origin.longitude()).isEqualByComparingTo("127.123456"); // x=경도
+        assertThat(origin.latitude()).isEqualByComparingTo("37.5");   // y=위도
+        assertThat(origin.longitude()).isEqualByComparingTo("127.0"); // x=경도
     }
 
     @Test
@@ -259,6 +259,20 @@ BoormiServiceTest {
 
         assertThat(thrown).isInstanceOf(BusinessException.class);
         assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(GeneralErrorCode.CONFLICT);
+    }
+
+    @Test
+    void 견적_출발지와_도착지가_같으면_카카오호출없이_SAME_ORIGIN_DESTINATION() {
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+
+        ExpectedValueRequest sameLocation =
+                new ExpectedValueRequest("서울시 강남구", "서울시 강남구", ItemCd.DOCUMENT);
+        Throwable thrown = catchThrowable(() -> boormiService.expectedValue(sameLocation));
+
+        assertThat(thrown).isInstanceOf(BusinessException.class);
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.SAME_ORIGIN_DESTINATION);
+        then(kakaoDirectionsService).should(never()).getRoute(any(), any());
     }
 
     @Test

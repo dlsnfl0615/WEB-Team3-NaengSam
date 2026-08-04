@@ -1,18 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
-import { useDeliveryStore } from "@/shared/store/deliveryStore";
+import { api, isApiError, type ExpectedValueDto } from "@/shared/api";
+import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
 import { RequestStepper } from "./RequestStepper";
 import { StepLocation } from "./StepLocation";
 import { StepItem } from "./StepItem";
 import { StepPhoto } from "./StepPhoto";
 import { StepPayment } from "./StepPayment";
+import { itemTypeToCd, toOrderRequest } from "./orderRequest";
 import type { RequestForm } from "./types";
 
 const INITIAL_FORM: RequestForm = {
   pickup: "",
+  pickupDetail: "",
   dropoff: "",
+  dropoffDetail: "",
   pickupMeeting: "대면",
   dropoffMeeting: "비대면",
   itemType: "서류",
@@ -25,17 +29,18 @@ const INITIAL_FORM: RequestForm = {
 
 /**
  * 부름 등록 화면(Figma node 191:548/475/416/340).
- * 위치 → 물품 → 사진·요청 → 결제 4단계 멀티스텝 폼(UI 전용, API 미연동).
+ * 위치 → 물품 → 사진·요청 → 결제 4단계 멀티스텝 폼.
+ * 주소·예상요금·이미지 업로드·콜 등록을 실제 부르미 API로 연동한다.
  */
-/** 결제 화면 표시 금액(12,000 P)과 동일한 목 결제액. */
-const REQUEST_PRICE = 12000;
-
 export function RequestCreateScreen() {
   const navigate = useNavigate();
-  const createRequest = useDeliveryStore((s) => s.createRequest);
+  const createOrder = useBoormiOrderStore((s) => s.createOrder);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState<RequestForm>(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [estimate, setEstimate] = useState<ExpectedValueDto | null>(null);
+  const [estimating, setEstimating] = useState(false);
 
   const update = (patch: Partial<RequestForm>) =>
     setForm((prev) => ({ ...prev, ...patch }));
@@ -43,6 +48,34 @@ export function RequestCreateScreen() {
   const next = () => setStep((s) => Math.min(4, s + 1));
   const prev = () => setStep((s) => Math.max(1, s - 1));
   const back = () => (step > 1 ? prev() : navigate(-1));
+
+  // 출발·도착지와 물품 유형이 준비되면 예상 요금을 실시간 조회.
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!form.pickup.trim() || !form.dropoff.trim()) {
+        setEstimate(null);
+        return;
+      }
+      setEstimating(true);
+      try {
+        const { result } = await api.expectedValue({
+          originAddressLine1: form.pickup.trim(),
+          destinationAddressLine1: form.dropoff.trim(),
+          itemCd: itemTypeToCd(form.itemType),
+        });
+        if (!cancelled) setEstimate(result ?? null);
+      } catch {
+        if (!cancelled) setEstimate(null);
+      } finally {
+        if (!cancelled) setEstimating(false);
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [form.pickup, form.dropoff, form.itemType]);
 
   // 스텝별 필수값 검증(스텝2 유형·크기는 기본 선택값 존재).
   const canProceed =
@@ -54,18 +87,16 @@ export function RequestCreateScreen() {
 
   const submit = async () => {
     setSubmitting(true);
+    setError(null);
     try {
-      await createRequest({
-        pickup: form.pickup,
-        dropoff: form.dropoff,
-        itemType: form.itemType,
-        itemSize: form.itemSize,
-        itemName: form.itemName,
-        detail: form.detail,
-        requestTag: form.requestTag,
-        price: REQUEST_PRICE,
-      });
-      navigate(ROUTES.matching, { replace: true });
+      await createOrder(toOrderRequest(form));
+      // 등록한 콜은 홈 "진행 중인 부름"에 노출된다.
+      // (매칭 팝업/진행 화면은 드리미·mock 영역으로 이번 범위 밖)
+      navigate(ROUTES.home, { replace: true });
+    } catch (e) {
+      setError(
+        isApiError(e) ? e.message : "콜 등록에 실패했어요. 다시 시도해주세요.",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -81,12 +112,28 @@ export function RequestCreateScreen() {
 
       <main className="flex flex-1 flex-col pt-5">
         {step === 1 && <StepLocation form={form} update={update} />}
-        {step === 2 && <StepItem form={form} update={update} />}
+        {step === 2 && (
+          <StepItem
+            form={form}
+            update={update}
+            estimate={estimate}
+            estimating={estimating}
+          />
+        )}
         {step === 3 && <StepPhoto form={form} update={update} />}
-        {step === 4 && <StepPayment form={form} />}
+        {step === 4 && (
+          <StepPayment
+            form={form}
+            estimate={estimate}
+            onCharge={() => navigate(ROUTES.pointCharge)}
+          />
+        )}
       </main>
 
       <footer className="pt-4">
+        {error && (
+          <p className="pb-3 text-center text-sm text-status-danger">{error}</p>
+        )}
         {step === 1 && (
           <Button
             variant="navy"
@@ -122,7 +169,7 @@ export function RequestCreateScreen() {
             disabled={submitting}
             onClick={submit}
           >
-            {submitting ? "결제 중…" : "등록 및 결제하기"}
+            {submitting ? "등록 중…" : "등록 및 결제하기"}
           </Button>
         )}
       </footer>
