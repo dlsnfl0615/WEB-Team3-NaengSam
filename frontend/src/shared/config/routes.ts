@@ -24,6 +24,7 @@ export const ROUTES = {
   wallet: "/wallet",
   pointCharge: "/point-charge",
   mypage: "/mypage",
+  deliveryTest: "/delivery-test",
 } as const;
 
 export type RouteKey = keyof typeof ROUTES;
@@ -36,4 +37,5 @@ export const PUBLIC_ROUTES: string[] = [
   ROUTES.onboarding,
   ROUTES.login,
   ROUTES.signup,
+  ROUTES.deliveryTest,
 ];
