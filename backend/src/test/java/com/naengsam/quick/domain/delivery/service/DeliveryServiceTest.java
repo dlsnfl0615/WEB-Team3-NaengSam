@@ -12,15 +12,20 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
+import com.naengsam.quick.domain.delivery.entity.DeliveryCertification;
+import com.naengsam.quick.domain.delivery.entity.PickupCertification;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
+import com.naengsam.quick.domain.delivery.repository.DeliveryCertificationRepository;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
+import com.naengsam.quick.domain.delivery.repository.PickupCertificationRepository;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
@@ -49,6 +54,8 @@ class DeliveryServiceTest {
     private static final String PHOTO_KEY = "uploads/dreami/photo.png";
 
     private DeliveryRepository deliveryRepository;
+    private PickupCertificationRepository pickupCertificationRepository;
+    private DeliveryCertificationRepository deliveryCertificationRepository;
     private SseService sseService;
     private S3PresignService s3PresignService;
     private UploadSessionService uploadSessionService;
@@ -60,11 +67,13 @@ class DeliveryServiceTest {
     @BeforeEach
     void setUp() {
         deliveryRepository = mock(DeliveryRepository.class);
+        pickupCertificationRepository = mock(PickupCertificationRepository.class);
+        deliveryCertificationRepository = mock(DeliveryCertificationRepository.class);
         sseService = mock(SseService.class);
         s3PresignService = mock(S3PresignService.class);
         uploadSessionService = mock(UploadSessionService.class);
-        deliveryService =
-                new DeliveryService(deliveryRepository, sseService, s3PresignService, uploadSessionService);
+        deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
+                deliveryCertificationRepository, sseService, s3PresignService, uploadSessionService);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 존재. 스코프 검증(validateScope)은 void라 기본 no-op(통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(s3PresignService.isFileUploaded(any())).willReturn(true);
@@ -497,5 +506,80 @@ class DeliveryServiceTest {
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERED);
+    }
+
+    // ===== 인증 행 저장 (비대면 인증) =====
+
+    @Test
+    void 픽업완료_성공하면_PickupCertification이_저장된다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        pickupFinish(orderId);
+
+        ArgumentCaptor<PickupCertification> captor = ArgumentCaptor.forClass(PickupCertification.class);
+        verify(pickupCertificationRepository).save(captor.capture());
+        PickupCertification saved = captor.getValue();
+        assertThat(saved.isContact()).isFalse();
+        assertThat(saved.getImageKey()).isEqualTo(PHOTO_KEY);
+        assertThat(saved.getOrderId()).isEqualTo(orderId);
+        assertThat(saved.getSignKey()).isNull();
+        assertThat(saved.getSubmittedDtm())
+                .isEqualTo(registeredDeliveries.get(orderId).getPickedUpDtm());
+    }
+
+    @Test
+    void 배달완료_성공하면_DeliveryCertification이_저장된다() {
+        UUID orderId = registerDelivery(DELIVERING);
+
+        finish(orderId);
+
+        ArgumentCaptor<DeliveryCertification> captor = ArgumentCaptor.forClass(DeliveryCertification.class);
+        verify(deliveryCertificationRepository).save(captor.capture());
+        DeliveryCertification saved = captor.getValue();
+        assertThat(saved.isContact()).isFalse();
+        assertThat(saved.getImageKey()).isEqualTo(PHOTO_KEY);
+        assertThat(saved.getDeliveryId())
+                .isEqualTo(registeredDeliveries.get(orderId).getDeliveryId());
+        assertThat(saved.getSignKey()).isNull();
+        assertThat(saved.getSubmittedDtm())
+                .isEqualTo(registeredDeliveries.get(orderId).getDeliveryEndDtm());
+    }
+
+    @Test
+    void 픽업완료_사진이없으면_PickupCertification을_저장하지_않는다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+        given(s3PresignService.isFileUploaded(PHOTO_KEY)).willReturn(false);
+
+        catchThrowable(() -> pickupFinish(orderId));
+
+        verify(pickupCertificationRepository, never()).save(any());
+    }
+
+    @Test
+    void 픽업완료_배정되지않은_드리미면_PickupCertification을_저장하지_않는다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        catchThrowable(() -> deliveryService.pickupFinishByDreami(orderId, UUID.randomUUID(), PHOTO_KEY));
+
+        verify(pickupCertificationRepository, never()).save(any());
+    }
+
+    @Test
+    void 배달완료_사진이없으면_DeliveryCertification을_저장하지_않는다() {
+        UUID orderId = registerDelivery(DELIVERING);
+        given(s3PresignService.isFileUploaded(PHOTO_KEY)).willReturn(false);
+
+        catchThrowable(() -> finish(orderId));
+
+        verify(deliveryCertificationRepository, never()).save(any());
+    }
+
+    @Test
+    void 배달완료_배정되지않은_드리미면_DeliveryCertification을_저장하지_않는다() {
+        UUID orderId = registerDelivery(DELIVERING);
+
+        catchThrowable(() -> deliveryService.finishDelivery(orderId, UUID.randomUUID(), PHOTO_KEY));
+
+        verify(deliveryCertificationRepository, never()).save(any());
     }
 }

@@ -10,9 +10,13 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_NORMAL
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
+import com.naengsam.quick.domain.delivery.entity.DeliveryCertification;
+import com.naengsam.quick.domain.delivery.entity.PickupCertification;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
+import com.naengsam.quick.domain.delivery.repository.DeliveryCertificationRepository;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
+import com.naengsam.quick.domain.delivery.repository.PickupCertificationRepository;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
@@ -47,6 +51,8 @@ public class DeliveryService {
     private static final int LOCATION_SCALE = 8;
 
     private final DeliveryRepository deliveryRepository;
+    private final PickupCertificationRepository pickupCertificationRepository;
+    private final DeliveryCertificationRepository deliveryCertificationRepository;
     private final SseService sseService;
     private final S3PresignService s3PresignService;
     private final UploadSessionService uploadSessionService;
@@ -192,6 +198,9 @@ public class DeliveryService {
         }
 
         delivery.markDelivering(); // 배달중_정상
+        // 비대면 픽업 인증 행 저장 (submittedDtm은 markDelivering이 기록한 pickedUpDtm 재사용)
+        pickupCertificationRepository.save(
+                PickupCertification.create(photoKey, delivery.getPickedUpDtm(), delivery.getOrderId()));
         alarmBoormiDeliveringBySSE(delivery); // 부르미에게_배달중_상태로_바뀌었다고_전달_SSE사용()
         return "픽업 완료";
     }
@@ -321,6 +330,9 @@ public class DeliveryService {
         }
 
         delivery.markDelivered(); // 배달_완료
+        // 비대면 배달 인증 행 저장 (submittedDtm은 markDelivered가 기록한 deliveryEndDtm 재사용)
+        deliveryCertificationRepository.save(
+                DeliveryCertification.create(photoKey, delivery.getDeliveryEndDtm(), delivery.getDeliveryId()));
         alarmBoormiDeliveredBySSE(delivery); // 부르미에게_배달완료라고_전달_SSE로()
         return "드리미에게_완료";
     }

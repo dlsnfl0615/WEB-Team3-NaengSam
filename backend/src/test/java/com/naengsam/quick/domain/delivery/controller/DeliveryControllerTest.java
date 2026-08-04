@@ -1,16 +1,5 @@
 package com.naengsam.quick.domain.delivery.controller;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.verify;
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
-
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
@@ -19,14 +8,22 @@ import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.exception.GlobalExceptionHandler;
 import com.naengsam.quick.global.session.LoginUserArgumentResolver;
 import com.naengsam.quick.global.session.SessionConst;
-import java.math.BigDecimal;
-import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+
+import java.math.BigDecimal;
+import java.util.UUID;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 /**
  * 배달 컨트롤러가 비즈니스 예외를 HTTP 상태와 공통 응답 코드로 변환하는지 검증한다.
@@ -94,7 +91,7 @@ class DeliveryControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.isSuccess").value(false))
                 .andExpect(jsonPath("$.code").value("DELIVERY_014"))
-                .andExpect(jsonPath("$.message").value("픽업 완료 후 진행해 주세요."));
+                .andExpect(jsonPath("$.message").value("픽업 완료 처리에 실패했습니다."));
     }
 
     @Test

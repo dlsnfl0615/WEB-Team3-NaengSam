@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.delivery.entity;
 public enum DeliveryCd {
     PICKUP_NORMAL,                // 픽업중_정상
     PICKUP_DELAYED,               // 픽업 중 지연
+    // CANCELLED 상태 추가시 cancelBy() 수정 필요
     PICKUP_CANCELLED_BY_BOORMI,   // 픽업중_부르미의_취소
     PICKUP_CANCELLED_BY_DREAMI,   // 픽업중_드리미의_취소
     PICKUP_CANCELLED_BY_ADMIN,    // 픽업중_관리자의_취소

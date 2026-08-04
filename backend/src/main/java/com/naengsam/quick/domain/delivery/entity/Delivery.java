@@ -1,19 +1,16 @@
 package com.naengsam.quick.domain.delivery.entity;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.UUID;
+import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
+
 
 /**
  * 진행 중인 배달 한 건의 상태·위치를 담는 엔티티. 상태 전이 가드는 DeliveryService가 담당하고, 이 엔티티는 상태·위치·타임스탬프 변경만 책임진다.
@@ -95,6 +92,11 @@ public class Delivery {
     }
 
     public void cancelBy(DeliveryCd cancelStatus) {
+        if (cancelStatus != DeliveryCd.PICKUP_CANCELLED_BY_BOORMI
+                && cancelStatus != DeliveryCd.PICKUP_CANCELLED_BY_DREAMI
+                && cancelStatus != DeliveryCd.PICKUP_CANCELLED_BY_ADMIN) {
+            throw new IllegalArgumentException("Invalid cancel status: " + cancelStatus);
+        }
         this.deliveryCd = cancelStatus;
     }
 }
