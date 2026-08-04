@@ -52,4 +52,9 @@ public class DreamiController {
     public void goOffline(@LoginUser UUID dreamiId) {
         matchingService.removeDreami(dreamiId);
     }
+
+    @PostMapping
+    public void findNearbyCalls() {
+
+    }
 }
