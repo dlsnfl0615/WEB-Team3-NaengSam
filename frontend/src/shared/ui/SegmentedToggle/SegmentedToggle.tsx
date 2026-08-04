@@ -5,6 +5,8 @@ export interface SegmentedToggleProps {
   value: string
   onChange: (value: string) => void
   className?: string
+  /** true면 전환을 막습니다(진행 중인 배달 등). */
+  disabled?: boolean
 }
 
 /**
@@ -15,12 +17,15 @@ export function SegmentedToggle({
   value,
   onChange,
   className,
+  disabled = false,
 }: SegmentedToggleProps) {
   return (
     <div
       role="tablist"
+      aria-disabled={disabled || undefined}
       className={cn(
         'flex h-10 w-full items-center rounded-pill bg-line p-1',
+        disabled && 'opacity-60',
         className,
       )}
     >
@@ -32,12 +37,14 @@ export function SegmentedToggle({
             role="tab"
             aria-selected={selected}
             type="button"
+            disabled={disabled}
             onClick={() => onChange(option)}
             className={cn(
               'h-full flex-1 rounded-pill text-base font-bold transition',
               selected
                 ? 'bg-surface text-navy-900 shadow-card'
                 : 'text-muted',
+              disabled && 'cursor-not-allowed',
             )}
           >
             {option}

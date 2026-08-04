@@ -44,7 +44,6 @@ public class CommonResponseAdvice implements ResponseBodyAdvice<Object> {
         }
 
         // body 가 null 이어도(반환값 없는 성공) 빈 바디 대신 result=null 봉투로 내려보낸다.
-        // 단, void 반환 메서드는 애초에 이 advice 를 타지 않으므로 CommonResponse<Void> 를 직접 반환해야 한다.
         return CommonResponse.onSuccess(body);
     }
 }

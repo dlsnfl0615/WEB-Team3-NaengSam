@@ -1,8 +1,12 @@
 import { BarChart, Button, Card, InfoRow } from "@/shared/ui";
+import { selectEarnings, useDeliveryStore } from "@/shared/store/deliveryStore";
 import { MONTHLY_TREND } from "./trend";
 
-/** 드리미 수익 리포트 본문(총 수익·월간 추이·퀵 대비 추가 수익). */
+/** 드리미 수익 리포트 본문(완료 배달 집계·월간 추이·퀵 대비 추가 수익). */
 export function DriverEarnings() {
+  const deliveries = useDeliveryStore((s) => s.deliveries);
+  const { count, total, diff } = selectEarnings(deliveries, "드리미");
+
   return (
     <>
       <Card variant="hero" className="flex flex-col gap-1">
@@ -12,7 +16,9 @@ export function DriverEarnings() {
             7월
           </span>
         </div>
-        <p className="text-3xl font-bold tracking-[-0.6px]">₩312,500</p>
+        <p className="text-3xl font-bold tracking-[-0.6px]">
+          ₩{total.toLocaleString()}
+        </p>
         <p className="text-2xs text-teal-500">▲ 지난달 대비 +18%</p>
       </Card>
 
@@ -29,10 +35,12 @@ export function DriverEarnings() {
           <span className="text-sm font-bold text-navy-900">
             퀵 대비 추가로 번 금액
           </span>
-          <span className="text-lg font-bold text-teal-700">+₩58,500</span>
+          <span className="text-lg font-bold text-teal-700">
+            +₩{diff.toLocaleString()}
+          </span>
         </div>
         <p className="text-2xs text-muted">
-          이번 달 52건 · 자투리 시간 활용 수익
+          이번 달 {count}건 · 자투리 시간 활용 수익
         </p>
       </Card>
 

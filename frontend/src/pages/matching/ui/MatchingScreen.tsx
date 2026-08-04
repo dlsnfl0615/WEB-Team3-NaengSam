@@ -1,25 +1,26 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { Card, MapCard, Modal, ScreenShell, TopBar } from "@/shared/ui";
-import { ROUTES } from "@/shared/config/routes";
+import { Card, MapCard, ScreenShell, TopBar } from "@/shared/ui";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useDeliveryStore } from "@/shared/store/deliveryStore";
-import { CallCard } from "./CallCard";
-import { OfferCard } from "./OfferCard";
 
 /**
  * 매칭(찾는 중) 화면(Figma node 191:763).
- * 지도 위에서 대기 상태를 보여주고, 도착한 요청을 수락·거절합니다(UI 전용).
- * 현재 역할에 따라 상대가 바뀝니다 — 부르미는 드리미를, 드리미는 부르미를 찾습니다.
+ * 지도 위에서 대기 상태를 보여준다. 실제 오퍼/콜 팝업은 전역 `MatchingPopup`이
+ * 담당하므로 다른 화면으로 이동해도 이어서 뜬다.
  */
 export function MatchingScreen() {
   const navigate = useNavigate();
   const { role } = useRole();
-  const resetDelivery = useDeliveryStore((s) => s.reset);
-  const [offerVisible, setOfferVisible] = useState(true);
+  const startSeeking = useDeliveryStore((s) => s.startSeeking);
 
   const isDriver = role === "드리미";
   const counterpart = isDriver ? "부르미" : "드리미";
+
+  // 드리미: 매칭 진입 시 콜 탐색 시작(전역 콜 팝업 트리거).
+  useEffect(() => {
+    if (isDriver) startSeeking();
+  }, [isDriver, startSeeking]);
 
   return (
     <ScreenShell>
@@ -44,39 +45,6 @@ export function MatchingScreen() {
           </p>
         </Card>
       </main>
-
-      <Modal
-        open={offerVisible}
-        label={isDriver ? "새 부름 요청" : "새 드리미 요청"}
-      >
-        {isDriver ? (
-          <CallCard
-            code="#B-882"
-            price="₩3,500"
-            place="파르나스 타워"
-            route="24F → 12F"
-            pickupDistance="120m"
-            dropoffDistance="1.2km"
-            itemType="음료"
-            onReject={() => navigate(ROUTES.rejectReason)}
-            onAccept={() => {
-              resetDelivery();
-              navigate(ROUTES.deliveryTrack);
-            }}
-          />
-        ) : (
-          <OfferCard
-            heading="새 드리미 요청 도착!"
-            name="드리미 '핀'"
-            rating={4.9}
-            countLabel="배송"
-            count={132}
-            distance="120m"
-            onReject={() => navigate(ROUTES.rejectReason)}
-            onAccept={() => setOfferVisible(false)}
-          />
-        )}
-      </Modal>
     </ScreenShell>
   );
 }
