@@ -1,15 +1,22 @@
 import { Button, Card } from "@/shared/ui";
+import type { ExpectedValueDto } from "@/shared/api";
 import type { RequestForm } from "./types";
 
 export interface StepPaymentProps {
   form: RequestForm;
+  /** expectedValue API 견적(결제 예정 금액). */
+  estimate: ExpectedValueDto | null;
   /** 포인트 충전 화면으로 이동(미구현 시 no-op) */
   onCharge?: () => void;
 }
 
-/** 스텝 4: 결제 — 결제 예정 금액·보유 포인트 요약(UI 전용). */
-export function StepPayment({ form, onCharge }: StepPaymentProps) {
+/** 스텝 4: 결제 — 결제 예정 금액·보유 포인트 요약. */
+export function StepPayment({ form, estimate, onCharge }: StepPaymentProps) {
   const sizeLabel = form.itemSize === "S" ? "소형 (S)" : "중형 (M)";
+  const fareLabel =
+    estimate?.expectedValue != null
+      ? `${estimate.expectedValue.toLocaleString()} P`
+      : "— P";
 
   return (
     <div className="flex flex-col gap-4">
@@ -17,7 +24,7 @@ export function StepPayment({ form, onCharge }: StepPaymentProps) {
         <div className="flex flex-col gap-1">
           <p className="text-xs text-track">결제 예정 금액</p>
           <p className="flex items-baseline gap-2">
-            <span className="text-xl font-bold text-white">12,000 P</span>
+            <span className="text-xl font-bold text-white">{fareLabel}</span>
             <span className="text-xs text-track">VAT 포함</span>
           </p>
         </div>
