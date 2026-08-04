@@ -11,8 +11,15 @@ import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRepository;
+import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.OrderCd;
+import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.exception.OrderErrorCode;
+import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -21,9 +28,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * 드리미 서비스 단위 테스트. 프로필 조회 시 이름/평점/거절횟수를 올바르게 조합하는지 확인한다.
+ * 드리미 서비스 단위 테스트. 프로필 조회 시 이름/평점/거절횟수를, 현재 배달 카드 조회 시 주문 상세를 올바르게 조합하는지 확인한다.
  */
 @ExtendWith(MockitoExtension.class)
 class DreamiServiceTest {
@@ -36,6 +44,9 @@ class DreamiServiceTest {
 
     @Mock
     private DreamiRequestDeniedDetailsRepository dreamiRequestDeniedDetailsRepository;
+
+    @Mock
+    private OrderRepository orderRepository;
 
     @InjectMocks
     private DreamiService dreamiService;
@@ -88,5 +99,36 @@ class DreamiServiceTest {
         Throwable thrown = catchThrowable(() -> dreamiService.getDreamiProfile(id));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+    }
+
+    // ---------- findCurrentDeliveryCard ----------
+
+    @Test
+    void 현재배달카드조회_진행중인_주문이_있으면_카드정보를_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        ReflectionTestUtils.setField(order, "itemName", "서류봉투");
+        ReflectionTestUtils.setField(order, "orderCd", OrderCd.IN_PROGRESS);
+        given(orderRepository.findByDreamiIdAndOrderCd(dreamiId, OrderCd.IN_PROGRESS))
+                .willReturn(Optional.of(order));
+
+        OrderSummaryDto result = dreamiService.findCurrentDeliveryCard(dreamiId);
+
+        assertThat(result.orderId()).isEqualTo(orderId);
+        assertThat(result.itemName()).isEqualTo("서류봉투");
+        assertThat(result.orderCd()).isEqualTo(OrderCd.IN_PROGRESS);
+    }
+
+    @Test
+    void 현재배달카드조회_진행중인_주문이_없으면_ORDER_NOT_FOUND_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        given(orderRepository.findByDreamiIdAndOrderCd(dreamiId, OrderCd.IN_PROGRESS))
+                .willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.findCurrentDeliveryCard(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
     }
 }

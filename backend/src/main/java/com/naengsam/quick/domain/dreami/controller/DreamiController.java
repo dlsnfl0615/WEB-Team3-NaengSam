@@ -6,6 +6,8 @@ import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.service.DreamiService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
@@ -51,5 +53,13 @@ public class DreamiController {
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     public void goOffline(@LoginUser UUID dreamiId) {
         matchingService.removeDreami(dreamiId);
+    }
+
+    @Operation(summary = "현재 수행 중인 배달 카드 조회", description = "드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다.")
+    @GetMapping("/deliveries/current/card")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
+    public OrderSummaryDto findCurrentDeliveryCard(@LoginUser UUID dreamiId) {
+        return dreamiService.findCurrentDeliveryCard(dreamiId);
     }
 }
