@@ -256,46 +256,6 @@ class MatchingDebugControllerTest {
     }
 
     @Test
-    void 드리미_수락_요청은_offerId로_서비스에_위임한다() throws Exception {
-        UUID offerId = UUID.randomUUID();
-
-        mockMvc.perform(post("/api/v1/debug/matching/offers/{offerId}/dreami-accept", offerId))
-                .andExpect(status().isOk());
-
-        verify(matchingService).acceptByDreami(offerId);
-    }
-
-    @Test
-    void 드리미_거절_요청은_offerId로_서비스에_위임한다() throws Exception {
-        UUID offerId = UUID.randomUUID();
-
-        mockMvc.perform(post("/api/v1/debug/matching/offers/{offerId}/dreami-reject", offerId))
-                .andExpect(status().isOk());
-
-        verify(matchingService).rejectByDreami(offerId);
-    }
-
-    @Test
-    void 부르미_수락_요청은_offerId로_서비스에_위임한다() throws Exception {
-        UUID offerId = UUID.randomUUID();
-
-        mockMvc.perform(post("/api/v1/debug/matching/offers/{offerId}/boormi-accept", offerId))
-                .andExpect(status().isOk());
-
-        verify(matchingService).acceptByBoormi(offerId);
-    }
-
-    @Test
-    void 부르미_거절_요청은_offerId로_서비스에_위임한다() throws Exception {
-        UUID offerId = UUID.randomUUID();
-
-        mockMvc.perform(post("/api/v1/debug/matching/offers/{offerId}/boormi-reject", offerId))
-                .andExpect(status().isOk());
-
-        verify(matchingService).rejectByBoormi(offerId);
-    }
-
-    @Test
     void 드리미_만료_요청은_offerId로_서비스에_위임한다() throws Exception {
         UUID offerId = UUID.randomUUID();
 

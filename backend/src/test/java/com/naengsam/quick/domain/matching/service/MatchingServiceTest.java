@@ -1112,6 +1112,77 @@ class MatchingServiceTest {
         assertThat(group.status()).isEqualTo(MatchingService.OrderOfferGroupStatus.MATCHED);
     }
 
+    @Test
+    void 제안의_대상_드리미와_요청한_드리미가_같으면_isDreamiOfferOwner는_true를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchingService.MatchOffer offer = new MatchingService.MatchOffer(
+                offerId, orderId, dreamiId, MatchingService.MatchOfferStatus.OFFERED);
+        getOffersById().put(offerId, offer);
+
+        assertThat(matchingService.isDreamiOfferOwner(offerId, dreamiId)).isTrue();
+    }
+
+    @Test
+    void 제안의_대상_드리미와_요청한_드리미가_다르면_isDreamiOfferOwner는_false를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchingService.MatchOffer offer = new MatchingService.MatchOffer(
+                offerId, orderId, dreamiId, MatchingService.MatchOfferStatus.OFFERED);
+        getOffersById().put(offerId, offer);
+
+        assertThat(matchingService.isDreamiOfferOwner(offerId, UUID.randomUUID())).isFalse();
+    }
+
+    @Test
+    void 존재하지_않는_제안이면_isDreamiOfferOwner는_false를_반환한다() {
+        assertThat(matchingService.isDreamiOfferOwner(UUID.randomUUID(), UUID.randomUUID())).isFalse();
+    }
+
+    @Test
+    void 제안이_속한_주문의_부르미와_요청한_부르미가_같으면_isBoormiOfferOwner는_true를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        MatchingService.MatchOffer offer = new MatchingService.MatchOffer(
+                offerId, orderId, UUID.randomUUID(), MatchingService.MatchOfferStatus.OFFERED);
+        getOffersById().put(offerId, offer);
+        getOrderOfferGroups().put(orderId,
+                new MatchingService.OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), List.of(offer)));
+
+        assertThat(matchingService.isBoormiOfferOwner(offerId, boormiId)).isTrue();
+    }
+
+    @Test
+    void 제안이_속한_주문의_부르미와_요청한_부르미가_다르면_isBoormiOfferOwner는_false를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        MatchingService.MatchOffer offer = new MatchingService.MatchOffer(
+                offerId, orderId, UUID.randomUUID(), MatchingService.MatchOfferStatus.OFFERED);
+        getOffersById().put(offerId, offer);
+        getOrderOfferGroups().put(orderId,
+                new MatchingService.OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), List.of(offer)));
+
+        assertThat(matchingService.isBoormiOfferOwner(offerId, UUID.randomUUID())).isFalse();
+    }
+
+    @Test
+    void 존재하지_않는_제안이면_isBoormiOfferOwner는_false를_반환한다() {
+        assertThat(matchingService.isBoormiOfferOwner(UUID.randomUUID(), UUID.randomUUID())).isFalse();
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<UUID, MatchingService.MatchOffer> getOffersById() {
+        return (Map<UUID, MatchingService.MatchOffer>)
+                ReflectionTestUtils.getField(
+                        matchingService,
+                        "offersById"
+                );
+    }
+
     @SuppressWarnings("unchecked")
     private Map<UUID, MatchingService.OrderOfferGroup> getOrderOfferGroups() {
         return (Map<UUID, MatchingService.OrderOfferGroup>)

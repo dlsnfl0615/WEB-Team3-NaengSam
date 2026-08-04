@@ -116,30 +116,6 @@ public class MatchingDebugController {
                 .orElseThrow(() -> new BusinessException(GeneralErrorCode.NOT_FOUND));
     }
 
-    @Operation(summary = "드리미가 제안 수락")
-    @PostMapping("/offers/{offerId}/dreami-accept")
-    public void acceptByDreami(@PathVariable UUID offerId) {
-        matchingService.acceptByDreami(offerId);
-    }
-
-    @Operation(summary = "드리미가 제안 거절")
-    @PostMapping("/offers/{offerId}/dreami-reject")
-    public void rejectByDreami(@PathVariable UUID offerId) {
-        matchingService.rejectByDreami(offerId);
-    }
-
-    @Operation(summary = "부르미가 제안 수락")
-    @PostMapping("/offers/{offerId}/boormi-accept")
-    public void acceptByBoormi(@PathVariable UUID offerId) {
-        matchingService.acceptByBoormi(offerId);
-    }
-
-    @Operation(summary = "부르미가 제안 거절")
-    @PostMapping("/offers/{offerId}/boormi-reject")
-    public void rejectByBoormi(@PathVariable UUID offerId) {
-        matchingService.rejectByBoormi(offerId);
-    }
-
     @Operation(summary = "드리미 응답 시간 만료 처리")
     @PostMapping("/offers/{offerId}/dreami-expire")
     public void expireDreamiOffer(@PathVariable UUID offerId) {

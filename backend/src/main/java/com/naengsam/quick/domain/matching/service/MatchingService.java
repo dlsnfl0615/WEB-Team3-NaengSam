@@ -467,6 +467,31 @@ public class MatchingService {
     }
 
     /**
+     * 해당 제안이 주어진 드리미에게 온 것인지 확인한다. 제안이 존재하지 않으면 false.
+     *
+     * @param offerId 확인할 제안 UUID
+     * @param dreamiId 요청한 드리미 UUID
+     * @return 제안의 대상 드리미가 dreamiId와 일치하면 true
+     */
+    public boolean isDreamiOfferOwner(UUID offerId, UUID dreamiId) {
+        return findOffer(offerId).map(offer -> offer.dreamiId().equals(dreamiId)).orElse(false);
+    }
+
+    /**
+     * 해당 제안이 속한 주문이 주어진 부르미의 것인지 확인한다. 제안이나 방이 존재하지 않으면 false.
+     *
+     * @param offerId 확인할 제안 UUID
+     * @param boormiId 요청한 부르미 UUID
+     * @return 제안이 속한 방의 부르미가 boormiId와 일치하면 true
+     */
+    public boolean isBoormiOfferOwner(UUID offerId, UUID boormiId) {
+        return findOffer(offerId)
+                .flatMap(offer -> findOrderOfferGroup(offer.orderId()))
+                .map(group -> group.boormiId().equals(boormiId))
+                .orElse(false);
+    }
+
+    /**
      * 확정 후보(수락자)를 부르미가 거절/만료시킨 경우 - 남은 오퍼가 없으므로 아직 제안받지 않은 드리미에게 즉시 재오퍼를 시도한다. 후보가 없으면 재매칭 대기 상태가 된다.
      */
     private void closeGroupForRematch(UUID orderId) {
