@@ -7,6 +7,7 @@ import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.event.NotificationErrorPayload;
 import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
+import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
@@ -67,6 +68,7 @@ public class MatchingService {
     private final MatchingEngine matchingEngine;
     private final SseService sseService;
     private final OfferTimeoutScheduler offerTimeoutScheduler;
+    private final DeliveryService deliveryService;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -379,8 +381,10 @@ public class MatchingService {
                 matchOffer -> {
                     matchOffer.confirmByBoormi(); // 부르미까지 수락 완료
                     findOrderOfferGroup(matchOffer.orderId())
-                            .ifPresent(OrderOfferGroup::markMatched);
-                    proceedToDelivery(matchOffer);
+                            .ifPresent(group -> {
+                                group.markMatched();
+                                proceedToDelivery(matchOffer, group.boormiId());
+                            });
                 },
                 () -> log.debug("존재하지 않는 제안 부르미 수락 요청, 무시: offerId={}", offerId)
         );
@@ -538,10 +542,10 @@ public class MatchingService {
         return Optional.of(offer);
     }
 
-    // ────────────────────────────── 미구현 ──────────────────────────────
+    // ────────────────────────────── 배달 연동 ──────────────────────────────
 
-    private void proceedToDelivery(MatchOffer matchOffer) {
-        // 아직 코드 구현X
+    private void proceedToDelivery(MatchOffer matchOffer, UUID boormiId) {
+        deliveryService.startDelivery(matchOffer.orderId(), matchOffer.dreamiId(), boormiId);
     }
 
     // ────────────────────────────── 조회 헬퍼 ──────────────────────────────

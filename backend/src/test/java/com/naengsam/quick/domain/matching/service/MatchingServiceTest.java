@@ -10,6 +10,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -29,13 +30,15 @@ class MatchingServiceTest {
     private MatchingEngine matchingEngine;
     private SseService sseService;
     private OfferTimeoutScheduler offerTimeoutScheduler;
+    private DeliveryService deliveryService;
 
     @BeforeEach
     void setUp() {
         matchingEngine = mock(MatchingEngine.class);
         sseService = mock(SseService.class);
         offerTimeoutScheduler = mock(OfferTimeoutScheduler.class);
-        matchingService = new MatchingService(matchingEngine, sseService, offerTimeoutScheduler);
+        deliveryService = mock(DeliveryService.class);
+        matchingService = new MatchingService(matchingEngine, sseService, offerTimeoutScheduler, deliveryService);
     }
 
     @Test
@@ -174,6 +177,33 @@ class MatchingServiceTest {
 
         assertThat(getOrderOfferGroups().get(orderId).status())
                 .isEqualTo(MatchingService.OrderOfferGroupStatus.MATCHED);
+    }
+
+    @Test
+    void 부르미까지_수락하면_배달이_시작된다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+
+        when(order.getOrderId()).thenReturn(orderId);
+
+        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+        matchingService.applyStartMatching(order);
+
+        MatchingService.OrderOfferGroup group = getOrderOfferGroups().get(orderId);
+        MatchingService.MatchOffer offer = group.offers().getFirst();
+        UUID boormiId = group.boormiId();
+        UUID dreamiId = offer.dreamiId();
+
+        matchingService.applyAcceptByDreami(offer.offerId());
+
+        // when
+        matchingService.applyAcceptByBoormi(offer.offerId());
+
+        // then
+        verify(deliveryService, times(1)).startDelivery(orderId, dreamiId, boormiId);
     }
 
     @Test
