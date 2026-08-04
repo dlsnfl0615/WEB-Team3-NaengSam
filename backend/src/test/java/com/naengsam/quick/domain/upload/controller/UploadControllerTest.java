@@ -2,6 +2,7 @@ package com.naengsam.quick.domain.upload.controller;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -10,8 +11,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-import com.naengsam.quick.domain.dreami.service.DreamiService;
-import com.naengsam.quick.domain.upload.service.S3PresignService;
+import com.naengsam.quick.domain.upload.dto.PresignedUrlResponseDto;
+import com.naengsam.quick.domain.upload.entity.UploadPurpose;
+import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.global.exception.GlobalExceptionHandler;
 import com.naengsam.quick.global.session.LoginUserArgumentResolver;
 import com.naengsam.quick.global.session.SessionConst;
@@ -26,14 +28,13 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
  */
 class UploadControllerTest {
 
-    private S3PresignService s3PresignService;
+    private UploadSessionService uploadSessionService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        s3PresignService = mock(S3PresignService.class);
-        DreamiService dreamiService = mock(DreamiService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new UploadController(s3PresignService, dreamiService))
+        uploadSessionService = mock(UploadSessionService.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new UploadController(uploadSessionService))
                 .setCustomArgumentResolvers(new LoginUserArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
@@ -45,11 +46,12 @@ class UploadControllerTest {
 
         mockMvc.perform(get("/api/v1/upload/url")
                         .param("fileName", "")
+                        .param("purpose", "DREAMI_ID_CARD")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("FILE_001"));
 
-        verify(s3PresignService, never()).buildKey(any(), any());
+        verify(uploadSessionService, never()).issue(any(), any(), any(), any());
     }
 
     @Test
@@ -58,27 +60,29 @@ class UploadControllerTest {
 
         mockMvc.perform(get("/api/v1/upload/url")
                         .param("fileName", "../secret.png")
+                        .param("purpose", "DREAMI_ID_CARD")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("FILE_006"));
 
-        verify(s3PresignService, never()).buildKey(any(), any());
+        verify(uploadSessionService, never()).issue(any(), any(), any(), any());
     }
 
     @Test
-    void 정상적인_fileName이면_boormiId로_key를_발급받는다() throws Exception {
+    void 정상적인_fileName이면_purpose와_boormiId로_세션을_발급받는다() throws Exception {
         UUID boormiId = UUID.randomUUID();
-        String key = "uploads/" + boormiId + "/aaa-idcard.png";
-        when(s3PresignService.buildKey(boormiId, "idcard.png")).thenReturn(key);
-        when(s3PresignService.generateUploadUrl(key)).thenReturn("https://example.com/upload");
+        String key = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
+        when(uploadSessionService.issue(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "idcard.png"))
+                .thenReturn(new PresignedUrlResponseDto("https://example.com/upload", key));
 
         mockMvc.perform(get("/api/v1/upload/url")
                         .param("fileName", "idcard.png")
+                        .param("purpose", "DREAMI_ID_CARD")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.key").value(key))
                 .andExpect(jsonPath("$.url").value("https://example.com/upload"));
 
-        verify(s3PresignService).buildKey(eq(boormiId), eq("idcard.png"));
+        verify(uploadSessionService).issue(eq(UploadPurpose.DREAMI_ID_CARD), eq(boormiId), isNull(), eq("idcard.png"));
     }
 }

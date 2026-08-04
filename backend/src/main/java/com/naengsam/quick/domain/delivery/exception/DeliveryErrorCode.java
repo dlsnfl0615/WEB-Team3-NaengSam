@@ -24,7 +24,8 @@ public enum DeliveryErrorCode implements BaseErrorCode {
             HttpStatus.BAD_REQUEST, "DELIVERY_011", "배달 완료 인증 사진을 업로드 해주세요."),
     DELIVERY_ALREADY_CANCELLED(HttpStatus.CONFLICT, "DELIVERY_012", "이미 취소된 건에 대한 요청입니다."),
     DELIVERY_ALREADY_COMPLETED(HttpStatus.CONFLICT, "DELIVERY_013", "이미 배달 완료된 주문입니다."),
-    PICKUP_NOT_COMPLETED(HttpStatus.CONFLICT, "DELIVERY_014", "픽업 완료 후 진행해 주세요.");
+    PICKUP_NOT_COMPLETED(HttpStatus.CONFLICT, "DELIVERY_014", "픽업 완료 처리에 실패했습니다."),
+    CANCELLATION_NOT_COMPLETED(HttpStatus.INTERNAL_SERVER_ERROR, "DELIVERY_015", "배달 취소에 실패했습니다.");
 
     private final HttpStatus status;
     private final String code;

@@ -32,10 +32,17 @@ jobs:
           cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        # --ignore-scripts: pnpm 11이 승인되지 않은 빌드 스크립트(esbuild 등)에 ERR_PNPM_IGNORED_BUILDS로
+        # 실패하므로 생략한다. esbuild·tailwind·rolldown은 prebuilt 바이너리(optional dep)라 빌드 스크립트가 불필요.
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build
         run: pnpm build
+        env:
+          # 비어 있으면 상대경로(/api/v1/...) — CloudFront가 /api를 EC2 백엔드로 프록시하는 동일-출처 구성.
+          # 백엔드가 별도 도메인(cross-origin)일 때만 리포지토리 secret에 백엔드 오리진을 넣는다.
+          # (Vite는 빌드 시 VITE_ 접두 변수를 process.env에서 읽어 번들에 인라인한다. working-directory와 무관.)
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
 
       # GitHub Actions 러너 IP에서는 S3 접근이 차단되어 있으므로, 빌드 산출물을 EC2로 보낸 뒤
       # EC2에서 IAM 인스턴스 롤로 S3에 업로드한다. (러너에는 AWS 자격증명을 두지 않는다)

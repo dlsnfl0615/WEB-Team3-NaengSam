@@ -1,7 +1,6 @@
 package com.naengsam.quick.domain.matching.dto;
 
 import com.naengsam.quick.domain.matching.service.MatchingService;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -25,13 +24,11 @@ public record OrderOfferGroupDto(
             UUID offerId,
             UUID orderId,
             UUID dreamiId,
-            MatchingService.MatchOfferStatus status,
-            LocalDateTime expiresAt
+            MatchingService.MatchOfferStatus status
     ) {
 
         public static MatchOfferDto from(MatchingService.MatchOffer offer) {
-            return new MatchOfferDto(
-                    offer.offerId(), offer.orderId(), offer.dreamiId(), offer.status(), offer.expiresAt());
+            return new MatchOfferDto(offer.offerId(), offer.orderId(), offer.dreamiId(), offer.status());
         }
     }
 }

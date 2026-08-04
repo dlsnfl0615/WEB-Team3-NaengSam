@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button, ScreenShell, TextField } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
 import { useSessionStore } from '@/shared/store/sessionStore'
+import { isApiError } from '@/shared/api'
 import { isEmail, VALIDATION_MESSAGE } from '@/shared/lib/validation'
 
 /**
@@ -15,16 +16,22 @@ export function LoginScreen() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const emailError =
     email.trim() && !isEmail(email) ? VALIDATION_MESSAGE.email : undefined
   const canSubmit = isEmail(email) && !!password.trim() && !submitting
 
   const onLogin = async () => {
+    setError(null)
     setSubmitting(true)
     try {
       await login({ email, password })
       navigate(ROUTES.home, { replace: true })
+    } catch (e) {
+      setError(
+        isApiError(e) ? e.message : '로그인에 실패했어요. 다시 시도해주세요.',
+      )
     } finally {
       setSubmitting(false)
     }
@@ -49,6 +56,7 @@ export function LoginScreen() {
             label="이메일"
             type="email"
             placeholder="email@example.com"
+            maxLength={254}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             error={emailError}
@@ -57,10 +65,13 @@ export function LoginScreen() {
             label="비밀번호"
             type="password"
             placeholder="비밀번호를 입력하세요"
+            maxLength={20}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />
         </div>
+
+        {error && <p className="mt-4 text-sm text-status-danger">{error}</p>}
 
         <Button
           variant="navy"

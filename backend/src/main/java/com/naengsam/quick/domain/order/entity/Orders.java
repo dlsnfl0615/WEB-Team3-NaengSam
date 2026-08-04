@@ -93,8 +93,8 @@ public class Orders {
      * {@code dreami_id} 는 매칭 성사 시 채워지고, {@code delivery_request_dtm} 은 DB 기본값(CURRENT_TIMESTAMP)이 적용된다.
      */
     public static Orders create(UUID orderId, UUID boormiId, String itemName, ItemCd itemCd,
-            String itemDetail, Long deliveryAmount, int deliveryEta, String deliveryRequest,
-            String imageUrl, Addresses addresses) {
+                                String itemDetail, Long deliveryAmount, int deliveryEta, String deliveryRequest,
+                                String imageKey, Addresses addresses) {
         Orders order = new Orders();
         order.orderId = orderId;
         order.boormiId = boormiId;
@@ -104,7 +104,7 @@ public class Orders {
         order.deliveryAmount = deliveryAmount;
         order.deliveryEta = deliveryEta;
         order.deliveryRequest = deliveryRequest;
-        order.imageKey = imageUrl;
+        order.imageKey = imageKey;
         order.orderCd = OrderCd.MATCHING;
         order.updateAddresses(addresses);
         return order;

@@ -1,6 +1,8 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Badge, BottomNav, Card, Icon, ScreenShell, TopBar } from "@/shared/ui";
 import { useSessionStore } from "@/shared/store/sessionStore";
+import { ROUTES } from "@/shared/config/routes";
 import { AccountSection } from "./AccountSection";
 import { MenuGroup } from "./MenuGroup";
 import { ACCOUNT_MENU, SUPPORT_MENU } from "./menus";
@@ -10,12 +12,29 @@ import { ACCOUNT_MENU, SUPPORT_MENU } from "./menus";
  * 프로필, 현금화 계좌, 계정·지원 메뉴를 보여줍니다.
  */
 export function MypageScreen() {
+  const navigate = useNavigate();
   const [registered, setRegistered] = useState(false);
   const user = useSessionStore((s) => s.user);
+  const logout = useSessionStore((s) => s.logout);
 
   const name = user?.name ?? "게스트";
   const rolesLabel = user?.roles.join(" · ") ?? "부르미";
   const rating = user?.rating ?? 0;
+
+  const handleLogout = async () => {
+    // api.logout이 실패(예: 이미 만료)해도 store가 상태를 비우므로 무조건 로그인 화면으로 이동.
+    try {
+      await logout();
+    } catch {
+      /* 세션은 이미 정리됨 */
+    }
+    navigate(ROUTES.login, { replace: true });
+  };
+
+  // "로그아웃" 항목에만 동작을 주입한다(나머지 지원 메뉴는 표시만).
+  const supportMenu = SUPPORT_MENU.map((item) =>
+    item.label === "로그아웃" ? { ...item, onClick: handleLogout } : item,
+  );
 
   return (
     <ScreenShell footer={<BottomNav />}>
@@ -39,7 +58,7 @@ export function MypageScreen() {
         />
 
         <MenuGroup title="계정" items={ACCOUNT_MENU} />
-        <MenuGroup title="지원" items={SUPPORT_MENU} />
+        <MenuGroup title="지원" items={supportMenu} />
       </main>
     </ScreenShell>
   );

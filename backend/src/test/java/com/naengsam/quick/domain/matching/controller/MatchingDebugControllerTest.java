@@ -14,6 +14,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.matching.service.NearbyDreamiFinder;
+import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.global.exception.GlobalExceptionHandler;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -34,22 +36,30 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class MatchingDebugControllerTest {
 
     private MatchingService matchingService;
+    private NearbyDreamiFinder nearbyDreamiFinder;
+    private NearbyOrderFinder nearbyOrderFinder;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         matchingService = mock(MatchingService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new MatchingDebugController(matchingService)).build();
+        nearbyDreamiFinder = mock(NearbyDreamiFinder.class);
+        nearbyOrderFinder = mock(NearbyOrderFinder.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                new MatchingDebugController(matchingService, nearbyDreamiFinder, nearbyOrderFinder)).build();
     }
 
     private MockMvc mockMvcWithExceptionHandler() {
-        return MockMvcBuilders.standaloneSetup(new MatchingDebugController(matchingService))
+        return MockMvcBuilders.standaloneSetup(
+                        new MatchingDebugController(matchingService, nearbyDreamiFinder, nearbyOrderFinder))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
 
     @Test
     void 드리미_등록시_생성된_ID와_요청한_위치로_서비스에_위임한다() throws Exception {
+        when(matchingService.registerDreami(any(), any())).thenReturn(true);
+
         String response = mockMvc.perform(post("/api/v1/debug/matching/dreamis")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"latitude\": 37.5, \"longitude\": 127.0}"))
@@ -67,6 +77,7 @@ class MatchingDebugControllerTest {
 
     @Test
     void 드리미_등록_요청마다_서로_다른_ID가_생성된다() throws Exception {
+        when(matchingService.registerDreami(any(), any())).thenReturn(true);
         String body = "{\"latitude\": 37.5, \"longitude\": 127.0}";
 
         String firstId = mockMvc.perform(post("/api/v1/debug/matching/dreamis")
@@ -92,6 +103,7 @@ class MatchingDebugControllerTest {
     @Test
     void 드리미_제거시_경로변수의_ID로_서비스에_위임한다() throws Exception {
         UUID dreamiId = UUID.randomUUID();
+        when(matchingService.removeDreami(dreamiId)).thenReturn(true);
 
         mockMvc.perform(delete("/api/v1/debug/matching/dreamis/{dreamiId}", dreamiId))
                 .andExpect(status().isOk());
@@ -105,6 +117,17 @@ class MatchingDebugControllerTest {
                 .andExpect(status().isBadRequest());
 
         verify(matchingService, never()).removeDreami(any());
+    }
+
+    @Test
+    void 등록되지_않은_드리미를_제거하면_409를_반환한다() throws Exception {
+        UUID dreamiId = UUID.randomUUID();
+        when(matchingService.removeDreami(dreamiId)).thenReturn(false);
+
+        mockMvcWithExceptionHandler().perform(delete("/api/v1/debug/matching/dreamis/{dreamiId}", dreamiId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.isSuccess").value(false))
+                .andExpect(jsonPath("$.code").value("COMMON_008"));
     }
 
     @Test
@@ -177,16 +200,38 @@ class MatchingDebugControllerTest {
     }
 
     @Test
+    void 주문_취소시_경로변수의_orderId로_서비스에_위임한다() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        when(matchingService.cancelOrderByBoormi(orderId)).thenReturn(true);
+
+        mockMvc.perform(post("/api/v1/debug/matching/orders/{orderId}/cancel", orderId))
+                .andExpect(status().isOk());
+
+        verify(matchingService).cancelOrderByBoormi(orderId);
+    }
+
+    @Test
+    void 취소할_진행중인_방이_없으면_주문_취소는_409를_반환한다() throws Exception {
+        UUID orderId = UUID.randomUUID();
+        when(matchingService.cancelOrderByBoormi(orderId)).thenReturn(false);
+
+        mockMvcWithExceptionHandler().perform(post("/api/v1/debug/matching/orders/{orderId}/cancel", orderId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.isSuccess").value(false))
+                .andExpect(jsonPath("$.code").value("COMMON_008"));
+    }
+
+    @Test
     void 그룹_조회시_존재하면_그룹_정보를_반환한다() throws Exception {
         UUID orderId = UUID.randomUUID();
         UUID offerId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        LocalDateTime expiresAt = LocalDateTime.now().plusSeconds(30);
 
         MatchingService.MatchOffer offer = new MatchingService.MatchOffer(
-                offerId, orderId, dreamiId, MatchingService.MatchOfferStatus.OFFERED, expiresAt);
+                offerId, orderId, dreamiId, MatchingService.MatchOfferStatus.OFFERED);
         MatchingService.OrderOfferGroup group =
-                new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(), List.of(offer));
+                new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(),
+                        new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)), List.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
 
         mockMvc.perform(get("/api/v1/debug/matching/orders/{orderId}/group", orderId))
