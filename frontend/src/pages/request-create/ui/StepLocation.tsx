@@ -1,13 +1,7 @@
 import { useState } from "react";
-import {
-  BottomSheet,
-  Card,
-  DestinationPicker,
-  Icon,
-  SegmentedToggle,
-  TextField,
-  TopBar,
-} from "@/shared/ui";
+import { Card, Icon, TextField } from "@/shared/ui";
+import { AddressSheet, type AddressValue } from "./AddressSheet";
+import { KakaoMap } from "./KakaoMap";
 import type { Meeting, RequestForm, UpdateForm } from "./types";
 
 export interface StepLocationProps {
@@ -22,14 +16,39 @@ const FIELD_LABELS: Record<Field, string> = {
   dropoff: "도착지 검색",
 };
 
-const MEETING_KEYS: Record<Field, "pickupMeeting" | "dropoffMeeting"> = {
-  pickup: "pickupMeeting",
-  dropoff: "dropoffMeeting",
-};
-
-/** 스텝 1: 위치 — 픽업/도착지 입력 + 대면/비대면 선택 + 지도(자리표시). */
+/** 스텝 1: 위치 — 카카오(다음) 주소 검색 + 대면/비대면 선택 + 지도. */
 export function StepLocation({ form, update }: StepLocationProps) {
   const [editing, setEditing] = useState<Field | null>(null);
+
+  const values: Record<Field, AddressValue> = {
+    pickup: {
+      address1: form.pickup,
+      detail: form.pickupDetail,
+      meeting: form.pickupMeeting,
+    },
+    dropoff: {
+      address1: form.dropoff,
+      detail: form.dropoffDetail,
+      meeting: form.dropoffMeeting,
+    },
+  };
+
+  const submitAddress = (field: Field, value: AddressValue) => {
+    if (field === "pickup") {
+      update({
+        pickup: value.address1,
+        pickupDetail: value.detail,
+        pickupMeeting: value.meeting,
+      });
+    } else {
+      update({
+        dropoff: value.address1,
+        dropoffDetail: value.detail,
+        dropoffMeeting: value.meeting,
+      });
+    }
+    setEditing(null);
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -40,8 +59,8 @@ export function StepLocation({ form, update }: StepLocationProps) {
       <Card className="flex flex-col gap-3">
         <TextField
           leadingIcon="pin"
-          placeholder="픽업지: 사무실 / 구역"
-          value={form.pickup}
+          placeholder="픽업지: 도로명 주소 검색"
+          value={[form.pickup, form.pickupDetail].filter(Boolean).join(" ")}
           readOnly
           aria-haspopup="dialog"
           className="cursor-pointer"
@@ -55,8 +74,8 @@ export function StepLocation({ form, update }: StepLocationProps) {
 
         <TextField
           leadingIcon="pin"
-          placeholder="도착지: 도착 층 / 호수"
-          value={form.dropoff}
+          placeholder="도착지: 도로명 주소 검색"
+          value={[form.dropoff, form.dropoffDetail].filter(Boolean).join(" ")}
           readOnly
           aria-haspopup="dialog"
           className="cursor-pointer"
@@ -65,44 +84,16 @@ export function StepLocation({ form, update }: StepLocationProps) {
         <MeetingNote meeting={form.dropoffMeeting} suffix="받을게요" />
       </Card>
 
-      <div className="flex h-[200px] items-center justify-center rounded-md border border-dashed border-line bg-canvas text-center text-2xs leading-[14px] text-muted">
-        <p>
-          지도 / MAP
-          <br />
-          주변 드리미: 12명
-        </p>
-      </div>
+      <KakaoMap pickup={form.pickup} dropoff={form.dropoff} />
 
-      <BottomSheet
+      <AddressSheet
+        key={editing ?? "closed"}
         open={editing !== null}
         label={editing ? FIELD_LABELS[editing] : ""}
+        value={editing ? values[editing] : { address1: "", detail: "", meeting: "대면" }}
         onClose={() => setEditing(null)}
-      >
-        <TopBar
-          title={editing ? FIELD_LABELS[editing] : ""}
-          actions={["close"]}
-          onAction={() => setEditing(null)}
-        />
-
-        <div className="flex flex-col gap-2">
-          <p className="text-sm text-muted">전달 방식</p>
-          <SegmentedToggle
-            options={["대면", "비대면"]}
-            value={editing ? form[MEETING_KEYS[editing]] : ""}
-            onChange={(value) => {
-              if (editing)
-                update({ [MEETING_KEYS[editing]]: value as Meeting });
-            }}
-          />
-        </div>
-
-        <DestinationPicker
-          onSubmit={(place) => {
-            if (editing) update({ [editing]: place });
-            setEditing(null);
-          }}
-        />
-      </BottomSheet>
+        onSubmit={(value) => editing && submitAddress(editing, value)}
+      />
     </div>
   );
 }

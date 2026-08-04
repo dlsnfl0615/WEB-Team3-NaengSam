@@ -1,5 +1,6 @@
 import { Card, Icon, IconChip, type IconName } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
+import type { ExpectedValueDto } from "@/shared/api";
 import type { RequestForm, UpdateForm } from "./types";
 
 const TYPES: { key: RequestForm["itemType"]; icon: IconName }[] = [
@@ -18,10 +19,19 @@ const SIZES: { key: RequestForm["itemSize"]; label: string; weight: string }[] =
 export interface StepItemProps {
   form: RequestForm;
   update: UpdateForm;
+  /** expectedValue API 견적(없으면 미표시). */
+  estimate: ExpectedValueDto | null;
+  /** 견적 조회 중. */
+  estimating: boolean;
 }
 
-/** 스텝 2: 물품 — 유형/크기 선택 + 예상 요금(자리표시). */
-export function StepItem({ form, update }: StepItemProps) {
+/** 스텝 2: 물품 — 유형/크기 선택 + 예상 요금(expectedValue). */
+export function StepItem({ form, update, estimate, estimating }: StepItemProps) {
+  const fareLabel = estimating
+    ? "계산 중…"
+    : estimate?.expectedValue != null
+      ? `${estimate.expectedValue.toLocaleString()} 원`
+      : "주소 입력 후 확인";
   return (
     <div className="flex flex-col gap-4">
       <h2 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
@@ -88,15 +98,27 @@ export function StepItem({ form, update }: StepItemProps) {
       {/* 예상 배송 요금 */}
       <Card variant="hero" className="flex flex-col gap-2">
         <p className="text-center text-xs text-track">예상 배송 요금</p>
-        <p className="text-center text-lg font-bold text-white">12,000 원</p>
+        <p className="text-center text-lg font-bold text-white">{fareLabel}</p>
         <div className="h-2 w-full overflow-hidden rounded-[5px] bg-navy-700">
           <div className="h-full w-[35%] rounded-[5px] bg-teal-500" />
         </div>
-        <div className="flex justify-between text-2xs text-track">
-          <span>8,000원</span>
-          <span>추천</span>
-          <span>25,000원</span>
-        </div>
+        {estimate?.expectedDistance != null ||
+        estimate?.expectedTime != null ? (
+          <div className="flex justify-center gap-3 text-2xs text-track">
+            {estimate?.expectedDistance != null && (
+              <span>
+                거리 {(estimate.expectedDistance / 1000).toFixed(1)}km
+              </span>
+            )}
+            {estimate?.expectedTime != null && (
+              <span>예상 {Math.round(estimate.expectedTime / 60)}분</span>
+            )}
+          </div>
+        ) : (
+          <p className="text-center text-2xs text-track">
+            출발·도착지 기준 예상 금액이에요
+          </p>
+        )}
       </Card>
     </div>
   );
