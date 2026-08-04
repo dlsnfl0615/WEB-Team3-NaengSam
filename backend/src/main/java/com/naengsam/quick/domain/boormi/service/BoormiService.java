@@ -12,6 +12,7 @@ import com.naengsam.quick.domain.boormi.entity.Charge;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -58,9 +59,7 @@ public class BoormiService {
         GeoPoint originCoordinate = toGeoPoint(orderRequest.originAddressLine1());
         GeoPoint destinationCoordinate = toGeoPoint(orderRequest.destinationAddressLine1());
 
-        if (isTooClose(originCoordinate, destinationCoordinate)) {
-            throw new BusinessException(OrderErrorCode.SAME_ORIGIN_DESTINATION);
-        }
+        requireDifferentLocation(originCoordinate, destinationCoordinate);
 
         // 요금·예상시간은 클라이언트 전송값을 신뢰하지 않고 견적과 동일한 로직으로 서버가 재계산한다.
         Charge charge = calculatePrice(originCoordinate, destinationCoordinate, orderRequest.itemCd());
@@ -115,12 +114,22 @@ public class BoormiService {
     }
 
     /**
+     * 부르미가 신청한 주문 목록을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하다.
+     */
+    @Transactional(readOnly = true)
+    public BoormiOrdersResponse getMyOrders(UUID boormiId, String cursor, int size, OrderCd status) {
+        return orderService.getBoormiOrders(boormiId, cursor, size, status);
+    }
+
+    /**
      * 출발지/도착지 도로명주소를 좌표로 변환한 뒤 카카오 길찾기로 실제 거리·소요시간을 구하고, 물건 유형 배율을 반영한 예상 가격/시간/거리를 반환한다.
      */
     @Transactional(readOnly = true)
     public ExpectedValueDto expectedValue(ExpectedValueRequest request) {
         GeoPoint origin = toGeoPoint(request.originAddressLine1());
         GeoPoint destination = toGeoPoint(request.destinationAddressLine1());
+
+        requireDifferentLocation(origin, destination);
 
         Charge charge = calculatePrice(origin, destination, request.itemCd());
 
@@ -147,10 +156,13 @@ public class BoormiService {
     }
 
     /**
-     * 출발지와 도착지가 너무 가까운지 판단한다. 두 좌표의 직선거리가 {@link #TOO_CLOSE_DISTANCE}m 미만이면 사실상 같은 위치로 본다.
+     * 출발지와 도착지가 사실상 같은 위치인지 검증한다. 두 좌표의 직선거리가 {@link #TOO_CLOSE_DISTANCE}m 미만이면 SAME_ORIGIN_DESTINATION 예외를 던진다. 견적 조회·주문 접수 모두 카카오
+     * 도보 API 호출 전에 이 가드를 통과해야 한다 — 같은 좌표면 카카오가 경로를 반환하지 못해 EXTERNAL_SERVICE_ERROR 로 실패하기 때문이다.
      */
-    private boolean isTooClose(GeoPoint origin, GeoPoint destination) {
-        return distanceMeters(origin, destination) < TOO_CLOSE_DISTANCE;
+    private void requireDifferentLocation(GeoPoint origin, GeoPoint destination) {
+        if (distanceMeters(origin, destination) < TOO_CLOSE_DISTANCE) {
+            throw new BusinessException(OrderErrorCode.SAME_ORIGIN_DESTINATION);
+        }
     }
 
     /**

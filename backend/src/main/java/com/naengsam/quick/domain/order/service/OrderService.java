@@ -1,12 +1,17 @@
 package com.naengsam.quick.domain.order.service;
 
+import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderCursor;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Cancel;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.CancelRepository;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.global.exception.BusinessException;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -17,6 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class OrderService {
+
+    private static final int MIN_PAGE_SIZE = 1;
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final OrderRepository orderRepository;
     private final CancelRepository cancelRepository;
@@ -32,6 +40,37 @@ public class OrderService {
     @Transactional(readOnly = true)
     public long countActiveOrders(UUID userId) {
         return orderRepository.countActiveOrders(userId);
+    }
+
+    /**
+     * 부르미가 신청한 주문을 최신순 커서 페이지네이션으로 조회한다. status 가 주어지면 해당 상태만 필터링한다. 다음 페이지 존재 여부는 size+1 개를 조회해 판단하고, 초과분은 잘라낸 뒤 마지막
+     * 항목으로 다음 커서를 만든다.
+     */
+    @Transactional(readOnly = true)
+    public BoormiOrdersResponse getBoormiOrders(UUID boormiId, String cursor, int size, OrderCd status) {
+        int pageSize = Math.clamp(size, MIN_PAGE_SIZE, MAX_PAGE_SIZE);
+        String statusFilter = status == null ? null : status.name();
+
+        List<Orders> rows;
+        if (cursor == null) {
+            rows = orderRepository.findFirstPageByBoormi(boormiId, statusFilter, pageSize + 1);
+        } else {
+            OrderCursor decoded = OrderCursor.decode(cursor);
+            rows = orderRepository.findPageByBoormiAfterCursor(
+                    boormiId, statusFilter, decoded.dtm(), decoded.orderId(), pageSize + 1);
+        }
+
+        boolean hasNext = rows.size() > pageSize;
+        List<Orders> page = hasNext ? rows.subList(0, pageSize) : rows;
+
+        String nextCursor = null;
+        if (hasNext) {
+            Orders last = page.getLast();
+            nextCursor = new OrderCursor(last.getDeliveryRequestDtm(), last.getOrderId()).encode();
+        }
+
+        List<OrderSummaryDto> orders = page.stream().map(OrderSummaryDto::from).toList();
+        return BoormiOrdersResponse.of(orders, nextCursor, hasNext);
     }
 
     /**
