@@ -17,6 +17,7 @@ export function MenuGroup({ title, items }: MenuGroupProps) {
           <button
             key={item.label}
             type="button"
+            onClick={item.onClick}
             className={cn(
               "flex items-center gap-2 px-4 py-3.5 text-left",
               index > 0 && "border-t border-line",
