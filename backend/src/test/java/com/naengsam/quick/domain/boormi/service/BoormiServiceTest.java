@@ -18,6 +18,7 @@ import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -29,6 +30,7 @@ import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -62,6 +64,9 @@ BoormiServiceTest {
 
     @Mock
     private OrderService orderService;
+
+    @Mock
+    private MatchingRepository matchingRepository;
 
     @InjectMocks
     private BoormiService boormiService;
@@ -350,5 +355,78 @@ BoormiServiceTest {
 
         then(orderService).should().cancel(order, CancelerCd.BOORMI);
         then(matchingService).should().cancelOrderByBoormi(orderId);
+    }
+
+    private static Orders confirmableOrder(UUID boormiId, UUID dreamiId, OrderCd orderCd) {
+        Orders order = order(boormiId, orderCd);
+        ReflectionTestUtils.setField(order, "dreamiId", dreamiId);
+        return order;
+    }
+
+    @Test
+    void 확정_정상이면_dreamiId를_채우고_IN_PROGRESS_전이하며_MATCHING을_저장한다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION); // dreamiId 미설정 상태로 시작
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(matchingService.findDreamiIdByOfferId(offerId)).willReturn(Optional.of(dreamiId));
+
+        boormiService.confirmDreami(boormiId, orderId, offerId);
+
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.IN_PROGRESS);
+        assertThat(order.getDreamiId()).isEqualTo(dreamiId);
+        then(matchingRepository).should().save(any());
+        then(matchingService).should().acceptByBoormi(offerId);
+    }
+
+    @Test
+    void 확정_비소유자면_NOT_ORDER_OWNER_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Orders order = confirmableOrder(UUID.randomUUID(), UUID.randomUUID(),
+                OrderCd.PENDING_BOORMI_CONFIRMATION);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.confirmDreami(boormiId, orderId, UUID.randomUUID()));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.NOT_ORDER_OWNER);
+        then(matchingService).should(never()).acceptByBoormi(any());
+    }
+
+    @Test
+    void 확정_상태가_PENDING_BOORMI_CONFIRMATION이_아니면_INVALID_DREAMI_CONFIRMATION_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Orders order = confirmableOrder(boormiId, UUID.randomUUID(), OrderCd.MATCHING);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.confirmDreami(boormiId, orderId, UUID.randomUUID()));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.INVALID_DREAMI_CONFIRMATION);
+        then(matchingService).should(never()).acceptByBoormi(any());
+    }
+
+    @Test
+    void 확정_offer에_드리미가_없으면_NO_DREAMI_TO_CONFIRM_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID offerId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(matchingService.findDreamiIdByOfferId(offerId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.confirmDreami(boormiId, orderId, offerId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.NO_DREAMI_TO_CONFIRM);
+        then(matchingRepository).should(never()).save(any());
+        then(matchingService).should(never()).acceptByBoormi(any());
     }
 }

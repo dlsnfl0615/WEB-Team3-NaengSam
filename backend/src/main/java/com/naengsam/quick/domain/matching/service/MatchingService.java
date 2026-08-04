@@ -466,6 +466,13 @@ public class MatchingService {
         return Optional.ofNullable(offersById.get(offerId));
     }
 
+    /**
+     * offerId 로 확정 대상 드리미를 조회한다. 부르미 확정 시 ORDERS.dreami_id 반영에 사용한다. 해당 오퍼가 없으면 empty.
+     */
+    public Optional<UUID> findDreamiIdByOfferId(UUID offerId) {
+        return findOffer(offerId).map(MatchOffer::dreamiId);
+    }
+
     Optional<WaitingDreami> findDreami(UUID dreamiId) {
         return Optional.ofNullable(dreamiMap.get(dreamiId));
     }
