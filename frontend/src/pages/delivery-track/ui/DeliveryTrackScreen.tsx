@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Card, Icon, MapCard, ScreenShell } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import {
@@ -11,16 +11,30 @@ import { TrackOverlay } from "./TrackOverlay";
 /**
  * 실시간 배송 추적 화면(Figma node 191:972, 191:989).
  * 지도 풀블리드 + 지도 위 뒤로가기. 활성 배달의 픽업중 → 배송중 → 완료를 전역 스토어로 전환합니다(URL 미노출).
+ *
+ * 실 백엔드 모드: `?orderId=` 가 있으면 /delivery-test 에서 실제 배달을 들고 넘어온 것으로 보고,
+ * 픽업 완료를 mock 이 아니라 사진 인증 화면(/delivery-proof)으로 넘겨 실제 pickup-finish 로 처리한다.
+ * `?status=DELIVERING` 이면 pickup-finish 후 배송중으로 돌아온 상태다. orderId 가 없으면 기존 mock 흐름.
  */
 export function DeliveryTrackScreen() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const orderId = params.get("orderId");
+  const isRealMode = Boolean(orderId);
   const active = useActiveDelivery();
   const advance = useDeliveryStore((s) => s.advance);
   const complete = useDeliveryStore((s) => s.complete);
   const cancel = useDeliveryStore((s) => s.cancel);
 
   // 드리미 화면은 픽업중/배송중만 다룬다(그 외 상태는 배송중으로 취급).
-  const stage: TrackStage = active?.status === "배송중" ? "배송중" : "픽업중";
+  // 실 모드는 status 파라미터로, mock 모드는 활성 배달 상태로 단계를 결정한다.
+  const stage: TrackStage = isRealMode
+    ? params.get("status") === "DELIVERING"
+      ? "배송중"
+      : "픽업중"
+    : active?.status === "배송중"
+      ? "배송중"
+      : "픽업중";
   const isPickup = stage === "픽업중";
   const { title, action, cancelable } = TRACK_STAGES[stage];
 
@@ -29,6 +43,18 @@ export function DeliveryTrackScreen() {
   const distance = active?.distance ?? "450m";
 
   const onAction = async () => {
+    if (isRealMode) {
+      // 실 모드: 픽업 완료는 사진 인증 화면에서 presign+업로드 후 pickup-finish 로 처리한다.
+      if (isPickup) {
+        navigate(
+          `${ROUTES.deliveryProof}?mode=photo&orderId=${orderId}&intent=pickup`,
+        );
+      } else {
+        // 배송중 이후(전달 완료)는 이번 범위 밖 — 완료 화면으로만 보낸다.
+        navigate(ROUTES.deliveryComplete, { replace: true });
+      }
+      return;
+    }
     if (isPickup) {
       await advance();
     } else {

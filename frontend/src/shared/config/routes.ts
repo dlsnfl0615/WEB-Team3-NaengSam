@@ -37,5 +37,4 @@ export const PUBLIC_ROUTES: string[] = [
   ROUTES.onboarding,
   ROUTES.login,
   ROUTES.signup,
-  ROUTES.deliveryTest,
 ];

@@ -1,25 +1,24 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ScreenShell, TextField, Button } from '@/shared/ui'
+import { ROUTES } from '@/shared/config/routes'
 import { isApiError } from '@/shared/api'
 import { axiosInstance } from '@/shared/api/http/axiosInstance'
 
-/** order-and-start 응답 result 형태. */
-interface SeedResult {
-  orderId: string
-  dreamiId: string
-  boormiId: string
-}
-
 /**
  * 배달(픽업) 플로우 확인용 임시 dev 테스트 화면.
- * boormiId/dreamiId 를 직접 입력해 POST /api/v1/delivery/test/order-and-start 를 호출하고,
- * 응답이 오면 "픽업 중" 상태로 전환한다(픽업 완료 버튼 노출까지만, 이후 동작은 미구현).
+ *
+ * boormiId/dreamiId 를 입력해 POST /api/v1/delivery/test/order-and-start 로 더미 주문을 만들고
+ * 배달(PICKUP_NORMAL)을 시작한 뒤, 실제 orderId 를 들고 기존 드리미 배달 화면(/delivery-track)으로
+ * 넘긴다. 이후 픽업 완료 → 사진 인증 → pickup-finish 는 그 화면들이 실제 백엔드로 처리한다.
+ *
+ * ⚠️ 픽업 완료(pickup-finish)는 로그인 세션의 드리미로 처리되므로, 여기 입력하는 dreamiId 는
+ *    현재 로그인한 계정의 ID 여야 이후 픽업 완료가 성공한다(NOT_ASSIGNED_DREAMI 방지).
  */
 export function DeliveryTestScreen() {
+  const navigate = useNavigate()
   const [boormiId, setBoormiId] = useState('')
   const [dreamiId, setDreamiId] = useState('')
-  const [phase, setPhase] = useState<'input' | 'pickup'>('input')
-  const [result, setResult] = useState<SeedResult | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -34,8 +33,10 @@ export function DeliveryTestScreen() {
         null,
         { params: { boormiId: boormiId.trim(), dreamiId: dreamiId.trim() } },
       )
-      setResult(res.data?.result ?? null)
-      setPhase('pickup')
+      const orderId: string | undefined = res.data?.result?.orderId
+      if (!orderId) throw new Error('orderId 를 받지 못했습니다.')
+      // 실제 orderId 를 들고 기존 드리미 배달 화면으로 핸드오프.
+      navigate(`${ROUTES.deliveryTrack}?orderId=${orderId}`)
     } catch (e) {
       setError(isApiError(e) ? e.message : '요청에 실패했습니다.')
     } finally {
@@ -43,31 +44,14 @@ export function DeliveryTestScreen() {
     }
   }
 
-  if (phase === 'pickup') {
-    return (
-      <ScreenShell>
-        <div className="flex flex-1 flex-col gap-6">
-          <h1 className="text-lg font-bold text-navy-900">픽업 중</h1>
-          {result && (
-            <div className="flex flex-col gap-1 rounded-md border border-line bg-surface p-3.5">
-              <span className="text-2xs text-muted">orderId</span>
-              <span className="break-all text-sm text-navy-900">
-                {result.orderId}
-              </span>
-            </div>
-          )}
-          <div className="mt-auto">
-            <Button block>픽업 완료</Button>
-          </div>
-        </div>
-      </ScreenShell>
-    )
-  }
-
   return (
     <ScreenShell>
       <div className="flex flex-col gap-5">
         <h1 className="text-lg font-bold text-navy-900">배달 테스트</h1>
+        <p className="text-2xs text-muted">
+          주문을 강제로 만들고 배달을 시작합니다. dreamiId 는 로그인한 계정의 ID 여야
+          이후 픽업 완료가 성공합니다.
+        </p>
         <TextField
           label="boormiId"
           placeholder="부르미 UUID"
@@ -76,7 +60,7 @@ export function DeliveryTestScreen() {
         />
         <TextField
           label="dreamiId"
-          placeholder="드리미 UUID"
+          placeholder="드리미 UUID (로그인 계정)"
           value={dreamiId}
           onChange={(e) => setDreamiId(e.target.value)}
         />
