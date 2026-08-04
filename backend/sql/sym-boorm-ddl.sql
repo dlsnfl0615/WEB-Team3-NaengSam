@@ -62,9 +62,9 @@ CREATE TABLE `ORDERS` (
                           `destination_address_line_1`  varchar(255)    NULL,
                           `destination_address_line_2`  varchar(255)    NULL,
                           `delivery_request`            varchar(255)    NULL,
-                          `image_url`                   varchar(500)    NULL,
+                          `image_key`                   varchar(500)    NULL,
                           `delivery_request_dtm`        timestamp       NOT NULL  DEFAULT CURRENT_TIMESTAMP,
-                          `dreami_id`                   binary(16)      NOT NULL
+                          `dreami_id`                   binary(16)      NULL
 );
 
 CREATE TABLE `POINT_LEDGERS` (
@@ -79,7 +79,7 @@ CREATE TABLE `POINT_LEDGERS` (
 CREATE TABLE `ACCIDENT_PROOF` (
                                   `proof_id`     binary(16)    NOT NULL,
                                   `proof_type`   varchar(200)  NULL,
-                                  `file_url`     varchar(500)  NULL,
+                                  `file_key`     varchar(500)  NULL,
                                   `created_dtm`  timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                                   `accident_id`  binary(16)    NOT NULL
 );
@@ -206,8 +206,8 @@ CREATE TABLE `ADDRESS` (
 CREATE TABLE `PICKUP_CERTIFICATION` (
                                         `certification_id`  binary(16)    NOT NULL,
                                         `is_contact`        boolean       NOT NULL  DEFAULT true               COMMENT '대면, 비대면',
-                                        `image_url`         varchar(500)  NULL,
-                                        `sign_url`          varchar(500)  NULL,
+                                        `image_key`         varchar(500)  NULL,
+                                        `sign_key`          varchar(500)  NULL,
                                         `submitted_dtm`     timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                                         `order_id`          binary(16)    NOT NULL
 );
@@ -231,8 +231,8 @@ CREATE TABLE `DELIVERY_CERTIFICATION` (
                                           `certification_id`  binary(16)    NOT NULL,
                                           `delivery_id`       binary(16)    NOT NULL,
                                           `is_contact`        boolean       NOT NULL  DEFAULT true,
-                                          `image_url`         varchar(500)  NULL,
-                                          `sign_url`          varchar(500)  NULL,
+                                          `image_key`         varchar(500)  NULL,
+                                          `sign_key`          varchar(500)  NULL,
                                           `submitted_dtm`     timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP
 );
 

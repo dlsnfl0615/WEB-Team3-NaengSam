@@ -6,17 +6,26 @@ import {
   ScreenShell,
   TopBar,
 } from "@/shared/ui";
-import { useDeliveryStore } from "@/shared/store/deliveryStore";
-import { DETAIL_STATUSES } from "./statuses";
+import { useActiveDelivery } from "@/shared/store/deliveryStore";
+import { DETAIL_STATUSES, type DetailStatus } from "./statuses";
 
 /**
  * 드림 상세 화면(Figma node 191:802, 827, 849, 870).
- * 전역 스토어의 배달 상태에 따라 문구·오버레이·액션이 바뀝니다(URL 미노출).
+ * 활성 배달 상태에 따라 문구·오버레이·액션이 바뀝니다(URL 미노출).
  */
 export function DeliveryDetailScreen() {
   const navigate = useNavigate();
-  const status = useDeliveryStore((s) => s.status);
-  const { title, showEta, cancelable } = DETAIL_STATUSES[status];
+  const active = useActiveDelivery();
+
+  const detailStatus: DetailStatus =
+    active?.status === "배송중" ? "배송중" : "픽업중";
+  const { title, showEta, cancelable } = DETAIL_STATUSES[detailStatus];
+
+  const origin = active?.pickup ?? "A동 102호";
+  const destination = active?.dropoff ?? "B동 405호";
+  const driverName = active?.driverName ?? "핀";
+  const eta = active?.eta ?? "3분";
+  const distance = active?.distance ?? "450m";
 
   return (
     <ScreenShell>
@@ -29,7 +38,7 @@ export function DeliveryDetailScreen() {
             <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
               {title}
             </h1>
-            <p className="text-2xs text-muted">드리미 '핀'이 출발지 도착</p>
+            <p className="text-2xs text-muted">드리미 '{driverName}'이 출발지 도착</p>
           </div>
         </div>
 
@@ -40,18 +49,18 @@ export function DeliveryDetailScreen() {
               {showEta && (
                 <div className="flex flex-col items-center">
                   <span className="text-2xs opacity-70">예상 도착</span>
-                  <span className="text-md font-bold">3분</span>
+                  <span className="text-md font-bold">{eta}</span>
                 </div>
               )}
               <div className="flex flex-col items-center">
                 <span className="text-2xs opacity-70">남은 거리</span>
-                <span className="text-md font-bold">450m</span>
+                <span className="text-md font-bold">{distance}</span>
               </div>
             </div>
           }
         />
 
-        <RouteCard origin="A동 102호" destination="B동 405호" />
+        <RouteCard origin={origin} destination={destination} />
       </main>
 
       <footer className="flex flex-col items-center gap-2 pt-4">
