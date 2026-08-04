@@ -381,10 +381,14 @@ public class MatchingService {
                 matchOffer -> {
                     matchOffer.confirmByBoormi(); // 부르미까지 수락 완료
                     findOrderOfferGroup(matchOffer.orderId())
-                            .ifPresent(group -> {
-                                group.markMatched();
-                                proceedToDelivery(matchOffer, group.boormiId());
-                            });
+                            .ifPresentOrElse(
+                                    group -> {
+                                        group.markMatched();
+                                        proceedToDelivery(matchOffer, group.boormiId());
+                                    },
+                                    () -> log.warn("부르미 수락 처리 중 주문 제안 그룹을 찾을 수 없어 배달을 시작하지 못함: offerId={}, orderId={}",
+                                            matchOffer.offerId(), matchOffer.orderId())
+                            );
                 },
                 () -> log.debug("존재하지 않는 제안 부르미 수락 요청, 무시: offerId={}", offerId)
         );
