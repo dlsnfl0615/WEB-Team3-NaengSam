@@ -12,8 +12,9 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public enum UploadPurpose {
     DREAMI_ID_CARD(false),
-    DREAMI_CRIMINAL_RECORD(false);
-    // todo: 추후에 주문 테이블 관련된 목적들(배송 완료 사진 보내기 등)을 추가해야 함
+    DREAMI_CRIMINAL_RECORD(false),
+    PICKUP_CERTIFICATION_IMAGE(true),
+    DELIVERY_CERTIFICATION_IMAGE(true);
 
     private final boolean resourceScopeRequired;
 }
