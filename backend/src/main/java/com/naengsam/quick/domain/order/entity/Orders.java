@@ -133,6 +133,14 @@ public class Orders {
         this.orderCd = OrderCd.CANCELLED;
     }
 
+    /**
+     * 부르미가 드리미를 최종 확정한다. 확정된 드리미로 dreami_id 를 채우고 IN_PROGRESS 로 전이한다(dirty checking 반영). 검증은 서비스에서 수행한다.
+     */
+    public void confirmDreami(UUID dreamiId) {
+        this.dreamiId = dreamiId;
+        this.orderCd = OrderCd.IN_PROGRESS;
+    }
+
     public void updateAddresses(Addresses addresses) {
         this.originAddressLine1 = addresses.originAddressLine1();
         this.originAddressLine2 = addresses.originAddressLine2();

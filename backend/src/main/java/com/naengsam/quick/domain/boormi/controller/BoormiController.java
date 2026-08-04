@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.boormi.controller;
 
+import com.naengsam.quick.domain.boormi.dto.ConfirmDreamiRequest;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
@@ -73,5 +74,16 @@ public class BoormiController {
             codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER", "CANNOT_CANCEL_AFTER_PICKUP"})
     public void unsubscribeOrder(@LoginUser UUID boormiId, @PathVariable UUID orderId) {
         boormiService.unsubscribeOrder(boormiId, orderId);
+    }
+
+    @Operation(summary = "드리미 최종 확정(더블 컨펌)",
+            description = "부르미가 수락한 드리미를 최종 확정한다. 주문을 IN_PROGRESS 로 전이하고 매칭엔진에 부르미 수락을 제출한다. offerId 는 드리미 수락 시 받은 dreami_info 의 값이다.")
+    @PostMapping("/calls/{orderId}/confirm-dreami")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = OrderErrorCode.class,
+            codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER", "INVALID_DREAMI_CONFIRMATION", "NO_DREAMI_TO_CONFIRM"})
+    public void confirmDreami(@LoginUser UUID boormiId, @PathVariable UUID orderId,
+            @Valid @RequestBody ConfirmDreamiRequest request) {
+        boormiService.confirmDreami(boormiId, orderId, request.offerId());
     }
 }
