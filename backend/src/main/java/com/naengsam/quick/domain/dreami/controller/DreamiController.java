@@ -2,16 +2,20 @@ package com.naengsam.quick.domain.dreami.controller;
 
 import com.naengsam.quick.domain.dreami.dto.DreamiOnlineRequest;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
+import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.service.DreamiService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -53,8 +57,12 @@ public class DreamiController {
         matchingService.removeDreami(dreamiId);
     }
 
-    @PostMapping
-    public void findNearbyCalls() {
-
+    @Operation(summary = "주변 콜 리스트 조회",
+            description = "내 위치·동선 기준으로 콜을 정렬해 리스트/지도뷰로 제공하며 예상 수익·소요시간을 함께 표시한다.")
+    @PostMapping("/calls/nearby")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
+    public List<NearbyCallDto> findNearbyCalls(@Valid @RequestBody NearbyOrderRequest request) {
+        return dreamiService.findNearbyCalls(request);
     }
 }
