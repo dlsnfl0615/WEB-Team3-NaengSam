@@ -20,7 +20,8 @@ public enum OrderErrorCode implements BaseErrorCode {
     PROHIBITED_ITEM(HttpStatus.BAD_REQUEST, "ORDER_010", "해당 품목은 요청할 수 없어요."),
     INAPPROPRIATE_EXPRESSION(HttpStatus.BAD_REQUEST, "ORDER_011", "사용할 수 없는 표현이 포함되어 있어요."),
     MISSING_REQUIRED_INFO(HttpStatus.BAD_REQUEST, "ORDER_012", "필수 정보를 모두 입력해 주세요."),
-    ORDER_EXPIRED(HttpStatus.GONE, "ORDER_013", "요청 시간이 만료되었어요. 다시 등록해 주세요.");
+    ORDER_EXPIRED(HttpStatus.GONE, "ORDER_013", "요청 시간이 만료되었어요. 다시 등록해 주세요."),
+    INVALID_CURSOR(HttpStatus.BAD_REQUEST, "ORDER_014", "잘못된 커서입니다.");
 
     private final HttpStatus status;
     private final String code;
