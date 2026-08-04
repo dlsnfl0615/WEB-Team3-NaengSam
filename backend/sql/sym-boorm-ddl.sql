@@ -258,12 +258,16 @@ CREATE TABLE `SETTLEMENT_DETAILS` (
 
 CREATE TABLE `DELIVERY` (
                             `delivery_id`         binary(16)  NOT NULL,
-                            `delivery_cd`         enum('PICKING_UP', 'DELIVERING', 'DELAYED', 'SUSPENDED', 'PARTNER_HANDOFF_PENDING', 'TRANSFERRED_TO_PARTNER', 'RETURNING', 'RETURNED', 'COMPLETED', 'TERMINATED' )  NOT NULL,
+                            `delivery_cd`         enum('PICKUP_NORMAL', 'PICKUP_DELAYED', 'PICKUP_CANCELLED_BY_BOORMI', 'PICKUP_CANCELLED_BY_DREAMI', 'PICKUP_CANCELLED_BY_ADMIN', 'DELIVERING', 'DELIVERED', 'PARTNER_HANDOFF_PENDING', 'TRANSFERRED_TO_PARTNER', 'RETURNING', 'RETURNED', 'TERMINATED' )  NOT NULL,
+                            `order_id`            binary(16)  NOT NULL,
+                            `dreami_id`           binary(16)  NOT NULL,
+                            `boormi_id`           binary(16)  NOT NULL,
+                            `current_latitude`    decimal(11,8)  NULL,
+                            `current_longitude`   decimal(11,8)  NULL,
                             `picked_up_dtm`       timestamp   NULL,
                             `delivery_start_dtm`  timestamp   NULL,
                             `delivery_end_dtm`    timestamp   NULL,
-                            `received_dtm`        timestamp   NULL,
-                            `order_id`            binary(16)  NOT NULL
+                            `received_dtm`        timestamp   NULL
 );
 
 CREATE TABLE `DELIVERY_ACCIDENT` (
