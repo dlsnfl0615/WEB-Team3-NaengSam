@@ -1,6 +1,10 @@
 package com.naengsam.quick.domain.delivery.controller;
 
+import com.naengsam.quick.domain.address.dto.Addresses;
+import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
+import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.session.PublicApi;
 import com.naengsam.quick.global.sse.SseService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -12,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 /**
@@ -31,6 +36,7 @@ public class DeliveryTestController {
 
     private final DeliveryService deliveryService;
     private final SseService sseService;
+    private final OrderService orderService;
 
     /**
      * PICKUP_NORMAL 상태의 배달 한 건을 새로 만들어 store에 등록하고, 생성한 식별자들을 돌려준다.
@@ -49,6 +55,43 @@ public class DeliveryTestController {
     }
 
     public record SeedResponse(UUID orderId, UUID dreamiId, UUID boormiId) {
+    }
+
+    /**
+     * 매칭이 아직 구현되지 않은 상태에서 배달 플로우를 프론트에서 확인하기 위한 dev 전용 진입점.
+     * boormiId/dreamiId를 받아 더미 주문 한 건을 DB에 영구 저장(매칭 확정 → IN_PROGRESS)한 뒤,
+     * 그 주문을 기준으로 곧바로 {@link DeliveryService#startDelivery}를 호출해 배달(PICKUP_NORMAL)을 시작한다.
+     */
+    @Operation(summary = "주문 생성 + 배달 시작(dev)",
+            description = "boormiId/dreamiId로 더미 주문을 DB에 저장하고, 해당 주문으로 배달을 시작(PICKUP_NORMAL)한 뒤 식별자를 반환한다.")
+    @PostMapping("/order-and-start")
+    public SeedResponse orderAndStart(@RequestParam UUID boormiId, @RequestParam UUID dreamiId) {
+        UUID orderId = UUID.randomUUID();
+
+        Orders order = Orders.create(orderId, boormiId, "테스트 물품", ItemCd.DOCUMENT,
+                null, 5000L, 30, "테스트 배달 요청", null, dummyAddresses());
+        order.assignDreamiTest(dreamiId);
+        orderService.createOrders(order);
+
+        deliveryService.startDelivery(orderId, dreamiId, boormiId);
+        log.debug("[dev-order-and-start] 주문 저장 후 배달 시작 orderId={} boormiId={} dreamiId={}",
+                orderId, boormiId, dreamiId);
+        return new SeedResponse(orderId, dreamiId, boormiId);
+    }
+
+    private static Addresses dummyAddresses() {
+        return Addresses.builder()
+                .originAddressLine1("서울시 강남구 테헤란로 1")
+                .originAddressLine2("101호")
+                .originLatitude(new BigDecimal("37.49794000"))
+                .originLongitude(new BigDecimal("127.02758000"))
+                .originAlias("출발지")
+                .destinationAddressLine1("서울시 송파구 올림픽로 300")
+                .destinationAddressLine2("202호")
+                .destinationLatitude(new BigDecimal("37.51512000"))
+                .destinationLongitude(new BigDecimal("127.10425000"))
+                .destinationAlias("도착지")
+                .build();
     }
 
     /**
