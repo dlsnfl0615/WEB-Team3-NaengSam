@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Card, Icon, MapCard, Modal, ScreenShell } from "@/shared/ui";
+import { Button, Card, Icon, MapCard, Modal, ScreenShell, Toast } from "@/shared/ui";
 import { api, isApiError } from "@/shared/api";
+import type { DeliveryStatusResponseDto } from "@/shared/api";
+import { useSse, type SseHandlers } from "@/shared/lib";
 import { ROUTES } from "@/shared/config/routes";
 import {
   useActiveDelivery,
@@ -9,6 +11,9 @@ import {
 } from "@/shared/store/deliveryStore";
 import { TRACK_STAGES, type TrackStage } from "./statuses";
 import { TrackOverlay } from "./TrackOverlay";
+
+/** 상대편(부르미/관리자) 취소 알림을 보여준 뒤 홈으로 나가기까지의 대기 시간. */
+const CANCEL_NAV_DELAY_MS = 1800;
 
 /**
  * 실시간 배송 추적 화면(Figma node 191:972, 191:989).
@@ -32,6 +37,39 @@ export function DeliveryTrackScreen() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+
+  // 상대편(부르미/관리자)이 취소하면 SSE로 통지받아 알림을 띄우고 홈으로 나간다.
+  const [sseToast, setSseToast] = useState<{ title: string; description?: string } | null>(
+    null,
+  );
+  const navTimer = useRef<number | null>(null);
+
+  useEffect(
+    () => () => {
+      if (navTimer.current !== null) clearTimeout(navTimer.current);
+    },
+    [],
+  );
+
+  const sseHandlers: SseHandlers = {
+    delivery_cancelled: (data) => {
+      const dto = data as DeliveryStatusResponseDto;
+      if (dto?.orderId !== orderId) return;
+      setSseToast({
+        title: "배달이 취소됐어요",
+        description: dto.message ?? "상대방이 배달을 취소했어요.",
+      });
+      if (navTimer.current === null) {
+        navTimer.current = window.setTimeout(
+          () => navigate(ROUTES.home, { replace: true }),
+          CANCEL_NAV_DELAY_MS,
+        );
+      }
+    },
+  };
+
+  // 실 모드에서만 드리미 세션으로 SSE를 구독한다(mock 모드는 구독하지 않음).
+  useSse(sseHandlers, { enabled: isRealMode });
 
   // 드리미 화면은 픽업중/배송중만 다룬다(그 외 상태는 배송중으로 취급).
   // 실 모드는 status 파라미터로, mock 모드는 활성 배달 상태로 단계를 결정한다.
@@ -98,6 +136,17 @@ export function DeliveryTrackScreen() {
 
   return (
     <ScreenShell>
+      {/* 상대편 취소 SSE 알림(화면 위에 떠서 표시) */}
+      {sseToast && (
+        <div className="fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
+          <Toast
+            icon="bell"
+            title={sseToast.title}
+            description={sseToast.description}
+          />
+        </div>
+      )}
+
       {/* 풀블리드 지도 + 지도 위 뒤로가기 */}
       <div className="relative -mx-4 -mt-6">
         <MapCard
