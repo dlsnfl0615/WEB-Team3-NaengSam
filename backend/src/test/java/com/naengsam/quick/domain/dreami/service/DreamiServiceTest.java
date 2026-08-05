@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.BDDMockito.given;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -13,7 +14,9 @@ import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
+import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
+import com.naengsam.quick.domain.dreami.dto.MonthlyRevenueDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
@@ -33,10 +36,14 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.CancelRepository;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.payment.entity.MoneyTxType;
+import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -78,6 +85,9 @@ class DreamiServiceTest {
 
     @Mock
     private MatchingService matchingService;
+
+    @Mock
+    private MoneyTxRepository moneyTxRepository;
 
     @InjectMocks
     private DreamiService dreamiService;
@@ -319,5 +329,55 @@ class DreamiServiceTest {
         dreamiService.goOnline(dreamiId, location);
 
         verify(matchingService).registerDreami(dreamiId, location);
+    }
+
+    // ---------- getDashboard ----------
+
+    @Test
+    void 대시보드조회_완료건수_이번달수익_증감률_시장평균초과분_최근6개월을_조합해_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        YearMonth thisMonth = YearMonth.now();
+        YearMonth lastMonth = thisMonth.minusMonths(1);
+        given(orderRepository.countByDreamiIdAndOrderCd(dreamiId, OrderCd.COMPLETED)).willReturn(7L);
+        given(moneyTxRepository.sumAmountByDreamiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxType.SETTLEMENT), any(), any()))
+                .willAnswer(invocation -> {
+                    LocalDateTime start = invocation.getArgument(2);
+                    YearMonth month = YearMonth.from(start);
+                    if (month.equals(thisMonth)) {
+                        return 116_000L;
+                    }
+                    if (month.equals(lastMonth)) {
+                        return 100_000L;
+                    }
+                    return 0L;
+                });
+        given(moneyTxRepository.countByDreamiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxType.SETTLEMENT), any(), any()))
+                .willReturn(10L);
+
+        DreamiDashboardDto result = dreamiService.getDashboard(dreamiId);
+
+        assertThat(result.completedCount()).isEqualTo(7L);
+        assertThat(result.thisMonthRevenue()).isEqualTo(116_000L);
+        assertThat(result.monthOverMonthGrowthPercent()).isEqualTo(16L); // (116000-100000)/100000*100, 반올림
+        assertThat(result.marketAverageSurplus()).isEqualTo(116_000L - 5_800L * 10L);
+        assertThat(result.recentSixMonths()).hasSize(6);
+        MonthlyRevenueDto latest = result.recentSixMonths().getLast();
+        assertThat(latest.month()).isEqualTo(thisMonth);
+        assertThat(latest.revenue()).isEqualTo(116_000L);
+    }
+
+    @Test
+    void 대시보드조회_지난달_수익이_0이면_증감률은_0퍼센트다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(orderRepository.countByDreamiIdAndOrderCd(dreamiId, OrderCd.COMPLETED)).willReturn(0L);
+        given(moneyTxRepository.sumAmountByDreamiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxType.SETTLEMENT), any(), any()))
+                .willReturn(0L);
+        given(moneyTxRepository.countByDreamiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxType.SETTLEMENT), any(), any()))
+                .willReturn(0L);
+
+        DreamiDashboardDto result = dreamiService.getDashboard(dreamiId);
+
+        assertThat(result.monthOverMonthGrowthPercent()).isEqualTo(0L);
+        assertThat(result.marketAverageSurplus()).isEqualTo(0L);
     }
 }

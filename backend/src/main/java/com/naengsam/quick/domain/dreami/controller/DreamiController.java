@@ -1,6 +1,7 @@
 package com.naengsam.quick.domain.dreami.controller;
 
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
+import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiOnlineRequest;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
@@ -111,5 +112,13 @@ public class DreamiController {
             codes = {"CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_ALREADY_CANCELLED", "DELIVERY_NOT_FOUND"})
     public void cancelCurrentDelivery(@LoginUser UUID dreamiId) {
         dreamiService.cancelCurrentDelivery(dreamiId);
+    }
+
+    @Operation(summary = "드리미 대시보드 조회",
+            description = "완료 건수, 누적 수익, 이번 주 정산 예정 금액을 조회한다.")
+    @GetMapping("/dashboard")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    public DreamiDashboardDto getDashboard(@LoginUser UUID dreamiId) {
+        return dreamiService.getDashboard(dreamiId);
     }
 }
