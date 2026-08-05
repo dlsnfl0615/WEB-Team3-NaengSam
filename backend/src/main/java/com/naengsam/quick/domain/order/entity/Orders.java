@@ -3,16 +3,20 @@ package com.naengsam.quick.domain.order.entity;
 import com.naengsam.quick.domain.address.dto.Addresses;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "ORDERS")
@@ -110,7 +114,7 @@ public class Orders {
      * Matching Service 의 기존 객체 compatibility 를 위한 임시 생성자. 좌표만으로 매칭 대상 주문을 만든다(영속화하지 않음).
      */
     public static Orders create(UUID orderId, UUID boormiId,
-                                GeoPoint origin, GeoPoint destination) {
+            GeoPoint origin, GeoPoint destination) {
         Orders order = new Orders();
         order.orderId = orderId;
         order.boormiId = boormiId;
@@ -130,10 +134,9 @@ public class Orders {
     }
 
     /**
-     * 매칭이 확정된 주문에 드리미를 배정하고 진행 중 상태로 전이한다.
-     * !! delivery에서 테스트 용도로 만든 것. 추후에 매칭 기능 완성되면 삭제하겠습니다.
+     * 부르미가 드리미를 최종 확정한다. 확정된 드리미로 dreami_id 를 채우고 IN_PROGRESS 로 전이한다(dirty checking 반영). 검증은 서비스에서 수행한다.
      */
-    public void assignDreamiTest(UUID dreamiId) {
+    public void confirmDreami(UUID dreamiId) {
         this.dreamiId = dreamiId;
         this.orderCd = OrderCd.IN_PROGRESS;
     }
