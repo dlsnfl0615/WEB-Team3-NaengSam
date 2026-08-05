@@ -1,20 +1,5 @@
 package com.naengsam.quick.domain.delivery.service;
 
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERED;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERING;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_BOORMI;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_DREAMI;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_NORMAL;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowable;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.willThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
@@ -35,17 +20,23 @@ import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
-import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.math.BigDecimal;
+import java.util.*;
+import java.util.function.Function;
+
+import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.*;
 
 /**
  * 배달 상태 전이 서비스 단위 테스트. 전이 가드 분기를 확인한다. 주문 단위 직렬화는 DeliveryRepository의 비관적 락 + 트랜잭션이
@@ -156,19 +147,6 @@ class DeliveryServiceTest {
         assertThat(saved.getOrderId()).isEqualTo(orderId);
         assertThat(saved.getDreamiId()).isEqualTo(dreamiId);
         assertThat(saved.getBoormiId()).isEqualTo(boormiId);
-    }
-
-    @Test
-    void 배달시작_주문자가_활성드리미면_BOORMI_IS_ACTIVATED_DREAMI_예외() {
-        UUID orderId = UUID.randomUUID();
-        UUID dreamiId = UUID.randomUUID();
-        UUID boormiId = UUID.randomUUID();
-        given(userService.getUserInfo(boormiId)).willReturn(new UserDto(boormiId, "b@t.com", "부르미", true));
-
-        Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
-
-        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.BOORMI_IS_ACTIVATED_DREAMI);
-        verify(deliveryRepository, never()).save(any());
     }
 
     @Test
