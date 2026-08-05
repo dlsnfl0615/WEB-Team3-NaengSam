@@ -46,26 +46,4 @@ public class MatchingController {
         }
         matchingService.rejectByDreami(offerId);
     }
-
-    @Operation(summary = "부르미가 제안 수락", description = "로그인한 부르미 본인 주문에 대한 제안을 최종 승인한다.")
-    @PostMapping("/offers/{offerId}/boormi-accept")
-    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
-    public void acceptByBoormi(@PathVariable UUID offerId, @LoginUser UUID boormiId) {
-        if (!matchingService.isBoormiOfferOwner(offerId, boormiId)) {
-            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
-        }
-        matchingService.acceptByBoormi(offerId);
-    }
-
-    @Operation(summary = "부르미가 제안 거절", description = "로그인한 부르미 본인 주문에 대한 제안을 거절한다.")
-    @PostMapping("/offers/{offerId}/boormi-reject")
-    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
-    public void rejectByBoormi(@PathVariable UUID offerId, @LoginUser UUID boormiId) {
-        if (!matchingService.isBoormiOfferOwner(offerId, boormiId)) {
-            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
-        }
-        matchingService.rejectByBoormi(offerId);
-    }
 }
