@@ -1,12 +1,5 @@
 package com.naengsam.quick.domain.delivery.service;
 
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERED;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERING;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_ADMIN;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_BOORMI;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_DREAMI;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_NORMAL;
-
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
@@ -23,15 +16,18 @@ import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+
+import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
 
 /**
  * 배달 한 건의 상태 전이를 담당한다. 공개 메서드는 동기 요청으로 호출되며, 요청 스레드에서 그대로 실행된다.
@@ -66,9 +62,10 @@ public class DeliveryService {
     // 호출부(매칭 확정 훅)는 매칭 도메인 담당이며 여기서는 진입점만 제공한다. boormiId는 호출부에서 넘겨받는다.
     @Transactional
     public void startDelivery(UUID orderId, UUID dreamiId, UUID boormiId) {
-        if (userService.getUserInfo(boormiId).isDreami()) { // 주문자가 활성 드리미면 안 됨
-            throw new BusinessException(DeliveryErrorCode.BOORMI_IS_ACTIVATED_DREAMI);
-        }
+//        if (userService.getUserInfo(boormiId).isDreami()) { // 주문자가 활성 드리미면 안 됨
+//            throw new BusinessException(DeliveryErrorCode.BOORMI_IS_ACTIVATED_DREAMI);
+//        }
+        // todo : 주문 테이블 조회해서 부르미 드리미 상태 검증
         if (!userService.getUserInfo(dreamiId).isDreami()) { // 배달자는 활성 드리미여야 함
             throw new BusinessException(DeliveryErrorCode.DREAMI_NOT_ACTIVATED);
         }
