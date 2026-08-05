@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.delivery.service;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
+import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCertification;
 import com.naengsam.quick.domain.delivery.entity.PickupCertification;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
@@ -143,16 +144,21 @@ public class DeliveryService {
     // 위치만 갱신하고 부르미에게 SSE로 전달한다. 취소/완료 상태에 대한 예외는 드리미 폴링을 멈추게 하는 신호로 남긴다
     // (취소 알림 자체는 취소 시점에 이미 드리미에게 SSE로 push된다).
     private void doUpdateDreamiLocation(Delivery delivery, DreamiLocationRequest location) {
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_BOORMI // 픽업중_부르미의_취소
-                || delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_DREAMI
-                || delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_ADMIN) {
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
 
-        // 이미 완료된 주문이면 위치를 더 이상 갱신하지 않음
-        if (delivery.getDeliveryCd() == DELIVERED) { // 배달_완료
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
-        }
+        // 이미 완료되거나 취소된 주문이면 위치를 더 이상 갱신하지 않음
+        // 잘못된 비즈니스 상황에서는 예외처리
+        // 위치 갱신이 필요한 모든 상황에서는 위치 갱신
+        DeliveryCd deliveryCd = delivery.getDeliveryCd();
+        boolean isValid = switch (deliveryCd) {
+            case PICKUP_NORMAL, DELIVERING, PICKUP_DELAYED, PARTNER_HANDOFF_PENDING, TRANSFERRED_TO_PARTNER,
+                 RETURNING -> true;
+            case PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+            case DELIVERED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+            case RETURNED, TERMINATED -> false;
+        };
+
+        if (!isValid) return;
 
         if (location == null || location.latitude() == null || location.longitude() == null) {
             throw new BusinessException(DeliveryErrorCode.LOCATION_COLLECTION_FAILED);
@@ -171,36 +177,33 @@ public class DeliveryService {
         }
 
         // 부르미가 취소 눌렀는데 드리미는 아직 인지 못하고 픽업 완료를 누름
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
-
-        // 관리자가 취소 했는데 드리미는 아직 인지 못하고 픽업 완료를 누름
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_관리자의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
-
-        // 정상 "배달중"이면 이미 픽업 완료를 호출한 상황(버튼 연타 등)
-        if (delivery.getDeliveryCd() == DELIVERING) { // 배달중_정상
-            throw new BusinessException(DeliveryErrorCode.STEP_ALREADY_VERIFIED);
-        }
-
+        // 관리자가 취소 했는데 드리미는 아직 인지 못하고 픽업 완료를 누름 -> 사용자에게 메시지
         // 드리미가 픽업 완료를 요청했는데 드리미가 취소하는건 안될듯?
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
-
+        // 정상 "배달중"이면 이미 픽업 완료를 호출한 상황(버튼 연타 등)
         // 픽업을 완료 하려고 요청했는데 이미 배달이 완료된 건이다?? -> 말이 안됨
-        if (delivery.getDeliveryCd() == DELIVERED) { // 배달_완료
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
-        }
+        DeliveryCd deliveryCd = delivery.getDeliveryCd();
+        boolean isValid = switch (deliveryCd) {
+            case PICKUP_NORMAL, PICKUP_DELAYED -> true;
+            case PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+            case DELIVERING -> throw new BusinessException(DeliveryErrorCode.STEP_ALREADY_VERIFIED);
+            case DELIVERED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+            // 파트너로 인계 대기 중에는 픽업 완료 누를 수 없음
+            case PARTNER_HANDOFF_PENDING ->
+                    throw new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED_HANDOFF_PENDING);
+            case TRANSFERRED_TO_PARTNER ->
+                    throw new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED_HANDOFF_TRANSFERRED);
+            case RETURNING -> throw new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED_RETURNING);
+            case RETURNED -> throw new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED_RETURNED);
+            case TERMINATED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_TERMINATED);
+        };
 
-        // 여기까지 왔으면 이제 "픽업중_정상" 상태만 남음
-        assert delivery.getDeliveryCd() == PICKUP_NORMAL; // 픽업중_정상
+        if (!isValid) return "픽업 취소 실패";
 
-        if (!hasPickupPhoto(delivery.getOrderId(), dreamiId, photoKey)) { // 사진이_없는경우
+
+        // 사진이_없는경우
+        if (!hasPickupPhoto(delivery.getOrderId(), dreamiId, photoKey))
             throw new BusinessException(DeliveryErrorCode.PICKUP_PHOTO_MISSING);
-        }
 
         delivery.markDelivering(); // 배달중_정상
         // 비대면 픽업 인증 행 저장 (submittedDtm은 markDelivering이 기록한 pickedUpDtm 재사용)
