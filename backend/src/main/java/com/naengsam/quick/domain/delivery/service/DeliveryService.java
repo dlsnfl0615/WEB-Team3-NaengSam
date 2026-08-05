@@ -20,6 +20,7 @@ import com.naengsam.quick.domain.delivery.repository.PickupCertificationReposito
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
+import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
 import java.math.BigDecimal;
@@ -56,6 +57,7 @@ public class DeliveryService {
     private final SseService sseService;
     private final S3PresignService s3PresignService;
     private final UploadSessionService uploadSessionService;
+    private final UserService userService;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -64,6 +66,12 @@ public class DeliveryService {
     // 호출부(매칭 확정 훅)는 매칭 도메인 담당이며 여기서는 진입점만 제공한다. boormiId는 호출부에서 넘겨받는다.
     @Transactional
     public void startDelivery(UUID orderId, UUID dreamiId, UUID boormiId) {
+        if (userService.getUserInfo(boormiId).isDreami()) { // 주문자가 활성 드리미면 안 됨
+            throw new BusinessException(DeliveryErrorCode.BOORMI_IS_ACTIVATED_DREAMI);
+        }
+        if (!userService.getUserInfo(dreamiId).isDreami()) { // 배달자는 활성 드리미여야 함
+            throw new BusinessException(DeliveryErrorCode.DREAMI_NOT_ACTIVATED);
+        }
         deliveryRepository.save(Delivery.create(orderId, dreamiId, boormiId));
     }
 

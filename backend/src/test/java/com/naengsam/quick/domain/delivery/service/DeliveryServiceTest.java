@@ -30,6 +30,8 @@ import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
+import com.naengsam.quick.domain.user.dto.UserDto;
+import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
@@ -59,6 +61,7 @@ class DeliveryServiceTest {
     private SseService sseService;
     private S3PresignService s3PresignService;
     private UploadSessionService uploadSessionService;
+    private UserService userService;
     private DeliveryService deliveryService;
 
     // findByOrderId가 같은 Delivery 인스턴스를 돌려주도록 등록해 둔다(서비스가 이 객체를 변경하면 테스트에서 바로 관찰된다).
@@ -72,8 +75,10 @@ class DeliveryServiceTest {
         sseService = mock(SseService.class);
         s3PresignService = mock(S3PresignService.class);
         uploadSessionService = mock(UploadSessionService.class);
+        userService = mock(UserService.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
-                deliveryCertificationRepository, sseService, s3PresignService, uploadSessionService);
+                deliveryCertificationRepository, sseService, s3PresignService, uploadSessionService,
+                userService);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 존재. 스코프 검증(validateScope)은 void라 기본 no-op(통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(s3PresignService.isFileUploaded(any())).willReturn(true);
@@ -129,11 +134,18 @@ class DeliveryServiceTest {
 
     // ===== 배달 시작 =====
 
+    // 주문자는 활성 드리미가 아니고(false), 배달자는 활성 드리미(true)인 정상 역할 상태를 스텁한다.
+    private void stubValidRoles(UUID boormiId, UUID dreamiId) {
+        given(userService.getUserInfo(boormiId)).willReturn(new UserDto(boormiId, "b@t.com", "부르미", false));
+        given(userService.getUserInfo(dreamiId)).willReturn(new UserDto(dreamiId, "d@t.com", "드리미", true));
+    }
+
     @Test
     void 배달시작하면_PICKUP_NORMAL로_저장된다() {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
+        stubValidRoles(boormiId, dreamiId);
 
         deliveryService.startDelivery(orderId, dreamiId, boormiId);
 
@@ -144,6 +156,33 @@ class DeliveryServiceTest {
         assertThat(saved.getOrderId()).isEqualTo(orderId);
         assertThat(saved.getDreamiId()).isEqualTo(dreamiId);
         assertThat(saved.getBoormiId()).isEqualTo(boormiId);
+    }
+
+    @Test
+    void 배달시작_주문자가_활성드리미면_BOORMI_IS_ACTIVATED_DREAMI_예외() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        given(userService.getUserInfo(boormiId)).willReturn(new UserDto(boormiId, "b@t.com", "부르미", true));
+
+        Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.BOORMI_IS_ACTIVATED_DREAMI);
+        verify(deliveryRepository, never()).save(any());
+    }
+
+    @Test
+    void 배달시작_담당드리미가_비활성이면_DREAMI_NOT_ACTIVATED_예외() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        given(userService.getUserInfo(boormiId)).willReturn(new UserDto(boormiId, "b@t.com", "부르미", false));
+        given(userService.getUserInfo(dreamiId)).willReturn(new UserDto(dreamiId, "d@t.com", "드리미", false));
+
+        Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DREAMI_NOT_ACTIVATED);
+        verify(deliveryRepository, never()).save(any());
     }
 
     // ===== SSE 알림 =====
