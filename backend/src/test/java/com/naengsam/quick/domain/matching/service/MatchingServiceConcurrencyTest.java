@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
@@ -39,7 +40,8 @@ class MatchingServiceConcurrencyTest {
     void setUp() {
         matchingEngine = new MatchingEngine();
         matchingEngine.start();
-        matchingService = new MatchingService(matchingEngine, mock(SseService.class), mock(OfferTimeoutScheduler.class));
+        matchingService = new MatchingService(matchingEngine, mock(SseService.class), mock(OfferTimeoutScheduler.class),
+                mock(DeliveryService.class));
         requestThreads = Executors.newFixedThreadPool(16);
     }
 
@@ -82,7 +84,7 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+        awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
                 .offers().getFirst().offerId();
@@ -166,7 +168,7 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+        awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
                 .offers().getFirst().offerId();
@@ -202,7 +204,7 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+        awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
                 .offers().getFirst().offerId();
@@ -243,7 +245,7 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId).isPresent(), Duration.ofSeconds(5));
+        awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
                 .offers().getFirst().offerId();
@@ -290,6 +292,13 @@ class MatchingServiceConcurrencyTest {
                 .findFirst()
                 .orElseThrow()
                 .status();
+    }
+
+    private void awaitFirstOfferCreated(UUID orderId) {
+        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId)
+                        .map(group -> !group.offers().isEmpty())
+                        .orElse(false),
+                Duration.ofSeconds(5));
     }
 
     private void awaitLatch(CountDownLatch latch) {

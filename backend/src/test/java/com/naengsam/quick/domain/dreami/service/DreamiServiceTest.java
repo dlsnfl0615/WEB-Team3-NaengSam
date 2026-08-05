@@ -7,6 +7,7 @@ import static org.mockito.BDDMockito.given;
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
+import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
@@ -17,10 +18,18 @@ import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
+import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
+import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
+import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.exception.OrderErrorCode;
+import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -32,6 +41,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * 드리미 서비스 단위 테스트. 프로필 조회 시 이름/평점/거절횟수를, 현재 배달 카드 조회 시 주문 상세를 올바르게 조합하는지 확인한다.
+ * 드리미 서비스 단위 테스트. 프로필 조회 시 이름/평점/거절횟수를, 주변 콜 조회 시 위치/거리와 주문 상세를 올바르게 조합하는지 확인한다.
  */
 @ExtendWith(MockitoExtension.class)
 class DreamiServiceTest {
@@ -44,6 +54,12 @@ class DreamiServiceTest {
 
     @Mock
     private DreamiRequestDeniedDetailsRepository dreamiRequestDeniedDetailsRepository;
+
+    @Mock
+    private OrderRepository orderRepository;
+
+    @Mock
+    private NearbyOrderFinder nearbyOrderFinder;
 
     @Mock
     private OrderRepository orderRepository;
@@ -128,6 +144,50 @@ class DreamiServiceTest {
                 .willReturn(Optional.empty());
 
         Throwable thrown = catchThrowable(() -> dreamiService.findCurrentDeliveryCard(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+    }
+
+    // ---------- findNearbyCalls ----------
+
+    @Test
+    void 주변콜조회_정상이면_거리와_주문상세를_조합해_반환한다() {
+        NearbyOrderRequest request = new NearbyOrderRequest(
+                new BigDecimal("37.5"), new BigDecimal("127.0"), 1000.0, 10);
+        UUID orderId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(new BigDecimal("37.501"), new BigDecimal("127.001"));
+        NearbyOrderDto nearbyOrder = new NearbyOrderDto(orderId, location, 120.5);
+        given(nearbyOrderFinder.find(request)).willReturn(List.of(nearbyOrder));
+
+        UUID boormiId = UUID.randomUUID();
+        Orders order = Orders.create(orderId, boormiId, location, location);
+        ReflectionTestUtils.setField(order, "itemName", "서류봉투");
+        ReflectionTestUtils.setField(order, "deliveryAmount", 3500L);
+        ReflectionTestUtils.setField(order, "deliveryEta", 15);
+        given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
+
+        List<NearbyCallDto> result = dreamiService.findNearbyCalls(request);
+
+        assertThat(result).hasSize(1);
+        NearbyCallDto dto = result.getFirst();
+        assertThat(dto.orderId()).isEqualTo(orderId);
+        assertThat(dto.distanceMeters()).isEqualTo(120.5);
+        assertThat(dto.itemName()).isEqualTo("서류봉투");
+        assertThat(dto.expectedRevenue()).isEqualTo(3500L);
+        assertThat(dto.expectedEtaMinutes()).isEqualTo(15);
+    }
+
+    @Test
+    void 주변콜조회_주문을_찾을_수_없으면_ORDER_NOT_FOUND_예외() {
+        NearbyOrderRequest request = new NearbyOrderRequest(
+                new BigDecimal("37.5"), new BigDecimal("127.0"), 1000.0, 10);
+        UUID orderId = UUID.randomUUID();
+        NearbyOrderDto nearbyOrder = new NearbyOrderDto(orderId,
+                new GeoPoint(new BigDecimal("37.501"), new BigDecimal("127.001")), 120.5);
+        given(nearbyOrderFinder.find(request)).willReturn(List.of(nearbyOrder));
+        given(orderRepository.findById(orderId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.findNearbyCalls(request));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
     }

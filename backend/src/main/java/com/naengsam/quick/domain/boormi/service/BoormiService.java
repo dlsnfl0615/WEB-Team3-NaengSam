@@ -11,12 +11,15 @@ import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.Charge;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.entity.Matching;
+import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
+import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
@@ -46,6 +49,8 @@ public class BoormiService {
     private final PaymentService paymentService;
     private final MatchingService matchingService;
     private final OrderService orderService;
+    private final OrderRepository orderRepository;
+    private final MatchingRepository matchingRepository;
 
     /**
      * 부르미의 주문 요청을 접수한다. 출발지/도착지 도로명주소를 좌표로 변환해 주문(ORDERS)을 생성·저장한 뒤 결제를 시작하고 매칭 큐에 등록한다.
@@ -114,6 +119,33 @@ public class BoormiService {
     }
 
     /**
+     * 부르미가 수락한 드리미를 최종 확정한다. 확정 대기(PENDING_BOORMI_CONFIRMATION) 상태의 자기 주문만 확정할 수 있으며, DB 주문을 IN_PROGRESS 로 전이한 뒤 매칭엔진에 부르미 수락을
+     * 제출한다.
+     */
+    @Transactional
+    public void confirmDreami(UUID boormiId, UUID orderId, UUID offerId) {
+        Orders order = orderService.getOrder(orderId);
+
+        if (!order.getBoormiId().equals(boormiId)) {
+            throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
+        }
+        if (!order.getOrderCd().equals(OrderCd.PENDING_BOORMI_CONFIRMATION)) {
+            throw new BusinessException(OrderErrorCode.INVALID_DREAMI_CONFIRMATION);
+        }
+
+        UUID dreamiId = matchingService.findDreamiIdByOfferId(offerId)
+                .orElseThrow(() -> new BusinessException(OrderErrorCode.NO_DREAMI_TO_CONFIRM));
+
+        order.confirmDreami(dreamiId);           // IN_PROGRESS 전이 + dreami_id 반영 (dirty checking)
+
+        Matching matching = Matching.create(orderId);
+        matching.markAccepted();                 // 확정 순간을 매칭 성사 시각으로 기록
+        matchingRepository.save(matching);       // MATCHING 이력 저장
+
+        matchingService.acceptByBoormi(offerId); // 인메모리 오퍼 MATCHED 확정 (fire-and-forget)
+    }
+
+    /**
      * 부르미가 신청한 주문 목록을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하다.
      */
     @Transactional(readOnly = true)
@@ -168,7 +200,7 @@ public class BoormiService {
     /**
      * 두 좌표 사이의 하버사인 직선거리(m)를 계산한다.
      */
-    private double distanceMeters(GeoPoint a, GeoPoint b) {
+    public double distanceMeters(GeoPoint a, GeoPoint b) {
         double lat1 = Math.toRadians(a.latitude().doubleValue());
         double lat2 = Math.toRadians(b.latitude().doubleValue());
         double dLat = lat2 - lat1;
