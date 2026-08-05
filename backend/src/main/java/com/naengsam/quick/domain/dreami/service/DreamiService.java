@@ -6,9 +6,11 @@ import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
+import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRepository;
+import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
 import com.naengsam.quick.domain.matching.service.MatchingService;
@@ -44,6 +46,24 @@ public class DreamiService {
     @Transactional
     public void saveVerificationFileKeys(UUID dreamiId, String idCardKey, String criminalRecordKey) {
         dreamiRepository.save(Dreami.create(dreamiId, idCardKey, criminalRecordKey));
+    }
+
+    /**
+     * 드리미를 온라인 상태로 전환한다. 승인된 드리미만 가능하며, 본인이 드리미/부르미 어느 역할로든 수행 중인 주문이
+     * 있으면(dreami_id == boormi_id) 온라인 전환할 수 없다.
+     */
+    @Transactional(readOnly = true)
+    public void goOnline(UUID dreamiId, GeoPoint location) {
+        Dreami dreami = dreamiRepository.findById(dreamiId)
+                .orElseThrow(() -> new BusinessException(DreamiErrorCode.NOT_FOUND));
+        if (dreami.getRequestCd() != DreamiCd.APPROVED) {
+            throw new BusinessException(DreamiErrorCode.NOT_APPROVED);
+        }
+        if (orderRepository.countActiveOrders(dreamiId) > 0) {
+            throw new BusinessException(DreamiErrorCode.ALREADY_HAS_ACTIVE_ORDER);
+        }
+
+        matchingService.registerDreami(dreamiId, location);
     }
 
     /**

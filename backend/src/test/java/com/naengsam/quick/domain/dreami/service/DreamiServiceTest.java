@@ -16,6 +16,7 @@ import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
+import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRepository;
@@ -262,5 +263,61 @@ class DreamiServiceTest {
         assertThat(captor.getValue().getOrderId()).isEqualTo(orderId);
         assertThat(captor.getValue().getCancelerCd()).isEqualTo(CancelerCd.DREAMI);
         assertThat(captor.getValue().isPenaltyApplied()).isTrue();
+    }
+
+    // ---------- goOnline ----------
+
+    @Test
+    void 온라인전환_드리미가_없으면_NOT_FOUND_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.goOnline(dreamiId, location));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+        verify(matchingService, never()).registerDreami(any(), any());
+    }
+
+    @Test
+    void 온라인전환_승인되지_않았으면_NOT_APPROVED_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey"); // 기본 상태 REQUESTED
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+
+        Throwable thrown = catchThrowable(() -> dreamiService.goOnline(dreamiId, location));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_APPROVED);
+        verify(matchingService, never()).registerDreami(any(), any());
+    }
+
+    @Test
+    void 온라인전환_수행중인_주문이_있으면_ALREADY_HAS_ACTIVE_ORDER_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+        given(orderRepository.countActiveOrders(dreamiId)).willReturn(1L);
+
+        Throwable thrown = catchThrowable(() -> dreamiService.goOnline(dreamiId, location));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.ALREADY_HAS_ACTIVE_ORDER);
+        verify(matchingService, never()).registerDreami(any(), any());
+    }
+
+    @Test
+    void 온라인전환_승인됐고_활성주문이_없으면_매칭서비스에_등록한다() {
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+        given(orderRepository.countActiveOrders(dreamiId)).willReturn(0L);
+
+        dreamiService.goOnline(dreamiId, location);
+
+        verify(matchingService).registerDreami(dreamiId, location);
     }
 }

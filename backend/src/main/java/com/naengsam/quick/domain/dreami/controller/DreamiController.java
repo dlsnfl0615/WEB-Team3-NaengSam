@@ -47,14 +47,13 @@ public class DreamiController {
         return dreamiService.getDreamiProfile(dreamiId);
     }
 
-    // todo: 본인 아이디가 주문 테이블에 있는지 (지금 본인이 배달하고 있는건지)
-    // todo: 부르미로서 배달 등록해둔게 있는지
     @Operation(summary = "드리미 온라인 전환",
             description = "드리미가 콜 수신 가능한 온라인 상태로 전환하고 현재 위치를 등록한다. 온라인 상태의 드리미에게만 주변 콜이 노출된다.")
     @PostMapping("/status/online")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = DreamiErrorCode.class, codes = {"NOT_FOUND", "NOT_APPROVED", "ALREADY_HAS_ACTIVE_ORDER"})
     public void goOnline(@LoginUser UUID dreamiId, @Valid @RequestBody DreamiOnlineRequest request) {
-        matchingService.registerDreami(dreamiId, new GeoPoint(request.latitude(), request.longitude()));
+        dreamiService.goOnline(dreamiId, new GeoPoint(request.latitude(), request.longitude()));
     }
 
     @Operation(summary = "드리미 오프라인 전환", description = "드리미가 콜 수신 불가능한 오프라인 상태로 전환한다.")
