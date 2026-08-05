@@ -214,92 +214,81 @@ public class DeliveryService {
     }
 
     private String doCancelByDreami(Delivery delivery) {
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
+        // 픽업 단계(정상/지연)에서만 드리미가 취소할 수 있다.
+        // 이미 취소된 건(부르미/드리미/관리자)은 중복 취소, 배달 중/완료/종료·파트너 인계·반송 단계는 취소 불가
+        DeliveryCd deliveryCd = delivery.getDeliveryCd();
+        boolean isValid = switch (deliveryCd) {
+            case PICKUP_NORMAL, PICKUP_DELAYED -> true;
+            case PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+            // 배달 중이면 배달 화면에서 고객센터 연락하거나 화면 갱신 후 시도
+            case DELIVERING -> throw new BusinessException(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
+            case DELIVERED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+            case PARTNER_HANDOFF_PENDING ->
+                    throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_HANDOFF_PENDING);
+            case TRANSFERRED_TO_PARTNER ->
+                    throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_HANDOFF_TRANSFERRED);
+            case RETURNING -> throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_RETURNING);
+            case RETURNED -> throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_RETURNED);
+            case TERMINATED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_TERMINATED);
+        };
 
-        // 이미 배달 중 상태라면, 배달 화면에서 고객센터에 연락하거나 화면 갱신 후 시도
-        if (delivery.getDeliveryCd() == DELIVERING) { // 배달중_정상
-            throw new BusinessException(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
-        }
+        if (!isValid) return "픽업 취소 실패";
 
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_관리자의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
-
-        // 이미 드리미가 취소 요청을 보낸 상황(버튼 연타 등)
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
-
-        // 배달 완료 상태에서는 픽업 취소 호출이 될 수가 없음
-        if (delivery.getDeliveryCd() == DELIVERED) { // 배달_완료
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
-        }
-
-        assert delivery.getDeliveryCd() == PICKUP_NORMAL; // 픽업중_정상
         delivery.cancelBy(PICKUP_CANCELLED_BY_DREAMI); // 픽업중_드리미의_취소
         alarmBoormiDreamiCancelBySSE(delivery); // 부르미에게_픽업중에_드리미가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
 
     private String doCancelByBoormi(Delivery delivery) {
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
+        // 픽업 단계(정상/지연)에서만 부르미가 취소할 수 있다.
+        // 이미 취소된 건(부르미/드리미/관리자)은 중복 취소, 배달 중/완료/종료·파트너 인계·반송 단계는 취소 불가
+        DeliveryCd deliveryCd = delivery.getDeliveryCd();
+        boolean isValid = switch (deliveryCd) {
+            case PICKUP_NORMAL, PICKUP_DELAYED -> true;
+            case PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+            // 배달 중이면 배달 화면에서 고객센터 연락하거나 화면 갱신 후 시도
+            case DELIVERING -> throw new BusinessException(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
+            case DELIVERED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+            case PARTNER_HANDOFF_PENDING ->
+                    throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_HANDOFF_PENDING);
+            case TRANSFERRED_TO_PARTNER ->
+                    throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_HANDOFF_TRANSFERRED);
+            case RETURNING -> throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_RETURNING);
+            case RETURNED -> throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_RETURNED);
+            case TERMINATED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_TERMINATED);
+        };
 
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_관리자의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
+        if (!isValid) return "픽업 취소 실패";
 
-        // 이미 배달 중 상태라면, 배달 화면에서 고객센터에 연락하거나 화면 갱신 후 시도
-        if (delivery.getDeliveryCd() == DELIVERING) { // 배달중_정상
-            throw new BusinessException(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
-        }
-
-        // 배달 완료 상태에서는 픽업 취소 호출이 될 수가 없음
-        if (delivery.getDeliveryCd() == DELIVERED) { // 배달_완료
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
-        }
-
-        // 이미 부르미가 취소 요청을 보낸 상황에서 중복 호출될 수 없음
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
-
-        assert delivery.getDeliveryCd() == PICKUP_NORMAL; // 픽업중_정상
         delivery.cancelBy(PICKUP_CANCELLED_BY_BOORMI); // 픽업중_부르미의_취소
         alarmDreamiBoormiCancelBySSE(delivery); // 드리미에게_부르미가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
 
     private String doCancelByAdmin(Delivery delivery) {
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
+        // 픽업 단계(정상/지연)에서만 관리자가 취소할 수 있다.
+        // 이미 취소된 건(부르미/드리미/관리자)은 중복 취소, 배달 중/완료/종료·파트너 인계·반송 단계는 취소 불가
+        DeliveryCd deliveryCd = delivery.getDeliveryCd();
+        boolean isValid = switch (deliveryCd) {
+            case PICKUP_NORMAL, PICKUP_DELAYED -> true;
+            case PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+            case DELIVERING -> throw new BusinessException(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
+            case DELIVERED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+            case PARTNER_HANDOFF_PENDING ->
+                    throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_HANDOFF_PENDING);
+            case TRANSFERRED_TO_PARTNER ->
+                    throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_HANDOFF_TRANSFERRED);
+            case RETURNING -> throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_RETURNING);
+            case RETURNED -> throw new BusinessException(DeliveryErrorCode.CANCELLATION_NOT_ALLOWED_RETURNED);
+            case TERMINATED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_TERMINATED);
+        };
 
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_BOORMI) { // 픽업중_부르미의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
+        if (!isValid) return "픽업 취소 실패";
 
-        // 이미 배달 중 상태라면 취소할 수 없음
-        if (delivery.getDeliveryCd() == DELIVERING) { // 배달중_정상
-            throw new BusinessException(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
-        }
-
-        // 배달 완료 상태에서는 픽업 취소 호출이 될 수가 없음
-        if (delivery.getDeliveryCd() == DELIVERED) { // 배달_완료
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
-        }
-
-        // 이미 관리자가 취소한 상황에서 중복 호출될 수 없음
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_관리자의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
-
-        assert delivery.getDeliveryCd() == PICKUP_NORMAL; // 픽업중_정상
         delivery.cancelBy(PICKUP_CANCELLED_BY_ADMIN); // 픽업중_관리자의_취소
-
         alarmBoormiAdminCancelBySSE(delivery); // 부르미에게_관리자가_취소했다고_전달_SSE사용()
         alarmDreamiAdminCancelBySSE(delivery); // 드리미에게_관리자가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
