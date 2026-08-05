@@ -4,8 +4,15 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.BDDMockito.given;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
+import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
@@ -15,11 +22,15 @@ import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRep
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
+import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.Cancel;
+import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
+import com.naengsam.quick.domain.order.repository.CancelRepository;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
@@ -30,6 +41,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -56,6 +68,15 @@ class DreamiServiceTest {
 
     @Mock
     private NearbyOrderFinder nearbyOrderFinder;
+
+    @Mock
+    private DeliveryService deliveryService;
+
+    @Mock
+    private CancelRepository cancelRepository;
+
+    @Mock
+    private MatchingService matchingService;
 
     @InjectMocks
     private DreamiService dreamiService;
@@ -183,5 +204,63 @@ class DreamiServiceTest {
         Throwable thrown = catchThrowable(() -> dreamiService.findNearbyCalls(request));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+    }
+
+    // ---------- cancelCurrentDelivery ----------
+
+    @Test
+    void 배달취소_진행중인_주문이_없으면_ORDER_NOT_FOUND_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        given(orderRepository.findByDreamiIdAndOrderCd(dreamiId, OrderCd.IN_PROGRESS))
+                .willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.cancelCurrentDelivery(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+        verify(deliveryService, never()).cancelByDreami(any());
+        verify(matchingService, never()).startMatching(any());
+        verify(cancelRepository, never()).save(any());
+    }
+
+    @Test
+    void 배달취소_픽업_이후면_delivery_도메인의_예외가_그대로_전파되고_취소이력을_남기지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        given(orderRepository.findByDreamiIdAndOrderCd(dreamiId, OrderCd.IN_PROGRESS))
+                .willReturn(Optional.of(order));
+        willThrow(new BusinessException(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY))
+                .given(deliveryService).cancelByDreami(orderId);
+
+        Throwable thrown = catchThrowable(() -> dreamiService.cancelCurrentDelivery(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
+        verify(matchingService, never()).startMatching(any());
+        verify(cancelRepository, never()).save(any());
+    }
+
+    @Test
+    void 배달취소_픽업_전이면_배달을_취소하고_주문을_매칭대기로_되돌리고_드리미_취소이력을_남긴다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        ReflectionTestUtils.setField(order, "dreamiId", dreamiId);
+        ReflectionTestUtils.setField(order, "orderCd", OrderCd.IN_PROGRESS);
+        given(orderRepository.findByDreamiIdAndOrderCd(dreamiId, OrderCd.IN_PROGRESS))
+                .willReturn(Optional.of(order));
+
+        dreamiService.cancelCurrentDelivery(dreamiId);
+
+        verify(deliveryService).cancelByDreami(orderId);
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.MATCHING);
+        assertThat(order.getDreamiId()).isNull();
+        verify(matchingService).startMatching(order);
+        ArgumentCaptor<Cancel> captor = ArgumentCaptor.forClass(Cancel.class);
+        verify(cancelRepository).save(captor.capture());
+        assertThat(captor.getValue().getOrderId()).isEqualTo(orderId);
+        assertThat(captor.getValue().getCancelerCd()).isEqualTo(CancelerCd.DREAMI);
+        assertThat(captor.getValue().isPenaltyApplied()).isTrue();
     }
 }

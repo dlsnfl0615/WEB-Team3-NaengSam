@@ -2,20 +2,25 @@ package com.naengsam.quick.domain.dreami.service;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRepository;
+import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
+import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
+import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.Cancel;
+import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
+import com.naengsam.quick.domain.order.repository.CancelRepository;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
-import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
-import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
-import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.util.List;
 import java.util.UUID;
@@ -32,6 +37,9 @@ public class DreamiService {
     private final DreamiRequestDeniedDetailsRepository dreamiRequestDeniedDetailsRepository;
     private final OrderRepository orderRepository;
     private final NearbyOrderFinder nearbyOrderFinder;
+    private final DeliveryService deliveryService;
+    private final CancelRepository cancelRepository;
+    private final MatchingService matchingService;
 
     @Transactional
     public void saveVerificationFileKeys(UUID dreamiId, String idCardKey, String criminalRecordKey) {
@@ -73,12 +81,28 @@ public class DreamiService {
     }
 
     /**
-     * matching이 돌려준 건 위치/거리뿐이라, 화면에 보여줄 품목/예상수익/ETA는 order 도메인에서 주문을 다시 조회해 채운다.
-     * 방금 nearbyOrderFinder가 찾아준 주문이라 사실상 항상 존재한다.
+     * matching이 돌려준 건 위치/거리뿐이라, 화면에 보여줄 품목/예상수익/ETA는 order 도메인에서 주문을 다시 조회해 채운다. 방금 nearbyOrderFinder가 찾아준 주문이라 사실상 항상
+     * 존재한다.
      */
     private NearbyCallDto toNearbyCallDto(NearbyOrderDto nearby) {
         Orders order = orderRepository.findById(nearby.orderId())
                 .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
         return NearbyCallDto.from(nearby, order);
+    }
+
+    /**
+     * 드리미가 현재 수행 중인 배달을 취소한다. 픽업 이후 취소는 {@code deliveryService.cancelByDreami}가
+     * {@code CANCELLATION_RESTRICTED_DURING_DELIVERY}로 막는다. 취소가 성공하면 주문을 다시 매칭 대기 상태로 되돌리고(dreami_id 초기화), matching 엔진에
+     * 재매칭을 요청해 다른 드리미에게 다시 오퍼가 가게 한다. 이 주문의 매칭방은 이미 MATCHED 상태라 {@code startMatching}이 새 방을 만들어 재매칭을 시작한다
+     */
+    @Transactional
+    public void cancelCurrentDelivery(UUID dreamiId) {
+        Orders order = orderRepository.findByDreamiIdAndOrderCd(dreamiId, OrderCd.IN_PROGRESS)
+                .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
+
+        deliveryService.cancelByDreami(order.getOrderId());
+        order.releaseFromDreami();
+        matchingService.startMatching(order);
+        cancelRepository.save(Cancel.create(order.getOrderId(), CancelerCd.DREAMI, true));
     }
 }

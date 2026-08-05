@@ -141,6 +141,15 @@ public class Orders {
         this.orderCd = OrderCd.IN_PROGRESS;
     }
 
+    /**
+     * 확정됐던 드리미를 배정 해제하고 다시 매칭 대기 상태로 되돌린다(dreami_id 초기화 + MATCHING 전이).
+     * 픽업 전 드리미 취소처럼 다른 드리미에게 재배정해야 하는 경우에 쓴다. 검증은 서비스에서 수행한다.
+     */
+    public void releaseFromDreami() {
+        this.dreamiId = null;
+        this.orderCd = OrderCd.MATCHING;
+    }
+
     public void updateAddresses(Addresses addresses) {
         this.originAddressLine1 = addresses.originAddressLine1();
         this.originAddressLine2 = addresses.originAddressLine2();
