@@ -40,6 +40,8 @@ public class DreamiController {
         return dreamiService.getDreamiProfile(dreamiId);
     }
 
+    // todo: 본인 아이디가 주문 테이블에 있는지 (지금 본인이 배달하고 있는건지)
+    // todo: 부르미로서 배달 등록해둔게 있는지
     @Operation(summary = "드리미 온라인 전환",
             description = "드리미가 콜 수신 가능한 온라인 상태로 전환하고 현재 위치를 등록한다. 온라인 상태의 드리미에게만 주변 콜이 노출된다.")
     @PostMapping("/status/online")
