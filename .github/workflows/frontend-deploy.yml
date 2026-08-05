@@ -43,6 +43,7 @@ jobs:
           # 백엔드가 별도 도메인(cross-origin)일 때만 리포지토리 secret에 백엔드 오리진을 넣는다.
           # (Vite는 빌드 시 VITE_ 접두 변수를 process.env에서 읽어 번들에 인라인한다. working-directory와 무관.)
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL }}
+          VITE_KAKAO_MAP_KEY=: ${{ secrets.VITE_KAKAO_MAP_KEY }}
 
       # GitHub Actions 러너 IP에서는 S3 접근이 차단되어 있으므로, 빌드 산출물을 EC2로 보낸 뒤
       # EC2에서 IAM 인스턴스 롤로 S3에 업로드한다. (러너에는 AWS 자격증명을 두지 않는다)
