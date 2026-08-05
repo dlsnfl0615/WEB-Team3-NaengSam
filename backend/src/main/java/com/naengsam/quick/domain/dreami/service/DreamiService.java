@@ -13,6 +13,7 @@ import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRep
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
+import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
@@ -49,8 +50,7 @@ public class DreamiService {
     }
 
     /**
-     * 드리미를 온라인 상태로 전환한다. 승인된 드리미만 가능하며, 본인이 드리미/부르미 어느 역할로든 수행 중인 주문이
-     * 있으면(dreami_id == boormi_id) 온라인 전환할 수 없다.
+     * 드리미를 온라인 상태로 전환한다. 승인된 드리미만 가능하며, 본인이 드리미/부르미 어느 역할로든 수행 중인 주문이 있으면(dreami_id == boormi_id) 온라인 전환할 수 없다.
      */
     @Transactional(readOnly = true)
     public void goOnline(UUID dreamiId, GeoPoint location) {
@@ -64,6 +64,34 @@ public class DreamiService {
         }
 
         matchingService.registerDreami(dreamiId, location);
+    }
+
+    /**
+     * 드리미가 제안을 수락한다. 매칭엔진에 반영하기 전에 주문을 PENDING_BOORMI_CONFIRMATION으로 전이해 DB에도 반영한다
+     */
+    @Transactional
+    public void acceptOffer(UUID offerId, UUID dreamiId) {
+        if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
+            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
+        }
+        UUID orderId = matchingService.findOrderIdByOfferId(offerId)
+                .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
+        Orders order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
+
+        order.markPendingBoormiConfirmation();
+        matchingService.acceptByDreami(offerId);
+    }
+
+    /**
+     * 드리미가 제안을 거절한다. 주문은 계속 매칭 대기 상태이므로 DB 변경은 필요 없다.
+     */
+    @Transactional
+    public void rejectOffer(UUID offerId, UUID dreamiId) {
+        if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
+            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
+        }
+        matchingService.rejectByDreami(offerId);
     }
 
     /**

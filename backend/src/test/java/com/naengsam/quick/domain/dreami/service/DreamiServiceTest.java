@@ -23,6 +23,7 @@ import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRep
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
+import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
@@ -319,5 +320,76 @@ class DreamiServiceTest {
         dreamiService.goOnline(dreamiId, location);
 
         verify(matchingService).registerDreami(dreamiId, location);
+    }
+
+    // ---------- acceptOffer ----------
+
+    @Test
+    void 제안수락_본인에게_온_제안이_아니면_NOT_OFFER_OWNER_예외() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(false);
+
+        Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(offerId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
+        verify(matchingService, never()).acceptByDreami(any());
+        verify(orderRepository, never()).findById(any());
+    }
+
+    @Test
+    void 제안수락_제안에_해당하는_주문을_찾을_수_없으면_ORDER_NOT_FOUND_예외() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(offerId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+        verify(matchingService, never()).acceptByDreami(any());
+    }
+
+    @Test
+    void 제안수락_정상이면_주문을_PENDING_BOORMI_CONFIRMATION으로_전이하고_매칭엔진에_수락을_알린다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.of(orderId));
+        given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
+
+        dreamiService.acceptOffer(offerId, dreamiId);
+
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
+        verify(matchingService).acceptByDreami(offerId);
+    }
+
+    // ---------- rejectOffer ----------
+
+    @Test
+    void 제안거절_본인에게_온_제안이_아니면_NOT_OFFER_OWNER_예외() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(false);
+
+        Throwable thrown = catchThrowable(() -> dreamiService.rejectOffer(offerId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
+        verify(matchingService, never()).rejectByDreami(any());
+    }
+
+    @Test
+    void 제안거절_정상이면_매칭엔진에_거절을_알리고_주문은_건드리지_않는다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+
+        dreamiService.rejectOffer(offerId, dreamiId);
+
+        verify(matchingService).rejectByDreami(offerId);
+        verify(orderRepository, never()).findById(any());
     }
 }

@@ -12,7 +12,6 @@ import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
-import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
@@ -67,11 +66,9 @@ public class DreamiController {
     @PostMapping("/offers/{offerId}/accept")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
     public void acceptOffer(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
-        if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
-            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
-        }
-        matchingService.acceptByDreami(offerId);
+        dreamiService.acceptOffer(offerId, dreamiId);
     }
 
     @Operation(summary = "드리미가 제안 거절", description = "로그인한 드리미에게 온 제안을 거절한다.")
@@ -79,10 +76,7 @@ public class DreamiController {
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
     public void rejectOffer(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
-        if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
-            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
-        }
-        matchingService.rejectByDreami(offerId);
+        dreamiService.rejectOffer(offerId, dreamiId);
     }
 
     @Operation(summary = "주변 콜 리스트 조회",
