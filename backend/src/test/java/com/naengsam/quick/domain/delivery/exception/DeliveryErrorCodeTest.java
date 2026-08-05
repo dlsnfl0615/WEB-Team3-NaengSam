@@ -31,6 +31,19 @@ class DeliveryErrorCodeTest {
                         tuple("DELIVERY_014", HttpStatus.CONFLICT),
                         tuple("DELIVERY_015", HttpStatus.INTERNAL_SERVER_ERROR),
                         tuple("DELIVERY_016", HttpStatus.FORBIDDEN),
-                        tuple("DELIVERY_017", HttpStatus.FORBIDDEN));
+                        tuple("DELIVERY_017", HttpStatus.FORBIDDEN),
+                        tuple("DELIVERY_018", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_019", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_020", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_021", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_022", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_023", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_024", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_025", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_026", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_027", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_028", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_029", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_030", HttpStatus.CONFLICT));
     }
 }

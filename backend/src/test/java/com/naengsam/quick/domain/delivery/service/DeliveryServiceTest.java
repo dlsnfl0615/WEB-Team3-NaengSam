@@ -149,7 +149,6 @@ class DeliveryServiceTest {
         assertThat(saved.getBoormiId()).isEqualTo(boormiId);
     }
 
-
     @Test
     void 배달시작_담당드리미가_비활성이면_DREAMI_NOT_ACTIVATED_예외() {
         UUID orderId = UUID.randomUUID();
