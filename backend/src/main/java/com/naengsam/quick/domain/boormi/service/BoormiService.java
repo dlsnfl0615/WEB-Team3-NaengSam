@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.boormi.service;
+ package com.naengsam.quick.domain.boormi.service;
 
 import com.naengsam.quick.domain.address.dto.Addresses;
 import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
@@ -12,6 +12,7 @@ import com.naengsam.quick.domain.boormi.entity.Charge;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.entity.Matching;
+import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
@@ -143,6 +144,29 @@ public class BoormiService {
         matchingRepository.save(matching);       // MATCHING 이력 저장
 
         matchingService.acceptByBoormi(offerId); // 인메모리 오퍼 MATCHED 확정 (fire-and-forget)
+    }
+
+    /**
+     * 부르미가 확정 대기 중인 드리미를 거절한다. 확정 대기(PENDING_BOORMI_CONFIRMATION) 상태의 자기 주문만 거절할 수 있으며, DB 주문을 다시 MATCHING 으로 되돌린 뒤 매칭엔진에
+     * 부르미 거절을 제출한다. 거절당한 드리미 알림과 재오퍼는 매칭엔진이 담당한다.
+     */
+    @Transactional
+    public void rejectDreami(UUID boormiId, UUID orderId, UUID offerId) {
+        Orders order = orderService.getOrder(orderId);
+
+        if (!order.getBoormiId().equals(boormiId)) {
+            throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
+        }
+        if (!order.getOrderCd().equals(OrderCd.PENDING_BOORMI_CONFIRMATION)) {
+            throw new BusinessException(OrderErrorCode.INVALID_DREAMI_REJECTION);
+        }
+        if (!matchingService.isBoormiOfferOwner(offerId, boormiId)) {
+            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
+        }
+
+        order.rejectDreami();                    // MATCHING 복귀 + dreami_id 해제 (dirty checking)
+
+        matchingService.rejectByBoormi(offerId); // 인메모리 오퍼 BOORMI_REJECTED + 재오퍼 (fire-and-forget)
     }
 
     /**

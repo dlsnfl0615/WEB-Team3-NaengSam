@@ -141,6 +141,14 @@ public class Orders {
         this.orderCd = OrderCd.IN_PROGRESS;
     }
 
+    /**
+     * 부르미가 확정 대기 중인 드리미를 거절한다. 배정을 비우고 다시 매칭 대기(MATCHING)로 되돌린다(dirty checking 반영). 검증은 서비스에서 수행한다.
+     */
+    public void rejectDreami() {
+        this.dreamiId = null;
+        this.orderCd = OrderCd.MATCHING;
+    }
+
     public void updateAddresses(Addresses addresses) {
         this.originAddressLine1 = addresses.originAddressLine1();
         this.originAddressLine2 = addresses.originAddressLine2();
