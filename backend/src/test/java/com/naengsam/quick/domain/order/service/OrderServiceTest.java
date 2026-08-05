@@ -171,4 +171,41 @@ class OrderServiceTest {
         assertThat(savedCancel.getCancelerCd()).isEqualTo(CancelerCd.BOORMI);
         assertThat(savedCancel.isPenaltyApplied()).isFalse();
     }
+
+    @Test
+    void orderId로_취소하면_주문을_조회해_CANCELLED로_바꾸고_취소이력을_저장한다() {
+        UUID orderId = UUID.randomUUID();
+        Orders order = matchingOrder(orderId);
+        given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
+
+        orderService.cancel(orderId, CancelerCd.DREAMI);
+
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.CANCELLED);
+
+        ArgumentCaptor<Cancel> captor = ArgumentCaptor.forClass(Cancel.class);
+        then(cancelRepository).should().save(captor.capture());
+        assertThat(captor.getValue().getCancelerCd()).isEqualTo(CancelerCd.DREAMI);
+    }
+
+    @Test
+    void 완료하면_주문을_조회해_COMPLETED로_바꾼다() {
+        UUID orderId = UUID.randomUUID();
+        Orders order = matchingOrder(orderId);
+        given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
+
+        orderService.complete(orderId);
+
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.COMPLETED);
+    }
+
+    @Test
+    void 완료할_주문이_없으면_ORDER_NOT_FOUND_예외() {
+        UUID orderId = UUID.randomUUID();
+        given(orderRepository.findById(orderId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> orderService.complete(orderId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+    }
 }

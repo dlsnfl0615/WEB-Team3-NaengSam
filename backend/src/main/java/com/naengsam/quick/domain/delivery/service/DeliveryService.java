@@ -11,6 +11,8 @@ import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.repository.DeliveryCertificationRepository;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.delivery.repository.PickupCertificationRepository;
+import com.naengsam.quick.domain.order.entity.CancelerCd;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
@@ -55,6 +57,7 @@ public class DeliveryService {
     private final S3PresignService s3PresignService;
     private final UploadSessionService uploadSessionService;
     private final UserService userService;
+    private final OrderService orderService;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -236,6 +239,7 @@ public class DeliveryService {
         if (!isValid) return "픽업 취소 실패";
 
         delivery.cancelBy(PICKUP_CANCELLED_BY_DREAMI); // 픽업중_드리미의_취소
+        orderService.cancel(delivery.getOrderId(), CancelerCd.DREAMI); // 주문도 취소 상태로 전이 + 취소 이력 저장
         alarmBoormiDreamiCancelBySSE(delivery); // 부르미에게_픽업중에_드리미가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
@@ -263,6 +267,7 @@ public class DeliveryService {
         if (!isValid) return "픽업 취소 실패";
 
         delivery.cancelBy(PICKUP_CANCELLED_BY_BOORMI); // 픽업중_부르미의_취소
+        orderService.cancel(delivery.getOrderId(), CancelerCd.BOORMI); // 주문도 취소 상태로 전이 + 취소 이력 저장
         alarmDreamiBoormiCancelBySSE(delivery); // 드리미에게_부르미가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
@@ -289,6 +294,7 @@ public class DeliveryService {
         if (!isValid) return "픽업 취소 실패";
 
         delivery.cancelBy(PICKUP_CANCELLED_BY_ADMIN); // 픽업중_관리자의_취소
+        orderService.cancel(delivery.getOrderId(), CancelerCd.ADMIN); // 주문도 취소 상태로 전이 + 취소 이력 저장
         alarmBoormiAdminCancelBySSE(delivery); // 부르미에게_관리자가_취소했다고_전달_SSE사용()
         alarmDreamiAdminCancelBySSE(delivery); // 드리미에게_관리자가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
@@ -326,6 +332,7 @@ public class DeliveryService {
         }
 
         delivery.markDelivered(); // 배달_완료
+        orderService.complete(delivery.getOrderId()); // 주문도 완료 상태로 전이
         // 비대면 배달 인증 행 저장 (submittedDtm은 markDelivered가 기록한 deliveryEndDtm 재사용)
         deliveryCertificationRepository.save(
                 DeliveryCertification.create(photoKey, delivery.getDeliveryEndDtm(), delivery.getDeliveryId()));

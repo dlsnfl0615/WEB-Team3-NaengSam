@@ -90,4 +90,20 @@ public class OrderService {
         order.cancel();
         cancelRepository.save(Cancel.create(order.getOrderId(), cancelerCd, false));
     }
+
+    /**
+     * 배달(픽업) 취소로 주문을 취소 상태로 전이하고 취소 이력을 저장한다. orderId 로 주문을 조회해 처리한다.
+     */
+    @Transactional
+    public void cancel(UUID orderId, CancelerCd cancelerCd) {
+        cancel(getOrder(orderId), cancelerCd);
+    }
+
+    /**
+     * 배달이 완료되어 주문을 완료 상태로 전이한다. 주문 상태 변경은 영속 상태 dirty checking 으로 반영된다.
+     */
+    @Transactional
+    public void complete(UUID orderId) {
+        getOrder(orderId).complete();
+    }
 }
