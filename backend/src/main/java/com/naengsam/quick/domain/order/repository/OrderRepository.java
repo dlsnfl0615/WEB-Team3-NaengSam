@@ -18,7 +18,7 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
     Optional<Orders> findByDreamiIdAndOrderCd(UUID dreamiId, OrderCd orderCd);
 
     @Query(value = """
-            SELECT COUNT(*) FROM orders o
+            SELECT COUNT(*) FROM ORDERS o
             WHERE o.order_cd NOT IN ('COMPLETED','CANCELLED','CLAIM_REVIEW')
               AND (o.boormi_id = :userId OR o.dreami_id = :userId)
             """, nativeQuery = true)
@@ -28,7 +28,7 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
      * 부르미 주문 목록 첫 페이지. 최신순(delivery_request_dtm DESC, 동일 시각은 order_id DESC) 정렬. status 가 null 이면 전체 상태를 조회한다.
      */
     @Query(value = """
-            SELECT * FROM orders o
+            SELECT * FROM ORDERS o
             WHERE o.boormi_id = :boormiId
               AND (:status IS NULL OR o.order_cd = :status)
             ORDER BY o.delivery_request_dtm DESC, o.order_id DESC
@@ -43,7 +43,7 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
      * 부르미 주문 목록 커서 이후 페이지. keyset 조건으로 (dtm, order_id) 가 커서보다 작은 행만 이어서 조회한다. status 가 null 이면 전체 상태를 조회한다.
      */
     @Query(value = """
-            SELECT * FROM orders o
+            SELECT * FROM ORDERS o
             WHERE o.boormi_id = :boormiId
               AND (:status IS NULL OR o.order_cd = :status)
               AND (o.delivery_request_dtm < :cursorDtm
