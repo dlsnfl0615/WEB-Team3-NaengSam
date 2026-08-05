@@ -16,9 +16,6 @@ import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
-import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.domain.order.exception.OrderErrorCode;
-import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.util.List;
 import java.util.UUID;
@@ -35,7 +32,6 @@ public class DreamiService {
     private final DreamiRequestDeniedDetailsRepository dreamiRequestDeniedDetailsRepository;
     private final OrderRepository orderRepository;
     private final NearbyOrderFinder nearbyOrderFinder;
-    private final OrderRepository orderRepository;
 
     @Transactional
     public void saveVerificationFileKeys(UUID dreamiId, String idCardKey, String criminalRecordKey) {

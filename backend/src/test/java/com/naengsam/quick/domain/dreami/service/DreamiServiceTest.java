@@ -13,15 +13,11 @@ import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
-import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
-import com.naengsam.quick.domain.order.entity.OrderCd;
-import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.domain.order.exception.OrderErrorCode;
-import com.naengsam.quick.domain.order.repository.OrderRepository;
-import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
@@ -40,8 +36,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * 드리미 서비스 단위 테스트. 프로필 조회 시 이름/평점/거절횟수를, 현재 배달 카드 조회 시 주문 상세를 올바르게 조합하는지 확인한다.
- * 드리미 서비스 단위 테스트. 프로필 조회 시 이름/평점/거절횟수를, 주변 콜 조회 시 위치/거리와 주문 상세를 올바르게 조합하는지 확인한다.
+ * 드리미 서비스 단위 테스트. 프로필 조회 시 이름/평점/거절횟수를, 현재 배달 카드 조회 시 주문 상세를,
+ * 주변 콜 조회 시 위치/거리와 주문 상세를 올바르게 조합하는지 확인한다.
  */
 @ExtendWith(MockitoExtension.class)
 class DreamiServiceTest {
@@ -60,9 +56,6 @@ class DreamiServiceTest {
 
     @Mock
     private NearbyOrderFinder nearbyOrderFinder;
-
-    @Mock
-    private OrderRepository orderRepository;
 
     @InjectMocks
     private DreamiService dreamiService;
