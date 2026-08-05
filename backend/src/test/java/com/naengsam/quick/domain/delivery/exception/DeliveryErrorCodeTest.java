@@ -29,6 +29,8 @@ class DeliveryErrorCodeTest {
                         tuple("DELIVERY_012", HttpStatus.CONFLICT),
                         tuple("DELIVERY_013", HttpStatus.CONFLICT),
                         tuple("DELIVERY_014", HttpStatus.CONFLICT),
-                        tuple("DELIVERY_015", HttpStatus.INTERNAL_SERVER_ERROR));
+                        tuple("DELIVERY_015", HttpStatus.INTERNAL_SERVER_ERROR),
+                        tuple("DELIVERY_016", HttpStatus.FORBIDDEN),
+                        tuple("DELIVERY_017", HttpStatus.FORBIDDEN));
     }
 }

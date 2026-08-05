@@ -1,20 +1,5 @@
 package com.naengsam.quick.domain.delivery.service;
 
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERED;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERING;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_BOORMI;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_CANCELLED_BY_DREAMI;
-import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.PICKUP_NORMAL;
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.catchThrowable;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.willThrow;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.verify;
-
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
@@ -30,20 +15,28 @@ import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
+import com.naengsam.quick.domain.user.dto.UserDto;
+import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
-import java.math.BigDecimal;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.UUID;
-import java.util.function.Function;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
+
+import java.math.BigDecimal;
+import java.util.*;
+import java.util.function.Function;
+
+import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.*;
 
 /**
  * 배달 상태 전이 서비스 단위 테스트. 전이 가드 분기를 확인한다. 주문 단위 직렬화는 DeliveryRepository의 비관적 락 + 트랜잭션이
@@ -59,6 +52,7 @@ class DeliveryServiceTest {
     private SseService sseService;
     private S3PresignService s3PresignService;
     private UploadSessionService uploadSessionService;
+    private UserService userService;
     private DeliveryService deliveryService;
 
     // findByOrderId가 같은 Delivery 인스턴스를 돌려주도록 등록해 둔다(서비스가 이 객체를 변경하면 테스트에서 바로 관찰된다).
@@ -72,8 +66,10 @@ class DeliveryServiceTest {
         sseService = mock(SseService.class);
         s3PresignService = mock(S3PresignService.class);
         uploadSessionService = mock(UploadSessionService.class);
+        userService = mock(UserService.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
-                deliveryCertificationRepository, sseService, s3PresignService, uploadSessionService);
+                deliveryCertificationRepository, sseService, s3PresignService, uploadSessionService,
+                userService);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 존재. 스코프 검증(validateScope)은 void라 기본 no-op(통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(s3PresignService.isFileUploaded(any())).willReturn(true);
@@ -129,11 +125,18 @@ class DeliveryServiceTest {
 
     // ===== 배달 시작 =====
 
+    // 주문자는 활성 드리미가 아니고(false), 배달자는 활성 드리미(true)인 정상 역할 상태를 스텁한다.
+    private void stubValidRoles(UUID boormiId, UUID dreamiId) {
+        given(userService.getUserInfo(boormiId)).willReturn(new UserDto(boormiId, "b@t.com", "부르미", false));
+        given(userService.getUserInfo(dreamiId)).willReturn(new UserDto(dreamiId, "d@t.com", "드리미", true));
+    }
+
     @Test
     void 배달시작하면_PICKUP_NORMAL로_저장된다() {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
+        stubValidRoles(boormiId, dreamiId);
 
         deliveryService.startDelivery(orderId, dreamiId, boormiId);
 
@@ -144,6 +147,21 @@ class DeliveryServiceTest {
         assertThat(saved.getOrderId()).isEqualTo(orderId);
         assertThat(saved.getDreamiId()).isEqualTo(dreamiId);
         assertThat(saved.getBoormiId()).isEqualTo(boormiId);
+    }
+
+
+    @Test
+    void 배달시작_담당드리미가_비활성이면_DREAMI_NOT_ACTIVATED_예외() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        given(userService.getUserInfo(boormiId)).willReturn(new UserDto(boormiId, "b@t.com", "부르미", false));
+        given(userService.getUserInfo(dreamiId)).willReturn(new UserDto(dreamiId, "d@t.com", "드리미", false));
+
+        Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DREAMI_NOT_ACTIVATED);
+        verify(deliveryRepository, never()).save(any());
     }
 
     // ===== SSE 알림 =====
