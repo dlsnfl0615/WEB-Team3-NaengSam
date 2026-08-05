@@ -300,27 +300,26 @@ public class DeliveryService {
             throw new BusinessException(DeliveryErrorCode.NOT_ASSIGNED_DREAMI);
         }
 
-        // 아마 드리미가 픽업하자마자 바로 배달완료 처리요청하지 않는 이상 없을듯?
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_BOORMI
-                || delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_ADMIN) { // 픽업중_부르미의_취소 || 픽업중_관리자의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
+        // "배달중"에서만 배달 완료를 처리할 수 있다.
+        // 픽업 단계(정상/지연)는 픽업 미완료, 취소·완료·종료·파트너 인계·반송 단계는 완료 처리 불가
+        DeliveryCd deliveryCd = delivery.getDeliveryCd();
+        boolean isValid = switch (deliveryCd) {
+            case DELIVERING -> true;
+            // 픽업 중에 배달 완료 요청이 온 경우 (픽업하자마자 바로 완료 요청하지 않는 이상 드묾)
+            case PICKUP_NORMAL, PICKUP_DELAYED -> throw new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED);
+            case PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
+            case DELIVERED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
+            case PARTNER_HANDOFF_PENDING ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_NOT_ALLOWED_HANDOFF_PENDING);
+            case TRANSFERRED_TO_PARTNER ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_NOT_ALLOWED_HANDOFF_TRANSFERRED);
+            case RETURNING -> throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_NOT_ALLOWED_RETURNING);
+            case RETURNED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_NOT_ALLOWED_RETURNED);
+            case TERMINATED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_TERMINATED);
+        };
 
-        if (delivery.getDeliveryCd() == DELIVERED) { // 배달_완료
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
-        }
-
-        // 픽업 중에 배달 완료 요청이 온다?
-        if (delivery.getDeliveryCd() == PICKUP_NORMAL) { // 픽업중_정상
-            throw new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED);
-        }
-
-        // 드리미가 취소 했는데 그 이후에 배달을 완료할 수는 없음
-        if (delivery.getDeliveryCd() == PICKUP_CANCELLED_BY_DREAMI) { // 픽업중_드리미의_취소
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
-        }
-
-        assert delivery.getDeliveryCd() == DELIVERING; // 배달중_정상
+        if (!isValid) return "배달 완료 실패";
 
         if (!hasDeliveryPhoto(delivery.getOrderId(), dreamiId, photoKey)) { // 사진이없을때
             throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_PHOTO_MISSING);
