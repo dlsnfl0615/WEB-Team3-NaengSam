@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Card, Icon, MapCard, ScreenShell } from "@/shared/ui";
+import { Button, Card, Icon, MapCard, Modal, ScreenShell } from "@/shared/ui";
+import { api, isApiError } from "@/shared/api";
 import { ROUTES } from "@/shared/config/routes";
 import {
   useActiveDelivery,
@@ -25,6 +27,11 @@ export function DeliveryTrackScreen() {
   const advance = useDeliveryStore((s) => s.advance);
   const complete = useDeliveryStore((s) => s.complete);
   const cancel = useDeliveryStore((s) => s.cancel);
+
+  // 픽업 취소 확인 모달 상태
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [canceling, setCanceling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   // 드리미 화면은 픽업중/배송중만 다룬다(그 외 상태는 배송중으로 취급).
   // 실 모드는 status 파라미터로, mock 모드는 활성 배달 상태로 단계를 결정한다.
@@ -60,9 +67,33 @@ export function DeliveryTrackScreen() {
     }
   };
 
-  const onCancel = async () => {
-    await cancel("픽업 전 취소");
-    navigate(ROUTES.home, { replace: true });
+  // 취소 버튼 클릭 → 바로 취소하지 않고 확인 모달을 띄운다.
+  const onCancel = () => {
+    setCancelError(null);
+    setConfirmOpen(true);
+  };
+
+  // 모달에서 "취소하기" 확정 시 실제로 취소를 진행한다.
+  // 실 모드는 백엔드에 드리미 픽업 취소를 요청하고, mock 모드는 기존 스토어 흐름을 탄다.
+  const confirmCancel = async () => {
+    if (canceling) return;
+    setCanceling(true);
+    setCancelError(null);
+    try {
+      if (isRealMode && orderId) {
+        await api.cancelByDreami(orderId);
+      } else {
+        await cancel("픽업 전 취소");
+      }
+      setConfirmOpen(false);
+      navigate(ROUTES.home, { replace: true });
+    } catch (e) {
+      setCancelError(
+        isApiError(e) ? e.message : "픽업 취소에 실패했어요. 잠시 후 다시 시도해 주세요.",
+      );
+    } finally {
+      setCanceling(false);
+    }
   };
 
   return (
@@ -117,6 +148,39 @@ export function DeliveryTrackScreen() {
           </button>
         )}
       </footer>
+
+      <Modal
+        open={confirmOpen}
+        label="픽업 취소 확인"
+        onClose={canceling ? undefined : () => setConfirmOpen(false)}
+      >
+        <Card className="flex flex-col gap-4 text-center">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-md font-bold text-navy-900">
+              정말로 취소하시겠습니까?
+            </h2>
+            <p className="text-2xs text-muted">
+              픽업을 취소하면 배달이 종료돼요.
+            </p>
+          </div>
+          {cancelError && (
+            <p className="text-2xs text-status-danger">{cancelError}</p>
+          )}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              block
+              disabled={canceling}
+              onClick={() => setConfirmOpen(false)}
+            >
+              돌아가기
+            </Button>
+            <Button block disabled={canceling} onClick={confirmCancel}>
+              {canceling ? "취소 중…" : "취소하기"}
+            </Button>
+          </div>
+        </Card>
+      </Modal>
     </ScreenShell>
   );
 }
