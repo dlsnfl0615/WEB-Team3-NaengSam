@@ -1,5 +1,7 @@
 package com.naengsam.quick.domain.matching.dto;
 
+import com.naengsam.quick.domain.matching.model.MatchOffer;
+import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import java.util.List;
 import java.util.UUID;
@@ -24,10 +26,10 @@ public record OrderOfferGroupDto(
             UUID offerId,
             UUID orderId,
             UUID dreamiId,
-            MatchingService.MatchOfferStatus status
+            MatchOfferStatus status
     ) {
 
-        public static MatchOfferDto from(MatchingService.MatchOffer offer) {
+        public static MatchOfferDto from(MatchOffer offer) {
             return new MatchOfferDto(offer.offerId(), offer.orderId(), offer.dreamiId(), offer.status());
         }
     }

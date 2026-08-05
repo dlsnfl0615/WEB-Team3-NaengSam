@@ -7,6 +7,8 @@ import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.event.NotificationErrorPayload;
 import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
+import com.naengsam.quick.domain.matching.model.MatchOffer;
+import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
@@ -561,41 +563,6 @@ public class MatchingService {
 
     // ────────────────────────────── 조회 헬퍼 ──────────────────────────────
 
-    public enum MatchOfferStatus {
-        /**
-         * 드리미에게 제안이 전달되어 응답 대기 중
-         */
-        OFFERED,
-        /**
-         * 해당 드리미가 수락하여 부르미의 승낙을 대기중
-         */
-        PENDING_BOORMI_CONFIRMATION,
-        /**
-         * 해당 드리미가 수락했고 부르미도 수락해 매칭 후보로 확정됨
-         */
-        MATCHED,
-        /**
-         * 해당 부르미가 명시적으로 거절함
-         */
-        BOORMI_REJECTED,
-        /**
-         * 해당 드리미가 명시적으로 거절함
-         */
-        DREAMI_REJECTED,
-        /**
-         * 제한 시간 내 부르미가 응답하지 않아 만료됨
-         */
-        BOORMI_EXPIRED,
-        /**
-         * 제한 시간 내 드리미가 응답하지 않아 만료됨
-         */
-        DREAMI_EXPIRED,
-        /**
-         * 다른 드리미가 먼저 수락했거나 서버가 제안을 회수함
-         */
-        WITHDRAWN
-    }
-
     public enum WaitingDreamiStatus {
         /**
          * 지금 매칭 중
@@ -620,95 +587,6 @@ public class MatchingService {
          * 더 이상 유효한 제안이 없음. rematchRequired로 재매칭 필요 여부를 판단한다.
          */
         CLOSED
-    }
-
-    /**
-     * status가 계속 바뀌므로 record가 아닌 가변 클래스로 변경. (record로 유지하려면 withStatus()로 새 인스턴스를 만들어 맵에 다시 넣어야 함)
-     */
-    public static final class MatchOffer {
-        private final UUID offerId;
-        private final UUID orderId;
-        private final UUID dreamiId;
-        // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
-        private volatile MatchOfferStatus status;
-
-        public MatchOffer(UUID offerId, UUID orderId, UUID dreamiId, MatchOfferStatus status) {
-            this.offerId = offerId;
-            this.orderId = orderId;
-            this.dreamiId = dreamiId;
-            this.status = status;
-        }
-
-        public UUID offerId() {
-            return offerId;
-        }
-
-        public UUID orderId() {
-            return orderId;
-        }
-
-        public UUID dreamiId() {
-            return dreamiId;
-        }
-
-        public MatchOfferStatus status() {
-            return status;
-        }
-
-        /**
-         * 재제안(같은 드리미에게 다시 제안) 대상에서 제외해야 하는지 여부. 드리미가 명시적으로 거절했거나 응답 timeout(DREAMI_EXPIRED)인 경우는 다시 제안하지 않는다. 타의로
-         * 회수됐거나(WITHDRAWN) 부르미 응답 timeout(BOORMI_EXPIRED)인 경우는 드리미 본인의 잘못이 아니므로 재제안을 허용한다. 아직 진행 중이거나 이미 확정된 오퍼는 당연히
-         * 제외한다.
-         */
-        public boolean shouldExcludeFromRematch() {
-            return switch (status) {
-                case DREAMI_REJECTED, BOORMI_REJECTED, DREAMI_EXPIRED -> true;
-                case WITHDRAWN, BOORMI_EXPIRED -> false;
-                case OFFERED, PENDING_BOORMI_CONFIRMATION, MATCHED -> true;
-            };
-        }
-
-        public void acceptByDreami() {
-            requireStatus(MatchOfferStatus.OFFERED);
-            this.status = MatchOfferStatus.PENDING_BOORMI_CONFIRMATION;
-        }
-
-        public void rejectByDreami() {
-            requireStatus(MatchOfferStatus.OFFERED);
-            this.status = MatchOfferStatus.DREAMI_REJECTED;
-        }
-
-        public void withdraw() {
-            requireStatus(MatchOfferStatus.OFFERED);
-            this.status = MatchOfferStatus.WITHDRAWN;
-        }
-
-        public void confirmByBoormi() {
-            requireStatus(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
-            this.status = MatchOfferStatus.MATCHED;
-        }
-
-        public void rejectByBoormi() {
-            requireStatus(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
-            this.status = MatchOfferStatus.BOORMI_REJECTED;
-        }
-
-        public void expireByDreami() {
-            requireStatus(MatchOfferStatus.OFFERED);
-            this.status = MatchOfferStatus.DREAMI_EXPIRED;
-        }
-
-        public void expireByBoormi() {
-            requireStatus(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
-            this.status = MatchOfferStatus.BOORMI_EXPIRED;
-        }
-
-        private void requireStatus(MatchOfferStatus expected) {
-            if (this.status != expected) {
-                throw new IllegalStateException(
-                        "잘못된 상태 전이입니다: offerId=" + offerId + ", 현재상태=" + status + ", 기대상태=" + expected);
-            }
-        }
     }
 
     /**

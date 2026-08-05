@@ -13,6 +13,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.model.MatchOffer;
+import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyDreamiFinder;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
@@ -227,8 +229,8 @@ class MatchingDebugControllerTest {
         UUID offerId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
 
-        MatchingService.MatchOffer offer = new MatchingService.MatchOffer(
-                offerId, orderId, dreamiId, MatchingService.MatchOfferStatus.OFFERED);
+        MatchOffer offer = new MatchOffer(
+                offerId, orderId, dreamiId, MatchOfferStatus.OFFERED);
         MatchingService.OrderOfferGroup group =
                 new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(),
                         new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)), List.of(offer));
