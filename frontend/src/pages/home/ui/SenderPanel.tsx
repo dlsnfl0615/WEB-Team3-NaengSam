@@ -60,7 +60,7 @@ export function SenderPanel() {
       ) : ongoing.length > 0 ? (
         <div className="flex flex-col gap-3">
           {ongoing.map((o) => (
-            // 상세/진행 화면은 아직 mock 영역이라 클릭 이동은 연결하지 않는다.
+            // 클릭 시 SSE 기반 실시간 추적(부르미 수령인) 화면으로 이동한다.
             <DeliveryCard
               key={o.id}
               icon={o.icon}
@@ -68,6 +68,9 @@ export function SenderPanel() {
               route={o.route}
               status={o.statusLabel}
               progress={ORDER_PROGRESS[o.statusLabel]}
+              onClick={() =>
+                navigate(`${ROUTES.deliveryDetail}?orderId=${o.id}`)
+              }
             />
           ))}
         </div>
