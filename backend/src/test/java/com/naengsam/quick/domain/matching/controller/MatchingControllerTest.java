@@ -34,54 +34,6 @@ class MatchingControllerTest {
     }
 
     @Test
-    void 본인에게_온_제안이면_드리미_수락_요청을_서비스에_위임한다() throws Exception {
-        UUID offerId = UUID.randomUUID();
-        UUID dreamiId = UUID.randomUUID();
-        when(matchingService.isDreamiOfferOwner(offerId, dreamiId)).thenReturn(true);
-
-        mockMvc.perform(post("/api/v1/matching/offers/{offerId}/dreami-accept", offerId)
-                .sessionAttr(SessionConst.LOGIN_USER, dreamiId));
-
-        verify(matchingService).acceptByDreami(offerId);
-    }
-
-    @Test
-    void 본인에게_온_제안이_아니면_드리미_수락_요청을_위임하지_않는다() throws Exception {
-        UUID offerId = UUID.randomUUID();
-        UUID dreamiId = UUID.randomUUID();
-        when(matchingService.isDreamiOfferOwner(offerId, dreamiId)).thenReturn(false);
-
-        mockMvc.perform(post("/api/v1/matching/offers/{offerId}/dreami-accept", offerId)
-                .sessionAttr(SessionConst.LOGIN_USER, dreamiId));
-
-        verify(matchingService, never()).acceptByDreami(offerId);
-    }
-
-    @Test
-    void 본인에게_온_제안이면_드리미_거절_요청을_서비스에_위임한다() throws Exception {
-        UUID offerId = UUID.randomUUID();
-        UUID dreamiId = UUID.randomUUID();
-        when(matchingService.isDreamiOfferOwner(offerId, dreamiId)).thenReturn(true);
-
-        mockMvc.perform(post("/api/v1/matching/offers/{offerId}/dreami-reject", offerId)
-                .sessionAttr(SessionConst.LOGIN_USER, dreamiId));
-
-        verify(matchingService).rejectByDreami(offerId);
-    }
-
-    @Test
-    void 본인에게_온_제안이_아니면_드리미_거절_요청을_위임하지_않는다() throws Exception {
-        UUID offerId = UUID.randomUUID();
-        UUID dreamiId = UUID.randomUUID();
-        when(matchingService.isDreamiOfferOwner(offerId, dreamiId)).thenReturn(false);
-
-        mockMvc.perform(post("/api/v1/matching/offers/{offerId}/dreami-reject", offerId)
-                .sessionAttr(SessionConst.LOGIN_USER, dreamiId));
-
-        verify(matchingService, never()).rejectByDreami(offerId);
-    }
-
-    @Test
     void 본인_주문이면_부르미_수락_요청을_서비스에_위임한다() throws Exception {
         UUID offerId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();

@@ -8,9 +8,11 @@ import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.service.DreamiService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
+import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
+import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
@@ -60,6 +62,28 @@ public class DreamiController {
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     public void goOffline(@LoginUser UUID dreamiId) {
         matchingService.removeDreami(dreamiId);
+    }
+
+    @Operation(summary = "드리미가 제안 수락", description = "로그인한 드리미에게 온 제안을 수락한다.")
+    @PostMapping("/offers/{offerId}/accept")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
+    public void acceptOffer(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
+        if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
+            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
+        }
+        matchingService.acceptByDreami(offerId);
+    }
+
+    @Operation(summary = "드리미가 제안 거절", description = "로그인한 드리미에게 온 제안을 거절한다.")
+    @PostMapping("/offers/{offerId}/reject")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
+    public void rejectOffer(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
+        if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
+            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
+        }
+        matchingService.rejectByDreami(offerId);
     }
 
     @Operation(summary = "주변 콜 리스트 조회",
