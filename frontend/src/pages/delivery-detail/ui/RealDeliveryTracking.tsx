@@ -3,14 +3,15 @@ import { useNavigate } from "react-router-dom";
 import {
   Button,
   Card,
+  DeliveryRouteMap,
   Icon,
-  LiveLocationMap,
   MapCard,
   Modal,
   ScreenShell,
   Toast,
   TopBar,
 } from "@/shared/ui";
+import type { Coords } from "@/shared/ui";
 import { useSse, type SseHandlers } from "@/shared/lib";
 import { ROUTES } from "@/shared/config/routes";
 import { api, isApiError, DeliveryStatusResponseDtoStatus } from "@/shared/api";
@@ -35,9 +36,9 @@ const TRANSIENT_TOAST_MS = 4000;
 /**
  * 부르미(수령인) 실시간 배송 추적 — 실 백엔드 모드.
  *
- * `GET /api/v1/sse/subscribe` 스트림을 구독해 드리미 위치·상태 전이를 화면에 반영한다.
- * 배달 현황 조회 GET 엔드포인트가 아직 없어 초기 스냅샷은 URL(`?status=`)/기본값으로 두고,
- * 이후 값은 전부 SSE 이벤트로 채운다. 한 연결에 여러 주문 이벤트가 섞일 수 있어 orderId로 필터한다.
+ * 마운트 시 `GET /api/v1/delivery/orders/{orderId}`로 출발지·도착지 좌표(+초기 드리미 위치)를 1회 받고,
+ * `GET /api/v1/sse/subscribe` 스트림을 구독해 드리미 위치·상태 전이를 이후 갱신한다.
+ * 초기 상태는 URL(`?status=`)/기본값으로 두고, 한 연결에 여러 주문 이벤트가 섞일 수 있어 orderId로 필터한다.
  */
 export function RealDeliveryTracking({
   orderId,
@@ -49,6 +50,9 @@ export function RealDeliveryTracking({
     initialStatus ?? DeliveryStatusResponseDtoStatus.PICKUP_NORMAL,
   );
   const [location, setLocation] = useState<DeliveryLocationDto | null>(null);
+  const [pickup, setPickup] = useState<Coords | undefined>(undefined);
+  const [dropoff, setDropoff] = useState<Coords | undefined>(undefined);
+  const [detailError, setDetailError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ title: string; description?: string } | null>(
     null,
   );
@@ -84,6 +88,41 @@ export function RealDeliveryTracking({
     },
     [],
   );
+
+  // 마운트 시 출발지·도착지 좌표(+초기 드리미 위치)를 1회 받아온다. 이후 위치는 SSE가 갱신한다.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getDeliveryDetail(orderId)
+      .then(({ result }) => {
+        if (cancelled || !result) return;
+        if (result.originLatitude != null && result.originLongitude != null)
+          setPickup({
+            latitude: result.originLatitude,
+            longitude: result.originLongitude,
+          });
+        if (
+          result.destinationLatitude != null &&
+          result.destinationLongitude != null
+        )
+          setDropoff({
+            latitude: result.destinationLatitude,
+            longitude: result.destinationLongitude,
+          });
+        // SSE가 아직 위치를 안 줬으면 응답의 currentLocation으로 시드한다.
+        const seed = result.currentLocation;
+        if (seed) setLocation((prev) => prev ?? seed);
+      })
+      .catch((e) => {
+        if (!cancelled)
+          setDetailError(
+            isApiError(e) ? e.message : "배달 정보를 불러오지 못했어요.",
+          );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
 
   // 이 주문의 이벤트만 통과시킨다.
   const forThisOrder = (data: unknown): DeliveryStatusResponseDto | null => {
@@ -130,10 +169,13 @@ export function RealDeliveryTracking({
   const { connected } = useSse(handlers);
 
   const view = realTrackView(status);
-  const locationText =
+  const driver: Coords | undefined =
     location?.latitude != null && location?.longitude != null
-      ? `${location.latitude.toFixed(5)}, ${location.longitude.toFixed(5)}`
-      : "위치 대기 중";
+      ? { latitude: location.latitude, longitude: location.longitude }
+      : undefined;
+  const locationText = driver
+    ? `${driver.latitude.toFixed(5)}, ${driver.longitude.toFixed(5)}`
+    : "위치 대기 중";
 
   // 부르미가 배달 취소를 확정하면 백엔드에 취소를 요청하고 홈으로 돌아간다(드리미에게는 SSE로 통지됨).
   const confirmCancel = async () => {
@@ -183,12 +225,17 @@ export function RealDeliveryTracking({
             </div>
           }
         >
-          <LiveLocationMap
-            latitude={location?.latitude}
-            longitude={location?.longitude}
+          <DeliveryRouteMap
+            pickup={pickup}
+            dropoff={dropoff}
+            driver={driver}
             height={340}
           />
         </MapCard>
+
+        {detailError && (
+          <p className="text-2xs text-status-danger">{detailError}</p>
+        )}
 
         <Card className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-pill bg-teal-50 text-teal-700">
