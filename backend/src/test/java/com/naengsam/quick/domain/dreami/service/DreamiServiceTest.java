@@ -5,12 +5,15 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.BDDMockito.given;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
+import com.naengsam.quick.domain.dreami.dto.MonthlyRevenueDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
@@ -28,10 +31,14 @@ import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
+import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
+import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -66,6 +73,9 @@ class DreamiServiceTest {
 
     @Mock
     private MatchingService matchingService;
+
+    @Mock
+    private MoneyTxRepository moneyTxRepository;
 
     @InjectMocks
     private DreamiService dreamiService;
@@ -249,6 +259,44 @@ class DreamiServiceTest {
         dreamiService.goOnline(dreamiId, location);
 
         verify(matchingService).registerDreami(dreamiId, location);
+    }
+
+    // ---------- getDashboard ----------
+
+    @Test
+    void 대시보드조회_완료건수_이번달수익_증감률_이번달건수_최근6개월을_조합해_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        YearMonth thisMonth = YearMonth.now();
+        YearMonth lastMonth = thisMonth.minusMonths(1);
+        given(orderRepository.countByDreamiIdAndOrderCd(dreamiId, OrderCd.COMPLETED)).willReturn(7L);
+        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), any(), any()))
+                .willReturn(List.of(
+                        new MonthlyMoneyAggregate(thisMonth.getYear(), thisMonth.getMonthValue(), 116_000L, 10L),
+                        new MonthlyMoneyAggregate(lastMonth.getYear(), lastMonth.getMonthValue(), 100_000L, 8L)));
+
+        DreamiDashboardDto result = dreamiService.getDashboard(dreamiId);
+
+        assertThat(result.completedCount()).isEqualTo(7L);
+        assertThat(result.thisMonthRevenue()).isEqualTo(116_000L);
+        assertThat(result.monthOverMonthGrowthPercent()).isEqualTo(16L); // (116000-100000)/100000*100, 반올림
+        assertThat(result.thisMonthCount()).isEqualTo(10L);
+        assertThat(result.recentSixMonths()).hasSize(6);
+        MonthlyRevenueDto latest = result.recentSixMonths().getLast();
+        assertThat(latest.month()).isEqualTo(thisMonth);
+        assertThat(latest.revenue()).isEqualTo(116_000L);
+    }
+
+    @Test
+    void 대시보드조회_지난달_수익이_0이면_증감률은_0퍼센트다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(orderRepository.countByDreamiIdAndOrderCd(dreamiId, OrderCd.COMPLETED)).willReturn(0L);
+        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), any(), any()))
+                .willReturn(List.of());
+
+        DreamiDashboardDto result = dreamiService.getDashboard(dreamiId);
+
+        assertThat(result.monthOverMonthGrowthPercent()).isEqualTo(0L);
+        assertThat(result.thisMonthCount()).isEqualTo(0L);
     }
 
     // ---------- acceptOffer ----------

@@ -7,7 +7,7 @@ import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
- * 부르미 주문 목록 화면의 카드 한 장에 필요한 요약 정보. 상세 정보는 별도 조회 API에서 다룬다.
+ * 부르미 주문 목록 화면의 카드 한 장에 필요한 요약 정보. 상세 정보는 별도 조회 API에서 다룬다. 드리미 활동 내역에서 재사용
  */
 public record OrderSummaryDto(
         UUID orderId,
