@@ -28,6 +28,7 @@ import type {
   Get200,
   GetCoordinates200,
   GetDashboard200,
+  GetDeliveryDetail200,
   GetMyOrders200,
   GetMyOrdersParams,
   GetOrderOfferGroup200,
@@ -716,7 +717,7 @@ const getProfile = (
     }
 
 /**
- * 드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다. 진행 중인 배달이 없으면 result가 null이다.
+ * 드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다.
  * @summary 현재 수행 중인 배달 카드 조회
  */
 const findCurrentDeliveryCard = (
@@ -750,6 +751,19 @@ const devSubscribe = (
  options?: SecondParameter<typeof customInstance<DevSubscribe200>>,) => {
       return customInstance<DevSubscribe200>(
       {url: `/api/v1/delivery/test/subscribe/${userId}`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 추적 화면용. 출발지·도착지 좌표와 현재 드리미 위치를 반환한다.
+ * @summary 배달 상세 조회
+ */
+const getDeliveryDetail = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetDeliveryDetail200>>,) => {
+      return customInstance<GetDeliveryDetail200>(
+      {url: `/api/v1/delivery/orders/${orderId}`, method: 'GET'
     },
       options);
     }
@@ -803,7 +817,7 @@ const unsubscribeOrder = (
       options);
     }
 
-return {get,put,sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getMyOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,changeRole,me,getPresignedUrl,subscribe,getProfile,findCurrentDeliveryCard,getDashboard,devSubscribe,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
+return {get,put,sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getMyOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,changeRole,me,getPresignedUrl,subscribe,getProfile,findCurrentDeliveryCard,getDashboard,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
 export type GetResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['get']>>>
 export type PutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['put']>>>
 export type SendVerificationCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['sendVerificationCode']>>>
@@ -854,6 +868,7 @@ export type GetProfileResult = NonNullable<Awaited<ReturnType<ReturnType<typeof 
 export type FindCurrentDeliveryCardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findCurrentDeliveryCard']>>>
 export type GetDashboardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDashboard']>>>
 export type DevSubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['devSubscribe']>>>
+export type GetDeliveryDetailResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDeliveryDetail']>>>
 export type GetOrderOfferGroupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getOrderOfferGroup']>>>
 export type WaitingOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['waitingOrders']>>>
 export type RemoveDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['removeDreami']>>>

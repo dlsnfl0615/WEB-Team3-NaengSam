@@ -40,7 +40,7 @@ export function MapCard({
         </div>
       )}
       {overlay && (
-        <div className="absolute inset-x-3 bottom-3 flex justify-center">
+        <div className="absolute inset-x-3 bottom-3 z-10 flex justify-center">
           {overlay}
         </div>
       )}

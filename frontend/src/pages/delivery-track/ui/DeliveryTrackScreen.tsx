@@ -8,13 +8,16 @@ import {
   Modal,
   ScreenShell,
   Toast,
+  DeliveryRouteMap,
 } from "@/shared/ui";
+import type { Coords } from "@/shared/ui";
 import { api, isApiError, DeliveryStatusResponseDtoStatus } from "@/shared/api";
 import type { DeliveryStatusResponseDto } from "@/shared/api";
 import {
   recallDeliveryStage,
   rememberDeliveryStage,
   useSse,
+  useDreamiLocationBroadcast,
   type SseHandlers,
 } from "@/shared/lib";
 import { ROUTES } from "@/shared/config/routes";
@@ -42,10 +45,22 @@ export function DeliveryTrackScreen() {
   const orderId = params.get("orderId");
   const statusParam = params.get("status");
   const isRealMode = Boolean(orderId);
+
+  // 실 모드(드리미)에서만 현재 GPS 위치를 5초 주기로 백엔드에 전송한다(픽업중·배송중 모두 커버).
+  // 반환된 최신 좌표는 이 화면 지도에도 표시한다.
+  // 이 position은 서버에서 반환하는게 아니라, 브라우저에서 측정한 GPS 값임
+  const { position } = useDreamiLocationBroadcast(orderId, {
+    enabled: isRealMode,
+  });
   const active = useActiveDelivery();
   const advance = useDeliveryStore((s) => s.advance);
   const complete = useDeliveryStore((s) => s.complete);
   const cancel = useDeliveryStore((s) => s.cancel);
+
+  // 실 모드에서 출발지·도착지 좌표(+도착지 주소)를 1회 받아온다(엔드포인트가 드리미도 허용).
+  const [pickup, setPickup] = useState<Coords | undefined>(undefined);
+  const [dropoff, setDropoff] = useState<Coords | undefined>(undefined);
+  const [destAddress, setDestAddress] = useState<string | undefined>(undefined);
 
   // 픽업 취소 확인 모달 상태
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -65,6 +80,38 @@ export function DeliveryTrackScreen() {
     },
     [],
   );
+
+  // 실 모드 마운트 시 출발지·도착지 좌표를 1회 받아온다. 드리미 현재 위치는 GPS(position)로 갱신된다.
+  useEffect(() => {
+    if (!isRealMode || !orderId) return;
+    let cancelled = false;
+    api
+      .getDeliveryDetail(orderId)
+      .then(({ result }) => {
+        if (cancelled || !result) return;
+        if (result.originLatitude != null && result.originLongitude != null)
+          setPickup({
+            latitude: result.originLatitude,
+            longitude: result.originLongitude,
+          });
+        if (
+          result.destinationLatitude != null &&
+          result.destinationLongitude != null
+        )
+          setDropoff({
+            latitude: result.destinationLatitude,
+            longitude: result.destinationLongitude,
+          });
+        if (result.destinationAddressLine1)
+          setDestAddress(result.destinationAddressLine1);
+      })
+      .catch(() => {
+        // 좌표를 못 받아도 드리미 GPS 핀만으로 지도는 동작한다.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isRealMode, orderId]);
 
   const sseHandlers: SseHandlers = {
     delivery_cancelled: (data) => {
@@ -111,7 +158,7 @@ export function DeliveryTrackScreen() {
   const isPickup = stage === "픽업중";
   const { title, action, cancelable } = TRACK_STAGES[stage];
 
-  const destination = active?.dropoff ?? "A동 102호";
+  const destination = destAddress ?? active?.dropoff ?? "A동 102호";
   const eta = active?.eta ?? "3분";
   const distance = active?.distance ?? "450m";
 
@@ -183,7 +230,15 @@ export function DeliveryTrackScreen() {
           flat
           height={440}
           overlay={<TrackOverlay eta={eta} distance={distance} />}
-        />
+        >
+          <DeliveryRouteMap
+            flat
+            pickup={pickup}
+            dropoff={dropoff}
+            driver={position ?? undefined}
+            height={440}
+          />
+        </MapCard>
         <button
           type="button"
           onClick={() => navigate(-1)}
