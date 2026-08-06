@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.payment.entity;
 
-public enum MoneyTxType {
+public enum MoneyTxTypeCd {
     SETTLEMENT,
     REVERSAL,
     CLAIM_ADJUSTMENT,

@@ -11,6 +11,9 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+/**
+ * 회원의 지갑. 모든 회원이 하나씩 갖는다. 이 wallet_id 를 공유 PK 로 {@link PointWallet} 과 {@link MoneyWallet} 이 붙으며, 셋 다 회원가입 시 함께 만들어진다.
+ */
 @Entity
 @Table(name = "WALLET")
 @Getter
@@ -23,6 +26,13 @@ public class Wallet {
     private UUID walletId;
 
     @JdbcTypeCode(SqlTypes.BINARY)
-    @Column(name = "dreami_id", columnDefinition = "BINARY(16)", nullable = false)
-    private UUID dreamiId;
+    @Column(name = "boormi_id", columnDefinition = "BINARY(16)", nullable = false)
+    private UUID boormiId;
+
+    public static Wallet create(UUID boormiId) {
+        Wallet wallet = new Wallet();
+        wallet.walletId = UUID.randomUUID();
+        wallet.boormiId = boormiId;
+        return wallet;
+    }
 }
