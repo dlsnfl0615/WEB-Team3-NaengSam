@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.naengsam.quick.domain.upload.dto.PresignedUrlResponseDto;
@@ -142,5 +143,63 @@ class UploadSessionServiceTest {
         Throwable thrown = catchThrowable(() -> uploadSessionService.consume("uploads/x/y-a.png"));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(UploadErrorCode.FILE_NOT_FOUND);
+    }
+
+    // ---------- checkUpload ----------
+
+    @Test
+    void 확인시_스코프가_다르면_KEY_OWNER_MISMATCH_예외이고_업로드여부는_확인하지_않는다() {
+        UUID boormiId = UUID.randomUUID();
+        UploadSession session = UploadSession.create(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "uploads/x/y-a.png");
+        given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
+
+        Throwable thrown = catchThrowable(() -> uploadSessionService.checkUpload(
+                UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, "uploads/x/y-a.png"));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(UploadErrorCode.KEY_OWNER_MISMATCH);
+        verify(s3PresignService, never()).isFileUploaded(any());
+    }
+
+    @Test
+    void 확인시_아직_업로드가_안됐으면_FILE_NOT_FOUND_예외이고_소비하지_않는다() {
+        UUID boormiId = UUID.randomUUID();
+        UploadSession session = UploadSession.create(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "uploads/x/y-a.png");
+        given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
+        given(s3PresignService.isFileUploaded("uploads/x/y-a.png")).willReturn(false);
+
+        Throwable thrown = catchThrowable(() -> uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD,
+                boormiId, "uploads/x/y-a.png"));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(UploadErrorCode.FILE_NOT_FOUND);
+        verify(uploadSessionRepository, never()).markConsumedIfIssued(any());
+    }
+
+    @Test
+    void 확인시_업로드됐고_처음_소비되면_true를_반환한다() {
+        UUID boormiId = UUID.randomUUID();
+        UploadSession session = UploadSession.create(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "uploads/x/y-a.png");
+        given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
+        given(s3PresignService.isFileUploaded("uploads/x/y-a.png")).willReturn(true);
+        given(uploadSessionRepository.markConsumedIfIssued("uploads/x/y-a.png")).willReturn(1);
+
+        boolean result = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
+                "uploads/x/y-a.png");
+
+        assertThat(result).isTrue();
+    }
+
+    @Test
+    void 확인시_재시도로_이미_소비된_요청이면_false를_반환한다() {
+        UUID boormiId = UUID.randomUUID();
+        UploadSession session = UploadSession.create(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "uploads/x/y-a.png");
+        session.consume();
+        given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
+        given(s3PresignService.isFileUploaded("uploads/x/y-a.png")).willReturn(true);
+        given(uploadSessionRepository.markConsumedIfIssued("uploads/x/y-a.png")).willReturn(0);
+
+        boolean result = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
+                "uploads/x/y-a.png");
+
+        assertThat(result).isFalse();
     }
 }
