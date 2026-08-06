@@ -144,6 +144,9 @@ public class Orders {
     public void releaseFromDreami() {
         this.dreamiId = null;
         this.orderCd = OrderCd.MATCHING;
+    }
+
+    /**
      * 매칭이 확정된 주문에 드리미를 배정하고 진행 중 상태로 전이한다.
      * !! delivery에서 테스트 용도로 만든 것. 추후에 매칭 기능 완성되면 삭제하겠습니다.
      */
