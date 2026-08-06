@@ -49,7 +49,8 @@ export function VerifyScreen() {
         setError('업로드 확인에 실패했어요. 다시 시도해 주세요.')
         return
       }
-      navigate(ROUTES.home, { replace: true })
+      // 홈 화면에서 "심사 중" 토스트를 띄우도록 신호만 실어 보낸다(문구는 홈이 소유).
+      navigate(ROUTES.home, { replace: true, state: { dreamiVerificationSubmitted: true } })
     } catch (err) {
       setError(
         isApiError(err)
