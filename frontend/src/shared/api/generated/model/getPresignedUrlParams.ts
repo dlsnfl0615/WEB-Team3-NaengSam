@@ -4,7 +4,10 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { GetPresignedUrlPurpose } from './getPresignedUrlPurpose';
 
 export type GetPresignedUrlParams = {
 fileName: string;
+purpose: GetPresignedUrlPurpose;
+resourceId?: string;
 };

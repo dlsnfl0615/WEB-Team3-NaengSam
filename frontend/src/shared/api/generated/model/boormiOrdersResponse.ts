@@ -6,7 +6,7 @@
  */
 import type { OrderSummaryDto } from './orderSummaryDto';
 
-export interface MyOrdersResponse {
+export interface BoormiOrdersResponse {
   orders?: OrderSummaryDto[];
   nextCursor?: string;
   hasNext?: boolean;

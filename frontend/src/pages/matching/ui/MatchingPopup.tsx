@@ -1,80 +1,109 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ROUTES } from "@/shared/config/routes";
-import { useRole } from "@/shared/lib/role/useRole";
-import {
-  useActiveDelivery,
-  useDeliveryStore,
-} from "@/shared/store/deliveryStore";
-import { getCalls, getOffers } from "@/shared/mock/matchingService";
-import type { Call, Offer } from "@/shared/mock/types";
+import { useSse, type SseHandlers } from "@/shared/lib";
+import { Toast } from "@/shared/ui";
+import { useMatchingStore } from "@/shared/store/matchingStore";
+import { useSessionStore } from "@/shared/store/sessionStore";
+import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
 import { CallCard } from "./CallCard";
 import { OfferCard } from "./OfferCard";
 
-/** 매칭 요청 팝업 주기(ms). */
-const POPUP_INTERVAL_MS = 3000;
+/** 거리(m) → 표시 라벨. */
+function formatDistance(meters?: number): string {
+  if (meters == null) return "-";
+  return meters >= 1000
+    ? `${(meters / 1000).toFixed(1)}km`
+    : `${Math.round(meters)}m`;
+}
+
+/** 주문 식별자 → 콜 번호 라벨. */
+function formatCode(orderId: string): string {
+  return `#${orderId.slice(0, 8)}`;
+}
 
 /**
- * 전역 매칭 팝업. 진행 중인 매칭이 있으면 어느 화면에서든 바텀에 살짝 뜬다.
- * - 부르미: 활성 배달이 "매칭중"이면 드리미 오퍼 팝업.
- * - 드리미: 콜 탐색 중(seeking)이면 콜 팝업.
+ * 전역 매칭 팝업. 백엔드 SSE로 받은 제안이 있으면 어느 화면에서든 바텀에 뜬다.
+ * - 드리미: `offer_popup` 수신 → 콜 카드(수락 → 픽업 추적 화면).
+ * - 부르미: `dreami_info` 수신 → 드리미 카드(확정 → 배달 상세 화면).
  * 뒤 화면을 가리지 않는 비차단 오버레이(App 루트에 마운트).
  */
 export function MatchingPopup() {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const { role } = useRole();
-  const active = useActiveDelivery();
-  const seeking = useDeliveryStore((s) => s.seeking);
-  const acceptCall = useDeliveryStore((s) => s.acceptCall);
-  const acceptOffer = useDeliveryStore((s) => s.acceptOffer);
+  const isAuthenticated = useSessionStore((s) => s.isAuthenticated);
+  const pendingOffer = useMatchingStore((s) => s.pendingOffer);
+  const incomingDreami = useMatchingStore((s) => s.incomingDreami);
+  const submitting = useMatchingStore((s) => s.submitting);
+  const acceptOffer = useMatchingStore((s) => s.acceptOffer);
+  const rejectOffer = useMatchingStore((s) => s.rejectOffer);
+  const confirmDreami = useMatchingStore((s) => s.confirmDreami);
+  const rejectDreami = useMatchingStore((s) => s.rejectDreami);
+  const clearOffers = useMatchingStore((s) => s.clearOffers);
+  const message = useMatchingStore((s) => s.message);
+  const clearMessage = useMatchingStore((s) => s.clearMessage);
 
-  const [calls, setCalls] = useState<Call[]>([]);
-  const [offers, setOffers] = useState<Offer[]>([]);
-  const [tick, setTick] = useState(0);
+  // 매칭 이벤트만 골라 스토어 액션에 위임한다(배달 이벤트는 각 배달 화면이 구독).
+  const handlers: SseHandlers = {
+    offer_popup: useMatchingStore.getState().receiveOfferPopup,
+    offer_closed: useMatchingStore.getState().receiveOfferClosed,
+    boormi_rejected: useMatchingStore.getState().receiveBoormiRejected,
+    dreami_info: useMatchingStore.getState().receiveDreamiInfo,
+    offer_error: useMatchingStore.getState().receiveOfferError,
+  };
 
-  const isDriver = role === "드리미";
+  // 구독은 세션 쿠키 기반이므로 로그인 상태에서만 연결한다.
+  useSse(handlers, { enabled: isAuthenticated });
+
+  // 로그아웃 시 떠 있던 팝업을 남기지 않는다.
+  useEffect(() => {
+    if (!isAuthenticated) clearOffers();
+  }, [isAuthenticated, clearOffers]);
+
   // 거절/사유 선택 화면에서는 팝업을 숨겨 화면 접근을 막지 않는다.
   const onReasonScreen =
     pathname === ROUTES.rejectReason || pathname === ROUTES.driverReason;
-  const showSender = !isDriver && active?.status === "매칭중" && !onReasonScreen;
-  const showDriver = isDriver && seeking && !onReasonScreen;
-  const visible = showSender || showDriver;
+  if (onReasonScreen) return null;
 
-  // 대기 목록 1회 로드.
-  useEffect(() => {
-    getOffers().then(setOffers);
-    getCalls().then(setCalls);
-  }, []);
+  const call = pendingOffer;
+  const offer = incomingDreami;
 
-  // 표시 조건이 참일 때만 3초마다 새 요청 팝업.
-  useEffect(() => {
-    if (!visible) return;
-    const timer = setInterval(() => setTick((t) => t + 1), POPUP_INTERVAL_MS);
-    return () => clearInterval(timer);
-  }, [visible]);
-
-  const call =
-    showDriver && tick > 0 && calls.length > 0
-      ? calls[(tick - 1) % calls.length]
-      : undefined;
-  const offer =
-    showSender && tick > 0 && offers.length > 0
-      ? offers[(tick - 1) % offers.length]
-      : undefined;
-
-  if (!call && !offer) return null;
+  // 카드가 없어도 매칭 안내(제안 마감·상대 거절 등)는 토스트로 알려야 한다.
+  if (!call && !offer) {
+    if (!message) return null;
+    return (
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center">
+        <div className="ds-sheet-up pointer-events-auto w-full max-w-[420px] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
+          <Toast
+            title={message}
+            action={
+              <button
+                type="button"
+                onClick={clearMessage}
+                className="shrink-0 text-xs font-semibold text-track"
+              >
+                닫기
+              </button>
+            }
+          />
+        </div>
+      </div>
+    );
+  }
 
   const onAcceptCall = async () => {
-    if (!call) return;
-    await acceptCall(call);
-    navigate(ROUTES.deliveryTrack, { replace: true });
+    const orderId = await acceptOffer();
+    if (!orderId) return;
+    // 부르미 확정 전까지는 픽업 대기다. 실 모드 추적 화면으로 이동한다.
+    navigate(`${ROUTES.deliveryTrack}?orderId=${orderId}`, { replace: true });
   };
 
   const onAcceptOffer = async () => {
-    if (!offer) return;
-    await acceptOffer(offer.name);
-    navigate(ROUTES.deliveryDetail, { replace: true });
+    const orderId = await confirmDreami();
+    if (!orderId) return;
+    // 확정으로 주문 상태가 IN_PROGRESS로 바뀌므로 목록을 다시 불러온다.
+    await useBoormiOrderStore.getState().load();
+    navigate(`${ROUTES.deliveryDetail}?orderId=${orderId}`, { replace: true });
   };
 
   return (
@@ -83,29 +112,42 @@ export function MatchingPopup() {
       <div className="ds-sheet-up relative w-full max-w-[420px] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
         {call ? (
           <CallCard
-            code={call.code}
-            price={`₩${call.price.toLocaleString()}`}
-            place={call.place}
-            route={call.route}
-            pickupDistance={call.pickupDistance}
-            dropoffDistance={call.dropoffDistance}
-            itemType={call.itemType}
-            onReject={() => navigate(ROUTES.rejectReason)}
+            code={formatCode(call.orderId)}
+            price={
+              call.call?.expectedRevenue != null
+                ? `₩${call.call.expectedRevenue.toLocaleString()}`
+                : "금액 확인 중"
+            }
+            place={call.call?.itemName ?? "물품 배송"}
+            route={
+              call.call?.expectedEtaMinutes != null
+                ? `예상 ${call.call.expectedEtaMinutes}분`
+                : ""
+            }
+            pickupDistance={formatDistance(call.call?.distanceMeters)}
+            onReject={rejectOffer}
             onAccept={onAcceptCall}
           />
         ) : (
           offer && (
             <OfferCard
               heading="새 드리미 요청 도착!"
-              name={`드리미 '${offer.name}'`}
-              rating={offer.rating}
-              countLabel="배송"
-              count={offer.count}
-              distance={offer.distance}
-              onReject={() => navigate(ROUTES.rejectReason)}
+              name={
+                offer.profile?.name
+                  ? `드리미 '${offer.profile.name}'`
+                  : "드리미 정보 확인 중"
+              }
+              rating={offer.profile?.dreamiAvgScore ?? 0}
+              countLabel="거절"
+              count={offer.profile?.rejectCount ?? 0}
+              distance="-"
+              onReject={rejectDreami}
               onAccept={onAcceptOffer}
             />
           )
+        )}
+        {submitting && (
+          <p className="pt-2 text-center text-2xs text-white">처리 중…</p>
         )}
       </div>
     </div>

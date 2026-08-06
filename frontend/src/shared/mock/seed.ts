@@ -1,4 +1,4 @@
-import type { AuthUser, Call, Delivery, Offer, Wallet } from "./types";
+import type { AuthUser, Delivery, Wallet } from "./types";
 
 /**
  * 인메모리 "서버 DB" 초기값. 새로고침 시 초기화된다(퍼시스트 없음).
@@ -151,36 +151,3 @@ export const SEED_WALLET: Wallet = {
     },
   ],
 };
-
-/** 부르미 매칭중 드리미 오퍼 시드(5초마다 순환 표시). */
-export const SEED_OFFERS: Offer[] = [
-  { id: "o1", name: "핀", rating: 4.9, count: 132, distance: "120m" },
-  { id: "o2", name: "조이", rating: 4.8, count: 88, distance: "80m" },
-  { id: "o3", name: "민", rating: 5.0, count: 210, distance: "150m" },
-];
-
-/** 드리미 대기 콜 시드(MatchingScreen 하드코딩 이관). */
-export const SEED_CALLS: Call[] = [
-  {
-    id: "c1",
-    code: "#B-882",
-    price: 3500,
-    place: "파르나스 타워",
-    route: "24F → 12F",
-    pickupDistance: "120m",
-    dropoffDistance: "1.2km",
-    itemType: "음료",
-    icon: "drink",
-  },
-  {
-    id: "c2",
-    code: "#B-877",
-    price: 5000,
-    place: "삼성 SDS",
-    route: "12F → 3F",
-    pickupDistance: "80m",
-    dropoffDistance: "600m",
-    itemType: "서류",
-    icon: "document",
-  },
-];

@@ -5,6 +5,7 @@
  * OpenAPI spec version: v0
  */
 
-export type PutParams = {
-key: string;
-};
+export interface DreamiOnlineRequest {
+  latitude: number;
+  longitude: number;
+}
