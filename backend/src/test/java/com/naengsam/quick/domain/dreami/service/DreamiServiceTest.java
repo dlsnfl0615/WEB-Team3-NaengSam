@@ -219,14 +219,14 @@ class DreamiServiceTest {
     }
 
     @Test
-    void 현재배달카드조회_진행중인_주문이_없으면_ORDER_NOT_FOUND_예외() {
+    void 현재배달카드조회_진행중인_주문이_없으면_null을_반환한다() {
         UUID dreamiId = UUID.randomUUID();
         given(orderRepository.findByDreamiIdAndOrderCd(dreamiId, OrderCd.IN_PROGRESS))
                 .willReturn(Optional.empty());
 
-        Throwable thrown = catchThrowable(() -> dreamiService.findCurrentDeliveryCard(dreamiId));
+        OrderSummaryDto result = dreamiService.findCurrentDeliveryCard(dreamiId);
 
-        assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+        assertThat(result).isNull();
     }
 
     // ---------- findNearbyCalls ----------
