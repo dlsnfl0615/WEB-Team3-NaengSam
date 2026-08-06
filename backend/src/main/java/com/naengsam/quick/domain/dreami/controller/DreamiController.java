@@ -1,6 +1,5 @@
 package com.naengsam.quick.domain.dreami.controller;
 
-import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiOnlineRequest;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
@@ -13,7 +12,6 @@ import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
-import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
@@ -23,7 +21,6 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -68,11 +65,9 @@ public class DreamiController {
     @PostMapping("/offers/{offerId}/accept")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
     public void acceptOffer(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
-        if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
-            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
-        }
-        matchingService.acceptByDreami(offerId);
+        dreamiService.acceptOffer(offerId, dreamiId);
     }
 
     @Operation(summary = "드리미가 제안 거절", description = "로그인한 드리미에게 온 제안을 거절한다.")
@@ -80,10 +75,7 @@ public class DreamiController {
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
     public void rejectOffer(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
-        if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
-            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
-        }
-        matchingService.rejectByDreami(offerId);
+        dreamiService.rejectOffer(offerId, dreamiId);
     }
 
     @Operation(summary = "주변 콜 리스트 조회",
@@ -101,17 +93,6 @@ public class DreamiController {
     @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
     public OrderSummaryDto findCurrentDeliveryCard(@LoginUser UUID dreamiId) {
         return dreamiService.findCurrentDeliveryCard(dreamiId);
-    }
-
-    @Operation(summary = "현재 수행 중인 배달 취소",
-            description = "드리미가 픽업 전인 현재 수행 중인 배달을 취소한다. 픽업 이후에는 취소할 수 없다.")
-    @DeleteMapping("/deliveries/current")
-    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
-    @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
-            codes = {"CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_ALREADY_CANCELLED", "DELIVERY_NOT_FOUND"})
-    public void cancelCurrentDelivery(@LoginUser UUID dreamiId) {
-        dreamiService.cancelCurrentDelivery(dreamiId);
     }
 
     @Operation(summary = "드리미 대시보드 조회",

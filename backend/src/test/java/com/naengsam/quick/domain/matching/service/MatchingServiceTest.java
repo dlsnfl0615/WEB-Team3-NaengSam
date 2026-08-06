@@ -628,6 +628,30 @@ class MatchingServiceTest {
         assertThat(offer.status()).isEqualTo(MatchingService.MatchOfferStatus.MATCHED);
     }
 
+     @Test
+    void 이미_만료된_오퍼에_부르미_거절이_뒤늦게_도착하면_무시한다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+
+        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+        matchingService.applyStartMatching(order);
+
+        MatchingService.MatchOffer offer =
+                getOrderOfferGroups().get(orderId).offers().getFirst();
+        matchingService.applyAcceptByDreami(offer.offerId());
+        matchingService.applyExpireBoormiOffer(offer.offerId());
+
+        // when (부르미 거절이 이미 BOORMI_EXPIRED된 뒤 뒤늦게 도착 - 조용히 무시되어야 한다)
+        Throwable thrown = catchThrowable(() -> matchingService.applyRejectByBoormi(offer.offerId()));
+
+        // then
+        assertThat(thrown).isNull();
+        assertThat(offer.status()).isEqualTo(MatchingService.MatchOfferStatus.BOORMI_EXPIRED);
+    }
+
     @Test
     void 매칭이_완료되어_정리된_그룹은_스케줄된_재매칭_스캔으로_되살아나지_않는다() {
         // given

@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
@@ -170,5 +171,56 @@ class OrderServiceTest {
         assertThat(savedCancel.getOrderId()).isEqualTo(orderId);
         assertThat(savedCancel.getCancelerCd()).isEqualTo(CancelerCd.BOORMI);
         assertThat(savedCancel.isPenaltyApplied()).isFalse();
+    }
+
+    @Test
+    void 취소_이미_종료된_주문이면_CANNOT_CANCEL_예외이고_이력을_저장하지_않는다() {
+        for (OrderCd terminal : List.of(OrderCd.CANCELLED, OrderCd.COMPLETED, OrderCd.CLAIM_REVIEW)) {
+            Orders order = matchingOrder(UUID.randomUUID());
+            ReflectionTestUtils.setField(order, "orderCd", terminal);
+
+            Throwable thrown = catchThrowable(() -> orderService.cancel(order, CancelerCd.BOORMI));
+
+            assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(OrderErrorCode.CANNOT_CANCEL);
+            assertThat(order.getOrderCd()).isEqualTo(terminal);
+        }
+        then(cancelRepository).should(never()).save(any());
+    }
+
+    @Test
+    void orderId로_취소하면_주문을_조회해_CANCELLED로_바꾸고_취소이력을_저장한다() {
+        UUID orderId = UUID.randomUUID();
+        Orders order = matchingOrder(orderId);
+        given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
+
+        orderService.cancel(orderId, CancelerCd.DREAMI);
+
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.CANCELLED);
+
+        ArgumentCaptor<Cancel> captor = ArgumentCaptor.forClass(Cancel.class);
+        then(cancelRepository).should().save(captor.capture());
+        assertThat(captor.getValue().getCancelerCd()).isEqualTo(CancelerCd.DREAMI);
+    }
+
+    @Test
+    void 완료하면_주문을_조회해_COMPLETED로_바꾼다() {
+        UUID orderId = UUID.randomUUID();
+        Orders order = matchingOrder(orderId);
+        given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
+
+        orderService.complete(orderId);
+
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.COMPLETED);
+    }
+
+    @Test
+    void 완료할_주문이_없으면_ORDER_NOT_FOUND_예외() {
+        UUID orderId = UUID.randomUUID();
+        given(orderRepository.findById(orderId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> orderService.complete(orderId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
     }
 }
