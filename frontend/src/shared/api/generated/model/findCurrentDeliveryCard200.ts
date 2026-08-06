@@ -6,8 +6,9 @@
  */
 import type { OrderSummaryDto } from './orderSummaryDto';
 
-export interface MyOrdersResponse {
-  orders?: OrderSummaryDto[];
-  nextCursor?: string;
-  hasNext?: boolean;
-}
+export type FindCurrentDeliveryCard200 = {
+  isSuccess?: boolean;
+  code?: string;
+  message?: string;
+  result?: OrderSummaryDto;
+};

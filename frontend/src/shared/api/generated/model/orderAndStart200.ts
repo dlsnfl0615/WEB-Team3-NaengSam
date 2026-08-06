@@ -4,11 +4,11 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
-import type { DeliveryStatusResponseDto } from './deliveryStatusResponseDto';
+import type { SeedResponse } from './seedResponse';
 
-export type UpdateDreamiLocation200 = {
+export type OrderAndStart200 = {
   isSuccess?: boolean;
   code?: string;
   message?: string;
-  result?: DeliveryStatusResponseDto;
+  result?: SeedResponse;
 };

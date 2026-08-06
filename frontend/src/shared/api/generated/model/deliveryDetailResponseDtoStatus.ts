@@ -5,10 +5,13 @@
  * OpenAPI spec version: v0
  */
 
-export type DeliveryStatusResponseDtoStatus = typeof DeliveryStatusResponseDtoStatus[keyof typeof DeliveryStatusResponseDtoStatus];
+/**
+ * 배달 상태
+ */
+export type DeliveryDetailResponseDtoStatus = typeof DeliveryDetailResponseDtoStatus[keyof typeof DeliveryDetailResponseDtoStatus];
 
 
-export const DeliveryStatusResponseDtoStatus = {
+export const DeliveryDetailResponseDtoStatus = {
   PICKUP_NORMAL: 'PICKUP_NORMAL',
   PICKUP_DELAYED: 'PICKUP_DELAYED',
   PICKUP_CANCELLED_BY_BOORMI: 'PICKUP_CANCELLED_BY_BOORMI',

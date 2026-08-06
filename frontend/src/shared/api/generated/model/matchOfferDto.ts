@@ -11,5 +11,4 @@ export interface MatchOfferDto {
   orderId?: string;
   dreamiId?: string;
   status?: MatchOfferDtoStatus;
-  expiresAt?: string;
 }
