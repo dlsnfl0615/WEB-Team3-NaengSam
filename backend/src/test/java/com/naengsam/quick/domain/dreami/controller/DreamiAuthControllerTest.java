@@ -10,10 +10,11 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.service.DreamiService;
+import com.naengsam.quick.domain.upload.dto.UploadCheckResult;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
-import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.exception.GlobalExceptionHandler;
@@ -27,25 +28,43 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 /**
- * key의 용도/소유자 스코프 검증과, 재시도 시 중복 저장되지 않는지(세션 소비 멱등성)를 검증한다.
+ * key의 용도/소유자 스코프 검증과, 재시도 시 중복 저장되지 않는지(세션 소비 멱등성 포함)를 검증한다.
  */
 class DreamiAuthControllerTest {
 
-    private S3PresignService s3PresignService;
     private UploadSessionService uploadSessionService;
     private DreamiService dreamiService;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        s3PresignService = mock(S3PresignService.class);
         uploadSessionService = mock(UploadSessionService.class);
         dreamiService = mock(DreamiService.class);
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new DreamiAuthController(s3PresignService, uploadSessionService, dreamiService))
+                        new DreamiAuthController(uploadSessionService, dreamiService))
                 .setCustomArgumentResolvers(new LoginUserArgumentResolver())
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+    }
+
+    @Test
+    void 이미_승인된_드리미면_409를_반환하고_업로드_확인을_시도하지_않는다() throws Exception {
+        UUID boormiId = UUID.randomUUID();
+        String idCardKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
+        String criminalRecordKey = "uploads/DREAMI_CRIMINAL_RECORD/bbb-criminal.png";
+        doThrow(new BusinessException(DreamiErrorCode.ALREADY_APPROVED))
+                .when(dreamiService).assertNotAlreadyApproved(boormiId);
+
+        mockMvc.perform(post("/api/v1/dreami/verification")
+                        .sessionAttr(SessionConst.LOGIN_USER, boormiId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"idCardKey": "%s", "criminalRecordKey": "%s"}
+                                """.formatted(idCardKey, criminalRecordKey)))
+                .andExpect(status().isConflict());
+
+        verify(uploadSessionService, never()).checkUpload(any(), any(), any());
+        verify(dreamiService, never()).saveVerificationFileKeys(any(), any(), any());
     }
 
     @Test
@@ -53,12 +72,12 @@ class DreamiAuthControllerTest {
         UUID boormiId = UUID.randomUUID();
         String idCardKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
         String criminalRecordKey = "uploads/DREAMI_CRIMINAL_RECORD/bbb-criminal.png";
-        when(s3PresignService.isFileUploaded(idCardKey)).thenReturn(true);
-        when(s3PresignService.isFileUploaded(criminalRecordKey)).thenReturn(true);
-        when(uploadSessionService.consume(idCardKey)).thenReturn(true);
-        when(uploadSessionService.consume(criminalRecordKey)).thenReturn(true);
+        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, idCardKey))
+                .thenReturn(new UploadCheckResult(true, true));
+        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, criminalRecordKey))
+                .thenReturn(new UploadCheckResult(true, true));
 
-        mockMvc.perform(post("/api/v1/dreami/check")
+        mockMvc.perform(post("/api/v1/dreami/verification")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -67,9 +86,6 @@ class DreamiAuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string("true"));
 
-        verify(uploadSessionService).validateScope(UploadPurpose.DREAMI_ID_CARD, boormiId, null, idCardKey);
-        verify(uploadSessionService).validateScope(UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, null,
-                criminalRecordKey);
         verify(dreamiService).saveVerificationFileKeys(boormiId, idCardKey, criminalRecordKey);
     }
 
@@ -78,9 +94,9 @@ class DreamiAuthControllerTest {
         UUID boormiId = UUID.randomUUID();
         String stolenKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
         doThrow(new BusinessException(UploadErrorCode.KEY_OWNER_MISMATCH))
-                .when(uploadSessionService).validateScope(UploadPurpose.DREAMI_ID_CARD, boormiId, null, stolenKey);
+                .when(uploadSessionService).checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, stolenKey);
 
-        mockMvc.perform(post("/api/v1/dreami/check")
+        mockMvc.perform(post("/api/v1/dreami/verification")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -88,7 +104,6 @@ class DreamiAuthControllerTest {
                                 """.formatted(stolenKey, stolenKey)))
                 .andExpect(status().isForbidden());
 
-        verify(s3PresignService, never()).isFileUploaded(any());
         verify(dreamiService, never()).saveVerificationFileKeys(any(), any(), any());
     }
 
@@ -97,9 +112,12 @@ class DreamiAuthControllerTest {
         UUID boormiId = UUID.randomUUID();
         String idCardKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
         String criminalRecordKey = "uploads/DREAMI_CRIMINAL_RECORD/bbb-criminal.png";
-        when(s3PresignService.isFileUploaded(idCardKey)).thenReturn(false);
+        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, idCardKey))
+                .thenReturn(new UploadCheckResult(false, false));
+        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, criminalRecordKey))
+                .thenReturn(new UploadCheckResult(true, true));
 
-        mockMvc.perform(post("/api/v1/dreami/check")
+        mockMvc.perform(post("/api/v1/dreami/verification")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -108,21 +126,20 @@ class DreamiAuthControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(content().string("false"));
 
-        verify(uploadSessionService, never()).consume(any());
         verify(dreamiService, never()).saveVerificationFileKeys(any(), any(), any());
     }
 
     @Test
-    void 재시도로_이미_소비된_세션이면_저장을_반복하지_않는다() throws Exception {
+    void 재시도로_둘_다_이미_소비된_세션이면_저장을_반복하지_않는다() throws Exception {
         UUID boormiId = UUID.randomUUID();
         String idCardKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
         String criminalRecordKey = "uploads/DREAMI_CRIMINAL_RECORD/bbb-criminal.png";
-        when(s3PresignService.isFileUploaded(idCardKey)).thenReturn(true);
-        when(s3PresignService.isFileUploaded(criminalRecordKey)).thenReturn(true);
-        when(uploadSessionService.consume(idCardKey)).thenReturn(false);
-        when(uploadSessionService.consume(criminalRecordKey)).thenReturn(false);
+        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, idCardKey))
+                .thenReturn(new UploadCheckResult(true, false));
+        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, criminalRecordKey))
+                .thenReturn(new UploadCheckResult(true, false));
 
-        mockMvc.perform(post("/api/v1/dreami/check")
+        mockMvc.perform(post("/api/v1/dreami/verification")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""

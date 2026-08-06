@@ -1,6 +1,7 @@
 package com.naengsam.quick.domain.dreami.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.BDDMockito.given;
 
@@ -9,6 +10,7 @@ import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
+import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRepository;
@@ -105,6 +107,37 @@ class DreamiServiceTest {
         Throwable thrown = catchThrowable(() -> dreamiService.getDreamiProfile(id));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+    }
+
+    // ---------- assertNotAlreadyApproved ----------
+
+    @Test
+    void 승인된_드리미면_ALREADY_APPROVED_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+
+        Throwable thrown = catchThrowable(() -> dreamiService.assertNotAlreadyApproved(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.ALREADY_APPROVED);
+    }
+
+    @Test
+    void 승인되지_않은_드리미면_예외없이_통과한다() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey"); // 기본 상태 REQUESTED
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+
+        assertThatCode(() -> dreamiService.assertNotAlreadyApproved(dreamiId)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 신청기록이_없으면_예외없이_통과한다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.empty());
+
+        assertThatCode(() -> dreamiService.assertNotAlreadyApproved(dreamiId)).doesNotThrowAnyException();
     }
 
     // ---------- findNearbyCalls ----------

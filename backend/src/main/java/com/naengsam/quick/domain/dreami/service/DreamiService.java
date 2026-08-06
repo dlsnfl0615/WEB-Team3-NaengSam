@@ -5,6 +5,7 @@ import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
+import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRepository;
@@ -34,6 +35,19 @@ public class DreamiService {
     @Transactional
     public void saveVerificationFileKeys(UUID dreamiId, String idCardKey, String criminalRecordKey) {
         dreamiRepository.save(Dreami.create(dreamiId, idCardKey, criminalRecordKey));
+    }
+
+    /**
+     * 이미 승인된 드리미는 재신청할 수 없다. {@code saveVerificationFileKeys}가 매번 새 row로 덮어써서
+     * requestCd·평점을 리셋시키므로, 승인된 드리미가 이 흐름을 다시 타는 것을 여기서 막는다.
+     */
+    @Transactional(readOnly = true)
+    public void assertNotAlreadyApproved(UUID dreamiId) {
+        dreamiRepository.findById(dreamiId).ifPresent(dreami -> {
+            if (dreami.getRequestCd() == DreamiCd.APPROVED) {
+                throw new BusinessException(DreamiErrorCode.ALREADY_APPROVED);
+            }
+        });
     }
 
     /**
