@@ -1,11 +1,45 @@
-import { BarChart, Button, Card, InfoRow } from "@/shared/ui";
-import { selectEarnings, useDeliveryStore } from "@/shared/store/deliveryStore";
-import { MONTHLY_TREND } from "./trend";
+import { useEffect, useState } from "react";
+import { BarChart, Button, Card } from "@/shared/ui";
+import { cn } from "@/shared/lib/cn";
+import { api, isApiError } from "@/shared/api";
+import type { DreamiDashboardDto } from "@/shared/api";
 
-/** 드리미 수익 리포트 본문(완료 배달 집계·월간 추이·퀵 대비 추가 수익). */
+/** "2026-07" 형태의 YearMonth 문자열 → "7월" 라벨. */
+function toMonthLabel(month?: string): string {
+  if (!month) return "";
+  const m = Number(month.split("-")[1]);
+  return Number.isNaN(m) ? month : `${m}월`;
+}
+
+/** 드리미 수익 리포트 본문. /api/v1/dreami/dashboard로 이번 달 수익·월간 추이를 조회한다. */
 export function DriverEarnings() {
-  const deliveries = useDeliveryStore((s) => s.deliveries);
-  const { count, total, diff } = selectEarnings(deliveries, "드리미");
+  const [dashboard, setDashboard] = useState<DreamiDashboardDto | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getDashboard()
+      .then(({ result }) => {
+        if (!cancelled) setDashboard(result ?? null);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setError(isApiError(e) ? e.message : "수익 정보를 불러오지 못했어요.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const trend = (dashboard?.recentSixMonths ?? []).map((m) => ({
+    label: toMonthLabel(m.month),
+    value: m.revenue ?? 0,
+  }));
+  const currentMonthLabel = trend.at(-1)?.label ?? "";
+  const growthPercent = dashboard?.monthOverMonthGrowthPercent ?? 0;
+  const isIncrease = growthPercent > 0;
 
   return (
     <>
@@ -13,36 +47,31 @@ export function DriverEarnings() {
         <div className="flex items-center justify-between">
           <span className="text-2xs opacity-70">이번 달 총 수익</span>
           <span className="rounded-pill border border-white/30 px-2.5 py-0.5 text-2xs">
-            7월
+            {currentMonthLabel}
           </span>
         </div>
         <p className="text-3xl font-bold tracking-[-0.6px]">
-          ₩{total.toLocaleString()}
+          ₩{(dashboard?.thisMonthRevenue ?? 0).toLocaleString()}
         </p>
-        <p className="text-2xs text-teal-500">▲ 지난달 대비 +18%</p>
+        <p
+          className={cn(
+            "text-2xs",
+            isIncrease ? "text-status-danger" : "text-teal-500",
+          )}
+        >
+          {isIncrease ? "▲" : "▼"} 지난달 대비 {isIncrease ? "+" : ""}
+          {growthPercent}% · 이번 달 {dashboard?.thisMonthCount ?? 0}건
+        </p>
       </Card>
 
       <div className="flex flex-col gap-2">
         <p className="text-2xs text-muted">월간 추이</p>
         <Card>
-          <BarChart data={MONTHLY_TREND} />
+          <BarChart data={trend} />
         </Card>
       </div>
 
-      <Card variant="accent" className="flex flex-col gap-2.5 border-teal-500">
-        <InfoRow label="시장 퀵 평균 단가">건당 ₩5,800</InfoRow>
-        <div className="flex items-center justify-between border-t border-teal-500/30 pt-3">
-          <span className="text-sm font-bold text-navy-900">
-            퀵 대비 추가로 번 금액
-          </span>
-          <span className="text-lg font-bold text-teal-700">
-            +₩{diff.toLocaleString()}
-          </span>
-        </div>
-        <p className="text-2xs text-muted">
-          이번 달 {count}건 · 자투리 시간 활용 수익
-        </p>
-      </Card>
+      {error && <p className="text-2xs text-status-danger">{error}</p>}
 
       <Button variant="navy" block>
         정산 계좌로 출금하기
