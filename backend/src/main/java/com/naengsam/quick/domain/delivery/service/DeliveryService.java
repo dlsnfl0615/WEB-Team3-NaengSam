@@ -78,7 +78,9 @@ public class DeliveryService {
         if (!userService.getUserInfo(dreamiId).isDreami()) { // 배달자는 활성 드리미여야 함
             throw new BusinessException(DeliveryErrorCode.DREAMI_NOT_ACTIVATED);
         }
-        deliveryRepository.save(Delivery.create(orderId, dreamiId, boormiId));
+        Delivery delivery = deliveryRepository.save(Delivery.create(orderId, dreamiId, boormiId));
+        alarmBoormiDeliveryStartedBySSE(delivery); // 부르미에게_배달이_시작됐다고_전달_SSE사용()
+        alarmDreamiDeliveryStartedBySSE(delivery); // 드리미에게_배달이_시작됐다고_전달_SSE사용()
     }
 
     // 배달 추적 화면용 상세 조회. 출발지·도착지 좌표(Orders)와 현재 드리미 위치·상태(Delivery)를 조합해 반환한다.
@@ -377,6 +379,16 @@ public class DeliveryService {
     // ===== SSE 알림 =====
     // 모두 트랜잭션 안에서 호출된다. 불변 스냅샷(DeliveryStatusResponseDto)을 만들어 SseService로 넘기므로
     // async 전송 스레드는 영속 Delivery를 건드리지 않는다(추가 동시성 처리 불필요).
+
+    private void alarmBoormiDeliveryStartedBySSE(Delivery delivery) {
+        sseService.send(delivery.getBoormiId(), DeliveryEventType.DELIVERY_STARTED_BOORMI,
+                DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"));
+    }
+
+    private void alarmDreamiDeliveryStartedBySSE(Delivery delivery) {
+        sseService.send(delivery.getDreamiId(), DeliveryEventType.DELIVERY_STARTED_DREAMI,
+                DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"));
+    }
 
     private void alarmDreamiBoormiCancelBySSE(Delivery delivery) {
         sseService.send(delivery.getDreamiId(), DeliveryEventType.DELIVERY_CANCELLED,

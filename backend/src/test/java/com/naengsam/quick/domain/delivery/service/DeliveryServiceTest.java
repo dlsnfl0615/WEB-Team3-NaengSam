@@ -78,6 +78,7 @@ class DeliveryServiceTest {
                 userService, orderService);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 존재. 스코프 검증(validateScope)은 void라 기본 no-op(통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
+        given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
         given(s3PresignService.isFileUploaded(any())).willReturn(true);
     }
 
@@ -171,6 +172,32 @@ class DeliveryServiceTest {
         assertThat(saved.getOrderId()).isEqualTo(orderId);
         assertThat(saved.getDreamiId()).isEqualTo(dreamiId);
         assertThat(saved.getBoormiId()).isEqualTo(boormiId);
+    }
+
+    @Test
+    void 배달시작하면_부르미에게_DELIVERY_STARTED_BOORMI_SSE전송() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        stubOrderStatus(orderId, OrderCd.IN_PROGRESS);
+        stubValidRoles(boormiId, dreamiId);
+
+        deliveryService.startDelivery(orderId, dreamiId, boormiId);
+
+        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_STARTED_BOORMI), any());
+    }
+
+    @Test
+    void 배달시작하면_드리미에게_DELIVERY_STARTED_DREAMI_SSE전송() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        stubOrderStatus(orderId, OrderCd.IN_PROGRESS);
+        stubValidRoles(boormiId, dreamiId);
+
+        deliveryService.startDelivery(orderId, dreamiId, boormiId);
+
+        verify(sseService).send(eq(dreamiId), eq(DeliveryEventType.DELIVERY_STARTED_DREAMI), any());
     }
 
     @Test

@@ -22,7 +22,15 @@ public enum DeliveryEventType implements SseEventType {
     /**
      * 부르미: 배달 완료
      */
-    DELIVERY_COMPLETED;
+    DELIVERY_COMPLETED,
+    /**
+     * 부르미: 매칭이 확정돼 배달이 시작됨 → 배달 추적 화면으로 이동
+     */
+    DELIVERY_STARTED_BOORMI,
+    /**
+     * 드리미: 매칭이 확정돼 배달이 시작됨 → 배달 추적 화면으로 이동
+     */
+    DELIVERY_STARTED_DREAMI;
 
     @Override
     public String eventName() {
