@@ -135,12 +135,13 @@ public class DreamiService {
 
     /**
      * 드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다. 드리미는 한 번에 하나만 수행하므로 단건 조회다.
+     * 진행 중인 배달이 없으면 정상 상태이므로 예외 대신 null을 반환한다.
      */
     @Transactional(readOnly = true)
     public OrderSummaryDto findCurrentDeliveryCard(UUID dreamiId) {
-        Orders order = orderRepository.findByDreamiIdAndOrderCd(dreamiId, OrderCd.IN_PROGRESS)
-                .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
-        return OrderSummaryDto.from(order);
+        return orderRepository.findByDreamiIdAndOrderCd(dreamiId, OrderCd.IN_PROGRESS)
+                .map(OrderSummaryDto::from)
+                .orElse(null);
     }
 
     /**
