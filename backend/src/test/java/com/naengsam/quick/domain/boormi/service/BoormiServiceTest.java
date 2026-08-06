@@ -167,7 +167,9 @@ BoormiServiceTest {
 
         ArgumentCaptor<Orders> captor = ArgumentCaptor.forClass(Orders.class);
         then(orderService).should().createOrders(captor.capture());
-        then(paymentService).should().startPayment();
+        // 결제는 저장된 주문과 같은 orderId, 서버가 재계산한 요금으로 이뤄져야 한다
+        then(paymentService).should()
+                .payWithPoint(boormiId, captor.getValue().getOrderId(), 10100L);
         then(matchingService).should().startMatching(captor.getValue());
 
         Orders saved = captor.getValue();
@@ -311,6 +313,7 @@ BoormiServiceTest {
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
         then(orderService).should(never()).cancel(any(), any());
+        then(paymentService).should(never()).refundByPoint(any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
@@ -326,6 +329,7 @@ BoormiServiceTest {
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.NOT_ORDER_OWNER);
         then(orderService).should(never()).cancel(any(), any());
+        then(paymentService).should(never()).refundByPoint(any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
@@ -341,11 +345,12 @@ BoormiServiceTest {
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.CANNOT_CANCEL_AFTER_PICKUP);
         then(orderService).should(never()).cancel(any(), any());
+        then(paymentService).should(never()).refundByPoint(any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
     @Test
-    void 취소_정상이면_주문취소와_매칭취소를_호출한다() {
+    void 취소_정상이면_주문취소와_포인트환불과_매칭취소를_호출한다() {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.MATCHING);
@@ -354,6 +359,7 @@ BoormiServiceTest {
         boormiService.unsubscribeOrder(boormiId, orderId);
 
         then(orderService).should().cancel(order, CancelerCd.BOORMI);
+        then(paymentService).should().refundByPoint(orderId);
         then(matchingService).should().cancelOrderByBoormi(orderId);
     }
 
