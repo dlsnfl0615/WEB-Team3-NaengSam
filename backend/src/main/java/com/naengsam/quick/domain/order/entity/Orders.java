@@ -3,16 +3,20 @@ package com.naengsam.quick.domain.order.entity;
 import com.naengsam.quick.domain.address.dto.Addresses;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-
-import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "ORDERS")
@@ -85,8 +89,8 @@ public class Orders {
     private LocalDateTime deliveryRequestDtm;
 
     /**
-     * 주문 접수 시 부르미 요청 정보로 신규 주문을 생성한다. PK 는 앱에서 생성(BINARY(16))하며 상태는 MATCHING 으로 시작한다.
-     * {@code dreami_id} 는 매칭 성사 시 채워지고, {@code delivery_request_dtm} 은 DB 기본값(CURRENT_TIMESTAMP)이 적용된다.
+     * 주문 접수 시 부르미 요청 정보로 신규 주문을 생성한다. PK 는 앱에서 생성(BINARY(16))하며 상태는 MATCHING 으로 시작한다. {@code dreami_id} 는 매칭 성사 시 채워지고,
+     * {@code delivery_request_dtm} 은 DB 기본값(CURRENT_TIMESTAMP)이 적용된다.
      */
     public static Orders create(UUID orderId, UUID boormiId, String itemName, ItemCd itemCd,
                                 String itemDetail, Long deliveryAmount, int deliveryEta, String deliveryRequest,
@@ -110,7 +114,7 @@ public class Orders {
      * Matching Service 의 기존 객체 compatibility 를 위한 임시 생성자. 좌표만으로 매칭 대상 주문을 만든다(영속화하지 않음).
      */
     public static Orders create(UUID orderId, UUID boormiId,
-                                GeoPoint origin, GeoPoint destination) {
+            GeoPoint origin, GeoPoint destination) {
         Orders order = new Orders();
         order.orderId = orderId;
         order.boormiId = boormiId;
@@ -123,10 +127,17 @@ public class Orders {
     }
 
     /**
-     * 매칭 대기 중인 주문을 취소 상태로 전이한다.
+     * 주문을 취소 상태로 전이한다.
      */
     public void cancel() {
         this.orderCd = OrderCd.CANCELLED;
+    }
+
+    /**
+     * 배달이 완료되어 주문을 완료 상태로 전이한다.
+     */
+    public void complete() {
+        this.orderCd = OrderCd.COMPLETED;
     }
 
     /**
@@ -138,12 +149,26 @@ public class Orders {
     }
 
     /**
-     * 매칭이 확정된 주문에 드리미를 배정하고 진행 중 상태로 전이한다.
-     * !! delivery에서 테스트 용도로 만든 것. 추후에 매칭 기능 완성되면 삭제하겠습니다.
+     * 드리미가 제안을 수락해 부르미의 최종 확인을 기다리는 상태로 전이한다. 검증은 서비스에서 수행한다.
+     */
+    public void markPendingBoormiConfirmation() {
+        this.orderCd = OrderCd.PENDING_BOORMI_CONFIRMATION;
+    }
+
+    /**
+     * 매칭이 확정된 주문에 드리미를 배정하고 진행 중 상태로 전이한다. !! delivery에서 테스트 용도로 만든 것. 추후에 매칭 기능 완성되면 삭제하겠습니다.
      */
     public void assignDreamiTest(UUID dreamiId) {
         this.dreamiId = dreamiId;
         this.orderCd = OrderCd.IN_PROGRESS;
+    }
+
+    /**
+     * 부르미가 확정 대기 중인 드리미를 거절한다. 배정을 비우고 다시 매칭 대기(MATCHING)로 되돌린다(dirty checking 반영). 검증은 서비스에서 수행한다.
+     */
+    public void rejectDreami() {
+        this.dreamiId = null;
+        this.orderCd = OrderCd.MATCHING;
     }
 
     public void updateAddresses(Addresses addresses) {

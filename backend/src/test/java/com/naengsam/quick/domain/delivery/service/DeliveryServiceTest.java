@@ -11,6 +11,8 @@ import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.repository.DeliveryCertificationRepository;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.delivery.repository.PickupCertificationRepository;
+import com.naengsam.quick.domain.order.entity.CancelerCd;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
@@ -53,6 +55,7 @@ class DeliveryServiceTest {
     private S3PresignService s3PresignService;
     private UploadSessionService uploadSessionService;
     private UserService userService;
+    private OrderService orderService;
     private DeliveryService deliveryService;
 
     // findByOrderId가 같은 Delivery 인스턴스를 돌려주도록 등록해 둔다(서비스가 이 객체를 변경하면 테스트에서 바로 관찰된다).
@@ -67,9 +70,10 @@ class DeliveryServiceTest {
         s3PresignService = mock(S3PresignService.class);
         uploadSessionService = mock(UploadSessionService.class);
         userService = mock(UserService.class);
+        orderService = mock(OrderService.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, sseService, s3PresignService, uploadSessionService,
-                userService);
+                userService, orderService);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 존재. 스코프 검증(validateScope)은 void라 기본 no-op(통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(s3PresignService.isFileUploaded(any())).willReturn(true);
@@ -107,6 +111,15 @@ class DeliveryServiceTest {
                 orderId, registeredDeliveries.get(orderId).getDreamiId(), PHOTO_KEY);
     }
 
+    // 등록된 주문의 배정 드리미/접수 부르미 본인이 취소를 요청하는 정상 경로 헬퍼(소유권 검증 통과).
+    private DeliveryStatusResponseDto cancelByDreami(UUID orderId) {
+        return deliveryService.cancelByDreami(orderId, registeredDeliveries.get(orderId).getDreamiId());
+    }
+
+    private DeliveryStatusResponseDto cancelByBoormi(UUID orderId) {
+        return deliveryService.cancelByBoormi(orderId, registeredDeliveries.get(orderId).getBoormiId());
+    }
+
     private BaseErrorCode errorCodeOf(Throwable thrown) {
         assertThat(thrown).isInstanceOf(BusinessException.class);
         return ((BusinessException) thrown).getErrorCode();
@@ -116,10 +129,12 @@ class DeliveryServiceTest {
         return new DreamiLocationRequest(new BigDecimal(latitude), new BigDecimal(longitude));
     }
 
+    // 세 취소 경로를 orderId 하나로 실행하는 헬퍼. 드리미/부르미는 등록된 소유자 본인으로 호출해 소유권 검증을 통과시키고,
+    // 그 이후의 상태 가드 분기만 검증되도록 한다.
     private List<Function<UUID, DeliveryStatusResponseDto>> cancelOperations() {
         return List.of(
-                deliveryService::cancelByDreami,
-                deliveryService::cancelByBoormi,
+                this::cancelByDreami,
+                this::cancelByBoormi,
                 deliveryService::cancelByAdmin);
     }
 
@@ -204,7 +219,7 @@ class DeliveryServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
 
-        deliveryService.cancelByDreami(orderId);
+        cancelByDreami(orderId);
 
         verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
     }
@@ -215,7 +230,7 @@ class DeliveryServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
 
-        deliveryService.cancelByBoormi(orderId);
+        cancelByBoormi(orderId);
 
         verify(sseService).send(eq(dreamiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
     }
@@ -304,7 +319,7 @@ class DeliveryServiceTest {
     void 드리미취소_정상이면_PICKUP_CANCELLED_BY_DREAMI로_전이() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
-        DeliveryStatusResponseDto result = deliveryService.cancelByDreami(orderId);
+        DeliveryStatusResponseDto result = cancelByDreami(orderId);
 
         assertThat(result.message()).isEqualTo("픽업 취소 완료");
         assertThat(result.status()).isEqualTo(PICKUP_CANCELLED_BY_DREAMI);
@@ -320,6 +335,89 @@ class DeliveryServiceTest {
         assertThat(result.message()).isEqualTo("드리미에게_완료");
         assertThat(result.status()).isEqualTo(DELIVERED);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERED);
+    }
+
+    // ===== 주문(Orders) 상태 동기화 =====
+
+    @Test
+    void 배달완료되면_주문을_COMPLETED로_전이시킨다() {
+        UUID orderId = registerDelivery(DELIVERING);
+
+        finish(orderId);
+
+        verify(orderService).complete(orderId);
+    }
+
+    @Test
+    void 픽업완료는_주문상태를_바꾸지_않는다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        pickupFinish(orderId);
+
+        verify(orderService, never()).complete(any());
+        verify(orderService, never()).cancel(any(UUID.class), any());
+    }
+
+    @Test
+    void 드리미취소되면_주문을_DREAMI_취소자로_CANCELLED_전이시킨다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        cancelByDreami(orderId);
+
+        verify(orderService).cancel(orderId, CancelerCd.DREAMI);
+    }
+
+    @Test
+    void 부르미취소되면_주문을_BOORMI_취소자로_CANCELLED_전이시킨다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        cancelByBoormi(orderId);
+
+        verify(orderService).cancel(orderId, CancelerCd.BOORMI);
+    }
+
+    @Test
+    void 관리자취소되면_주문을_ADMIN_취소자로_CANCELLED_전이시킨다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        deliveryService.cancelByAdmin(orderId);
+
+        verify(orderService).cancel(orderId, CancelerCd.ADMIN);
+    }
+
+    @Test
+    void 드리미취소_배정되지않은_드리미면_NOT_ASSIGNED_DREAMI_예외() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+        UUID otherDreamiId = UUID.randomUUID();
+
+        Throwable thrown = catchThrowable(() -> deliveryService.cancelByDreami(orderId, otherDreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.NOT_ASSIGNED_DREAMI);
+        assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
+        verify(orderService, never()).cancel(eq(orderId), any());
+    }
+
+    @Test
+    void 부르미취소_주문의_부르미가_아니면_NOT_ORDER_BOORMI_예외() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+        UUID otherBoormiId = UUID.randomUUID();
+
+        Throwable thrown = catchThrowable(() -> deliveryService.cancelByBoormi(orderId, otherBoormiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.NOT_ORDER_BOORMI);
+        assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
+        verify(orderService, never()).cancel(eq(orderId), any());
+    }
+
+    @Test
+    void 취소가_거부되면_주문상태를_바꾸지_않는다() {
+        for (Function<UUID, DeliveryStatusResponseDto> cancelOperation : cancelOperations()) {
+            UUID orderId = registerDelivery(DELIVERING); // 배달중이면 취소 불가
+
+            catchThrowable(() -> cancelOperation.apply(orderId));
+
+            verify(orderService, never()).cancel(eq(orderId), any());
+        }
     }
 
     // ===== 사진 인증 =====

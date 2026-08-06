@@ -1,4 +1,4 @@
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Button,
   MapCard,
@@ -7,15 +7,43 @@ import {
   TopBar,
 } from "@/shared/ui";
 import { useActiveDelivery } from "@/shared/store/deliveryStore";
+import { DeliveryStatusResponseDtoStatus } from "@/shared/api";
 import { DETAIL_STATUSES, type DetailStatus } from "./statuses";
+import { RealDeliveryTracking } from "./RealDeliveryTracking";
+
+/** URL `?status=` 문자열을 유효한 DeliveryCd로만 좁힌다(그 외/없음이면 undefined). */
+function parseStatusParam(
+  raw: string | null,
+): DeliveryStatusResponseDtoStatus | undefined {
+  if (raw && raw in DeliveryStatusResponseDtoStatus) {
+    return DeliveryStatusResponseDtoStatus[
+      raw as keyof typeof DeliveryStatusResponseDtoStatus
+    ];
+  }
+  return undefined;
+}
 
 /**
  * 드림 상세 화면(Figma node 191:802, 827, 849, 870).
  * 활성 배달 상태에 따라 문구·오버레이·액션이 바뀝니다(URL 미노출).
+ *
+ * 실 백엔드 모드: `?orderId=` 가 있으면 SSE로 실시간 추적하는 부르미 수령인 화면으로 동작한다.
+ * orderId 가 없으면 기존 mock 흐름(전역 스토어 구독)을 그대로 탄다.
  */
 export function DeliveryDetailScreen() {
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const orderId = params.get("orderId");
   const active = useActiveDelivery();
+
+  if (orderId) {
+    return (
+      <RealDeliveryTracking
+        orderId={orderId}
+        initialStatus={parseStatusParam(params.get("status"))}
+      />
+    );
+  }
 
   const detailStatus: DetailStatus =
     active?.status === "배송중" ? "배송중" : "픽업중";

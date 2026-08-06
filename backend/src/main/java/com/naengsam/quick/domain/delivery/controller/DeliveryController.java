@@ -55,24 +55,26 @@ public class DeliveryController {
         return deliveryService.pickupFinishByDreami(orderId, dreamiId, request.photoKey());
     }
 
-    @Operation(summary = "드리미의 픽업 취소", description = "픽업 과정에서 드리미가 취소한다.")
+    @Operation(summary = "드리미의 픽업 취소", description = "픽업 과정에서 드리미가 취소한다. 이 배달에 배정된 드리미 본인만 취소할 수 있다.")
     @PostMapping("/orders/{orderId}/cancel/dreami")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
-            codes = {"CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_NOT_FOUND",
+            codes = {"NOT_ASSIGNED_DREAMI", "CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_NOT_FOUND",
                     "DELIVERY_ALREADY_CANCELLED", "DELIVERY_ALREADY_COMPLETED"})
-    public DeliveryStatusResponseDto cancelByDreami(@PathVariable UUID orderId) {
-        return deliveryService.cancelByDreami(orderId);
+    public DeliveryStatusResponseDto cancelByDreami(@PathVariable UUID orderId, @LoginUser UUID dreamiId) {
+        return deliveryService.cancelByDreami(orderId, dreamiId);
     }
 
-    @Operation(summary = "부르미의 픽업 취소", description = "픽업 과정에서 부르미가 취소한다.")
+    @Operation(summary = "부르미의 픽업 취소", description = "픽업 과정에서 부르미가 취소한다. 이 주문을 접수한 부르미 본인만 취소할 수 있다.")
     @PostMapping("/orders/{orderId}/cancel/boormi")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
-            codes = {"CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_NOT_FOUND",
+            codes = {"NOT_ORDER_BOORMI", "CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_NOT_FOUND",
                     "DELIVERY_ALREADY_CANCELLED", "DELIVERY_ALREADY_COMPLETED"})
-    public DeliveryStatusResponseDto cancelByBoormi(@PathVariable UUID orderId) {
-        return deliveryService.cancelByBoormi(orderId);
+    public DeliveryStatusResponseDto cancelByBoormi(@PathVariable UUID orderId, @LoginUser UUID boormiId) {
+        return deliveryService.cancelByBoormi(orderId, boormiId);
     }
 
+    // TODO: 관리자 권한(role) 검증 필요. 현재 코드베이스에 admin role 개념이 없어 요청자 신원을 검증하지 못한다.
+    //       role 시스템 도입 후 @LoginUser + 관리자 역할 확인을 추가해야 한다(그 전까지는 노출 주의).
     @Operation(summary = "관리자의 픽업 취소", description = "픽업 과정에서 관리자가 취소한다.")
     @PostMapping("/orders/{orderId}/cancel/admin")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,

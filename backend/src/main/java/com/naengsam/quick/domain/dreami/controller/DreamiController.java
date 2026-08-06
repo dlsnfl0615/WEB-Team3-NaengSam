@@ -7,7 +7,9 @@ import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.service.DreamiService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
+import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
@@ -46,8 +48,9 @@ public class DreamiController {
             description = "드리미가 콜 수신 가능한 온라인 상태로 전환하고 현재 위치를 등록한다. 온라인 상태의 드리미에게만 주변 콜이 노출된다.")
     @PostMapping("/status/online")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = DreamiErrorCode.class, codes = {"NOT_FOUND", "NOT_APPROVED", "ALREADY_HAS_ACTIVE_ORDER"})
     public void goOnline(@LoginUser UUID dreamiId, @Valid @RequestBody DreamiOnlineRequest request) {
-        matchingService.registerDreami(dreamiId, new GeoPoint(request.latitude(), request.longitude()));
+        dreamiService.goOnline(dreamiId, new GeoPoint(request.latitude(), request.longitude()));
     }
 
     @Operation(summary = "드리미 오프라인 전환", description = "드리미가 콜 수신 불가능한 오프라인 상태로 전환한다.")
@@ -57,6 +60,23 @@ public class DreamiController {
         matchingService.removeDreami(dreamiId);
     }
 
+    @Operation(summary = "드리미가 제안 수락", description = "로그인한 드리미에게 온 제안을 수락한다.")
+    @PostMapping("/offers/{offerId}/accept")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
+    public void acceptOffer(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
+        dreamiService.acceptOffer(offerId, dreamiId);
+    }
+
+    @Operation(summary = "드리미가 제안 거절", description = "로그인한 드리미에게 온 제안을 거절한다.")
+    @PostMapping("/offers/{offerId}/reject")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
+    public void rejectOffer(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
+        dreamiService.rejectOffer(offerId, dreamiId);
+    }
+
     @Operation(summary = "주변 콜 리스트 조회",
             description = "내 위치·동선 기준으로 콜을 정렬해 리스트/지도뷰로 제공하며 예상 수익·소요시간을 함께 표시한다.")
     @PostMapping("/calls/nearby")
@@ -64,5 +84,13 @@ public class DreamiController {
     @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
     public List<NearbyCallDto> findNearbyCalls(@Valid @RequestBody NearbyOrderRequest request) {
         return dreamiService.findNearbyCalls(request);
+    }
+
+    @Operation(summary = "현재 수행 중인 배달 카드 조회", description = "드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다.")
+    @GetMapping("/deliveries/current/card")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
+    public OrderSummaryDto findCurrentDeliveryCard(@LoginUser UUID dreamiId) {
+        return dreamiService.findCurrentDeliveryCard(dreamiId);
     }
 }
