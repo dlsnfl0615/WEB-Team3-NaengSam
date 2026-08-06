@@ -15,6 +15,8 @@ import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
+import com.naengsam.quick.domain.matching.model.WaitingDreami;
+import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.LocalDateTime;
@@ -78,18 +80,18 @@ class MatchingServiceTest {
                 .allMatch(offer ->
                         offer.status() == MatchOfferStatus.OFFERED);
 
-        Map<UUID, MatchingService.WaitingDreami> dreamiMap = getDreamiMap();
+        Map<UUID, WaitingDreami> dreamiMap = getDreamiMap();
 
         long proposedCount = dreamiMap.values().stream()
                 .filter(dreami ->
                         dreami.status() ==
-                                MatchingService.WaitingDreamiStatus.PROPOSED)
+                                WaitingDreamiStatus.PROPOSED)
                 .count();
 
         long matchingCount = dreamiMap.values().stream()
                 .filter(dreami ->
                         dreami.status() ==
-                                MatchingService.WaitingDreamiStatus.MATCHING)
+                                WaitingDreamiStatus.MATCHING)
                 .count();
 
         assertThat(proposedCount).isEqualTo(3);
@@ -117,7 +119,7 @@ class MatchingServiceTest {
 
         MatchOffer acceptedOffer = offers.getFirst();
 
-        MatchingService.WaitingDreami acceptedDreami =
+        WaitingDreami acceptedDreami =
                 getDreamiMap().get(acceptedOffer.dreamiId());
 
         // when
@@ -139,7 +141,7 @@ class MatchingServiceTest {
 
         assertThat(acceptedDreami.status())
                 .isEqualTo(
-                        MatchingService.WaitingDreamiStatus.PROPOSED
+                        WaitingDreamiStatus.PROPOSED
                 );
 
         assertThat(offers)
@@ -148,7 +150,7 @@ class MatchingServiceTest {
                 .extracting(MatchOffer::dreamiId)
                 .allMatch(dreamiId ->
                         getDreamiMap().get(dreamiId).status()
-                                == MatchingService.WaitingDreamiStatus.MATCHING
+                                == WaitingDreamiStatus.MATCHING
                 );
     }
 
@@ -296,7 +298,7 @@ class MatchingServiceTest {
 
         // 원래라면 PROPOSED 상태라 다음 매칭 후보에서 제외되지만, 드리미 상태 제한이 아직 없다는 것을 보여주기 위해
         // 공개 API(markMatching)로 다시 MATCHING 상태로 되돌린다.
-        MatchingService.WaitingDreami dreami = getDreamiMap().get(dreamiId);
+        WaitingDreami dreami = getDreamiMap().get(dreamiId);
         dreami.markMatching();
 
         // when
@@ -326,7 +328,7 @@ class MatchingServiceTest {
 
         MatchOffer acceptedOffer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
-        MatchingService.WaitingDreami acceptedDreami =
+        WaitingDreami acceptedDreami =
                 getDreamiMap().get(acceptedOffer.dreamiId());
 
         // when (수락되지 않은 나머지 오퍼가 OFFERED -> WITHDRAWN 으로 바뀜)
@@ -484,7 +486,7 @@ class MatchingServiceTest {
         assertThat(group.status()).isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
         assertThat(group.rematchRequired()).isTrue();
         assertThat(getDreamiMap().get(dreamiId).status())
-                .isEqualTo(MatchingService.WaitingDreamiStatus.MATCHING);
+                .isEqualTo(WaitingDreamiStatus.MATCHING);
     }
 
     @Test
@@ -575,7 +577,7 @@ class MatchingServiceTest {
 
         // then
         assertThat(getDreamiMap().get(dreamiId).status())
-                .isEqualTo(MatchingService.WaitingDreamiStatus.MATCHING);
+                .isEqualTo(WaitingDreamiStatus.MATCHING);
 
         MatchingService.OrderOfferGroup group = getOrderOfferGroups().get(orderId);
         assertThat(group.offers())
@@ -807,7 +809,7 @@ class MatchingServiceTest {
                 .extracting(MatchOffer::dreamiId)
                 .containsExactly(newDreamiId);
         assertThat(getDreamiMap().get(newDreamiId).status())
-                .isEqualTo(MatchingService.WaitingDreamiStatus.PROPOSED);
+                .isEqualTo(WaitingDreamiStatus.PROPOSED);
         verify(sseService).send(eq(newDreamiId), eq(MatchingEventType.OFFER_POPUP), any());
     }
 
@@ -864,7 +866,7 @@ class MatchingServiceTest {
 
         // 거절자는 다시 MATCHING 상태로 돌아오지만, 재오퍼 대상에서는 제외되어야 한다.
         assertThat(getDreamiMap().get(rejectedDreamiId).status())
-                .isEqualTo(MatchingService.WaitingDreamiStatus.MATCHING);
+                .isEqualTo(WaitingDreamiStatus.MATCHING);
 
         // when (다른 대기 드리미가 없으므로 재매칭 대기가 유지되어야 한다)
         MatchingService.OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -902,9 +904,9 @@ class MatchingServiceTest {
                 new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offer));
         group.closeForRematch();
         getOrderOfferGroups().put(orderId, group);
-        getDreamiMap().put(dreamiId, new MatchingService.WaitingDreami(
+        getDreamiMap().put(dreamiId, new WaitingDreami(
                 dreamiId, mock(GeoPoint.class),
-                MatchingService.WaitingDreamiStatus.MATCHING, LocalDateTime.now()));
+                WaitingDreamiStatus.MATCHING, LocalDateTime.now()));
 
         // when
         matchingService.applyCancelOrderByBoormi(orderId);
@@ -914,7 +916,7 @@ class MatchingServiceTest {
         assertThat(group.rematchRequired()).isTrue();
         assertThat(offer.status()).isEqualTo(MatchOfferStatus.OFFERED);
         assertThat(getDreamiMap().get(dreamiId).status())
-                .isEqualTo(MatchingService.WaitingDreamiStatus.MATCHING);
+                .isEqualTo(WaitingDreamiStatus.MATCHING);
     }
 
     @Test
@@ -938,9 +940,9 @@ class MatchingServiceTest {
                 orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offerA, offerB, offerC));
         getOrderOfferGroups().put(orderId, group);
         for (UUID dreamiId : List.of(dreamiIdA, dreamiIdB, dreamiIdC)) {
-            getDreamiMap().put(dreamiId, new MatchingService.WaitingDreami(
+            getDreamiMap().put(dreamiId, new WaitingDreami(
                     dreamiId, mock(GeoPoint.class),
-                    MatchingService.WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
+                    WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
         }
 
         // when
@@ -951,7 +953,7 @@ class MatchingServiceTest {
                 .allMatch(offer -> offer.status() == MatchOfferStatus.WITHDRAWN);
         assertThat(List.of(dreamiIdA, dreamiIdB, dreamiIdC))
                 .allMatch(dreamiId -> getDreamiMap().get(dreamiId).status()
-                        == MatchingService.WaitingDreamiStatus.MATCHING);
+                        == WaitingDreamiStatus.MATCHING);
         assertThat(group.status()).isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
         assertThat(group.rematchRequired()).isFalse();
     }
@@ -977,9 +979,9 @@ class MatchingServiceTest {
                 orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offerA, offerB, offerC));
         getOrderOfferGroups().put(orderId, group);
         for (UUID dreamiId : List.of(dreamiIdA, dreamiIdB, dreamiIdC)) {
-            getDreamiMap().put(dreamiId, new MatchingService.WaitingDreami(
+            getDreamiMap().put(dreamiId, new WaitingDreami(
                     dreamiId, mock(GeoPoint.class),
-                    MatchingService.WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
+                    WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
         }
 
         // when
@@ -991,7 +993,7 @@ class MatchingServiceTest {
         assertThat(offerC.status()).isEqualTo(MatchOfferStatus.WITHDRAWN);
         assertThat(List.of(dreamiIdA, dreamiIdB, dreamiIdC))
                 .allMatch(dreamiId -> getDreamiMap().get(dreamiId).status()
-                        == MatchingService.WaitingDreamiStatus.MATCHING);
+                        == WaitingDreamiStatus.MATCHING);
         assertThat(group.status()).isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
         assertThat(group.rematchRequired()).isFalse();
     }
@@ -1038,9 +1040,9 @@ class MatchingServiceTest {
         MatchingService.OrderOfferGroup group = new MatchingService.OrderOfferGroup(
                 orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offer));
         getOrderOfferGroups().put(orderId, group);
-        getDreamiMap().put(dreamiId, new MatchingService.WaitingDreami(
+        getDreamiMap().put(dreamiId, new WaitingDreami(
                 dreamiId, mock(GeoPoint.class),
-                MatchingService.WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
+                WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
 
         // when
         matchingService.applyCancelOrderByBoormi(orderId);
@@ -1049,7 +1051,7 @@ class MatchingServiceTest {
         // then
         assertThat(offer.status()).isEqualTo(MatchOfferStatus.WITHDRAWN);
         assertThat(getDreamiMap().get(dreamiId).status())
-                .isEqualTo(MatchingService.WaitingDreamiStatus.MATCHING);
+                .isEqualTo(WaitingDreamiStatus.MATCHING);
         assertThat(group.status()).isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
         assertThat(group.rematchRequired()).isFalse();
     }
@@ -1223,8 +1225,8 @@ class MatchingServiceTest {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<UUID, MatchingService.WaitingDreami> getDreamiMap() {
-        return (Map<UUID, MatchingService.WaitingDreami>)
+    private Map<UUID, WaitingDreami> getDreamiMap() {
+        return (Map<UUID, WaitingDreami>)
                 ReflectionTestUtils.getField(
                         matchingService,
                         "dreamiMap"

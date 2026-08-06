@@ -8,6 +8,8 @@ import static org.mockito.Mockito.when;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
+import com.naengsam.quick.domain.matching.model.WaitingDreami;
+import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
@@ -190,7 +192,7 @@ class MatchingServiceConcurrencyTest {
         assertThat(matchingService.findOrderOfferGroup(orderId).orElseThrow().status())
                 .isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
         assertThat(getDreamiMap().get(dreamiId).status())
-                .isEqualTo(MatchingService.WaitingDreamiStatus.MATCHING);
+                .isEqualTo(WaitingDreamiStatus.MATCHING);
     }
 
     @Test
@@ -327,8 +329,8 @@ class MatchingServiceConcurrencyTest {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<UUID, MatchingService.WaitingDreami> getDreamiMap() {
-        return (Map<UUID, MatchingService.WaitingDreami>)
+    private Map<UUID, WaitingDreami> getDreamiMap() {
+        return (Map<UUID, WaitingDreami>)
                 ReflectionTestUtils.getField(matchingService, "dreamiMap");
     }
 }

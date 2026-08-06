@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.matching.service;
 
+import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.event.BoormiRejectedPayload;
 import com.naengsam.quick.domain.matching.event.DreamiInfoPayload;
@@ -9,7 +10,8 @@ import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
-import com.naengsam.quick.domain.delivery.service.DeliveryService;
+import com.naengsam.quick.domain.matching.model.WaitingDreami;
+import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
@@ -77,9 +79,8 @@ public class MatchingService {
     }
 
     /**
-     * 매칭 시작 후(OPEN) 아직 확정되지 않은, 대기 중인 주문 목록을 조회한다. 한 부르미가 여러 주문을 동시에 가질 수 있으므로 부르미 단위가 아니라 주문 단위로 도출한다.
-     * 별도 등록 큐 없이 {@link #startMatching}/{@link #cancelOrderByBoormi}로만 대기 상태가 결정되므로, 진행 중인 {@link OrderOfferGroup}에서
-     * 직접 도출한다.
+     * 매칭 시작 후(OPEN) 아직 확정되지 않은, 대기 중인 주문 목록을 조회한다. 한 부르미가 여러 주문을 동시에 가질 수 있으므로 부르미 단위가 아니라 주문 단위로 도출한다. 별도 등록 큐 없이
+     * {@link #startMatching}/{@link #cancelOrderByBoormi}로만 대기 상태가 결정되므로, 진행 중인 {@link OrderOfferGroup}에서 직접 도출한다.
      */
     public List<WaitingOrder> waitingOrders() {
         return orderOfferGroupsByOrderId.values().stream()
@@ -578,17 +579,6 @@ public class MatchingService {
 
     // ────────────────────────────── 조회 헬퍼 ──────────────────────────────
 
-    public enum WaitingDreamiStatus {
-        /**
-         * 지금 매칭 중
-         */
-        MATCHING,
-        /**
-         * 지금 Match Offer 방 안에 들어감
-         */
-        PROPOSED
-    }
-
     public enum OrderOfferGroupStatus {
         /**
          * 제안 응답 대기 중 (드리미 수락 후 부르미 확인 대기 포함)
@@ -602,59 +592,6 @@ public class MatchingService {
          * 더 이상 유효한 제안이 없음. rematchRequired로 재매칭 필요 여부를 판단한다.
          */
         CLOSED
-    }
-
-    /**
-     * 기다리고 있는 드리미 (콜 대기중인 드리미). 마찬가지로 status가 바뀌므로 가변 클래스
-     */
-    public static final class WaitingDreami {
-        private final UUID dreamiId;
-        private final GeoPoint location;
-        // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
-        private volatile WaitingDreamiStatus status;
-        private volatile LocalDateTime updatedAt;
-
-        public WaitingDreami(UUID dreamiId, GeoPoint location,
-                             WaitingDreamiStatus status, LocalDateTime updatedAt) {
-            this.dreamiId = dreamiId;
-            this.location = location;
-            this.status = status;
-            this.updatedAt = updatedAt;
-        }
-
-        public UUID dreamiId() {
-            return dreamiId;
-        }
-
-        public GeoPoint location() {
-            return location;
-        }
-
-        public WaitingDreamiStatus status() {
-            return status;
-        }
-
-        public LocalDateTime updatedAt() {
-            return updatedAt;
-        }
-
-        public void markProposed() {
-            requireStatus(WaitingDreamiStatus.MATCHING);
-            this.status = WaitingDreamiStatus.PROPOSED;
-            this.updatedAt = LocalDateTime.now();
-        }
-
-        public void markMatching() {
-            this.status = WaitingDreamiStatus.MATCHING;
-            this.updatedAt = LocalDateTime.now();
-        }
-
-        private void requireStatus(WaitingDreamiStatus expected) {
-            if (this.status != expected) {
-                throw new IllegalStateException(
-                        "잘못된 상태 전이입니다: dreamiId=" + dreamiId + ", 현재상태=" + status + ", 기대상태=" + expected);
-            }
-        }
     }
 
     /**
