@@ -1,10 +1,6 @@
 package com.naengsam.quick.domain.boormi.controller;
 
-import com.naengsam.quick.domain.boormi.dto.ConfirmDreamiRequest;
-import com.naengsam.quick.domain.boormi.dto.ExpectedValueDto;
-import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
-import com.naengsam.quick.domain.boormi.dto.OrderRequest;
-import com.naengsam.quick.domain.boormi.dto.RejectDreamiRequest;
+import com.naengsam.quick.domain.boormi.dto.*;
 import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
@@ -17,17 +13,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @Slf4j
 @RestController
@@ -85,7 +75,7 @@ public class BoormiController {
     @ApiErrorCodes(enumClass = OrderErrorCode.class,
             codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER", "INVALID_DREAMI_CONFIRMATION", "NO_DREAMI_TO_CONFIRM"})
     public void confirmDreami(@LoginUser UUID boormiId, @PathVariable UUID orderId,
-            @Valid @RequestBody ConfirmDreamiRequest request) {
+                              @Valid @RequestBody ConfirmDreamiRequest request) {
         boormiService.confirmDreami(boormiId, orderId, request.offerId());
     }
 
@@ -94,10 +84,10 @@ public class BoormiController {
     @PostMapping("/calls/{orderId}/reject-dreami")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = OrderErrorCode.class,
-            codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER", "INVALID_DREAMI_REJECTION"})
+            codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER", "CANNOT_CANCEL"})
     @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
     public void rejectDreami(@LoginUser UUID boormiId, @PathVariable UUID orderId,
-            @Valid @RequestBody RejectDreamiRequest request) {
+                             @Valid @RequestBody RejectDreamiRequest request) {
         boormiService.rejectDreami(boormiId, orderId, request.offerId());
     }
 }
