@@ -114,7 +114,7 @@ public class Orders {
      * Matching Service 의 기존 객체 compatibility 를 위한 임시 생성자. 좌표만으로 매칭 대상 주문을 만든다(영속화하지 않음).
      */
     public static Orders create(UUID orderId, UUID boormiId,
-                                GeoPoint origin, GeoPoint destination) {
+            GeoPoint origin, GeoPoint destination) {
         Orders order = new Orders();
         order.orderId = orderId;
         order.boormiId = boormiId;
@@ -161,6 +161,14 @@ public class Orders {
     public void assignDreamiTest(UUID dreamiId) {
         this.dreamiId = dreamiId;
         this.orderCd = OrderCd.IN_PROGRESS;
+    }
+
+    /**
+     * 부르미가 확정 대기 중인 드리미를 거절한다. 배정을 비우고 다시 매칭 대기(MATCHING)로 되돌린다(dirty checking 반영). 검증은 서비스에서 수행한다.
+     */
+    public void rejectDreami() {
+        this.dreamiId = null;
+        this.orderCd = OrderCd.MATCHING;
     }
 
     public void updateAddresses(Addresses addresses) {
