@@ -10,8 +10,10 @@ export interface CallCardProps {
   /** 층 이동 경로(예: "24F → 12F") */
   route: string;
   pickupDistance: string;
-  dropoffDistance: string;
-  itemType: string;
+  /** 목적지 거리. 값이 없으면 항목을 숨긴다. */
+  dropoffDistance?: string;
+  /** 물품 유형. 값이 없으면 항목을 숨긴다. */
+  itemType?: string;
   onReject: () => void;
   onAccept: () => void;
 }
@@ -47,16 +49,20 @@ export function CallCard({
 
       <div className="flex items-start">
         <CallStat label="픽업 거리" value={pickupDistance} />
-        <CallStat
-          label="목적지 거리"
-          value={dropoffDistance}
-          className="ml-6"
-        />
-        <CallStat
-          label="물품 유형"
-          value={itemType}
-          className="ml-auto text-right"
-        />
+        {dropoffDistance && (
+          <CallStat
+            label="목적지 거리"
+            value={dropoffDistance}
+            className="ml-6"
+          />
+        )}
+        {itemType && (
+          <CallStat
+            label="물품 유형"
+            value={itemType}
+            className="ml-auto text-right"
+          />
+        )}
       </div>
 
       <div className="flex gap-2">

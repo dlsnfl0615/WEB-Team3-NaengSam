@@ -77,30 +77,6 @@ export interface Wallet {
   transactions: WalletTransaction[];
 }
 
-/** 부르미에게 도착하는 드리미 오퍼(매칭중 팝업). matchingService 응답. */
-export interface Offer {
-  id: string;
-  name: string;
-  rating: number;
-  /** 누적 배송 건수. */
-  count: number;
-  /** 픽업까지 남은 거리(예: "120m"). */
-  distance: string;
-}
-
-/** 드리미에게 노출되는 대기 콜. matchingService 응답. */
-export interface Call {
-  id: string;
-  code: string;
-  price: number;
-  place: string;
-  route: string;
-  pickupDistance: string;
-  dropoffDistance: string;
-  itemType: string;
-  icon: IconName;
-}
-
 // ── 요청 DTO (REST 바디 모양) ──
 
 export interface LoginRequest {

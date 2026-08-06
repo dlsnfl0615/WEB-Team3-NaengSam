@@ -8,6 +8,13 @@ import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.event.NotificationErrorPayload;
 import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
+import com.naengsam.quick.domain.matching.model.MatchOffer;
+import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
+import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
+import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
+import com.naengsam.quick.domain.matching.model.WaitingDreami;
+import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
+import com.naengsam.quick.domain.matching.model.WaitingOrder;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
@@ -21,7 +28,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -396,20 +402,23 @@ public class MatchingService {
     void applyRejectByBoormi(UUID offerId) {
         log.debug("부르미 거절 액션 실행: offerId={}", offerId);
 
-        findOffer(offerId).ifPresentOrElse(
-                matchOffer -> {
-                    matchOffer.rejectByBoormi();
+        // 해당 match가 PENDING_BOORMI_CONFIRMATION 상태가 아니라면 이미 수락/만료/취소 등으로 처리가 된거임
+        findOffer(offerId)
+                .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION)
+                .ifPresentOrElse(
+                        matchOffer -> {
+                            matchOffer.rejectByBoormi();
 
-                    // 거절당한 드리미에게 부르미가 거절했음을 알리고, 다시 배달가능 상태로 변경
-                    sseService.send(matchOffer.dreamiId(), MatchingEventType.BOORMI_REJECTED,
-                            new BoormiRejectedPayload(matchOffer.offerId(), matchOffer.orderId()));
-                    findDreami(matchOffer.dreamiId())
-                            .ifPresent(WaitingDreami::markMatching);
+                            // 거절당한 드리미에게 부르미가 거절했음을 알리고, 다시 배달가능 상태로 변경
+                            sseService.send(matchOffer.dreamiId(), MatchingEventType.BOORMI_REJECTED,
+                                    new BoormiRejectedPayload(matchOffer.offerId(), matchOffer.orderId()));
+                            findDreami(matchOffer.dreamiId())
+                                    .ifPresent(WaitingDreami::markMatching);
 
-                    closeGroupForRematch(matchOffer.orderId());
-                },
-                () -> log.debug("존재하지 않는 제안 부르미 거절 요청, 무시: offerId={}", offerId)
-        );
+                            closeGroupForRematch(matchOffer.orderId());
+                        },
+                        () -> log.debug("거절 가능한 상태가 아닌 제안 부르미 거절 요청, 무시: offerId={}", offerId)
+                );
     }
 
     public void expireDreamiOffer(UUID offerId) {
@@ -470,6 +479,13 @@ public class MatchingService {
      */
     public Optional<UUID> findDreamiIdByOfferId(UUID offerId) {
         return findOffer(offerId).map(MatchOffer::dreamiId);
+    }
+
+    /**
+     * offerId 로 해당 제안이 속한 주문을 조회한다. 드리미 수락 시 ORDERS.order_cd 반영에 사용한다. 해당 오퍼가 없으면 empty.
+     */
+    public Optional<UUID> findOrderIdByOfferId(UUID offerId) {
+        return findOffer(offerId).map(MatchOffer::orderId);
     }
 
     Optional<WaitingDreami> findDreami(UUID dreamiId) {
@@ -571,293 +587,5 @@ public class MatchingService {
 
     private void proceedToDelivery(MatchOffer matchOffer, UUID boormiId) {
         deliveryService.startDelivery(matchOffer.orderId(), matchOffer.dreamiId(), boormiId);
-    }
-
-    // ────────────────────────────── 조회 헬퍼 ──────────────────────────────
-
-    public enum MatchOfferStatus {
-        /**
-         * 드리미에게 제안이 전달되어 응답 대기 중
-         */
-        OFFERED,
-        /**
-         * 해당 드리미가 수락하여 부르미의 승낙을 대기중
-         */
-        PENDING_BOORMI_CONFIRMATION,
-        /**
-         * 해당 드리미가 수락했고 부르미도 수락해 매칭 후보로 확정됨
-         */
-        MATCHED,
-        /**
-         * 해당 부르미가 명시적으로 거절함
-         */
-        BOORMI_REJECTED,
-        /**
-         * 해당 드리미가 명시적으로 거절함
-         */
-        DREAMI_REJECTED,
-        /**
-         * 제한 시간 내 부르미가 응답하지 않아 만료됨
-         */
-        BOORMI_EXPIRED,
-        /**
-         * 제한 시간 내 드리미가 응답하지 않아 만료됨
-         */
-        DREAMI_EXPIRED,
-        /**
-         * 다른 드리미가 먼저 수락했거나 서버가 제안을 회수함
-         */
-        WITHDRAWN
-    }
-
-    public enum WaitingDreamiStatus {
-        /**
-         * 지금 매칭 중
-         */
-        MATCHING,
-        /**
-         * 지금 Match Offer 방 안에 들어감
-         */
-        PROPOSED
-    }
-
-    public enum OrderOfferGroupStatus {
-        /**
-         * 제안 응답 대기 중 (드리미 수락 후 부르미 확인 대기 포함)
-         */
-        OPEN,
-        /**
-         * 드리미+부르미 모두 수락하여 매칭 확정
-         */
-        MATCHED,
-        /**
-         * 더 이상 유효한 제안이 없음. rematchRequired로 재매칭 필요 여부를 판단한다.
-         */
-        CLOSED
-    }
-
-    /**
-     * status가 계속 바뀌므로 record가 아닌 가변 클래스로 변경. (record로 유지하려면 withStatus()로 새 인스턴스를 만들어 맵에 다시 넣어야 함)
-     */
-    public static final class MatchOffer {
-        private final UUID offerId;
-        private final UUID orderId;
-        private final UUID dreamiId;
-        // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
-        private volatile MatchOfferStatus status;
-
-        public MatchOffer(UUID offerId, UUID orderId, UUID dreamiId, MatchOfferStatus status) {
-            this.offerId = offerId;
-            this.orderId = orderId;
-            this.dreamiId = dreamiId;
-            this.status = status;
-        }
-
-        public UUID offerId() {
-            return offerId;
-        }
-
-        public UUID orderId() {
-            return orderId;
-        }
-
-        public UUID dreamiId() {
-            return dreamiId;
-        }
-
-        public MatchOfferStatus status() {
-            return status;
-        }
-
-        /**
-         * 재제안(같은 드리미에게 다시 제안) 대상에서 제외해야 하는지 여부. 드리미가 명시적으로 거절했거나 응답 timeout(DREAMI_EXPIRED)인 경우는 다시 제안하지 않는다. 타의로
-         * 회수됐거나(WITHDRAWN) 부르미 응답 timeout(BOORMI_EXPIRED)인 경우는 드리미 본인의 잘못이 아니므로 재제안을 허용한다. 아직 진행 중이거나 이미 확정된 오퍼는 당연히
-         * 제외한다.
-         */
-        public boolean shouldExcludeFromRematch() {
-            return switch (status) {
-                case DREAMI_REJECTED, BOORMI_REJECTED, DREAMI_EXPIRED -> true;
-                case WITHDRAWN, BOORMI_EXPIRED -> false;
-                case OFFERED, PENDING_BOORMI_CONFIRMATION, MATCHED -> true;
-            };
-        }
-
-        public void acceptByDreami() {
-            requireStatus(MatchOfferStatus.OFFERED);
-            this.status = MatchOfferStatus.PENDING_BOORMI_CONFIRMATION;
-        }
-
-        public void rejectByDreami() {
-            requireStatus(MatchOfferStatus.OFFERED);
-            this.status = MatchOfferStatus.DREAMI_REJECTED;
-        }
-
-        public void withdraw() {
-            requireStatus(MatchOfferStatus.OFFERED);
-            this.status = MatchOfferStatus.WITHDRAWN;
-        }
-
-        public void confirmByBoormi() {
-            requireStatus(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
-            this.status = MatchOfferStatus.MATCHED;
-        }
-
-        public void rejectByBoormi() {
-            requireStatus(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
-            this.status = MatchOfferStatus.BOORMI_REJECTED;
-        }
-
-        public void expireByDreami() {
-            requireStatus(MatchOfferStatus.OFFERED);
-            this.status = MatchOfferStatus.DREAMI_EXPIRED;
-        }
-
-        public void expireByBoormi() {
-            requireStatus(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
-            this.status = MatchOfferStatus.BOORMI_EXPIRED;
-        }
-
-        private void requireStatus(MatchOfferStatus expected) {
-            if (this.status != expected) {
-                throw new IllegalStateException(
-                        "잘못된 상태 전이입니다: offerId=" + offerId + ", 현재상태=" + status + ", 기대상태=" + expected);
-            }
-        }
-    }
-
-    /**
-     * 기다리고 있는 드리미 (콜 대기중인 드리미). 마찬가지로 status가 바뀌므로 가변 클래스
-     */
-    public static final class WaitingDreami {
-        private final UUID dreamiId;
-        private final GeoPoint location;
-        // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
-        private volatile WaitingDreamiStatus status;
-        private volatile LocalDateTime updatedAt;
-
-        public WaitingDreami(UUID dreamiId, GeoPoint location,
-                             WaitingDreamiStatus status, LocalDateTime updatedAt) {
-            this.dreamiId = dreamiId;
-            this.location = location;
-            this.status = status;
-            this.updatedAt = updatedAt;
-        }
-
-        public UUID dreamiId() {
-            return dreamiId;
-        }
-
-        public GeoPoint location() {
-            return location;
-        }
-
-        public WaitingDreamiStatus status() {
-            return status;
-        }
-
-        public LocalDateTime updatedAt() {
-            return updatedAt;
-        }
-
-        public void markProposed() {
-            requireStatus(WaitingDreamiStatus.MATCHING);
-            this.status = WaitingDreamiStatus.PROPOSED;
-            this.updatedAt = LocalDateTime.now();
-        }
-
-        public void markMatching() {
-            this.status = WaitingDreamiStatus.MATCHING;
-            this.updatedAt = LocalDateTime.now();
-        }
-
-        private void requireStatus(WaitingDreamiStatus expected) {
-            if (this.status != expected) {
-                throw new IllegalStateException(
-                        "잘못된 상태 전이입니다: dreamiId=" + dreamiId + ", 현재상태=" + status + ", 기대상태=" + expected);
-            }
-        }
-    }
-
-    /**
-     * 대기 중인 주문(매칭 시작 후 아직 확정되지 않은 주문). 별도 등록 큐 없이 {@link OrderOfferGroup}에서 그대로 도출되는 값이라 불변으로 둔다.
-     */
-    public record WaitingOrder(UUID orderId, GeoPoint location) {
-    }
-
-    /**
-     * 한 주문에 대해 동시에 뿌린 제안 묶음("방"). 방 자체의 상태(OPEN/MATCHED/CLOSED)와 재매칭 필요 여부를 여기서 관리한다.
-     */
-    public static final class OrderOfferGroup {
-        private final UUID orderId;
-        private final UUID boormiId;
-        private final GeoPoint location;
-        private final List<MatchOffer> offers;
-        // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
-        private volatile OrderOfferGroupStatus status;
-        private volatile boolean rematchRequired;
-
-        public OrderOfferGroup(UUID orderId, UUID boormiId, GeoPoint location, List<MatchOffer> offers) {
-            this.orderId = orderId;
-            this.boormiId = boormiId;
-            this.location = location;
-            // 라운드마다 엔진 스레드가 append하는 동시에 다른 스레드가 offers()로 읽으므로,
-            // ArrayList가 아닌 CopyOnWriteArrayList로 보관해 순회/복사 중 경합을 피한다.
-            this.offers = new CopyOnWriteArrayList<>(offers);
-            this.status = OrderOfferGroupStatus.OPEN;
-            this.rematchRequired = false;
-        }
-
-        public UUID orderId() {
-            return orderId;
-        }
-
-        public UUID boormiId() {
-            return boormiId;
-        }
-
-        public GeoPoint location() {
-            return location;
-        }
-
-        public List<MatchOffer> offers() {
-            return List.copyOf(offers);
-        }
-
-        public OrderOfferGroupStatus status() {
-            return status;
-        }
-
-        public boolean rematchRequired() {
-            return rematchRequired;
-        }
-
-        /**
-         * 새 오퍼 라운드를 추가하며 방을 다시 진행중(OPEN) 상태로 되돌린다. 재매칭/최초 오퍼 모두 이 경로를 사용한다.
-         */
-        void addOffersAndOpen(List<MatchOffer> newOffers) {
-            this.offers.addAll(newOffers);
-            this.status = OrderOfferGroupStatus.OPEN;
-            this.rematchRequired = false;
-        }
-
-        void closeForRematch() {
-            this.status = OrderOfferGroupStatus.CLOSED;
-            this.rematchRequired = true;
-        }
-
-        /**
-         * 부르미가 직접 주문을 취소한 경우. 재매칭 대상이 아니므로 rematchRequired는 세우지 않는다.
-         */
-        void cancel() {
-            this.status = OrderOfferGroupStatus.CLOSED;
-            this.rematchRequired = false;
-        }
-
-        private void requireStatus(OrderOfferGroupStatus expected) {
-            if (this.status != expected) {
-                throw new IllegalStateException(
-                        "잘못된 상태 전이입니다: orderId=" + orderId + ", 현재상태=" + status + ", 기대상태=" + expected);
-            }
-        }
     }
 }

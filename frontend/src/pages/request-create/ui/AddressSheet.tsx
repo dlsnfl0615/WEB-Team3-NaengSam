@@ -8,7 +8,7 @@ import {
   TopBar,
 } from "@/shared/ui";
 import { api, isApiError, type AddressResponseDto } from "@/shared/api";
-import { loadDaumPostcode } from "./kakao";
+import { loadDaumPostcode } from "@/shared/lib";
 import type { Meeting } from "./types";
 
 export interface AddressValue {

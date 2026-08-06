@@ -5,9 +5,9 @@
  * OpenAPI spec version: v0
  */
 
-export type CheckUpload200 = {
-  isSuccess?: boolean;
-  code?: string;
-  message?: string;
-  result?: boolean;
-};
+export interface NearbyOrderRequest {
+  lat: number;
+  lng: number;
+  radius: number;
+  count: number;
+}

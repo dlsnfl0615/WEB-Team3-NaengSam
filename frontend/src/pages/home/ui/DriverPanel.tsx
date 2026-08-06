@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
@@ -8,10 +9,42 @@ import {
   StatCard,
 } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
+import { api, isApiError } from "@/shared/api";
+import {
+  ORDER_PROGRESS,
+  toBoormiOrder,
+  type BoormiOrder,
+} from "@/shared/store/boormiOrderAdapter";
 
-/** 홈 화면의 드리미(배송인) 본문. */
+/** 홈 화면의 드리미(배송인) 본문. 현재 수행 중인 배달을 실제 API로 조회한다. */
 export function DriverPanel() {
   const navigate = useNavigate();
+  const [current, setCurrent] = useState<BoormiOrder | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .findCurrentDeliveryCard()
+      .then(({ result }) => {
+        if (!alive) return;
+        setCurrent(result ? toBoormiOrder(result) : null);
+        setError(null);
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setError(
+          isApiError(e) ? e.message : "진행 중인 드림을 불러오지 못했어요.",
+        );
+      })
+      .finally(() => {
+        if (alive) setLoading(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   return (
     <>
@@ -30,16 +63,29 @@ export function DriverPanel() {
         </Button>
       </Card>
 
-      <SectionHeader title="진행 중인 드림" action="상세 보기" />
+      <SectionHeader title="진행 중인 드림" count={current ? 1 : 0} />
 
-      <DeliveryCard
-        icon="drink"
-        title="음료 배송 #B-882"
-        route="파르나스 24F → 12F"
-        status="픽업중"
-        progress={40}
-        onClick={() => navigate(ROUTES.deliveryTrack)}
-      />
+      {loading ? (
+        <p className="py-6 text-center text-sm text-muted">불러오는 중…</p>
+      ) : error ? (
+        <p className="py-6 text-center text-sm text-status-danger">{error}</p>
+      ) : current ? (
+        // 클릭 시 실제 배달 건의 추적 화면으로 이동한다(단계는 추적 화면이 복원).
+        <DeliveryCard
+          icon={current.icon}
+          title={current.title}
+          route={current.route}
+          status={current.statusLabel}
+          progress={ORDER_PROGRESS[current.statusLabel]}
+          onClick={() =>
+            navigate(`${ROUTES.deliveryTrack}?orderId=${current.id}`)
+          }
+        />
+      ) : (
+        <p className="py-6 text-center text-sm text-muted">
+          진행 중인 드림이 없어요.
+        </p>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <StatCard label="오늘의 수익" value="₩42,500" variant="accent" />

@@ -1,11 +1,14 @@
 package com.naengsam.quick.domain.delivery.controller;
 
+import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryPhotoRequest;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
+import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
+import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
@@ -29,6 +32,16 @@ import java.util.UUID;
 public class DeliveryController {
 
     private final DeliveryService deliveryService;
+
+    @Operation(summary = "배달 상세 조회", description = "추적 화면용. 출발지·도착지 좌표와 현재 드리미 위치를 반환한다.")
+    @ApiErrorCodes(enumClass = DeliveryErrorCode.class, codes = {"DELIVERY_NOT_FOUND"})
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
+    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"NOT_RESOURCE_OWNER"})
+    @GetMapping("/orders/{orderId}")
+    public DeliveryDetailResponseDto getDeliveryDetail(
+            @PathVariable UUID orderId, @LoginUser UUID userId) {
+        return deliveryService.getDeliveryDetail(orderId, userId);
+    }
 
     @Operation(summary = "드리미 위치 갱신",
             description = "드리미가 5~10초마다 호출해 현재 위치만 전달한다. 성공 시 ack만 응답하고, 상태 변경은 SSE로 전달된다. "
@@ -55,24 +68,26 @@ public class DeliveryController {
         return deliveryService.pickupFinishByDreami(orderId, dreamiId, request.photoKey());
     }
 
-    @Operation(summary = "드리미의 픽업 취소", description = "픽업 과정에서 드리미가 취소한다.")
+    @Operation(summary = "드리미의 픽업 취소", description = "픽업 과정에서 드리미가 취소한다. 이 배달에 배정된 드리미 본인만 취소할 수 있다.")
     @PostMapping("/orders/{orderId}/cancel/dreami")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
-            codes = {"CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_NOT_FOUND",
+            codes = {"NOT_ASSIGNED_DREAMI", "CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_NOT_FOUND",
                     "DELIVERY_ALREADY_CANCELLED", "DELIVERY_ALREADY_COMPLETED"})
-    public DeliveryStatusResponseDto cancelByDreami(@PathVariable UUID orderId) {
-        return deliveryService.cancelByDreami(orderId);
+    public DeliveryStatusResponseDto cancelByDreami(@PathVariable UUID orderId, @LoginUser UUID dreamiId) {
+        return deliveryService.cancelByDreami(orderId, dreamiId);
     }
 
-    @Operation(summary = "부르미의 픽업 취소", description = "픽업 과정에서 부르미가 취소한다.")
+    @Operation(summary = "부르미의 픽업 취소", description = "픽업 과정에서 부르미가 취소한다. 이 주문을 접수한 부르미 본인만 취소할 수 있다.")
     @PostMapping("/orders/{orderId}/cancel/boormi")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
-            codes = {"CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_NOT_FOUND",
+            codes = {"NOT_ORDER_BOORMI", "CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_NOT_FOUND",
                     "DELIVERY_ALREADY_CANCELLED", "DELIVERY_ALREADY_COMPLETED"})
-    public DeliveryStatusResponseDto cancelByBoormi(@PathVariable UUID orderId) {
-        return deliveryService.cancelByBoormi(orderId);
+    public DeliveryStatusResponseDto cancelByBoormi(@PathVariable UUID orderId, @LoginUser UUID boormiId) {
+        return deliveryService.cancelByBoormi(orderId, boormiId);
     }
 
+    // TODO: 관리자 권한(role) 검증 필요. 현재 코드베이스에 admin role 개념이 없어 요청자 신원을 검증하지 못한다.
+    //       role 시스템 도입 후 @LoginUser + 관리자 역할 확인을 추가해야 한다(그 전까지는 노출 주의).
     @Operation(summary = "관리자의 픽업 취소", description = "픽업 과정에서 관리자가 취소한다.")
     @PostMapping("/orders/{orderId}/cancel/admin")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,

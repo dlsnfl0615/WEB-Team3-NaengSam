@@ -14,6 +14,7 @@ import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.payment.service.WalletService;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
 import com.naengsam.quick.domain.user.dto.SignUpRequest;
 import com.naengsam.quick.domain.user.dto.UserDto;
@@ -51,6 +52,9 @@ class UserServiceTest {
     @Mock
     private SmsVerificationService smsVerificationService;
 
+    @Mock
+    private WalletService walletService;
+
     @InjectMocks
     private UserService userService;
 
@@ -72,7 +76,7 @@ class UserServiceTest {
     // ---------- signup ----------
 
     @Test
-    void 가입_정상이면_정규화된_번호로_저장하고_인증상태를_소비한다() {
+    void 가입_정상이면_정규화된_번호로_저장하고_지갑을_만들고_인증상태를_소비한다() {
         given(boormiRepository.existsByEmail("user@test.com")).willReturn(false);
         given(boormiRepository.existsByPhoneNumber("01012345678")).willReturn(false);
         given(boormiRepository.existsByName("홍길동")).willReturn(false);
@@ -83,6 +87,7 @@ class UserServiceTest {
         ArgumentCaptor<Boormi> captor = ArgumentCaptor.forClass(Boormi.class);
         verify(boormiRepository).save(captor.capture());
         assertThat(captor.getValue().getPhoneNumber()).isEqualTo("01012345678");
+        verify(walletService).createWallet(captor.getValue().getBoormiId());
         verify(smsVerificationService).consumeVerified("01012345678");
         assertThat(result.isDreami()).isFalse();
         assertThat(result.email()).isEqualTo("user@test.com");
@@ -132,6 +137,7 @@ class UserServiceTest {
 
         assertThat(errorCodeOf(thrown)).isEqualTo(AuthErrorCode.PHONE_NOT_VERIFIED);
         verify(boormiRepository, never()).save(any());
+        verify(walletService, never()).createWallet(any());
     }
 
     // ---------- login ----------

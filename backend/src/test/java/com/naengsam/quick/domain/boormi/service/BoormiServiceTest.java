@@ -18,6 +18,7 @@ import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
@@ -167,7 +168,9 @@ BoormiServiceTest {
 
         ArgumentCaptor<Orders> captor = ArgumentCaptor.forClass(Orders.class);
         then(orderService).should().createOrders(captor.capture());
-        then(paymentService).should().startPayment();
+        // 결제는 저장된 주문과 같은 orderId, 서버가 재계산한 요금으로 이뤄져야 한다
+        then(paymentService).should()
+                .payWithPoint(boormiId, captor.getValue().getOrderId(), 10100L);
         then(matchingService).should().startMatching(captor.getValue());
 
         Orders saved = captor.getValue();
@@ -310,7 +313,8 @@ BoormiServiceTest {
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
-        then(orderService).should(never()).cancel(any(), any());
+        then(orderService).should(never()).cancel(any(Orders.class), any());
+        then(paymentService).should(never()).refundByPoint(any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
@@ -325,7 +329,8 @@ BoormiServiceTest {
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.NOT_ORDER_OWNER);
-        then(orderService).should(never()).cancel(any(), any());
+        then(orderService).should(never()).cancel(any(Orders.class), any());
+        then(paymentService).should(never()).refundByPoint(any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
@@ -340,12 +345,13 @@ BoormiServiceTest {
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.CANNOT_CANCEL_AFTER_PICKUP);
-        then(orderService).should(never()).cancel(any(), any());
+        then(orderService).should(never()).cancel(any(Orders.class), any());
+        then(paymentService).should(never()).refundByPoint(any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
     @Test
-    void 취소_정상이면_주문취소와_매칭취소를_호출한다() {
+    void 취소_정상이면_주문취소와_포인트환불과_매칭취소를_호출한다() {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.MATCHING);
@@ -354,6 +360,7 @@ BoormiServiceTest {
         boormiService.unsubscribeOrder(boormiId, orderId);
 
         then(orderService).should().cancel(order, CancelerCd.BOORMI);
+        then(paymentService).should().refundByPoint(orderId);
         then(matchingService).should().cancelOrderByBoormi(orderId);
     }
 
@@ -428,5 +435,70 @@ BoormiServiceTest {
                 .isEqualTo(OrderErrorCode.NO_DREAMI_TO_CONFIRM);
         then(matchingRepository).should(never()).save(any());
         then(matchingService).should(never()).acceptByBoormi(any());
+    }
+
+    @Test
+    void 거절_정상이면_MATCHING으로_되돌리고_매칭엔진에_거절을_제출한다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID offerId = UUID.randomUUID();
+        Orders order = confirmableOrder(boormiId, UUID.randomUUID(),
+                OrderCd.PENDING_BOORMI_CONFIRMATION);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(matchingService.isBoormiOfferOwner(offerId, boormiId)).willReturn(true);
+
+        boormiService.rejectDreami(boormiId, orderId, offerId);
+
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.MATCHING);
+        assertThat(order.getDreamiId()).isNull();
+        then(matchingService).should().rejectByBoormi(offerId);
+        then(matchingRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 거절_비소유자면_NOT_ORDER_OWNER_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Orders order = order(UUID.randomUUID(), OrderCd.PENDING_BOORMI_CONFIRMATION);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.rejectDreami(boormiId, orderId, UUID.randomUUID()));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.NOT_ORDER_OWNER);
+        then(matchingService).should(never()).rejectByBoormi(any());
+    }
+
+    @Test
+    void 거절_상태가_PENDING_BOORMI_CONFIRMATION이_아니면_CANNOT_CANCEL_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.MATCHING);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.rejectDreami(boormiId, orderId, UUID.randomUUID()));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.CANNOT_CANCEL);
+        then(matchingService).should(never()).rejectByBoormi(any());
+    }
+
+    @Test
+    void 거절_제안이_본인_주문의_것이_아니면_NOT_OFFER_OWNER_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID offerId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(matchingService.isBoormiOfferOwner(offerId, boormiId)).willReturn(false);
+
+        Throwable thrown = catchThrowable(() -> boormiService.rejectDreami(boormiId, orderId, offerId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
+        then(matchingService).should(never()).rejectByBoormi(any());
     }
 }

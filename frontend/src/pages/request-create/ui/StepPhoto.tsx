@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Icon, TextField } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
-import { api, isApiError } from "@/shared/api";
+import { api, isApiError, GetPresignedUrlPurpose } from "@/shared/api";
 import type { RequestForm, UpdateForm } from "./types";
 
 const REQUEST_TAGS: RequestForm["requestTag"][] = [
@@ -30,7 +30,10 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
     setError(null);
     setUploading(true);
     try {
-      const { result } = await api.getPresignedUrl({ fileName: file.name });
+      const { result } = await api.getPresignedUrl({
+        fileName: file.name,
+        purpose: GetPresignedUrlPurpose.ORDER_ITEM_IMAGE,
+      });
       if (!result?.url || !result?.key)
         throw new Error("업로드 URL을 받지 못했어요.");
       // presigned URL로 S3에 직접 PUT(공통 axios 인스턴스 미사용).

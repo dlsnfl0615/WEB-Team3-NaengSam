@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { loadKakaoMaps } from "./kakao";
+import { loadKakaoMaps } from "@/shared/lib";
+import { pinImage } from "@/shared/ui/DeliveryRouteMap/pinImage";
 
 export interface KakaoMapProps {
   /** 출발지 도로명 주소(비면 마커 없음). */
@@ -11,19 +12,6 @@ export interface KakaoMapProps {
 /** 출발/도착 마커 색(theme.css 토큰 hex 재사용). */
 const PICKUP_COLOR = "#0d1b3d"; // navy-900
 const DROPOFF_COLOR = "#00b7a7"; // teal-500
-
-/** 지정한 색의 핀 모양 MarkerImage를 만든다(카카오 마커는 이미지 URI 필요). */
-function pinImage(kakao: typeof window.kakao, color: string) {
-  const svg =
-    `<svg xmlns="http://www.w3.org/2000/svg" width="30" height="40" viewBox="0 0 30 40">` +
-    `<path d="M15 0C6.716 0 0 6.716 0 15c0 10.5 15 25 15 25s15-14.5 15-25C30 6.716 23.284 0 15 0z" fill="${color}"/>` +
-    `<circle cx="15" cy="15" r="5.5" fill="#fff"/></svg>`;
-  return new kakao.maps.MarkerImage(
-    `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`,
-    new kakao.maps.Size(30, 40),
-    { offset: new kakao.maps.Point(15, 40) },
-  );
-}
 
 /**
  * 픽업/도착지 도로명 주소를 지오코딩해 마커로 표시하는 미니 지도.

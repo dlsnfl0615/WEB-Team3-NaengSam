@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { BottomNav, Button, ScreenShell, SegmentedToggle, TopBar } from "@/shared/ui";
+import {
+  BottomNav,
+  Button,
+  ScreenShell,
+  SegmentedToggle,
+  TopBar,
+} from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
-import type { Role } from "@/shared/lib/role/RoleContext";
+import { useRoleSwitch } from "@/shared/lib/role/useRoleSwitch";
 import { useDeliveryStore, useRoleLocked } from "@/shared/store/deliveryStore";
 import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
 import { ActivityItem } from "./ActivityItem";
@@ -21,7 +27,8 @@ import {
  */
 export function ActivityScreen() {
   const navigate = useNavigate();
-  const { role, setRole } = useRole();
+  const { role } = useRole();
+  const { onRoleChange, pending, error: roleError } = useRoleSwitch();
   const [filter, setFilter] = useState<ActivityFilter>("전체");
   const roleLocked = useRoleLocked();
   const isDriver = role === "드리미";
@@ -71,9 +78,13 @@ export function ActivityScreen() {
         <SegmentedToggle
           options={["부르미", "드리미"]}
           value={role}
-          onChange={(value) => setRole(value as Role)}
-          disabled={roleLocked}
+          onChange={onRoleChange}
+          disabled={roleLocked || pending}
         />
+
+        {roleError && (
+          <p className="text-2xs text-status-danger">{roleError}</p>
+        )}
 
         <FilterChips value={filter} onChange={setFilter} />
 
