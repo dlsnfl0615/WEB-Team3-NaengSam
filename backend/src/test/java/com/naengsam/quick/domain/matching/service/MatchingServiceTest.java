@@ -645,7 +645,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
 
-        MatchingService.MatchOffer offer =
+        MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
         matchingService.applyAcceptByDreami(offer.offerId());
         matchingService.applyExpireBoormiOffer(offer.offerId());
@@ -655,7 +655,7 @@ class MatchingServiceTest {
 
         // then
         assertThat(thrown).isNull();
-        assertThat(offer.status()).isEqualTo(MatchingService.MatchOfferStatus.BOORMI_EXPIRED);
+        assertThat(offer.status()).isEqualTo(MatchOfferStatus.BOORMI_EXPIRED);
     }
 
     @Test
