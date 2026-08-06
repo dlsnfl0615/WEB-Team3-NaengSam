@@ -123,10 +123,17 @@ public class Orders {
     }
 
     /**
-     * 매칭 대기 중인 주문을 취소 상태로 전이한다.
+     * 주문을 취소 상태로 전이한다.
      */
     public void cancel() {
         this.orderCd = OrderCd.CANCELLED;
+    }
+
+    /**
+     * 배달이 완료되어 주문을 완료 상태로 전이한다.
+     */
+    public void complete() {
+        this.orderCd = OrderCd.COMPLETED;
     }
 
     /**

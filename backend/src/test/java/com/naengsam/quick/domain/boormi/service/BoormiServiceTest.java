@@ -310,7 +310,7 @@ BoormiServiceTest {
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
-        then(orderService).should(never()).cancel(any(), any());
+        then(orderService).should(never()).cancel(any(Orders.class), any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
@@ -325,7 +325,7 @@ BoormiServiceTest {
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.NOT_ORDER_OWNER);
-        then(orderService).should(never()).cancel(any(), any());
+        then(orderService).should(never()).cancel(any(Orders.class), any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
@@ -340,7 +340,7 @@ BoormiServiceTest {
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.CANNOT_CANCEL_AFTER_PICKUP);
-        then(orderService).should(never()).cancel(any(), any());
+        then(orderService).should(never()).cancel(any(Orders.class), any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
