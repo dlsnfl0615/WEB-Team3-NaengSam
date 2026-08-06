@@ -68,6 +68,12 @@ export type { MapCardProps } from "./MapCard/MapCard";
 export { LiveLocationMap } from "./LiveLocationMap/LiveLocationMap";
 export type { LiveLocationMapProps } from "./LiveLocationMap/LiveLocationMap";
 
+export { DeliveryRouteMap } from "./DeliveryRouteMap/DeliveryRouteMap";
+export type {
+  DeliveryRouteMapProps,
+  Coords,
+} from "./DeliveryRouteMap/DeliveryRouteMap";
+
 export { BarChart } from "./BarChart/BarChart";
 export type { BarChartProps, BarDatum } from "./BarChart/BarChart";
 
