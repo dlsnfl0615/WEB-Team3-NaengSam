@@ -8,7 +8,8 @@ import org.springframework.http.HttpStatus;
 @RequiredArgsConstructor
 @Getter
 public enum DreamiErrorCode implements BaseErrorCode {
-    NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "드리미 정보를 찾을 수 없습니다."),
+    NOT_FOUND(HttpStatus.NOT_FOUND, "USER_001", "사용자 정보를 찾을 수 없습니다."),
+    ALREADY_APPROVED(HttpStatus.CONFLICT, "USER_002", "이미 승인된 드리미는 다시 인증 신청을 할 수 없어요."),
     NOT_APPROVED(HttpStatus.FORBIDDEN, "USER_004", "드리미 승인 후 이용할 수 있어요."),
     ALREADY_HAS_ACTIVE_ORDER(HttpStatus.CONFLICT, "USER_006", "수행 중인 주문이 있어 온라인 전환할 수 없어요.");
 

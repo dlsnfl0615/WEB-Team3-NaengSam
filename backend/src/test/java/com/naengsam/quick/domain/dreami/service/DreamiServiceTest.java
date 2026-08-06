@@ -1,11 +1,11 @@
 package com.naengsam.quick.domain.dreami.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.catchThrowable;
-import static org.mockito.BDDMockito.given;
-
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -128,6 +128,74 @@ class DreamiServiceTest {
         Throwable thrown = catchThrowable(() -> dreamiService.getDreamiProfile(id));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+    }
+
+    // ---------- saveVerificationFileKeys ----------
+
+    @Test
+    void 저장_직전_재확인에서_이미_승인됐으면_ALREADY_APPROVED_예외이고_저장하지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "oldIdCardKey", "oldCriminalRecordKey");
+        ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.of(dreami));
+
+        Throwable thrown = catchThrowable(
+                () -> dreamiService.saveVerificationFileKeys(dreamiId, "newIdCardKey", "newCriminalRecordKey"));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.ALREADY_APPROVED);
+        verify(dreamiRepository, never()).save(any());
+    }
+
+    @Test
+    void 저장_직전_재확인에서_승인_안됐으면_정상_저장한다() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "oldIdCardKey", "oldCriminalRecordKey"); // 기본 상태 REQUESTED
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.of(dreami));
+
+        dreamiService.saveVerificationFileKeys(dreamiId, "newIdCardKey", "newCriminalRecordKey");
+
+        verify(dreamiRepository).save(any());
+    }
+
+    @Test
+    void 저장_직전_재확인에서_신청기록이_없으면_최초_제출로_정상_저장한다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.empty());
+
+        dreamiService.saveVerificationFileKeys(dreamiId, "idCardKey", "criminalRecordKey");
+
+        verify(dreamiRepository).save(any());
+    }
+
+    // ---------- assertNotAlreadyApproved ----------
+
+    @Test
+    void 승인된_드리미면_ALREADY_APPROVED_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+
+        Throwable thrown = catchThrowable(() -> dreamiService.assertNotAlreadyApproved(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.ALREADY_APPROVED);
+    }
+
+    @Test
+    void 승인되지_않은_드리미면_예외없이_통과한다() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey"); // 기본 상태 REQUESTED
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+
+        assertThatCode(() -> dreamiService.assertNotAlreadyApproved(dreamiId)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 신청기록이_없으면_예외없이_통과한다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.empty());
+
+        assertThatCode(() -> dreamiService.assertNotAlreadyApproved(dreamiId)).doesNotThrowAnyException();
     }
 
     // ---------- findCurrentDeliveryCard ----------

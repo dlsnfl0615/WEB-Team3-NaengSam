@@ -48,9 +48,30 @@ public class DreamiService {
     private final MatchingService matchingService;
     private final MoneyTxRepository moneyTxRepository;
 
+    /**
+     * 저장 직전에 락 걸린 조회로 승인 여부를 다시 확인한다. {@code assertNotAlreadyApproved}로 미리 확인했더라도, 그 뒤 저장
+     * 시점 사이에 어드민이 승인을 확정할 수 있으므로 이 재확인이 실제 안전장치다.
+     */
     @Transactional
     public void saveVerificationFileKeys(UUID dreamiId, String idCardKey, String criminalRecordKey) {
+        dreamiRepository.findByDreamiId(dreamiId).ifPresent(this::throwIfApproved);
         dreamiRepository.save(Dreami.create(dreamiId, idCardKey, criminalRecordKey));
+    }
+
+    /**
+     * 이미 승인된 드리미는 재신청할 수 없다. {@code saveVerificationFileKeys}가 매번 새 row로 덮어써서
+     * requestCd·평점을 리셋시키므로, 승인된 드리미가 이 흐름을 다시 타는 것을 여기서 막는다. 락 없이 빠르게 걷어내는
+     * 사전 체크용이고, 실제 안전장치는 {@code saveVerificationFileKeys} 내부의 락 걸린 재확인이다.
+     */
+    @Transactional(readOnly = true)
+    public void assertNotAlreadyApproved(UUID dreamiId) {
+        dreamiRepository.findById(dreamiId).ifPresent(this::throwIfApproved);
+    }
+
+    private void throwIfApproved(Dreami dreami) {
+        if (dreami.getRequestCd() == DreamiCd.APPROVED) {
+            throw new BusinessException(DreamiErrorCode.ALREADY_APPROVED);
+        }
     }
 
     /**
