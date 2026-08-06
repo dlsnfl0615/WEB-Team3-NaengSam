@@ -1,4 +1,4 @@
-import { loadScript } from "@/shared/lib/loadScript";
+import { loadScript } from "./loadScript";
 
 /** 카카오 JavaScript 앱키(지도 표시용). 미설정 시 지도는 폴백 처리된다. */
 export const KAKAO_MAP_KEY = import.meta.env.VITE_KAKAO_MAP_KEY as

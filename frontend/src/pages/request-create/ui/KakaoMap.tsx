@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { loadKakaoMaps } from "./kakao";
+import { loadKakaoMaps } from "@/shared/lib";
 
 export interface KakaoMapProps {
   /** 출발지 도로명 주소(비면 마커 없음). */
