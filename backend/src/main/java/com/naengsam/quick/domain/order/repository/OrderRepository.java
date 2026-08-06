@@ -37,8 +37,6 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
     List<Orders> findFirstPageByBoormi(@Param("boormiId") UUID boormiId,
                                        @Param("status") String status, @Param("limit") int limit);
 
-    // todo: orders 테이블 소문자 말고 대문자로
-
     /**
      * 부르미 주문 목록 커서 이후 페이지. keyset 조건으로 (dtm, order_id) 가 커서보다 작은 행만 이어서 조회한다. status 가 null 이면 전체 상태를 조회한다.
      */
