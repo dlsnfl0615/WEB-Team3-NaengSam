@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   Icon,
+  LiveLocationMap,
   MapCard,
   Modal,
   ScreenShell,
@@ -181,7 +182,13 @@ export function RealDeliveryTracking({
               </div>
             </div>
           }
-        />
+        >
+          <LiveLocationMap
+            latitude={location?.latitude}
+            longitude={location?.longitude}
+            height={340}
+          />
+        </MapCard>
 
         <Card className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-pill bg-teal-50 text-teal-700">
