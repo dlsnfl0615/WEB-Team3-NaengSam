@@ -12,7 +12,7 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 /**
- * 회원의 지갑. 모든 회원이 하나씩 갖는다. 이 wallet_id 를 공유 PK 로 {@link PointWallet}(항상 생성)과 {@link MoneyWallet}(드리미 활성화 시 생성)이 붙는다.
+ * 회원의 지갑. 모든 회원이 하나씩 갖는다. 이 wallet_id 를 공유 PK 로 {@link PointWallet} 과 {@link MoneyWallet} 이 붙으며, 셋 다 회원가입 시 함께 만들어진다.
  */
 @Entity
 @Table(name = "WALLET")
