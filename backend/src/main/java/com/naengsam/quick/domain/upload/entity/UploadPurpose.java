@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 public enum UploadPurpose {
     DREAMI_ID_CARD(false),
     DREAMI_CRIMINAL_RECORD(false),
+    ORDER_ITEM_IMAGE(false), // 부르미가 주문 생성 중 올리는 물건 사진(아직 orderId가 없어 resourceId 불필요)
     PICKUP_CERTIFICATION_IMAGE(true),
     DELIVERY_CERTIFICATION_IMAGE(true);
 
