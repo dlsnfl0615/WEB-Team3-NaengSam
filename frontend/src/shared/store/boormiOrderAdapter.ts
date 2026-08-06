@@ -42,6 +42,12 @@ export const ONGOING_ORDER_CDS = new Set<OrderSummaryDtoOrderCd>([
   OrderSummaryDtoOrderCd.WAITING_CONFIRMATION,
 ]);
 
+/** 아직 드리미가 확정되지 않아 매칭 대기 화면으로 보내야 하는 주문 상태. */
+export const MATCHING_ORDER_CDS = new Set<OrderSummaryDtoOrderCd>([
+  OrderSummaryDtoOrderCd.MATCHING,
+  OrderSummaryDtoOrderCd.PENDING_BOORMI_CONFIRMATION,
+]);
+
 /** 진행 상태 라벨 → 진행바 값(홈 DeliveryCard). */
 export const ORDER_PROGRESS: Record<string, number> = {
   매칭중: 20,

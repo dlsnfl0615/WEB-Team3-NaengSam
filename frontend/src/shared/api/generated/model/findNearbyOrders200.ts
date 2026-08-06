@@ -4,11 +4,11 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
-import type { BoormiOrdersResponse } from './boormiOrdersResponse';
+import type { NearbyOrderDto } from './nearbyOrderDto';
 
-export type GetMyOrders200 = {
+export type FindNearbyOrders200 = {
   isSuccess?: boolean;
   code?: string;
   message?: string;
-  result?: BoormiOrdersResponse;
+  result?: NearbyOrderDto[];
 };

@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 @Getter
 @RequiredArgsConstructor
 public enum UploadPurpose {
+    ORDER_ITEM_IMAGE(false),
     DREAMI_ID_CARD(false),
     DREAMI_CRIMINAL_RECORD(false),
     PICKUP_CERTIFICATION_IMAGE(true),
