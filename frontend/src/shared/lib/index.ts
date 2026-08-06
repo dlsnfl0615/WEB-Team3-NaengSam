@@ -8,3 +8,4 @@ export {
   type UseDreamiLocationBroadcastOptions,
   type DreamiLocationBroadcastState,
 } from './geo/useDreamiLocationBroadcast'
+export { rememberDeliveryStage, recallDeliveryStage } from './deliveryStageMemo'

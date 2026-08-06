@@ -3,19 +3,21 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Button,
   Card,
-  DeliveryRouteMap,
   Icon,
   MapCard,
   Modal,
   ScreenShell,
   Toast,
+  DeliveryRouteMap,
 } from "@/shared/ui";
 import type { Coords } from "@/shared/ui";
-import { api, isApiError } from "@/shared/api";
+import { api, isApiError, DeliveryStatusResponseDtoStatus } from "@/shared/api";
 import type { DeliveryStatusResponseDto } from "@/shared/api";
 import {
-  useDreamiLocationBroadcast,
+  recallDeliveryStage,
+  rememberDeliveryStage,
   useSse,
+  useDreamiLocationBroadcast,
   type SseHandlers,
 } from "@/shared/lib";
 import { ROUTES } from "@/shared/config/routes";
@@ -41,6 +43,7 @@ export function DeliveryTrackScreen() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const orderId = params.get("orderId");
+  const statusParam = params.get("status");
   const isRealMode = Boolean(orderId);
 
   // 실 모드(드리미)에서만 현재 GPS 위치를 5초 주기로 백엔드에 전송한다(픽업중·배송중 모두 커버).
@@ -65,9 +68,10 @@ export function DeliveryTrackScreen() {
   const [cancelError, setCancelError] = useState<string | null>(null);
 
   // 상대편(부르미/관리자)이 취소하면 SSE로 통지받아 알림을 띄우고 홈으로 나간다.
-  const [sseToast, setSseToast] = useState<{ title: string; description?: string } | null>(
-    null,
-  );
+  const [sseToast, setSseToast] = useState<{
+    title: string;
+    description?: string;
+  } | null>(null);
   const navTimer = useRef<number | null>(null);
 
   useEffect(
@@ -129,10 +133,23 @@ export function DeliveryTrackScreen() {
   // 실 모드에서만 드리미 세션으로 SSE를 구독한다(mock 모드는 구독하지 않음).
   useSse(sseHandlers, { enabled: isRealMode });
 
+  // 배송중으로 넘어온 순간을 기록해 둔다. 홈 카드로 다시 들어오면 `?status=` 가 없어
+  // 픽업중으로 되돌아가므로, 그때 이 스냅샷으로 단계를 복원한다.
+  useEffect(() => {
+    if (orderId && statusParam === DeliveryStatusResponseDtoStatus.DELIVERING) {
+      rememberDeliveryStage(
+        orderId,
+        DeliveryStatusResponseDtoStatus.DELIVERING,
+      );
+    }
+  }, [orderId, statusParam]);
+
   // 드리미 화면은 픽업중/배송중만 다룬다(그 외 상태는 배송중으로 취급).
-  // 실 모드는 status 파라미터로, mock 모드는 활성 배달 상태로 단계를 결정한다.
+  // 실 모드는 status 파라미터(없으면 마지막 스냅샷)로, mock 모드는 활성 배달 상태로 단계를 결정한다.
+  const realStage =
+    statusParam ?? (orderId ? recallDeliveryStage(orderId) : undefined);
   const stage: TrackStage = isRealMode
-    ? params.get("status") === "DELIVERING"
+    ? realStage === DeliveryStatusResponseDtoStatus.DELIVERING
       ? "배송중"
       : "픽업중"
     : active?.status === "배송중"
@@ -185,7 +202,9 @@ export function DeliveryTrackScreen() {
       navigate(ROUTES.home, { replace: true });
     } catch (e) {
       setCancelError(
-        isApiError(e) ? e.message : "픽업 취소에 실패했어요. 잠시 후 다시 시도해 주세요.",
+        isApiError(e)
+          ? e.message
+          : "픽업 취소에 실패했어요. 잠시 후 다시 시도해 주세요.",
       );
     } finally {
       setCanceling(false);
@@ -241,7 +260,9 @@ export function DeliveryTrackScreen() {
           </span>
           <div className="flex flex-col">
             <span className="text-2xs text-muted">도착지</span>
-            <span className="text-md font-bold text-navy-900">{destination}</span>
+            <span className="text-md font-bold text-navy-900">
+              {destination}
+            </span>
           </div>
         </Card>
       </main>

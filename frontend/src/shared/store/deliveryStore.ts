@@ -1,20 +1,12 @@
 import { create } from "zustand";
 import { createDelivery } from "@/shared/mock/requestService";
 import {
-  acceptCall as acceptCallApi,
-  acceptOffer as acceptOfferApi,
-} from "@/shared/mock/matchingService";
-import {
   advanceDelivery as advanceApi,
   cancelDelivery as cancelApi,
   completeDelivery as completeApi,
 } from "@/shared/mock/deliveryService";
 import { SEED_DELIVERIES } from "@/shared/mock/seed";
-import type {
-  Call,
-  CreateDeliveryRequest,
-  Delivery,
-} from "@/shared/mock/types";
+import type { CreateDeliveryRequest, Delivery } from "@/shared/mock/types";
 import type { Role } from "@/shared/lib/role/RoleContext";
 import { useWalletStore } from "./walletStore";
 
@@ -25,17 +17,8 @@ interface DeliveryState {
   deliveries: Delivery[];
   /** 현재 진행 중인 배달 id(진행 화면 구독 대상). */
   activeId: string | null;
-  /** 드리미가 콜을 찾는 중인지(전역 콜 팝업 표시 조건). */
-  seeking: boolean;
-  /** 드리미 콜 탐색 시작/종료. */
-  startSeeking: () => void;
-  stopSeeking: () => void;
   /** 부름 등록 → "매칭중" 배달 생성 후 활성 배달로 지정. */
   createRequest: (dto: CreateDeliveryRequest) => Promise<Delivery>;
-  /** 드리미 콜 수락 → "픽업중" 배달 생성 후 활성 배달로 지정. */
-  acceptCall: (call: Call) => Promise<Delivery>;
-  /** 부르미 오퍼 수락 → 활성(매칭중) 배달을 "픽업중"으로 전이하고 드리미 배정. */
-  acceptOffer: (driverName: string) => Promise<void>;
   /** 활성 배달 픽업중 → 배송중. */
   advance: () => Promise<void>;
   /** 활성 배달 → 완료. */
@@ -53,9 +36,6 @@ interface DeliveryState {
 export const useDeliveryStore = create<DeliveryState>((set, get) => ({
   deliveries: SEED_DELIVERIES,
   activeId: null,
-  seeking: false,
-  startSeeking: () => set({ seeking: true }),
-  stopSeeking: () => set({ seeking: false }),
   createRequest: async (dto) => {
     const delivery = await createDelivery(dto);
     set((s) => ({
@@ -63,27 +43,6 @@ export const useDeliveryStore = create<DeliveryState>((set, get) => ({
       activeId: delivery.id,
     }));
     return delivery;
-  },
-  acceptCall: async (call) => {
-    const delivery = await acceptCallApi(call);
-    set((s) => ({
-      deliveries: [delivery, ...s.deliveries],
-      activeId: delivery.id,
-      seeking: false,
-    }));
-    return delivery;
-  },
-  acceptOffer: async (driverName) => {
-    const { activeId } = get();
-    if (!activeId) return;
-    await acceptOfferApi(activeId);
-    set((s) => ({
-      deliveries: s.deliveries.map((d) =>
-        d.id === activeId
-          ? { ...d, status: "픽업중", driverName, note: "드리미 매칭 완료" }
-          : d,
-      ),
-    }));
   },
   advance: async () => {
     const { activeId } = get();
