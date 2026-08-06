@@ -1,0 +1,9 @@
+# 그라파나 기동 시 prometheus 데이터소스를 자동 등록한다(UI 에서 수동 추가 불필요).
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true

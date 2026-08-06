@@ -1,0 +1,12 @@
+# 배포 서버 prometheus 스크레이프 설정.
+# 백엔드 컨테이너의 management 포트(8081)를 도커 네트워크 내부에서 긁는다.
+# backend 는 docker-compose 의 서비스명이며 도커 내부 DNS 로 해석된다.
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: symboorm-backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['backend:8081']
