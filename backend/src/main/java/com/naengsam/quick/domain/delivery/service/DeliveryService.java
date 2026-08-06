@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.delivery.service;
 
+import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
@@ -12,11 +13,14 @@ import com.naengsam.quick.domain.delivery.repository.DeliveryCertificationReposi
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.delivery.repository.PickupCertificationRepository;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
+import com.naengsam.quick.domain.order.entity.OrderCd;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.service.UserService;
+import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
 import lombok.RequiredArgsConstructor;
@@ -66,14 +70,30 @@ public class DeliveryService {
     // 호출부(매칭 확정 훅)는 매칭 도메인 담당이며 여기서는 진입점만 제공한다. boormiId는 호출부에서 넘겨받는다.
     @Transactional
     public void startDelivery(UUID orderId, UUID dreamiId, UUID boormiId) {
-//        if (userService.getUserInfo(boormiId).isDreami()) { // 주문자가 활성 드리미면 안 됨
-//            throw new BusinessException(DeliveryErrorCode.BOORMI_IS_ACTIVATED_DREAMI);
-//        }
-        // todo : 주문 테이블 조회해서 부르미 드리미 상태 검증
+        Orders order = orderService.getOrder(orderId);
+
+        if (order.getOrderCd() != OrderCd.IN_PROGRESS) {
+            throw new BusinessException(DeliveryErrorCode.DELIVERY_START_NOT_ALLOWED);
+        }
         if (!userService.getUserInfo(dreamiId).isDreami()) { // 배달자는 활성 드리미여야 함
             throw new BusinessException(DeliveryErrorCode.DREAMI_NOT_ACTIVATED);
         }
         deliveryRepository.save(Delivery.create(orderId, dreamiId, boormiId));
+    }
+
+    // 배달 추적 화면용 상세 조회. 출발지·도착지 좌표(Orders)와 현재 드리미 위치·상태(Delivery)를 조합해 반환한다.
+    // 이 주문의 부르미 또는 배정된 드리미만 볼 수 있다(그 외 403). dreamiId가 null이어도 equals(null)==false라 안전하다.
+    @Transactional(readOnly = true)
+    public DeliveryDetailResponseDto getDeliveryDetail(UUID orderId, UUID userId) {
+        Delivery delivery = deliveryRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+        Orders order = orderService.getOrder(orderId);
+
+        if (!userId.equals(delivery.getBoormiId()) && !userId.equals(delivery.getDreamiId())) {
+            throw new BusinessException(AuthErrorCode.NOT_RESOURCE_OWNER);
+        }
+
+        return DeliveryDetailResponseDto.from(delivery, order);
     }
 
     // ===== 공개 메서드 (동기 요청) — 주문 단위 락 안에서 상태 전이를 실행하고 결과를 돌려준다 =====

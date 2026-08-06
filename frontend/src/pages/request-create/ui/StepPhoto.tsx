@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Icon, TextField } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
-import { api, isApiError } from "@/shared/api";
+import { api, isApiError, GetPresignedUrlPurpose } from "@/shared/api";
 import type { RequestForm, UpdateForm } from "./types";
 
 const REQUEST_TAGS: RequestForm["requestTag"][] = [
@@ -32,7 +32,7 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
     try {
       const { result } = await api.getPresignedUrl({
         fileName: file.name,
-        purpose: "ORDER_ITEM_IMAGE",
+        purpose: GetPresignedUrlPurpose.ORDER_ITEM_IMAGE,
       });
       if (!result?.url || !result?.key)
         throw new Error("업로드 URL을 받지 못했어요.");

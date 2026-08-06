@@ -5,7 +5,7 @@
  * OpenAPI spec version: v0
  */
 
-export interface UploadRequestDto {
+export interface DreamiAuthRequestDto {
   /** @minLength 1 */
   idCardKey: string;
   /** @minLength 1 */

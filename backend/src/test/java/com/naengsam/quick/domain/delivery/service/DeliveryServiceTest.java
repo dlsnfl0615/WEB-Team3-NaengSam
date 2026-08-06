@@ -12,6 +12,8 @@ import com.naengsam.quick.domain.delivery.repository.DeliveryCertificationReposi
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.delivery.repository.PickupCertificationRepository;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
+import com.naengsam.quick.domain.order.entity.OrderCd;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
@@ -146,11 +148,18 @@ class DeliveryServiceTest {
         given(userService.getUserInfo(dreamiId)).willReturn(new UserDto(dreamiId, "d@t.com", "드리미", true));
     }
 
+    private void stubOrderStatus(UUID orderId, OrderCd orderCd) {
+        Orders order = mock(Orders.class);
+        given(order.getOrderCd()).willReturn(orderCd);
+        given(orderService.getOrder(orderId)).willReturn(order);
+    }
+
     @Test
     void 배달시작하면_PICKUP_NORMAL로_저장된다() {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
+        stubOrderStatus(orderId, OrderCd.IN_PROGRESS);
         stubValidRoles(boormiId, dreamiId);
 
         deliveryService.startDelivery(orderId, dreamiId, boormiId);
@@ -169,12 +178,27 @@ class DeliveryServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
+        stubOrderStatus(orderId, OrderCd.IN_PROGRESS);
         given(userService.getUserInfo(boormiId)).willReturn(new UserDto(boormiId, "b@t.com", "부르미", false));
         given(userService.getUserInfo(dreamiId)).willReturn(new UserDto(dreamiId, "d@t.com", "드리미", false));
 
         Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DREAMI_NOT_ACTIVATED);
+        verify(deliveryRepository, never()).save(any());
+    }
+
+    @Test
+    void 배달시작_주문이_진행중이_아니면_DELIVERY_START_NOT_ALLOWED_예외() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        stubOrderStatus(orderId, OrderCd.PENDING_BOORMI_CONFIRMATION);
+
+        Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_START_NOT_ALLOWED);
+        verify(userService, never()).getUserInfo(any());
         verify(deliveryRepository, never()).save(any());
     }
 

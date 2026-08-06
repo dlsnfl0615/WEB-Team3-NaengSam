@@ -5,9 +5,6 @@
  * OpenAPI spec version: v0
  */
 
-export type CheckUpload200 = {
-  isSuccess?: boolean;
-  code?: string;
-  message?: string;
-  result?: boolean;
+export type GetParams = {
+key: string;
 };

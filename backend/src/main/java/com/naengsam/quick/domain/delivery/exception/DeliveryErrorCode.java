@@ -49,7 +49,9 @@ public enum DeliveryErrorCode implements BaseErrorCode {
             HttpStatus.CONFLICT, "DELIVERY_029", "반송 중에는 배달 완료 처리를 할 수 없습니다."),
     DELIVERY_COMPLETION_NOT_ALLOWED_RETURNED(
             HttpStatus.CONFLICT, "DELIVERY_030", "이미 반송이 완료된 건은 배달 완료 처리를 할 수 없습니다."),
-    NOT_ORDER_BOORMI(HttpStatus.FORBIDDEN, "DELIVERY_031", "접근 권한이 없습니다.");
+    NOT_ORDER_BOORMI(HttpStatus.FORBIDDEN, "DELIVERY_031", "접근 권한이 없습니다."),
+    DELIVERY_START_NOT_ALLOWED(
+            HttpStatus.CONFLICT, "DELIVERY_032", "배달을 시작할 수 없는 주문 상태입니다.");
 
     private final HttpStatus status;
     private final String code;
