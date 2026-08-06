@@ -385,8 +385,8 @@ public class MatchingService {
                     findOrderOfferGroup(matchOffer.orderId())
                             .ifPresentOrElse(
                                     group -> {
-                                        group.markMatched();
                                         proceedToDelivery(matchOffer, group.boormiId());
+                                        cleanUpAfterMatched(matchOffer, group);
                                     },
                                     () -> log.warn("부르미 수락 처리 중 주문 제안 그룹을 찾을 수 없어 배달을 시작하지 못함: offerId={}, orderId={}",
                                             matchOffer.offerId(), matchOffer.orderId())
@@ -486,7 +486,7 @@ public class MatchingService {
     /**
      * 해당 제안이 주어진 드리미에게 온 것인지 확인한다. 제안이 존재하지 않으면 false.
      *
-     * @param offerId 확인할 제안 UUID
+     * @param offerId  확인할 제안 UUID
      * @param dreamiId 요청한 드리미 UUID
      * @return 제안의 대상 드리미가 dreamiId와 일치하면 true
      */
@@ -497,7 +497,7 @@ public class MatchingService {
     /**
      * 해당 제안이 속한 주문이 주어진 부르미의 것인지 확인한다. 제안이나 방이 존재하지 않으면 false.
      *
-     * @param offerId 확인할 제안 UUID
+     * @param offerId  확인할 제안 UUID
      * @param boormiId 요청한 부르미 UUID
      * @return 제안이 속한 방의 부르미가 boormiId와 일치하면 true
      */
@@ -555,6 +555,21 @@ public class MatchingService {
         return Optional.of(offer);
     }
 
+    /**
+     * 매칭이 성사된 후 인메모리의 매칭 정보를 삭제한다.
+     *
+     * @param matchOffer 해당하는 offer
+     * @param group      모든 offer들을 담은 그룹
+     */
+    private void cleanUpAfterMatched(MatchOffer matchOffer, OrderOfferGroup group) {
+        dreamiMap.remove(matchOffer.dreamiId());
+
+        // 상태에 관계 없이 삭제를 진행한다.
+        for (MatchOffer offer : group.offers()) {
+            offersById.remove(offer.offerId());
+        }
+        orderOfferGroupsByOrderId.remove(group.orderId());
+    }
     // ────────────────────────────── 배달 연동 ──────────────────────────────
 
     private void proceedToDelivery(MatchOffer matchOffer, UUID boormiId) {
@@ -693,11 +708,6 @@ public class MatchingService {
 
         public boolean rematchRequired() {
             return rematchRequired;
-        }
-
-        void markMatched() {
-            requireStatus(OrderOfferGroupStatus.OPEN);
-            this.status = OrderOfferGroupStatus.MATCHED;
         }
 
         /**

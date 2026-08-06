@@ -177,8 +177,7 @@ class MatchingServiceTest {
         assertThat(offer.status())
                 .isEqualTo(MatchOfferStatus.MATCHED);
 
-        assertThat(getOrderOfferGroups().get(orderId).status())
-                .isEqualTo(MatchingService.OrderOfferGroupStatus.MATCHED);
+        assertThat(getOrderOfferGroups()).doesNotContainKey(orderId);
     }
 
     @Test
@@ -343,15 +342,16 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 매칭이_완료되면_그룹은_제거되지_않고_MATCHED_상태로_남는다() {
+    void 매칭이_완료되면_인메모리_상태가_정리된다() {
         // given
         UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
 
         GeoPoint location = mock(GeoPoint.class);
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
 
-        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+        matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(order);
 
         MatchOffer offer =
@@ -362,10 +362,10 @@ class MatchingServiceTest {
         // when
         matchingService.applyAcceptByBoormi(offer.offerId());
 
-        // then (그룹이 map에서 삭제되지 않고, 종료 상태로만 남는다)
-        assertThat(getOrderOfferGroups()).containsKey(orderId);
-        assertThat(getOrderOfferGroups().get(orderId).status())
-                .isEqualTo(MatchingService.OrderOfferGroupStatus.MATCHED);
+        // then (그룹/오퍼/드리미가 각 맵에서 모두 제거된다)
+        assertThat(getOrderOfferGroups()).doesNotContainKey(orderId);
+        assertThat(getOffersById()).doesNotContainKey(offer.offerId());
+        assertThat(getDreamiMap()).doesNotContainKey(dreamiId);
     }
 
     @Test
@@ -631,7 +631,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    void MATCHED된_그룹은_스케줄된_재매칭_스캔으로_영향받지_않는다() {
+    void 매칭이_완료되어_정리된_그룹은_스케줄된_재매칭_스캔으로_되살아나지_않는다() {
         // given
         UUID orderId = UUID.randomUUID();
         GeoPoint location = mock(GeoPoint.class);
@@ -645,15 +645,14 @@ class MatchingServiceTest {
         matchingService.applyAcceptByDreami(offer.offerId());
         matchingService.applyAcceptByBoormi(offer.offerId());
 
-        MatchingService.OrderOfferGroup group = getOrderOfferGroups().get(orderId);
-        int offersBefore = group.offers().size();
+        assertThat(getOrderOfferGroups()).doesNotContainKey(orderId);
 
         // when
-        matchingService.applyRematchWaitingGroups();
+        Throwable thrown = catchThrowable(() -> matchingService.applyRematchWaitingGroups());
 
         // then
-        assertThat(group.status()).isEqualTo(MatchingService.OrderOfferGroupStatus.MATCHED);
-        assertThat(group.offers()).hasSize(offersBefore);
+        assertThat(thrown).isNull();
+        assertThat(getOrderOfferGroups()).doesNotContainKey(orderId);
     }
 
     @Test
@@ -1134,14 +1133,13 @@ class MatchingServiceTest {
 
         MatchingService.OrderOfferGroup group =
                 new MatchingService.OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), List.of());
-        group.markMatched();
         getOrderOfferGroups().put(orderId, group);
 
         // when
         matchingService.applyRematchWaitingGroups();
 
         // then (대기 대상이 아니므로 상태가 그대로 보존된다)
-        assertThat(group.status()).isEqualTo(MatchingService.OrderOfferGroupStatus.MATCHED);
+        assertThat(group.status()).isEqualTo(MatchingService.OrderOfferGroupStatus.OPEN);
     }
 
     @Test

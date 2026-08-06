@@ -126,6 +126,21 @@ public class Boormi {
 }
 ```
 
+## 리포지토리 / 네이티브 쿼리 규칙
+
+- 조회는 **파생 쿼리(메서드 이름)** 또는 **JPQL**을 우선합니다. JPQL은 엔티티명·필드명을 쓰므로 Hibernate가 `@Table`/`@Column` 매핑으로 실제 식별자를 만들어 대소문자 문제가 없습니다.
+- **네이티브 쿼리(`nativeQuery = true`)에서 테이블명은 DDL과 동일한 대소문자로 씁니다.** 운영 서버는 리눅스 MySQL(`lower_case_table_names=0`, 대소문자 **구분**)이라, DDL이 대문자로 만든 테이블(`ORDERS`, `DELIVERY`, `UPLOAD_SESSION` …)을 소문자로 참조하면 `table doesn't exist`로 실패합니다. 로컬(H2 / macOS MySQL)에서는 대소문자를 무시해 통과하므로 운영에서만 터집니다. **테이블명은 DDL(`backend/sql/sym-boorm-ddl.sql`)의 표기를 그대로 대문자로 씁니다.**
+- 컬럼명은 MySQL에서 항상 대소문자를 구분하지 않으므로 DDL의 snake_case를 그대로 쓰면 됩니다.
+
+```java
+// ✅ DDL: CREATE TABLE `ORDERS` — 테이블명 대문자 그대로
+@Query(value = "SELECT COUNT(*) FROM ORDERS o WHERE o.boormi_id = :userId", nativeQuery = true)
+long countActiveOrders(@Param("userId") UUID userId);
+
+// ❌ 소문자 orders — 로컬은 통과, 운영 리눅스 MySQL에서 실패
+@Query(value = "SELECT COUNT(*) FROM orders o WHERE o.boormi_id = :userId", nativeQuery = true)
+```
+
 ## DTO 규칙
 
 - **record 우선.** 요청 DTO는 `<name>Request`, 응답 DTO는 `<name>Dto`.
