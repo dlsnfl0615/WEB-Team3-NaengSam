@@ -130,6 +130,7 @@ import { Icon } from './components'
 | `InfoRow`           | `label` `children`                         | 상세 정보 카드의 라벨-값 한 줄                                            |
 | `StarRating`        | `value` `onChange`                         | 별 5개 평점 입력(radiogroup)                                              |
 | `MapCard`           | `overlay` `height` `flat` `children`       | 지도 화면 래퍼(`flat`=풀블리드용 반경·테두리 제거)                        |
+| `LiveLocationMap`   | `latitude` `longitude` `height`            | 단일 마커 실시간 카카오 지도(좌표 바뀔 때마다 마커 이동, 키/좌표 없으면 텍스트 폴백) |
 | `BarChart`          | `data` `highlightLast`                     | 절감 리포트용 막대 그래프                                                 |
 | `BottomSheet`       | `open` `label` `onClose` `children`        | 하단에서 올라오는 모달 시트(배경 어둡게·흐리게, 배경 클릭 시 닫힘)        |
 | `Modal`             | `open` `label` `onClose` `children`        | 가운데에 뜨는 모달(배경 회색조 처리, `onClose` 없으면 배경 클릭 무시)     |
