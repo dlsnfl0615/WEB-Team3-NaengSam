@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.delivery.service;
 
+import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
@@ -7,6 +8,7 @@ import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCertification;
 import com.naengsam.quick.domain.delivery.entity.PickupCertification;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
+import com.naengsam.quick.domain.delivery.event.DeliveryNotificationEvent;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.repository.DeliveryCertificationRepository;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
@@ -21,12 +23,14 @@ import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.dto.UserDto;
 import com.naengsam.quick.domain.user.service.UserService;
+import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -58,6 +62,7 @@ class DeliveryServiceTest {
     private UploadSessionService uploadSessionService;
     private UserService userService;
     private OrderService orderService;
+    private ApplicationEventPublisher eventPublisher;
     private DeliveryService deliveryService;
 
     // findByOrderId가 같은 Delivery 인스턴스를 돌려주도록 등록해 둔다(서비스가 이 객체를 변경하면 테스트에서 바로 관찰된다).
@@ -73,9 +78,10 @@ class DeliveryServiceTest {
         uploadSessionService = mock(UploadSessionService.class);
         userService = mock(UserService.class);
         orderService = mock(OrderService.class);
+        eventPublisher = mock(ApplicationEventPublisher.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, sseService, s3PresignService, uploadSessionService,
-                userService, orderService);
+                userService, orderService, eventPublisher);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 존재. 스코프 검증(validateScope)은 void라 기본 no-op(통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
@@ -121,6 +127,14 @@ class DeliveryServiceTest {
 
     private DeliveryStatusResponseDto cancelByBoormi(UUID orderId) {
         return deliveryService.cancelByBoormi(orderId, registeredDeliveries.get(orderId).getBoormiId());
+    }
+
+    // userId·eventType으로 DeliveryNotificationEvent가 발행됐는지만 확인한다(실제 전송은 sendAfterCommit이 맡는다).
+    // 람다 파라미터 타입을 명시해야 ApplicationEventPublisher의 publishEvent(ApplicationEvent)/publishEvent(Object)
+    // 오버로드 중 Object 쪽으로 확정된다(명시하지 않으면 ApplicationEvent로 추론돼 컴파일 에러가 난다).
+    private void assertPublished(UUID userId, DeliveryEventType type) {
+        verify(eventPublisher).publishEvent(argThat((DeliveryNotificationEvent event) ->
+                event.userId().equals(userId) && event.eventType() == type));
     }
 
     private BaseErrorCode errorCodeOf(Throwable thrown) {
@@ -184,7 +198,7 @@ class DeliveryServiceTest {
 
         deliveryService.startDelivery(orderId, dreamiId, boormiId);
 
-        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_STARTED_BOORMI), any());
+        assertPublished(boormiId, DeliveryEventType.DELIVERY_STARTED_BOORMI);
     }
 
     @Test
@@ -197,7 +211,38 @@ class DeliveryServiceTest {
 
         deliveryService.startDelivery(orderId, dreamiId, boormiId);
 
-        verify(sseService).send(eq(dreamiId), eq(DeliveryEventType.DELIVERY_STARTED_DREAMI), any());
+        assertPublished(dreamiId, DeliveryEventType.DELIVERY_STARTED_DREAMI);
+    }
+
+    // ===== 배달 상세 조회 =====
+
+    @Test
+    void 배달상세조회하면_락없는_조회메서드를_쓴다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        DeliveryDetailResponseDto result = deliveryService.getDeliveryDetail(orderId, boormiId);
+
+        assertThat(result.orderId()).isEqualTo(orderId);
+        verify(deliveryRepository, never()).findByOrderId(any()); // 비관적 락(FOR UPDATE)은 readOnly 트랜잭션에서 못 씀
+    }
+
+    @Test
+    void 배달상세조회시_부르미도_드리미도_아니면_NOT_RESOURCE_OWNER_예외() {
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, UUID.randomUUID(), UUID.randomUUID());
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        given(orderService.getOrder(orderId)).willReturn(mock(Orders.class));
+
+        Throwable thrown = catchThrowable(() -> deliveryService.getDeliveryDetail(orderId, UUID.randomUUID()));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(AuthErrorCode.NOT_RESOURCE_OWNER);
     }
 
     @Test
@@ -239,7 +284,7 @@ class DeliveryServiceTest {
 
         deliveryService.updateDreamiLocation(orderId, location("37.5", "127.0"));
 
-        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_LOCATION), any());
+        assertPublished(boormiId, DeliveryEventType.DELIVERY_LOCATION);
     }
 
     @Test
@@ -250,7 +295,7 @@ class DeliveryServiceTest {
 
         pickupFinish(orderId);
 
-        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_DELIVERING), any());
+        assertPublished(boormiId, DeliveryEventType.DELIVERY_DELIVERING);
     }
 
     @Test
@@ -261,7 +306,7 @@ class DeliveryServiceTest {
 
         finish(orderId);
 
-        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_COMPLETED), any());
+        assertPublished(boormiId, DeliveryEventType.DELIVERY_COMPLETED);
     }
 
     @Test
@@ -272,7 +317,7 @@ class DeliveryServiceTest {
 
         cancelByDreami(orderId);
 
-        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
+        assertPublished(boormiId, DeliveryEventType.DELIVERY_CANCELLED);
     }
 
     @Test
@@ -283,7 +328,7 @@ class DeliveryServiceTest {
 
         cancelByBoormi(orderId);
 
-        verify(sseService).send(eq(dreamiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
+        assertPublished(dreamiId, DeliveryEventType.DELIVERY_CANCELLED);
     }
 
     @Test
@@ -294,8 +339,21 @@ class DeliveryServiceTest {
 
         deliveryService.cancelByAdmin(orderId);
 
-        verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
-        verify(sseService).send(eq(dreamiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
+        assertPublished(boormiId, DeliveryEventType.DELIVERY_CANCELLED);
+        assertPublished(dreamiId, DeliveryEventType.DELIVERY_CANCELLED);
+    }
+
+    @Test
+    void 커밋후리스너가_이벤트를_그대로_SseService로_전달한다() {
+        UUID userId = UUID.randomUUID();
+        DeliveryStatusResponseDto payload =
+                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지");
+        DeliveryNotificationEvent event =
+                new DeliveryNotificationEvent(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload);
+
+        deliveryService.sendAfterCommit(event);
+
+        verify(sseService).send(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload);
     }
 
     @Test

@@ -8,6 +8,7 @@ import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCertification;
 import com.naengsam.quick.domain.delivery.entity.PickupCertification;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
+import com.naengsam.quick.domain.delivery.event.DeliveryNotificationEvent;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.repository.DeliveryCertificationRepository;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
@@ -25,8 +26,11 @@ import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -41,8 +45,10 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
  * 상태 검증+변경(check-then-act)은 트랜잭션 안에서 해당 주문의 Delivery 행을 비관적 쓰기 락으로 조회해 주문 단위로만 직렬화한다.
  * 서로 다른 주문은 서로 다른 행이라 완전히 병렬로 처리된다.
  *
- * <p>알림(SSE)은 전이와 같은 트랜잭션 안에서 불변 스냅샷(DeliveryStatusResponseDto)을 만들어 SseService로 넘긴다.
- * 실제 전송은 SseService가 단일 가상 스레드로 async 오프로딩하므로 "처리 순서 == 알림 순서"가 보장되고 호출 스레드는 막히지 않는다.
+ * <p>알림(SSE)은 전이와 같은 트랜잭션 안에서 불변 스냅샷(DeliveryStatusResponseDto)을 담은 {@link DeliveryNotificationEvent}만
+ * 발행한다. 실제 SseService.send 호출은 트랜잭션이 커밋된 뒤에만({@code sendAfterCommit}, AFTER_COMMIT) 일어나므로,
+ * 롤백된 전이에 대해서는 알림이 나가지 않는다. SseService가 단일 가상 스레드로 async 오프로딩하므로
+ * "처리 순서 == 알림 순서"가 보장되고 호출 스레드는 막히지 않는다.
  *
  * <p>부르미·드리미 모두 상태 변경은 SSE로 전달받는다. updateDreamiLocation은 드리미가 5~10초마다 호출해
  * 위치만 전송하는 용도이며(응답은 ack), 취소/완료된 주문에 대한 가드 예외는 폴링 중단 신호로만 남긴다.
@@ -62,6 +68,7 @@ public class DeliveryService {
     private final UploadSessionService uploadSessionService;
     private final UserService userService;
     private final OrderService orderService;
+    private final ApplicationEventPublisher eventPublisher;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -87,7 +94,7 @@ public class DeliveryService {
     // 이 주문의 부르미 또는 배정된 드리미만 볼 수 있다(그 외 403). dreamiId가 null이어도 equals(null)==false라 안전하다.
     @Transactional(readOnly = true)
     public DeliveryDetailResponseDto getDeliveryDetail(UUID orderId, UUID userId) {
-        Delivery delivery = deliveryRepository.findByOrderId(orderId)
+        Delivery delivery = deliveryRepository.findByOrderIdWithoutLock(orderId)
                 .orElseThrow(() -> new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
         Orders order = orderService.getOrder(orderId);
 
@@ -377,52 +384,62 @@ public class DeliveryService {
     }
 
     // ===== SSE 알림 =====
-    // 모두 트랜잭션 안에서 호출된다. 불변 스냅샷(DeliveryStatusResponseDto)을 만들어 SseService로 넘기므로
-    // async 전송 스레드는 영속 Delivery를 건드리지 않는다(추가 동시성 처리 불필요).
+    // 모두 트랜잭션 안에서 호출되지만, 실제 전송은 하지 않고 DeliveryNotificationEvent만 발행한다.
+    // 트랜잭션이 롤백되면 이 이벤트는 버려지고, 커밋된 경우에만 sendAfterCommit이 실제로 SSE를 보낸다.
 
     private void alarmBoormiDeliveryStartedBySSE(Delivery delivery) {
-        sseService.send(delivery.getBoormiId(), DeliveryEventType.DELIVERY_STARTED_BOORMI,
+        publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_STARTED_BOORMI,
                 DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"));
     }
 
     private void alarmDreamiDeliveryStartedBySSE(Delivery delivery) {
-        sseService.send(delivery.getDreamiId(), DeliveryEventType.DELIVERY_STARTED_DREAMI,
+        publish(delivery.getDreamiId(), DeliveryEventType.DELIVERY_STARTED_DREAMI,
                 DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"));
     }
 
     private void alarmDreamiBoormiCancelBySSE(Delivery delivery) {
-        sseService.send(delivery.getDreamiId(), DeliveryEventType.DELIVERY_CANCELLED,
+        publish(delivery.getDreamiId(), DeliveryEventType.DELIVERY_CANCELLED,
                 DeliveryStatusResponseDto.from(delivery, "고객이 주문을 취소했습니다"));
     }
 
     private void alarmDreamiAdminCancelBySSE(Delivery delivery) {
-        sseService.send(delivery.getDreamiId(), DeliveryEventType.DELIVERY_CANCELLED,
+        publish(delivery.getDreamiId(), DeliveryEventType.DELIVERY_CANCELLED,
                 DeliveryStatusResponseDto.from(delivery, "관리자가 배달을 취소했습니다"));
     }
 
     private void alarmBoormiLocationBySSE(Delivery delivery) {
-        sseService.send(delivery.getBoormiId(), DeliveryEventType.DELIVERY_LOCATION,
+        publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_LOCATION,
                 DeliveryStatusResponseDto.from(delivery, "위치 갱신됨"));
     }
 
     private void alarmBoormiDeliveringBySSE(Delivery delivery) {
-        sseService.send(delivery.getBoormiId(), DeliveryEventType.DELIVERY_DELIVERING,
+        publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_DELIVERING,
                 DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"));
     }
 
     private void alarmBoormiDreamiCancelBySSE(Delivery delivery) {
-        sseService.send(delivery.getBoormiId(), DeliveryEventType.DELIVERY_CANCELLED,
+        publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_CANCELLED,
                 DeliveryStatusResponseDto.from(delivery, "드리미가 픽업을 취소했습니다"));
     }
 
     private void alarmBoormiAdminCancelBySSE(Delivery delivery) {
-        sseService.send(delivery.getBoormiId(), DeliveryEventType.DELIVERY_CANCELLED,
+        publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_CANCELLED,
                 DeliveryStatusResponseDto.from(delivery, "관리자가 배달을 취소했습니다"));
     }
 
     private void alarmBoormiDeliveredBySSE(Delivery delivery) {
-        sseService.send(delivery.getBoormiId(), DeliveryEventType.DELIVERY_COMPLETED,
+        publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_COMPLETED,
                 DeliveryStatusResponseDto.from(delivery, "배달이 완료되었습니다"));
+    }
+
+    private void publish(UUID userId, DeliveryEventType eventType, DeliveryStatusResponseDto payload) {
+        eventPublisher.publishEvent(new DeliveryNotificationEvent(userId, eventType, payload));
+    }
+
+    // 트랜잭션 커밋 후에만 실제로 SSE를 보낸다(커밋 전 발행된 이벤트는 롤백 시 자동으로 버려진다).
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void sendAfterCommit(DeliveryNotificationEvent event) {
+        sseService.send(event.userId(), event.eventType(), event.payload());
     }
 
     // ===== 사진 확인 (upload 도메인 연동) =====
