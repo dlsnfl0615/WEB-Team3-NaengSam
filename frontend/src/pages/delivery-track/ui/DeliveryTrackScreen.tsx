@@ -3,13 +3,14 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Button,
   Card,
+  DeliveryRouteMap,
   Icon,
-  LiveLocationMap,
   MapCard,
   Modal,
   ScreenShell,
   Toast,
 } from "@/shared/ui";
+import type { Coords } from "@/shared/ui";
 import { api, isApiError } from "@/shared/api";
 import type { DeliveryStatusResponseDto } from "@/shared/api";
 import {
@@ -53,6 +54,11 @@ export function DeliveryTrackScreen() {
   const complete = useDeliveryStore((s) => s.complete);
   const cancel = useDeliveryStore((s) => s.cancel);
 
+  // 실 모드에서 출발지·도착지 좌표(+도착지 주소)를 1회 받아온다(엔드포인트가 드리미도 허용).
+  const [pickup, setPickup] = useState<Coords | undefined>(undefined);
+  const [dropoff, setDropoff] = useState<Coords | undefined>(undefined);
+  const [destAddress, setDestAddress] = useState<string | undefined>(undefined);
+
   // 픽업 취소 확인 모달 상태
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
@@ -70,6 +76,38 @@ export function DeliveryTrackScreen() {
     },
     [],
   );
+
+  // 실 모드 마운트 시 출발지·도착지 좌표를 1회 받아온다. 드리미 현재 위치는 GPS(position)로 갱신된다.
+  useEffect(() => {
+    if (!isRealMode || !orderId) return;
+    let cancelled = false;
+    api
+      .getDeliveryDetail(orderId)
+      .then(({ result }) => {
+        if (cancelled || !result) return;
+        if (result.originLatitude != null && result.originLongitude != null)
+          setPickup({
+            latitude: result.originLatitude,
+            longitude: result.originLongitude,
+          });
+        if (
+          result.destinationLatitude != null &&
+          result.destinationLongitude != null
+        )
+          setDropoff({
+            latitude: result.destinationLatitude,
+            longitude: result.destinationLongitude,
+          });
+        if (result.destinationAddressLine1)
+          setDestAddress(result.destinationAddressLine1);
+      })
+      .catch(() => {
+        // 좌표를 못 받아도 드리미 GPS 핀만으로 지도는 동작한다.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isRealMode, orderId]);
 
   const sseHandlers: SseHandlers = {
     delivery_cancelled: (data) => {
@@ -103,7 +141,7 @@ export function DeliveryTrackScreen() {
   const isPickup = stage === "픽업중";
   const { title, action, cancelable } = TRACK_STAGES[stage];
 
-  const destination = active?.dropoff ?? "A동 102호";
+  const destination = destAddress ?? active?.dropoff ?? "A동 102호";
   const eta = active?.eta ?? "3분";
   const distance = active?.distance ?? "450m";
 
@@ -174,10 +212,11 @@ export function DeliveryTrackScreen() {
           height={440}
           overlay={<TrackOverlay eta={eta} distance={distance} />}
         >
-          <LiveLocationMap
+          <DeliveryRouteMap
             flat
-            latitude={position?.latitude}
-            longitude={position?.longitude}
+            pickup={pickup}
+            dropoff={dropoff}
+            driver={position ?? undefined}
             height={440}
           />
         </MapCard>

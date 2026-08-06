@@ -65,9 +65,6 @@ export type { RouteCardProps } from "./RouteCard/RouteCard";
 export { MapCard } from "./MapCard/MapCard";
 export type { MapCardProps } from "./MapCard/MapCard";
 
-export { LiveLocationMap } from "./LiveLocationMap/LiveLocationMap";
-export type { LiveLocationMapProps } from "./LiveLocationMap/LiveLocationMap";
-
 export { DeliveryRouteMap } from "./DeliveryRouteMap/DeliveryRouteMap";
 export type {
   DeliveryRouteMapProps,
