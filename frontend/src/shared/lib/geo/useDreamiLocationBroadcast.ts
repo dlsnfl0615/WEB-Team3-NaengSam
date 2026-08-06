@@ -14,13 +14,17 @@ export interface UseDreamiLocationBroadcastOptions {
 export interface DreamiLocationBroadcastState {
   /** geolocation 미지원/권한 거부 등 오류 메시지(정상 시 null). 선택적 UI 노출용. */
   error: string | null;
+  /** 최신 GPS 좌표(fix 이전엔 null). 화면 지도 표시용. */
+  position: { latitude: number; longitude: number } | null;
 }
 
 /**
  * 드리미(배달원) 현재 GPS 위치를 주기적으로 백엔드에 전송하는 훅.
+ * !! 브라우저가 GPS 위치 값 측정하는 것도 이 함수에서 수행됨
  *
  * - `enabled && orderId`일 때만 동작한다. 마운트 즉시 `watchPosition`으로 권한 프롬프트를
- *   띄우고 최신 좌표를 ref에 유지한다(`enableHighAccuracy`). 렌더를 유발하지 않도록 state가 아닌 ref로 둔다.
+ *   띄우고 최신 좌표를 유지한다(`enableHighAccuracy`). 전송 tick은 stale closure를 피하려 ref를 읽고,
+ *   화면 지도 표시용으로는 같은 좌표를 state(`position`)로도 노출한다.
  * - `intervalMs`마다 최신 좌표를 `POST .../dreami-location`으로 보낸다. 아직 fix가 없으면 그 tick은 건너뛰고,
  *   응답(`result`)은 사용하지 않는다(void 취급). 전송 실패는 조용히 로그만 남긴다.
  * - unmount/`enabled=false`/`orderId` 변경 시 `clearWatch` + `clearInterval`로 정리한다.
@@ -36,8 +40,13 @@ export function useDreamiLocationBroadcast(
     options;
   // 권한 거부 등 런타임 오류만 state로 둔다(async 콜백에서만 갱신). 미지원 여부는 렌더 중 파생값으로 계산.
   const [permissionError, setPermissionError] = useState<string | null>(null);
+  // 화면 지도 표시용 최신 좌표(state). 전송 tick은 아래 ref를 읽는다.
+  const [position, setPosition] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
 
-  // 최신 fix를 보관(전송 tick이 읽어감). state가 아니라 ref라 좌표 갱신이 렌더를 유발하지 않는다.
+  // 최신 fix를 보관(전송 tick이 읽어감). ref라 stale closure 없이 최신값을 읽는다.
   const lastFixRef = useRef<{ latitude: number; longitude: number } | null>(
     null,
   );
@@ -61,10 +70,12 @@ export function useDreamiLocationBroadcast(
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
         setPermissionError(null);
-        lastFixRef.current = {
+        const fix = {
           latitude: pos.coords.latitude,
           longitude: pos.coords.longitude,
         };
+        lastFixRef.current = fix; // 최신 값 보관 (전송용)
+        setPosition(fix); // 드리미가 사용할 position값 갱신
       },
       (err) => {
         setPermissionError(err.message || "위치 권한이 거부됐어요.");
@@ -73,7 +84,7 @@ export function useDreamiLocationBroadcast(
       { enableHighAccuracy: true },
     );
 
-    // 주기적으로 최신 좌표를 전송한다. 아직 fix가 없으면 그 tick은 건너뛴다.
+    // 주기적으로 최신 좌표를 !!서버에!! 전송한다. 아직 fix가 없으면 그 tick은 건너뛴다.
     const timer = window.setInterval(() => {
       const fix = lastFixRef.current;
       if (!fix) return;
@@ -94,5 +105,5 @@ export function useDreamiLocationBroadcast(
       ? "이 브라우저는 위치 기능을 지원하지 않아요."
       : permissionError;
 
-  return { error };
+  return { error, position };
 }

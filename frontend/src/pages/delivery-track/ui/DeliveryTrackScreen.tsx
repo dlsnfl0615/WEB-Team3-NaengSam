@@ -1,6 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Card, Icon, MapCard, Modal, ScreenShell, Toast } from "@/shared/ui";
+import {
+  Button,
+  Card,
+  Icon,
+  LiveLocationMap,
+  MapCard,
+  Modal,
+  ScreenShell,
+  Toast,
+} from "@/shared/ui";
 import { api, isApiError } from "@/shared/api";
 import type { DeliveryStatusResponseDto } from "@/shared/api";
 import {
@@ -34,7 +43,11 @@ export function DeliveryTrackScreen() {
   const isRealMode = Boolean(orderId);
 
   // 실 모드(드리미)에서만 현재 GPS 위치를 5초 주기로 백엔드에 전송한다(픽업중·배송중 모두 커버).
-  useDreamiLocationBroadcast(orderId, { enabled: isRealMode });
+  // 반환된 최신 좌표는 이 화면 지도에도 표시한다.
+  // 이 position은 서버에서 반환하는게 아니라, 브라우저에서 측정한 GPS 값임
+  const { position } = useDreamiLocationBroadcast(orderId, {
+    enabled: isRealMode,
+  });
   const active = useActiveDelivery();
   const advance = useDeliveryStore((s) => s.advance);
   const complete = useDeliveryStore((s) => s.complete);
@@ -160,7 +173,14 @@ export function DeliveryTrackScreen() {
           flat
           height={440}
           overlay={<TrackOverlay eta={eta} distance={distance} />}
-        />
+        >
+          <LiveLocationMap
+            flat
+            latitude={position?.latitude}
+            longitude={position?.longitude}
+            height={440}
+          />
+        </MapCard>
         <button
           type="button"
           onClick={() => navigate(-1)}

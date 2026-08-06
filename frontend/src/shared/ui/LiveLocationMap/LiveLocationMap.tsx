@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { loadKakaoMaps } from "@/shared/lib";
+import { cn } from "@/shared/lib/cn";
 
 export interface LiveLocationMapProps {
   /** 마커 위도. 없으면 폴백 문구를 표시한다. */
@@ -8,6 +9,8 @@ export interface LiveLocationMapProps {
   longitude?: number;
   /** 지도 높이(px). 기본 340. */
   height?: number;
+  /** 모서리 반경·테두리 제거(풀블리드 지도용, MapCard `flat`과 함께). */
+  flat?: boolean;
 }
 
 /** 마커 색(theme.css teal-500 토큰 hex 재사용). */
@@ -34,6 +37,7 @@ export function LiveLocationMap({
   latitude,
   longitude,
   height = 340,
+  flat = false,
 }: LiveLocationMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<ReturnType<typeof window.kakao.maps.Map> | null>(null);
@@ -102,7 +106,10 @@ export function LiveLocationMap({
   if (status === "disabled") {
     return (
       <div
-        className="flex items-center justify-center rounded-md border border-dashed border-line bg-canvas text-center text-2xs leading-[14px] text-muted"
+        className={cn(
+          "flex items-center justify-center bg-canvas text-center text-2xs leading-[14px] text-muted",
+          !flat && "rounded-md border border-dashed border-line",
+        )}
         style={{ height }}
       >
         <p>
@@ -118,7 +125,10 @@ export function LiveLocationMap({
 
   return (
     <div
-      className="relative w-full overflow-hidden rounded-md border border-line"
+      className={cn(
+        "relative w-full overflow-hidden",
+        !flat && "rounded-md border border-line",
+      )}
       style={{ height }}
     >
       <div ref={containerRef} className="h-full w-full" />
