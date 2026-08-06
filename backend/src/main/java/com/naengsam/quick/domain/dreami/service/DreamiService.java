@@ -40,8 +40,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class DreamiService {
 
-    private static final long MARKET_AVERAGE_UNIT_PRICE = 5_800L;
-
     private final DreamiRepository dreamiRepository;
     private final BoormiRepository boormiRepository;
     private final DreamiRequestDeniedDetailsRepository dreamiRequestDeniedDetailsRepository;
@@ -145,8 +143,8 @@ public class DreamiService {
     }
 
     /**
-     * 드리미 대시보드 — 완료 건수, 이번 달 수익, 지난달 대비 증감률, 시장 평균 단가 대비 초과 수익, 최근 6개월 수익 추이를 조회한다.
-     * 증감률은 지난달 수익이 0이면 0%로 처리하고, 반올림해 소수점 없이 반환한다.
+     * 드리미 대시보드 — 완료 건수, 이번 달 수익, 지난달 대비 증감률, 시장 평균 단가 대비 초과 수익, 최근 6개월 수익 추이를 조회한다. 증감률은 지난달 수익이 0이면 0%로 처리하고, 반올림해 소수점
+     * 없이 반환한다.
      */
     @Transactional(readOnly = true)
     public DreamiDashboardDto getDashboard(UUID dreamiId) {
@@ -166,7 +164,6 @@ public class DreamiService {
                 : Math.round((thisMonthRevenue - lastMonthRevenue) * 100.0 / lastMonthRevenue);
 
         long thisMonthCount = countOf(byMonth, thisMonth);
-        long marketAverageSurplus = thisMonthRevenue - MARKET_AVERAGE_UNIT_PRICE * thisMonthCount;
 
         List<MonthlyRevenueDto> recentSixMonths = IntStream.rangeClosed(0, 5)
                 .mapToObj(thisMonth::minusMonths)
@@ -175,7 +172,7 @@ public class DreamiService {
                 .toList();
 
         return DreamiDashboardDto.of(completedCount, thisMonthRevenue, growthPercent,
-                marketAverageSurplus, recentSixMonths);
+                thisMonthCount, recentSixMonths);
     }
 
     private long amountOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {

@@ -43,7 +43,7 @@ public class MoneyTx {
     private MoneyTxType type;
 
     @JdbcTypeCode(SqlTypes.BINARY)
-    @Column(name = "order_id", columnDefinition = "BINARY(16)", nullable = false)
+    @Column(name = "order_id", columnDefinition = "BINARY(16)")
     private UUID orderId;
 
     @JdbcTypeCode(SqlTypes.BINARY)

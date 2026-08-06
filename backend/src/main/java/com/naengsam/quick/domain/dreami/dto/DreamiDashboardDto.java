@@ -6,13 +6,13 @@ public record DreamiDashboardDto(
         long completedCount,
         long thisMonthRevenue,
         long monthOverMonthGrowthPercent,
-        long marketAverageSurplus,
+        long thisMonthCount,
         List<MonthlyRevenueDto> recentSixMonths
 ) {
 
     public static DreamiDashboardDto of(long completedCount, long thisMonthRevenue, long monthOverMonthGrowthPercent,
-            long marketAverageSurplus, List<MonthlyRevenueDto> recentSixMonths) {
-        return new DreamiDashboardDto(completedCount, thisMonthRevenue, monthOverMonthGrowthPercent,
-                marketAverageSurplus, recentSixMonths);
+                                        long thisMonthCount, List<MonthlyRevenueDto> recentSixMonths) {
+        return new DreamiDashboardDto(completedCount, thisMonthRevenue, monthOverMonthGrowthPercent, thisMonthCount,
+                recentSixMonths);
     }
 }

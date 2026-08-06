@@ -264,7 +264,7 @@ class DreamiServiceTest {
     // ---------- getDashboard ----------
 
     @Test
-    void 대시보드조회_완료건수_이번달수익_증감률_시장평균초과분_최근6개월을_조합해_반환한다() {
+    void 대시보드조회_완료건수_이번달수익_증감률_이번달건수_최근6개월을_조합해_반환한다() {
         UUID dreamiId = UUID.randomUUID();
         YearMonth thisMonth = YearMonth.now();
         YearMonth lastMonth = thisMonth.minusMonths(1);
@@ -279,7 +279,7 @@ class DreamiServiceTest {
         assertThat(result.completedCount()).isEqualTo(7L);
         assertThat(result.thisMonthRevenue()).isEqualTo(116_000L);
         assertThat(result.monthOverMonthGrowthPercent()).isEqualTo(16L); // (116000-100000)/100000*100, 반올림
-        assertThat(result.marketAverageSurplus()).isEqualTo(116_000L - 5_800L * 10L);
+        assertThat(result.thisMonthCount()).isEqualTo(10L);
         assertThat(result.recentSixMonths()).hasSize(6);
         MonthlyRevenueDto latest = result.recentSixMonths().getLast();
         assertThat(latest.month()).isEqualTo(thisMonth);
@@ -296,7 +296,7 @@ class DreamiServiceTest {
         DreamiDashboardDto result = dreamiService.getDashboard(dreamiId);
 
         assertThat(result.monthOverMonthGrowthPercent()).isEqualTo(0L);
-        assertThat(result.marketAverageSurplus()).isEqualTo(0L);
+        assertThat(result.thisMonthCount()).isEqualTo(0L);
     }
 
     // ---------- acceptOffer ----------
