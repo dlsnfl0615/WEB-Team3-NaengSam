@@ -214,7 +214,7 @@ CREATE TABLE `PICKUP_CERTIFICATION` (
 
 CREATE TABLE `BOORMI_REJECT_HISTORY` (
                                          `reject_id`      binary(16)    NOT NULL,
-                                         `reject_dtm`     timestamp     NOT NULL,
+                                         `reject_dtm`     timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                                          `reject_detail`  varchar(255)  NULL,
                                          `boormi_id`      binary(16)    NOT NULL
 );

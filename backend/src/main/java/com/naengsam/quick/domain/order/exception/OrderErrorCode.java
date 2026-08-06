@@ -24,7 +24,7 @@ public enum OrderErrorCode implements BaseErrorCode {
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "ORDER_014", "잘못된 커서입니다."),
     NO_DREAMI_TO_CONFIRM(HttpStatus.CONFLICT, "ORDER_015", "확정할 드리미가 없어요."),
     INVALID_DREAMI_CONFIRMATION(HttpStatus.CONFLICT, "ORDER_016", "확정할 수 없는 상태예요."),
-    INVALID_DREAMI_REJECTION(HttpStatus.CONFLICT, "ORDER_017", "거절할 수 없는 상태예요.");
+    CANNOT_CANCEL(HttpStatus.CONFLICT, "ORDER_017", "취소할 수 없는 상태예요.");
 
     private final HttpStatus status;
     private final String code;
