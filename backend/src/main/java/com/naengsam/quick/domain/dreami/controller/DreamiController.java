@@ -87,10 +87,10 @@ public class DreamiController {
         return dreamiService.findNearbyCalls(request);
     }
 
-    @Operation(summary = "현재 수행 중인 배달 카드 조회", description = "드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다.")
+    @Operation(summary = "현재 수행 중인 배달 카드 조회",
+            description = "드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다. 진행 중인 배달이 없으면 result가 null이다.")
     @GetMapping("/deliveries/current/card")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
     public OrderSummaryDto findCurrentDeliveryCard(@LoginUser UUID dreamiId) {
         return dreamiService.findCurrentDeliveryCard(dreamiId);
     }
