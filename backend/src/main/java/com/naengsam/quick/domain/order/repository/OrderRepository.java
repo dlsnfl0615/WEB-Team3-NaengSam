@@ -17,6 +17,11 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
      */
     Optional<Orders> findByDreamiIdAndOrderCd(UUID dreamiId, OrderCd orderCd);
 
+    /**
+     * 드리미 대시보드의 완료 건수 집계용.
+     */
+    long countByDreamiIdAndOrderCd(UUID dreamiId, OrderCd orderCd);
+
     @Query(value = """
             SELECT COUNT(*) FROM ORDERS o
             WHERE o.order_cd NOT IN ('COMPLETED','CANCELLED','CLAIM_REVIEW')

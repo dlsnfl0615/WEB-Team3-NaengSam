@@ -7,6 +7,11 @@ import static org.mockito.Mockito.when;
 
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
+import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
+import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
+import com.naengsam.quick.domain.matching.model.WaitingDreami;
+import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
@@ -103,7 +108,7 @@ class MatchingServiceConcurrencyTest {
         assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
         go.countDown();
 
-        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.PENDING_BOORMI_CONFIRMATION,
+        awaitUntil(() -> statusOf(orderId, offerId) == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION,
                 Duration.ofSeconds(5));
 
         // 경합 상황에서도 여러 번의 잘못된 재수락 시도는 상태 전이 예외로 무시될 뿐,
@@ -112,7 +117,7 @@ class MatchingServiceConcurrencyTest {
         matchingService.registerDreami(afterRaceDreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(afterRaceDreamiId), Duration.ofSeconds(5));
 
-        assertThat(statusOf(orderId, offerId)).isEqualTo(MatchingService.MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+        assertThat(statusOf(orderId, offerId)).isEqualTo(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
     }
 
     @Test
@@ -130,7 +135,7 @@ class MatchingServiceConcurrencyTest {
         int concurrentStarts = 16;
         CountDownLatch ready = new CountDownLatch(concurrentStarts);
         CountDownLatch go = new CountDownLatch(1);
-        Set<MatchingService.OrderOfferGroup> observedGroups = new CopyOnWriteArraySet<>();
+        Set<OrderOfferGroup> observedGroups = new CopyOnWriteArraySet<>();
         for (int i = 0; i < concurrentStarts; i++) {
             requestThreads.submit(() -> {
                 ready.countDown();
@@ -181,15 +186,15 @@ class MatchingServiceConcurrencyTest {
         // 오퍼 상태(BOORMI_REJECTED)와 방 상태(CLOSED)는 applyCancelOrderByBoormi 한 액션 안에서 순차적으로
         // 바뀌므로, 오퍼 상태만 기다리면 방 상태가 아직 갱신되기 전(OPEN)을 관찰할 수 있다. 최종적으로 확인할
         // 조건(그룹 CLOSED)까지 함께 기다려야 한다.
-        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.BOORMI_REJECTED
+        awaitUntil(() -> statusOf(orderId, offerId) == MatchOfferStatus.BOORMI_REJECTED
                         && matchingService.findOrderOfferGroup(orderId).orElseThrow().status()
-                        == MatchingService.OrderOfferGroupStatus.CLOSED,
+                        == OrderOfferGroupStatus.CLOSED,
                 Duration.ofSeconds(5));
 
         assertThat(matchingService.findOrderOfferGroup(orderId).orElseThrow().status())
-                .isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
+                .isEqualTo(OrderOfferGroupStatus.CLOSED);
         assertThat(getDreamiMap().get(dreamiId).status())
-                .isEqualTo(MatchingService.WaitingDreamiStatus.MATCHING);
+                .isEqualTo(WaitingDreamiStatus.MATCHING);
     }
 
     @Test
@@ -217,20 +222,20 @@ class MatchingServiceConcurrencyTest {
         // 오퍼 상태(WITHDRAWN)와 방 상태(CLOSED)는 applyCancelOrderByBoormi 한 액션 안에서 순차적으로
         // 바뀌므로, 오퍼 상태만 기다리면 방 상태가 아직 갱신되기 전(OPEN)을 관찰할 수 있다. 최종적으로 확인할
         // 조건(그룹 CLOSED)까지 함께 기다려야 한다.
-        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.WITHDRAWN
+        awaitUntil(() -> statusOf(orderId, offerId) == MatchOfferStatus.WITHDRAWN
                         && matchingService.findOrderOfferGroup(orderId).orElseThrow().status()
-                        == MatchingService.OrderOfferGroupStatus.CLOSED,
+                        == OrderOfferGroupStatus.CLOSED,
                 Duration.ofSeconds(5));
 
         assertThat(matchingService.findOrderOfferGroup(orderId).orElseThrow().status())
-                .isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
+                .isEqualTo(OrderOfferGroupStatus.CLOSED);
 
         // 큐가 완전히 비워질 시간을 준 뒤(추가 액션 하나를 흘려보내 확인), 수락이 뒤늦게 반영되지 않았는지 재확인한다.
         UUID flushDreamiId = UUID.randomUUID();
         matchingService.registerDreami(flushDreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(flushDreamiId), Duration.ofSeconds(5));
 
-        assertThat(statusOf(orderId, offerId)).isEqualTo(MatchingService.MatchOfferStatus.WITHDRAWN);
+        assertThat(statusOf(orderId, offerId)).isEqualTo(MatchOfferStatus.WITHDRAWN);
     }
 
     @Test
@@ -267,14 +272,14 @@ class MatchingServiceConcurrencyTest {
         go.countDown();
 
         // then (엔진 큐에 도착한 순서대로 처리되어, 둘 중 하나만 유효하게 반영된다)
-        awaitUntil(() -> statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.DREAMI_EXPIRED
-                        || statusOf(orderId, offerId) == MatchingService.MatchOfferStatus.PENDING_BOORMI_CONFIRMATION,
+        awaitUntil(() -> statusOf(orderId, offerId) == MatchOfferStatus.DREAMI_EXPIRED
+                        || statusOf(orderId, offerId) == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION,
                 Duration.ofSeconds(5));
 
-        MatchingService.MatchOfferStatus finalStatus = statusOf(orderId, offerId);
+        MatchOfferStatus finalStatus = statusOf(orderId, offerId);
         assertThat(finalStatus).isIn(
-                MatchingService.MatchOfferStatus.DREAMI_EXPIRED,
-                MatchingService.MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+                MatchOfferStatus.DREAMI_EXPIRED,
+                MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
 
         // 나중에 도착한 액션은 잘못된 상태 전이 예외로 무시될 뿐, 엔진 스레드는 죽지 않고 이후 액션을 계속 처리해야 한다.
         UUID flushDreamiId = UUID.randomUUID();
@@ -285,7 +290,7 @@ class MatchingServiceConcurrencyTest {
         assertThat(statusOf(orderId, offerId)).isEqualTo(finalStatus);
     }
 
-    private MatchingService.MatchOfferStatus statusOf(UUID orderId, UUID offerId) {
+    private MatchOfferStatus statusOf(UUID orderId, UUID offerId) {
         return matchingService.findOrderOfferGroup(orderId).orElseThrow()
                 .offers().stream()
                 .filter(offer -> offer.offerId().equals(offerId))
@@ -326,8 +331,8 @@ class MatchingServiceConcurrencyTest {
     }
 
     @SuppressWarnings("unchecked")
-    private Map<UUID, MatchingService.WaitingDreami> getDreamiMap() {
-        return (Map<UUID, MatchingService.WaitingDreami>)
+    private Map<UUID, WaitingDreami> getDreamiMap() {
+        return (Map<UUID, WaitingDreami>)
                 ReflectionTestUtils.getField(matchingService, "dreamiMap");
     }
 }

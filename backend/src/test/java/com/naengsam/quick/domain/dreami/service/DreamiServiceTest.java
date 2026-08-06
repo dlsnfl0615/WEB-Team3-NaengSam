@@ -1,16 +1,19 @@
 package com.naengsam.quick.domain.dreami.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.catchThrowable;
-import static org.mockito.BDDMockito.given;
-
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
+import com.naengsam.quick.domain.dreami.dto.MonthlyRevenueDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
@@ -28,10 +31,14 @@ import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
+import com.naengsam.quick.domain.payment.entity.MoneyTxType;
+import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -66,6 +73,9 @@ class DreamiServiceTest {
 
     @Mock
     private MatchingService matchingService;
+
+    @Mock
+    private MoneyTxRepository moneyTxRepository;
 
     @InjectMocks
     private DreamiService dreamiService;
@@ -118,6 +128,74 @@ class DreamiServiceTest {
         Throwable thrown = catchThrowable(() -> dreamiService.getDreamiProfile(id));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+    }
+
+    // ---------- saveVerificationFileKeys ----------
+
+    @Test
+    void 저장_직전_재확인에서_이미_승인됐으면_ALREADY_APPROVED_예외이고_저장하지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "oldIdCardKey", "oldCriminalRecordKey");
+        ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.of(dreami));
+
+        Throwable thrown = catchThrowable(
+                () -> dreamiService.saveVerificationFileKeys(dreamiId, "newIdCardKey", "newCriminalRecordKey"));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.ALREADY_APPROVED);
+        verify(dreamiRepository, never()).save(any());
+    }
+
+    @Test
+    void 저장_직전_재확인에서_승인_안됐으면_정상_저장한다() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "oldIdCardKey", "oldCriminalRecordKey"); // 기본 상태 REQUESTED
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.of(dreami));
+
+        dreamiService.saveVerificationFileKeys(dreamiId, "newIdCardKey", "newCriminalRecordKey");
+
+        verify(dreamiRepository).save(any());
+    }
+
+    @Test
+    void 저장_직전_재확인에서_신청기록이_없으면_최초_제출로_정상_저장한다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.empty());
+
+        dreamiService.saveVerificationFileKeys(dreamiId, "idCardKey", "criminalRecordKey");
+
+        verify(dreamiRepository).save(any());
+    }
+
+    // ---------- assertNotAlreadyApproved ----------
+
+    @Test
+    void 승인된_드리미면_ALREADY_APPROVED_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+
+        Throwable thrown = catchThrowable(() -> dreamiService.assertNotAlreadyApproved(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.ALREADY_APPROVED);
+    }
+
+    @Test
+    void 승인되지_않은_드리미면_예외없이_통과한다() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey"); // 기본 상태 REQUESTED
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+
+        assertThatCode(() -> dreamiService.assertNotAlreadyApproved(dreamiId)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 신청기록이_없으면_예외없이_통과한다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.empty());
+
+        assertThatCode(() -> dreamiService.assertNotAlreadyApproved(dreamiId)).doesNotThrowAnyException();
     }
 
     // ---------- findCurrentDeliveryCard ----------
@@ -249,6 +327,44 @@ class DreamiServiceTest {
         dreamiService.goOnline(dreamiId, location);
 
         verify(matchingService).registerDreami(dreamiId, location);
+    }
+
+    // ---------- getDashboard ----------
+
+    @Test
+    void 대시보드조회_완료건수_이번달수익_증감률_이번달건수_최근6개월을_조합해_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        YearMonth thisMonth = YearMonth.now();
+        YearMonth lastMonth = thisMonth.minusMonths(1);
+        given(orderRepository.countByDreamiIdAndOrderCd(dreamiId, OrderCd.COMPLETED)).willReturn(7L);
+        given(moneyTxRepository.aggregateByDreamiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxType.SETTLEMENT), any(), any()))
+                .willReturn(List.of(
+                        new MonthlyMoneyAggregate(thisMonth.getYear(), thisMonth.getMonthValue(), 116_000L, 10L),
+                        new MonthlyMoneyAggregate(lastMonth.getYear(), lastMonth.getMonthValue(), 100_000L, 8L)));
+
+        DreamiDashboardDto result = dreamiService.getDashboard(dreamiId);
+
+        assertThat(result.completedCount()).isEqualTo(7L);
+        assertThat(result.thisMonthRevenue()).isEqualTo(116_000L);
+        assertThat(result.monthOverMonthGrowthPercent()).isEqualTo(16L); // (116000-100000)/100000*100, 반올림
+        assertThat(result.thisMonthCount()).isEqualTo(10L);
+        assertThat(result.recentSixMonths()).hasSize(6);
+        MonthlyRevenueDto latest = result.recentSixMonths().getLast();
+        assertThat(latest.month()).isEqualTo(thisMonth);
+        assertThat(latest.revenue()).isEqualTo(116_000L);
+    }
+
+    @Test
+    void 대시보드조회_지난달_수익이_0이면_증감률은_0퍼센트다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(orderRepository.countByDreamiIdAndOrderCd(dreamiId, OrderCd.COMPLETED)).willReturn(0L);
+        given(moneyTxRepository.aggregateByDreamiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxType.SETTLEMENT), any(), any()))
+                .willReturn(List.of());
+
+        DreamiDashboardDto result = dreamiService.getDashboard(dreamiId);
+
+        assertThat(result.monthOverMonthGrowthPercent()).isEqualTo(0L);
+        assertThat(result.thisMonthCount()).isEqualTo(0L);
     }
 
     // ---------- acceptOffer ----------
