@@ -1,6 +1,5 @@
 package com.naengsam.quick.domain.dreami.controller;
 
-import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.dreami.dto.DreamiOnlineRequest;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
@@ -21,7 +20,6 @@ import jakarta.validation.Valid;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -94,16 +92,5 @@ public class DreamiController {
     @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
     public OrderSummaryDto findCurrentDeliveryCard(@LoginUser UUID dreamiId) {
         return dreamiService.findCurrentDeliveryCard(dreamiId);
-    }
-
-    @Operation(summary = "현재 수행 중인 배달 취소",
-            description = "드리미가 픽업 전인 현재 수행 중인 배달을 취소한다. 픽업 이후에는 취소할 수 없다.")
-    @DeleteMapping("/deliveries/current")
-    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
-    @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
-            codes = {"CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_ALREADY_CANCELLED", "DELIVERY_NOT_FOUND"})
-    public void cancelCurrentDelivery(@LoginUser UUID dreamiId) {
-        dreamiService.cancelCurrentDelivery(dreamiId);
     }
 }
