@@ -1,18 +1,22 @@
-# 배포 서버용 compose 파일.
+# 배포 서버용 백엔드 compose 파일.
 # CI 가 DockerHub 에 올린 이미지를 pull 해서, .env 를 런타임에 주입해 실행한다.
 # (이미지에는 시크릿이 들어있지 않다 — jar 만 들어있음)
 #
+# 모니터링(Prometheus·Grafana)은 이 파일에 없다. 저장소 루트의 monitoring/ 폴더에서
+# 별도 compose 로 관리한다 — CI 를 타지 않고, 백엔드와 따로 재기동할 수 있다.
+#
 # 사용법 (배포 서버에서):
+#   0) (최초 1회) 모니터링과 공유할 네트워크 생성
+#      docker network create symboorm
 #   1) 같은 폴더에 .env 를 둔다 (.env.example 참고, 실제 운영 값으로 채움)
-#   2) 같은 폴더에 monitoring/ 디렉토리를 함께 둔다 (prometheus·grafana 설정 파일이 여기서 마운트된다)
-#   3) docker compose pull   # 최신 이미지 받기
-#   4) docker compose up -d   # 백그라운드 기동
-#   5) docker compose logs -f # 로그 확인
+#   2) docker compose pull   # 최신 이미지 받기
+#   3) docker compose up -d   # 백그라운드 기동
+#   4) docker compose logs -f # 로그 확인
 #
 # 이미지 태그/계정은 환경변수로 덮어쓸 수 있다:
 #   DOCKERHUB_USERNAME=myid IMAGE_TAG=main docker compose up -d
 #
-# 모니터링 스택은 backend/monitoring/README.md 참고.
+# 모니터링 스택은 ../monitoring/README.md 참고.
 
 services:
   backend:
@@ -27,37 +31,8 @@ services:
     networks:
       - symboorm
 
-  prometheus:
-    image: prom/prometheus:v3.1.0
-    container_name: symboorm-prometheus
-    restart: always
-    # 호스트에 포트를 열지 않는다 — grafana 가 도커 네트워크 안에서만 조회한다
-    volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - prometheus-data:/prometheus
-    networks:
-      - symboorm
-
-  grafana:
-    image: grafana/grafana:11.5.0
-    container_name: symboorm-grafana
-    restart: always
-    ports:
-      - "3000:3000"
-    # GF_SECURITY_ADMIN_USER / GF_SECURITY_ADMIN_PASSWORD 를 .env 에서 주입
-    env_file:
-      - .env
-    volumes:
-      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
-      - grafana-data:/var/lib/grafana
-    networks:
-      - symboorm
-    depends_on:
-      - prometheus
-
-volumes:
-  prometheus-data:
-  grafana-data:
-
 networks:
+  # 모니터링 스택과 공유하는 네트워크. 어느 쪽 compose 도 소유하지 않는다.
+  # prometheus 가 이 네트워크 안에서 backend:8081 로 액츄에이터를 긁는다.
   symboorm:
+    external: true
