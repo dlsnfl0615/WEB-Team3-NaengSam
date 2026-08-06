@@ -12,6 +12,7 @@ import com.naengsam.quick.domain.boormi.entity.Charge;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.entity.Matching;
+import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
@@ -88,7 +89,7 @@ public class BoormiService {
                 orderRequest.deliveryRequest(), orderRequest.imageKey(), addresses);
 
         orderService.createOrders(orders);
-        paymentService.startPayment();
+        paymentService.payWithPoint(boormiId, orderId, charge.amount());
         if (!matchingService.startMatching(orders)) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);
         }
@@ -114,13 +115,13 @@ public class BoormiService {
         }
 
         orderService.cancel(order, CancelerCd.BOORMI); // 주문 취소 상태 전이 + 취소 이력 저장
+        paymentService.refundByPoint(orderId);         // 결제 포인트 전액 환불 (SSE 알림 전에 DB 작업을 끝낸다)
         matchingService.cancelOrderByBoormi(orderId);  // 제안 회수 + 드리미 SSE 알림
-        // TODO: 결제 취소/환불 연동 (PaymentService 구현 후)
     }
 
     /**
-     * 부르미가 수락한 드리미를 최종 확정한다. 확정 대기(PENDING_BOORMI_CONFIRMATION) 상태의 자기 주문만 확정할 수 있으며, DB 주문을 IN_PROGRESS 로 전이한 뒤 매칭엔진에 부르미 수락을
-     * 제출한다.
+     * 부르미가 수락한 드리미를 최종 확정한다. 확정 대기(PENDING_BOORMI_CONFIRMATION) 상태의 자기 주문만 확정할 수 있으며, DB 주문을 IN_PROGRESS 로 전이한 뒤 매칭엔진에
+     * 부르미 수락을 제출한다.
      */
     @Transactional
     public void confirmDreami(UUID boormiId, UUID orderId, UUID offerId) {
@@ -143,6 +144,29 @@ public class BoormiService {
         matchingRepository.save(matching);       // MATCHING 이력 저장
 
         matchingService.acceptByBoormi(offerId); // 인메모리 오퍼 MATCHED 확정 (fire-and-forget)
+    }
+    
+    /**
+     * 부르미가 확정 대기 중인 드리미를 거절한다. 확정 대기(PENDING_BOORMI_CONFIRMATION) 상태의 자기 주문만 거절할 수 있으며, DB 주문을 다시 MATCHING 으로 되돌린 뒤
+     * 매칭엔진에 부르미 거절을 제출한다. 거절당한 드리미 알림과 재오퍼는 매칭엔진이 담당한다.
+     */
+    @Transactional
+    public void rejectDreami(UUID boormiId, UUID orderId, UUID offerId) {
+        Orders order = orderService.getOrder(orderId);
+
+        if (!order.getBoormiId().equals(boormiId)) {
+            throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
+        }
+        if (!order.getOrderCd().equals(OrderCd.PENDING_BOORMI_CONFIRMATION)) {
+            throw new BusinessException(OrderErrorCode.CANNOT_CANCEL);
+        }
+        if (!matchingService.isBoormiOfferOwner(offerId, boormiId)) {
+            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
+        }
+
+        order.rejectDreami();                    // MATCHING 복귀 + dreami_id 해제 (dirty checking)
+
+        matchingService.rejectByBoormi(offerId); // 인메모리 오퍼 BOORMI_REJECTED + 재오퍼 (fire-and-forget)
     }
 
     /**
@@ -188,8 +212,8 @@ public class BoormiService {
     }
 
     /**
-     * 출발지와 도착지가 사실상 같은 위치인지 검증한다. 두 좌표의 직선거리가 {@link #TOO_CLOSE_DISTANCE}m 미만이면 SAME_ORIGIN_DESTINATION 예외를 던진다. 견적 조회·주문 접수 모두 카카오
-     * 도보 API 호출 전에 이 가드를 통과해야 한다 — 같은 좌표면 카카오가 경로를 반환하지 못해 EXTERNAL_SERVICE_ERROR 로 실패하기 때문이다.
+     * 출발지와 도착지가 사실상 같은 위치인지 검증한다. 두 좌표의 직선거리가 {@link #TOO_CLOSE_DISTANCE}m 미만이면 SAME_ORIGIN_DESTINATION 예외를 던진다. 견적
+     * 조회·주문 접수 모두 카카오 도보 API 호출 전에 이 가드를 통과해야 한다 — 같은 좌표면 카카오가 경로를 반환하지 못해 EXTERNAL_SERVICE_ERROR 로 실패하기 때문이다.
      */
     private void requireDifferentLocation(GeoPoint origin, GeoPoint destination) {
         if (distanceMeters(origin, destination) < TOO_CLOSE_DISTANCE) {
