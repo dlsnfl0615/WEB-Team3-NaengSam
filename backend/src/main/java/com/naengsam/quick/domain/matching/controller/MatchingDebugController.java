@@ -9,6 +9,7 @@ import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
 import com.naengsam.quick.domain.matching.dto.OrderOfferGroupDto;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
+import com.naengsam.quick.domain.matching.model.WaitingOrder;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyDreamiFinder;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
@@ -179,7 +180,7 @@ public class MatchingDebugController {
 
     record OrderView(UUID orderId, GeoPoint location) {
 
-        static OrderView from(MatchingService.WaitingOrder order) {
+        static OrderView from(WaitingOrder order) {
             return new OrderView(order.orderId(), order.location());
         }
     }

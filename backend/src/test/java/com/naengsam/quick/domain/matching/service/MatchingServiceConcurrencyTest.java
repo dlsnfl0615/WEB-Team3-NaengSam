@@ -8,6 +8,8 @@ import static org.mockito.Mockito.when;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
+import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
+import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -133,7 +135,7 @@ class MatchingServiceConcurrencyTest {
         int concurrentStarts = 16;
         CountDownLatch ready = new CountDownLatch(concurrentStarts);
         CountDownLatch go = new CountDownLatch(1);
-        Set<MatchingService.OrderOfferGroup> observedGroups = new CopyOnWriteArraySet<>();
+        Set<OrderOfferGroup> observedGroups = new CopyOnWriteArraySet<>();
         for (int i = 0; i < concurrentStarts; i++) {
             requestThreads.submit(() -> {
                 ready.countDown();
@@ -186,11 +188,11 @@ class MatchingServiceConcurrencyTest {
         // 조건(그룹 CLOSED)까지 함께 기다려야 한다.
         awaitUntil(() -> statusOf(orderId, offerId) == MatchOfferStatus.BOORMI_REJECTED
                         && matchingService.findOrderOfferGroup(orderId).orElseThrow().status()
-                        == MatchingService.OrderOfferGroupStatus.CLOSED,
+                        == OrderOfferGroupStatus.CLOSED,
                 Duration.ofSeconds(5));
 
         assertThat(matchingService.findOrderOfferGroup(orderId).orElseThrow().status())
-                .isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
+                .isEqualTo(OrderOfferGroupStatus.CLOSED);
         assertThat(getDreamiMap().get(dreamiId).status())
                 .isEqualTo(WaitingDreamiStatus.MATCHING);
     }
@@ -222,11 +224,11 @@ class MatchingServiceConcurrencyTest {
         // 조건(그룹 CLOSED)까지 함께 기다려야 한다.
         awaitUntil(() -> statusOf(orderId, offerId) == MatchOfferStatus.WITHDRAWN
                         && matchingService.findOrderOfferGroup(orderId).orElseThrow().status()
-                        == MatchingService.OrderOfferGroupStatus.CLOSED,
+                        == OrderOfferGroupStatus.CLOSED,
                 Duration.ofSeconds(5));
 
         assertThat(matchingService.findOrderOfferGroup(orderId).orElseThrow().status())
-                .isEqualTo(MatchingService.OrderOfferGroupStatus.CLOSED);
+                .isEqualTo(OrderOfferGroupStatus.CLOSED);
 
         // 큐가 완전히 비워질 시간을 준 뒤(추가 액션 하나를 흘려보내 확인), 수락이 뒤늦게 반영되지 않았는지 재확인한다.
         UUID flushDreamiId = UUID.randomUUID();

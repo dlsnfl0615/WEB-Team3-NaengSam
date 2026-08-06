@@ -15,6 +15,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
+import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.service.MatchingService;
@@ -233,8 +234,8 @@ class MatchingDebugControllerTest {
 
         MatchOffer offer = new MatchOffer(
                 offerId, orderId, dreamiId, MatchOfferStatus.OFFERED);
-        MatchingService.OrderOfferGroup group =
-                new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(),
+        OrderOfferGroup group =
+                new OrderOfferGroup(orderId, UUID.randomUUID(),
                         new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)), List.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
 

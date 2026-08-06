@@ -10,8 +10,11 @@ import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
+import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
+import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
+import com.naengsam.quick.domain.matching.model.WaitingOrder;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
@@ -25,7 +28,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -575,105 +577,5 @@ public class MatchingService {
 
     private void proceedToDelivery(MatchOffer matchOffer, UUID boormiId) {
         deliveryService.startDelivery(matchOffer.orderId(), matchOffer.dreamiId(), boormiId);
-    }
-
-    // ────────────────────────────── 조회 헬퍼 ──────────────────────────────
-
-    public enum OrderOfferGroupStatus {
-        /**
-         * 제안 응답 대기 중 (드리미 수락 후 부르미 확인 대기 포함)
-         */
-        OPEN,
-        /**
-         * 드리미+부르미 모두 수락하여 매칭 확정
-         */
-        MATCHED,
-        /**
-         * 더 이상 유효한 제안이 없음. rematchRequired로 재매칭 필요 여부를 판단한다.
-         */
-        CLOSED
-    }
-
-    /**
-     * 대기 중인 주문(매칭 시작 후 아직 확정되지 않은 주문). 별도 등록 큐 없이 {@link OrderOfferGroup}에서 그대로 도출되는 값이라 불변으로 둔다.
-     */
-    public record WaitingOrder(UUID orderId, GeoPoint location) {
-    }
-
-    /**
-     * 한 주문에 대해 동시에 뿌린 제안 묶음("방"). 방 자체의 상태(OPEN/MATCHED/CLOSED)와 재매칭 필요 여부를 여기서 관리한다.
-     */
-    public static final class OrderOfferGroup {
-        private final UUID orderId;
-        private final UUID boormiId;
-        private final GeoPoint location;
-        private final List<MatchOffer> offers;
-        // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
-        private volatile OrderOfferGroupStatus status;
-        private volatile boolean rematchRequired;
-
-        public OrderOfferGroup(UUID orderId, UUID boormiId, GeoPoint location, List<MatchOffer> offers) {
-            this.orderId = orderId;
-            this.boormiId = boormiId;
-            this.location = location;
-            // 라운드마다 엔진 스레드가 append하는 동시에 다른 스레드가 offers()로 읽으므로,
-            // ArrayList가 아닌 CopyOnWriteArrayList로 보관해 순회/복사 중 경합을 피한다.
-            this.offers = new CopyOnWriteArrayList<>(offers);
-            this.status = OrderOfferGroupStatus.OPEN;
-            this.rematchRequired = false;
-        }
-
-        public UUID orderId() {
-            return orderId;
-        }
-
-        public UUID boormiId() {
-            return boormiId;
-        }
-
-        public GeoPoint location() {
-            return location;
-        }
-
-        public List<MatchOffer> offers() {
-            return List.copyOf(offers);
-        }
-
-        public OrderOfferGroupStatus status() {
-            return status;
-        }
-
-        public boolean rematchRequired() {
-            return rematchRequired;
-        }
-
-        /**
-         * 새 오퍼 라운드를 추가하며 방을 다시 진행중(OPEN) 상태로 되돌린다. 재매칭/최초 오퍼 모두 이 경로를 사용한다.
-         */
-        void addOffersAndOpen(List<MatchOffer> newOffers) {
-            this.offers.addAll(newOffers);
-            this.status = OrderOfferGroupStatus.OPEN;
-            this.rematchRequired = false;
-        }
-
-        void closeForRematch() {
-            this.status = OrderOfferGroupStatus.CLOSED;
-            this.rematchRequired = true;
-        }
-
-        /**
-         * 부르미가 직접 주문을 취소한 경우. 재매칭 대상이 아니므로 rematchRequired는 세우지 않는다.
-         */
-        void cancel() {
-            this.status = OrderOfferGroupStatus.CLOSED;
-            this.rematchRequired = false;
-        }
-
-        private void requireStatus(OrderOfferGroupStatus expected) {
-            if (this.status != expected) {
-                throw new IllegalStateException(
-                        "잘못된 상태 전이입니다: orderId=" + orderId + ", 현재상태=" + status + ", 기대상태=" + expected);
-            }
-        }
     }
 }
