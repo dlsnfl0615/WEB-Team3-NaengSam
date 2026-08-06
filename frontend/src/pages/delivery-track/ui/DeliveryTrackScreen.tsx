@@ -3,7 +3,11 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Card, Icon, MapCard, Modal, ScreenShell, Toast } from "@/shared/ui";
 import { api, isApiError } from "@/shared/api";
 import type { DeliveryStatusResponseDto } from "@/shared/api";
-import { useSse, type SseHandlers } from "@/shared/lib";
+import {
+  useDreamiLocationBroadcast,
+  useSse,
+  type SseHandlers,
+} from "@/shared/lib";
 import { ROUTES } from "@/shared/config/routes";
 import {
   useActiveDelivery,
@@ -28,6 +32,9 @@ export function DeliveryTrackScreen() {
   const [params] = useSearchParams();
   const orderId = params.get("orderId");
   const isRealMode = Boolean(orderId);
+
+  // 실 모드(드리미)에서만 현재 GPS 위치를 5초 주기로 백엔드에 전송한다(픽업중·배송중 모두 커버).
+  useDreamiLocationBroadcast(orderId, { enabled: isRealMode });
   const active = useActiveDelivery();
   const advance = useDeliveryStore((s) => s.advance);
   const complete = useDeliveryStore((s) => s.complete);
