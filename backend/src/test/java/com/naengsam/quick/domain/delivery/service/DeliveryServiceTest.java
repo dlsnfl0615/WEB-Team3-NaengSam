@@ -111,6 +111,15 @@ class DeliveryServiceTest {
                 orderId, registeredDeliveries.get(orderId).getDreamiId(), PHOTO_KEY);
     }
 
+    // 등록된 주문의 배정 드리미/접수 부르미 본인이 취소를 요청하는 정상 경로 헬퍼(소유권 검증 통과).
+    private DeliveryStatusResponseDto cancelByDreami(UUID orderId) {
+        return deliveryService.cancelByDreami(orderId, registeredDeliveries.get(orderId).getDreamiId());
+    }
+
+    private DeliveryStatusResponseDto cancelByBoormi(UUID orderId) {
+        return deliveryService.cancelByBoormi(orderId, registeredDeliveries.get(orderId).getBoormiId());
+    }
+
     private BaseErrorCode errorCodeOf(Throwable thrown) {
         assertThat(thrown).isInstanceOf(BusinessException.class);
         return ((BusinessException) thrown).getErrorCode();
@@ -120,10 +129,12 @@ class DeliveryServiceTest {
         return new DreamiLocationRequest(new BigDecimal(latitude), new BigDecimal(longitude));
     }
 
+    // 세 취소 경로를 orderId 하나로 실행하는 헬퍼. 드리미/부르미는 등록된 소유자 본인으로 호출해 소유권 검증을 통과시키고,
+    // 그 이후의 상태 가드 분기만 검증되도록 한다.
     private List<Function<UUID, DeliveryStatusResponseDto>> cancelOperations() {
         return List.of(
-                deliveryService::cancelByDreami,
-                deliveryService::cancelByBoormi,
+                this::cancelByDreami,
+                this::cancelByBoormi,
                 deliveryService::cancelByAdmin);
     }
 

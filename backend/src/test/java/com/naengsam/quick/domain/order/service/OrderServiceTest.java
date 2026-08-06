@@ -8,6 +8,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
@@ -170,6 +171,20 @@ class OrderServiceTest {
         assertThat(savedCancel.getOrderId()).isEqualTo(orderId);
         assertThat(savedCancel.getCancelerCd()).isEqualTo(CancelerCd.BOORMI);
         assertThat(savedCancel.isPenaltyApplied()).isFalse();
+    }
+
+    @Test
+    void 취소_이미_종료된_주문이면_CANNOT_CANCEL_예외이고_이력을_저장하지_않는다() {
+        for (OrderCd terminal : List.of(OrderCd.CANCELLED, OrderCd.COMPLETED, OrderCd.CLAIM_REVIEW)) {
+            Orders order = matchingOrder(UUID.randomUUID());
+            ReflectionTestUtils.setField(order, "orderCd", terminal);
+
+            Throwable thrown = catchThrowable(() -> orderService.cancel(order, CancelerCd.BOORMI));
+
+            assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(OrderErrorCode.CANNOT_CANCEL);
+            assertThat(order.getOrderCd()).isEqualTo(terminal);
+        }
+        then(cancelRepository).should(never()).save(any());
     }
 
     @Test
