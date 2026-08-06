@@ -9,6 +9,14 @@ import {
 /** 주변 콜 조회 반경(m)·최대 건수(백엔드 상한 10). */
 const NEARBY_RADIUS_M = 3000;
 const NEARBY_COUNT = 10;
+/** 위치 취득 제한시간(ms). 넘기면 실패로 보고 사용자에게 재시도를 시킨다. */
+const GEOLOCATION_TIMEOUT_MS = 10_000;
+
+/** 위치 API마다 필드명이 달라서(위치등록 latitude/longitude, 주변콜 lat/lng) 내부 표준형을 둔다. */
+interface Coords {
+  latitude: number;
+  longitude: number;
+}
 
 /** 드리미가 받은 제안(SSE `offer_popup`). */
 export interface PendingOffer {
@@ -50,9 +58,9 @@ interface MatchingState {
   receiveOfferError: (payload: unknown) => void;
   /** 화면 이탈·로그아웃 시 진행 중 팝업 정리. */
   clearOffers: () => void;
-  goOnline: () => Promise<void>;
+  /** 드리미 진입 1회: 좌표를 한 번만 얻어 온라인 전환 → 주변 콜 조회까지 이어서 처리. */
+  startDreamiSession: () => Promise<void>;
   goOffline: () => Promise<void>;
-  loadNearbyCalls: () => Promise<void>;
   /** 드리미 제안 수락 → 성공 시 orderId 반환(실패 시 null). */
   acceptOffer: () => Promise<string | null>;
   rejectOffer: () => Promise<void>;
@@ -62,17 +70,38 @@ interface MatchingState {
   clearMessage: () => void;
 }
 
-/** 현재 좌표. 권한 거부·미지원이면 reject한다(임의 좌표를 서버에 넣지 않는다). */
-function getCurrentPosition(): Promise<GeolocationPosition> {
+/** 위치 취득 실패 사유별 안내. 사용자가 다음 행동을 고를 수 있게 구분한다. */
+function geolocationMessage(error: GeolocationPositionError): string {
+  switch (error.code) {
+    case error.PERMISSION_DENIED:
+      return "위치 권한이 필요해요. 권한을 허용한 뒤 다시 시도해주세요.";
+    case error.TIMEOUT:
+      return "위치 확인이 오래 걸려요. 실외로 이동한 뒤 다시 시도해주세요.";
+    default:
+      return "현재 위치를 확인할 수 없어요. 잠시 후 다시 시도해주세요.";
+  }
+}
+
+/**
+ * 현재 좌표. 권한 거부·미지원이면 reject한다(임의 좌표를 서버에 넣지 않는다).
+ * timeout을 주지 않으면 위치 확정이 지연될 때 Promise가 영영 풀리지 않아
+ * 온라인 전환 요청 자체가 나가지 않는다.
+ */
+function getCurrentCoords(): Promise<Coords> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
       reject(new Error("이 브라우저에서는 위치를 사용할 수 없어요."));
       return;
     }
-    navigator.geolocation.getCurrentPosition(resolve, () =>
-      reject(
-        new Error("위치 권한이 필요해요. 권한을 허용한 뒤 다시 시도해주세요."),
-      ),
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) =>
+        resolve({ latitude: coords.latitude, longitude: coords.longitude }),
+      (error) => reject(new Error(geolocationMessage(error))),
+      {
+        enableHighAccuracy: true,
+        timeout: GEOLOCATION_TIMEOUT_MS,
+        maximumAge: 0,
+      },
     );
   });
 }
@@ -89,7 +118,7 @@ function toMessage(e: unknown, fallback: string): string {
  * 구독하고, 수신 payload를 아래 `receive*` 액션에 넘긴다.
  *
  * 역할별 흐름:
- * - 드리미: `goOnline` → `offer_popup` 수신 → `acceptOffer`/`rejectOffer`
+ * - 드리미: `startDreamiSession` → `offer_popup` 수신 → `acceptOffer`/`rejectOffer`
  * - 부르미: 콜 등록(boormiOrderStore) → `dreami_info` 수신 → `confirmDreami`/`rejectDreami`
  */
 export const useMatchingStore = create<MatchingState>((set, get) => ({
@@ -165,34 +194,25 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
 
   clearOffers: () => set({ pendingOffer: null, incomingDreami: null }),
 
-  goOnline: async () => {
+  startDreamiSession: async () => {
+    // 이미 온라인이면 재등록하지 않는다(서버가 "이미 등록된 드리미입니다"로 응답한다).
+    if (get().online) return;
+
+    let coords: Coords;
     try {
-      const { coords } = await getCurrentPosition();
-      await api.goOnline({
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-      });
-      set({ online: true });
+      coords = await getCurrentCoords();
+      await api.goOnline(coords);
+      set({ online: true, message: null });
     } catch (e) {
       set({
         online: false,
         message: toMessage(e, "온라인 전환에 실패했어요."),
       });
+      return;
     }
-  },
 
-  goOffline: async () => {
+    // 온라인 전환에 쓴 좌표를 그대로 재사용한다(위치를 다시 물어 실패하는 경로를 없앤다).
     try {
-      await api.goOffline();
-      set({ online: false, pendingOffer: null });
-    } catch (e) {
-      set({ message: toMessage(e, "오프라인 전환에 실패했어요.") });
-    }
-  },
-
-  loadNearbyCalls: async () => {
-    try {
-      const { coords } = await getCurrentPosition();
       const { result } = await api.findNearbyCalls({
         lat: coords.latitude,
         lng: coords.longitude,
@@ -202,6 +222,15 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
       set({ nearbyCalls: result ?? [] });
     } catch (e) {
       set({ message: toMessage(e, "주변 콜을 불러오지 못했어요.") });
+    }
+  },
+
+  goOffline: async () => {
+    try {
+      await api.goOffline();
+      set({ online: false, pendingOffer: null });
+    } catch (e) {
+      set({ message: toMessage(e, "오프라인 전환에 실패했어요.") });
     }
   },
 
