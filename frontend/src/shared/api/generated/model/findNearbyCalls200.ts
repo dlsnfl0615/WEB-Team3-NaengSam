@@ -4,10 +4,11 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { NearbyCallDto } from './nearbyCallDto';
 
-export type Get200 = {
+export type FindNearbyCalls200 = {
   isSuccess?: boolean;
   code?: string;
   message?: string;
-  result?: string;
+  result?: NearbyCallDto[];
 };

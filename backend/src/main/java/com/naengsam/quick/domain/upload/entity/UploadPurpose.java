@@ -14,7 +14,8 @@ public enum UploadPurpose {
     DREAMI_ID_CARD(false),
     DREAMI_CRIMINAL_RECORD(false),
     PICKUP_CERTIFICATION_IMAGE(true),
-    DELIVERY_CERTIFICATION_IMAGE(true);
+    DELIVERY_CERTIFICATION_IMAGE(true),
+    ORDER_ITEM_IMAGE(false);
 
     private final boolean resourceScopeRequired;
 }

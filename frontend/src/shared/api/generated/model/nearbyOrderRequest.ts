@@ -5,6 +5,9 @@
  * OpenAPI spec version: v0
  */
 
-export type GetParams = {
-key: string;
-};
+export interface NearbyOrderRequest {
+  lat: number;
+  lng: number;
+  radius: number;
+  count: number;
+}

@@ -30,7 +30,10 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
     setError(null);
     setUploading(true);
     try {
-      const { result } = await api.getPresignedUrl({ fileName: file.name });
+      const { result } = await api.getPresignedUrl({
+        fileName: file.name,
+        purpose: "ORDER_ITEM_IMAGE",
+      });
       if (!result?.url || !result?.key)
         throw new Error("업로드 URL을 받지 못했어요.");
       // presigned URL로 S3에 직접 PUT(공통 axios 인스턴스 미사용).
