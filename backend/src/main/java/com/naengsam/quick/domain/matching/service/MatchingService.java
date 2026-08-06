@@ -475,6 +475,13 @@ public class MatchingService {
         return findOffer(offerId).map(MatchOffer::dreamiId);
     }
 
+    /**
+     * offerId 로 해당 제안이 속한 주문을 조회한다. 드리미 수락 시 ORDERS.order_cd 반영에 사용한다. 해당 오퍼가 없으면 empty.
+     */
+    public Optional<UUID> findOrderIdByOfferId(UUID offerId) {
+        return findOffer(offerId).map(MatchOffer::orderId);
+    }
+
     Optional<WaitingDreami> findDreami(UUID dreamiId) {
         return Optional.ofNullable(dreamiMap.get(dreamiId));
     }

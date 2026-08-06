@@ -82,6 +82,18 @@ class MatchingControllerTest {
     }
 
     @Test
+    void 본인_주문이면_부르미_수락_요청을_서비스에_위임한다() throws Exception {
+        UUID offerId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        when(matchingService.isBoormiOfferOwner(offerId, boormiId)).thenReturn(true);
+
+        mockMvc.perform(post("/api/v1/matching/offers/{offerId}/boormi-accept", offerId)
+                .sessionAttr(SessionConst.LOGIN_USER, boormiId));
+
+        verify(matchingService).acceptByBoormi(offerId);
+    }
+
+    @Test
     void 본인_주문이_아니면_부르미_수락_요청을_위임하지_않는다() throws Exception {
         UUID offerId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
@@ -92,7 +104,18 @@ class MatchingControllerTest {
 
         verify(matchingService, never()).acceptByBoormi(offerId);
     }
-    
+
+    @Test
+    void 본인_주문이면_부르미_거절_요청을_서비스에_위임한다() throws Exception {
+        UUID offerId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        when(matchingService.isBoormiOfferOwner(offerId, boormiId)).thenReturn(true);
+
+        mockMvc.perform(post("/api/v1/matching/offers/{offerId}/boormi-reject", offerId)
+                .sessionAttr(SessionConst.LOGIN_USER, boormiId));
+
+        verify(matchingService).rejectByBoormi(offerId);
+    }
 
     @Test
     void 본인_주문이_아니면_부르미_거절_요청을_위임하지_않는다() throws Exception {
