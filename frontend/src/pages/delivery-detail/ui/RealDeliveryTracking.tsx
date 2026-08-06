@@ -10,7 +10,12 @@ import {
   Toast,
   TopBar,
 } from "@/shared/ui";
-import { useSse, type SseHandlers } from "@/shared/lib";
+import {
+  recallDeliveryStage,
+  rememberDeliveryStage,
+  useSse,
+  type SseHandlers,
+} from "@/shared/lib";
 import { ROUTES } from "@/shared/config/routes";
 import { api, isApiError, DeliveryStatusResponseDtoStatus } from "@/shared/api";
 import type {
@@ -44,13 +49,18 @@ export function RealDeliveryTracking({
 }: RealDeliveryTrackingProps) {
   const navigate = useNavigate();
 
+  // URL이 알려준 상태 > 마지막으로 관측한 상태 > 픽업중. 홈 카드로 재진입하면 URL에
+  // 상태가 없어 픽업중으로 되돌아가므로 스냅샷으로 복원한다.
   const [status, setStatus] = useState<DeliveryStatusResponseDtoStatus>(
-    initialStatus ?? DeliveryStatusResponseDtoStatus.PICKUP_NORMAL,
+    initialStatus ??
+      recallDeliveryStage(orderId) ??
+      DeliveryStatusResponseDtoStatus.PICKUP_NORMAL,
   );
   const [location, setLocation] = useState<DeliveryLocationDto | null>(null);
-  const [toast, setToast] = useState<{ title: string; description?: string } | null>(
-    null,
-  );
+  const [toast, setToast] = useState<{
+    title: string;
+    description?: string;
+  } | null>(null);
 
   // 부르미 취소(확인 모달) 상태.
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -69,11 +79,20 @@ export function RealDeliveryTracking({
     );
   };
 
+  // 상태 전이는 항상 스냅샷에 남긴다(재진입 시 픽업중으로 되돌아가지 않도록).
+  const applyStatus = (next: DeliveryStatusResponseDtoStatus) => {
+    setStatus(next);
+    rememberDeliveryStage(orderId, next);
+  };
+
   // 진행 중 알림 토스트: 잠시 노출 후 자동으로 사라진다.
   const showTransientToast = (t: { title: string; description?: string }) => {
     setToast(t);
     if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), TRANSIENT_TOAST_MS);
+    toastTimer.current = window.setTimeout(
+      () => setToast(null),
+      TRANSIENT_TOAST_MS,
+    );
   };
 
   useEffect(
@@ -101,7 +120,7 @@ export function RealDeliveryTracking({
     delivery_delivering: (data) => {
       const dto = forThisOrder(data);
       if (!dto) return;
-      setStatus(dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERING);
+      applyStatus(dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERING);
       showTransientToast({
         title: "드리미가 픽업을 완료했어요",
         description: dto.message ?? "지금부터 배송을 시작해요.",
@@ -111,14 +130,14 @@ export function RealDeliveryTracking({
     delivery_completed: (data) => {
       const dto = forThisOrder(data);
       if (!dto) return;
-      setStatus(dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERED);
+      applyStatus(dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERED);
       setToast({ title: "배달이 완료됐어요", description: dto.message });
       scheduleNav(ROUTES.deliveryComplete);
     },
     delivery_cancelled: (data) => {
       const dto = forThisOrder(data);
       if (!dto) return;
-      setStatus(
+      applyStatus(
         dto.status ?? DeliveryStatusResponseDtoStatus.PICKUP_CANCELLED_BY_ADMIN,
       );
       setToast({ title: "배달이 취소됐어요", description: dto.message });
@@ -145,7 +164,9 @@ export function RealDeliveryTracking({
       navigate(ROUTES.home, { replace: true });
     } catch (e) {
       setCancelError(
-        isApiError(e) ? e.message : "취소에 실패했어요. 잠시 후 다시 시도해 주세요.",
+        isApiError(e)
+          ? e.message
+          : "취소에 실패했어요. 잠시 후 다시 시도해 주세요.",
       );
     } finally {
       setCanceling(false);
@@ -158,7 +179,11 @@ export function RealDeliveryTracking({
 
       {toast && (
         <div className="pt-2">
-          <Toast icon="bell" title={toast.title} description={toast.description} />
+          <Toast
+            icon="bell"
+            title={toast.title}
+            description={toast.description}
+          />
         </div>
       )}
 
@@ -189,7 +214,9 @@ export function RealDeliveryTracking({
           </span>
           <div className="flex flex-col">
             <span className="text-2xs text-muted">실시간 상태</span>
-            <span className="text-md font-bold text-navy-900">{view.title}</span>
+            <span className="text-md font-bold text-navy-900">
+              {view.title}
+            </span>
           </div>
         </Card>
       </main>
