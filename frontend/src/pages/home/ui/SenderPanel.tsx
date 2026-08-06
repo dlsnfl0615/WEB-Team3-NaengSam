@@ -11,6 +11,7 @@ import {
 import { ROUTES } from "@/shared/config/routes";
 import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
 import {
+  MATCHING_ORDER_CDS,
   ONGOING_ORDER_CDS,
   ORDER_PROGRESS,
 } from "@/shared/store/boormiOrderAdapter";
@@ -60,7 +61,8 @@ export function SenderPanel() {
       ) : ongoing.length > 0 ? (
         <div className="flex flex-col gap-3">
           {ongoing.map((o) => (
-            // 클릭 시 SSE 기반 실시간 추적(부르미 수령인) 화면으로 이동한다.
+            // 아직 드리미가 없으면 매칭 대기 화면으로, 확정된 뒤에는
+            // SSE 기반 실시간 추적(부르미 수령인) 화면으로 이동한다.
             <DeliveryCard
               key={o.id}
               icon={o.icon}
@@ -69,7 +71,11 @@ export function SenderPanel() {
               status={o.statusLabel}
               progress={ORDER_PROGRESS[o.statusLabel]}
               onClick={() =>
-                navigate(`${ROUTES.deliveryDetail}?orderId=${o.id}`)
+                navigate(
+                  MATCHING_ORDER_CDS.has(o.orderCd)
+                    ? `${ROUTES.matching}?orderId=${o.id}`
+                    : `${ROUTES.deliveryDetail}?orderId=${o.id}`,
+                )
               }
             />
           ))}

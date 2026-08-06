@@ -8,7 +8,7 @@ import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
-import com.naengsam.quick.domain.matching.service.MatchingService.WaitingOrder;
+import com.naengsam.quick.domain.matching.model.WaitingOrder;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;

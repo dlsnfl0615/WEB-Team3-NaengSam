@@ -1,0 +1,14 @@
+# 이 디렉토리의 *.json 을 그라파나 기동 시 대시보드로 자동 등록한다.
+# 커뮤니티 대시보드(4701, 19004)는 여기 두지 않는다 — ID 로 재생산 가능하므로 README 의 import 절차를 따른다.
+# 여기에는 우리가 직접 만든, 커스텀 메트릭(sse_*)에 의존해 재생산이 불가능한 대시보드만 둔다.
+apiVersion: 1
+
+providers:
+  - name: symboorm
+    folder: SymBoorm
+    type: file
+    # UI 에서 수정해도 파일이 SSOT 다. 저장하려면 JSON 을 export 해서 이 파일을 갱신할 것.
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards
+      foldersFromFilesStructure: false

@@ -1,7 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import { ScreenShell, SegmentedToggle, TopBar } from "@/shared/ui";
 import { useRole } from "@/shared/lib/role/useRole";
-import type { Role } from "@/shared/lib/role/RoleContext";
+import { useRoleSwitch } from "@/shared/lib/role/useRoleSwitch";
 import { useRoleLocked } from "@/shared/store/deliveryStore";
 import { DriverEarnings } from "./DriverEarnings";
 import { SenderSavings } from "./SenderSavings";
@@ -13,7 +13,8 @@ import { SenderSavings } from "./SenderSavings";
  */
 export function EarningsScreen() {
   const navigate = useNavigate();
-  const { role, setRole } = useRole();
+  const { role } = useRole();
+  const { onRoleChange, pending, error } = useRoleSwitch();
   const roleLocked = useRoleLocked();
 
   const isDriver = role === "드리미";
@@ -30,9 +31,11 @@ export function EarningsScreen() {
         <SegmentedToggle
           options={["부르미", "드리미"]}
           value={role}
-          onChange={(value) => setRole(value as Role)}
-          disabled={roleLocked}
+          onChange={onRoleChange}
+          disabled={roleLocked || pending}
         />
+
+        {error && <p className="text-2xs text-status-danger">{error}</p>}
 
         {isDriver ? <DriverEarnings /> : <SenderSavings />}
       </main>
