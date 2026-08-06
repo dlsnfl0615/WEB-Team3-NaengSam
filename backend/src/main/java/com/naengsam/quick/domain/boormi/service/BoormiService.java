@@ -89,7 +89,7 @@ public class BoormiService {
                 orderRequest.deliveryRequest(), orderRequest.imageKey(), addresses);
 
         orderService.createOrders(orders);
-        paymentService.startPayment();
+        paymentService.payWithPoint(boormiId, orderId, charge.amount());
         if (!matchingService.startMatching(orders)) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);
         }
@@ -115,8 +115,8 @@ public class BoormiService {
         }
 
         orderService.cancel(order, CancelerCd.BOORMI); // 주문 취소 상태 전이 + 취소 이력 저장
+        paymentService.refundByPoint(orderId);         // 결제 포인트 전액 환불 (SSE 알림 전에 DB 작업을 끝낸다)
         matchingService.cancelOrderByBoormi(orderId);  // 제안 회수 + 드리미 SSE 알림
-        // TODO: 결제 취소/환불 연동 (PaymentService 구현 후)
     }
 
     /**
@@ -145,7 +145,7 @@ public class BoormiService {
 
         matchingService.acceptByBoormi(offerId); // 인메모리 오퍼 MATCHED 확정 (fire-and-forget)
     }
-
+    
     /**
      * 부르미가 확정 대기 중인 드리미를 거절한다. 확정 대기(PENDING_BOORMI_CONFIRMATION) 상태의 자기 주문만 거절할 수 있으며, DB 주문을 다시 MATCHING 으로 되돌린 뒤
      * 매칭엔진에 부르미 거절을 제출한다. 거절당한 드리미 알림과 재오퍼는 매칭엔진이 담당한다.

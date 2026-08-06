@@ -6,6 +6,7 @@ import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.payment.service.WalletService;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
 import com.naengsam.quick.domain.user.dto.SignUpRequest;
 import com.naengsam.quick.domain.user.dto.UserDto;
@@ -29,9 +30,10 @@ public class UserService {
     private final DreamiRepository dreamiRepository;
     private final OrderRepository orderRepository;
     private final SmsVerificationService smsVerificationService;
+    private final WalletService walletService;
 
     /**
-     * 휴대폰 인증을 마친 사용자를 가입시킨다. 이메일/휴대폰 중복과 인증 완료 여부를 검증한 뒤 저장한다.
+     * 휴대폰 인증을 마친 사용자를 가입시킨다. 이메일/휴대폰 중복과 인증 완료 여부를 검증한 뒤 저장하고, 같은 트랜잭션에서 지갑까지 만든다.
      */
     @Transactional
     public UserDto signup(SignUpRequest request) {
@@ -54,6 +56,7 @@ public class UserService {
         Boormi boormi = Boormi.create(request.email(), request.password(), request.name(), phone,
                 request.birthdate());
         boormiRepository.save(boormi);
+        walletService.createWallet(boormi.getBoormiId());
 
         smsVerificationService.consumeVerified(phone);
         return UserDto.from(boormi, false);
