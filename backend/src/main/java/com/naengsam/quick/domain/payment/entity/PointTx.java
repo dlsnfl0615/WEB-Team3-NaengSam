@@ -15,8 +15,11 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 /**
- * 포인트 지갑의 거래 1건. 충전(CHARGE)은 {@code payment_id} 를, 배달 콜 결제(PAYMENT)와 환불(REFUND)은 {@code order_id} 를 근거로 갖고, 머니→포인트
+ * 포인트 지갑의 거래 1건. 충전(CHARGE)은 {@code payment_id} 를, 배달 콜 결제(PAYMENT)는 {@code order_id} 를 근거로 갖고, 머니→포인트
  * 전환(EXCHANGE_IN)은 둘 다 비어 있다.
+ * <p>
+ * 이 행은 거래 건의 <b>현재 상태</b>를 나타낸다. 환불은 새 행을 만들지 않고 원본 결제 행의 {@code status} 를 REFUNDED_FULL 로 전이시키므로, 4000원을 결제한 뒤
+ * 환불하면 이 테이블에는 net 0 인 행 하나만 남는다. 개별 잔액 변동(-4000, +4000)은 {@link PointLedger} 가 로그로 남긴다.
  */
 @Entity
 @Table(name = "POINT_TX")
@@ -74,5 +77,19 @@ public class PointTx {
         pointTx.orderId = orderId;
         pointTx.createdDtm = LocalDateTime.now();
         return pointTx;
+    }
+
+    /**
+     * 이 거래를 전액 환불 상태로 전이한다. 이미 환불된 거래면 아무것도 하지 않아 같은 요청이 두 번 들어와도 결과가 같다.
+     *
+     * @return 이번 호출로 실제 전이가 일어났으면 true
+     */
+    public boolean markRefundedFull() {
+        if (this.status == PointTxStatusCd.REFUNDED_FULL) {
+            return false;
+        }
+        this.status = PointTxStatusCd.REFUNDED_FULL;
+        this.updatedDtm = LocalDateTime.now();
+        return true;
     }
 }

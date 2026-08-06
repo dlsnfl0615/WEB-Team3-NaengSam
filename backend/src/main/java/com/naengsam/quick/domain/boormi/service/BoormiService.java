@@ -88,7 +88,7 @@ public class BoormiService {
                 orderRequest.deliveryRequest(), orderRequest.imageKey(), addresses);
 
         orderService.createOrders(orders);
-        paymentService.startPayment();
+        paymentService.payWithPoint(boormiId, orderId, charge.amount());
         if (!matchingService.startMatching(orders)) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);
         }
@@ -114,8 +114,8 @@ public class BoormiService {
         }
 
         orderService.cancel(order, CancelerCd.BOORMI); // 주문 취소 상태 전이 + 취소 이력 저장
+        paymentService.refundByPoint(orderId);         // 결제 포인트 전액 환불 (SSE 알림 전에 DB 작업을 끝낸다)
         matchingService.cancelOrderByBoormi(orderId);  // 제안 회수 + 드리미 SSE 알림
-        // TODO: 결제 취소/환불 연동 (PaymentService 구현 후)
     }
 
     /**
@@ -144,7 +144,7 @@ public class BoormiService {
 
         matchingService.acceptByBoormi(offerId); // 인메모리 오퍼 MATCHED 확정 (fire-and-forget)
     }
-
+    
     /**
      * 부르미가 신청한 주문 목록을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하다.
      */

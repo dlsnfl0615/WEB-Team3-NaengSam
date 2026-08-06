@@ -1,5 +1,7 @@
 package com.naengsam.quick.domain.payment.entity;
 
+import com.naengsam.quick.domain.payment.exception.PaymentErrorCode;
+import com.naengsam.quick.global.exception.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -38,5 +40,24 @@ public class PointWallet {
         pointWallet.amount = 0L;
         pointWallet.updatedDtm = LocalDateTime.now();
         return pointWallet;
+    }
+
+    /**
+     * 포인트를 차감한다. 잔액이 모자라면 차감하지 않고 INSUFFICIENT_POINT 를 던진다. 호출부가 지갑 행을 비관적 락으로 잡은 뒤 호출해야 잔액 검사와 차감이 직렬화된다.
+     */
+    public void deduct(long amount) {
+        if (this.amount < amount) {
+            throw new BusinessException(PaymentErrorCode.INSUFFICIENT_POINT);
+        }
+        this.amount -= amount;
+        this.updatedDtm = LocalDateTime.now();
+    }
+
+    /**
+     * 차감했던 포인트를 되돌린다.
+     */
+    public void refund(long amount) {
+        this.amount += amount;
+        this.updatedDtm = LocalDateTime.now();
     }
 }
