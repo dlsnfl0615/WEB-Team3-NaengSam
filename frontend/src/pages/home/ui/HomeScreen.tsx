@@ -41,7 +41,7 @@ export function HomeScreen() {
     return state?.dreamiVerificationSubmitted
       ? {
           title: "심사 요청이 접수됐어요",
-          description: "심사가 끝나면 알려드릴게요. 잠시만 기다려 주세요.",
+          description: "심사 요청이 접수됐어요.",
         }
       : null;
   });
