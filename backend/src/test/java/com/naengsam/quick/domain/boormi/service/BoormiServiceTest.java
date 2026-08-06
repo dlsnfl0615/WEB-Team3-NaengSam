@@ -465,7 +465,7 @@ BoormiServiceTest {
     }
 
     @Test
-    void 거절_상태가_PENDING_BOORMI_CONFIRMATION이_아니면_INVALID_DREAMI_REJECTION_예외() {
+    void 거절_상태가_PENDING_BOORMI_CONFIRMATION이_아니면_CANNOT_CANCEL_예외() {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.MATCHING);
@@ -475,7 +475,7 @@ BoormiServiceTest {
                 () -> boormiService.rejectDreami(boormiId, orderId, UUID.randomUUID()));
 
         assertThat(((BusinessException) thrown).getErrorCode())
-                .isEqualTo(OrderErrorCode.INVALID_DREAMI_REJECTION);
+                .isEqualTo(OrderErrorCode.CANNOT_CANCEL);
         then(matchingService).should(never()).rejectByBoormi(any());
     }
 
