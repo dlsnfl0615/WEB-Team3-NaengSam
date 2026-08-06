@@ -210,7 +210,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     if (!pendingOffer || submitting) return null;
     set({ submitting: true });
     try {
-      await api.acceptByDreami(pendingOffer.offerId);
+      await api.acceptOffer(pendingOffer.offerId);
       set({ pendingOffer: null, submitting: false });
       return pendingOffer.orderId;
     } catch (e) {
@@ -224,7 +224,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     if (!pendingOffer || submitting) return;
     set({ submitting: true });
     try {
-      await api.rejectByDreami(pendingOffer.offerId);
+      await api.rejectOffer(pendingOffer.offerId);
       set({ pendingOffer: null });
     } catch (e) {
       set({ message: toMessage(e, "거절에 실패했어요.") });
@@ -255,7 +255,9 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     if (!incomingDreami || submitting) return;
     set({ submitting: true });
     try {
-      await api.rejectByBoormi(incomingDreami.offerId);
+      await api.rejectDreami(incomingDreami.orderId, {
+        offerId: incomingDreami.offerId,
+      });
       set({ incomingDreami: null });
     } catch (e) {
       set({ message: toMessage(e, "거절에 실패했어요.") });
