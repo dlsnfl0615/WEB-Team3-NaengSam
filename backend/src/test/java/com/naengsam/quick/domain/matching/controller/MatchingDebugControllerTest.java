@@ -13,6 +13,11 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.model.MatchOffer;
+import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
+import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
+import com.naengsam.quick.domain.matching.model.WaitingDreami;
+import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyDreamiFinder;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
@@ -134,8 +139,8 @@ class MatchingDebugControllerTest {
     void 등록후_조회하면_대기중_드리미_목록에_나타난다() throws Exception {
         UUID dreamiId = UUID.randomUUID();
         GeoPoint location = new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0));
-        MatchingService.WaitingDreami waitingDreami = new MatchingService.WaitingDreami(
-                dreamiId, location, MatchingService.WaitingDreamiStatus.MATCHING, LocalDateTime.now());
+        WaitingDreami waitingDreami = new WaitingDreami(
+                dreamiId, location, WaitingDreamiStatus.MATCHING, LocalDateTime.now());
         when(matchingService.waitingDreamis()).thenReturn(List.of(waitingDreami));
 
         mockMvc.perform(get("/api/v1/debug/matching/dreamis"))
@@ -227,10 +232,10 @@ class MatchingDebugControllerTest {
         UUID offerId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
 
-        MatchingService.MatchOffer offer = new MatchingService.MatchOffer(
-                offerId, orderId, dreamiId, MatchingService.MatchOfferStatus.OFFERED);
-        MatchingService.OrderOfferGroup group =
-                new MatchingService.OrderOfferGroup(orderId, UUID.randomUUID(),
+        MatchOffer offer = new MatchOffer(
+                offerId, orderId, dreamiId, MatchOfferStatus.OFFERED);
+        OrderOfferGroup group =
+                new OrderOfferGroup(orderId, UUID.randomUUID(),
                         new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)), List.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
 

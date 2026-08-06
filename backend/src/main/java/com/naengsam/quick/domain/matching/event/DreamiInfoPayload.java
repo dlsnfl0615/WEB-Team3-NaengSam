@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.matching.event;
 
-import com.naengsam.quick.domain.matching.service.MatchingService.MatchOffer;
+import com.naengsam.quick.domain.matching.model.MatchOffer;
 import java.util.UUID;
 
 /**
