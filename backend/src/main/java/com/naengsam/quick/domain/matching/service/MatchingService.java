@@ -396,20 +396,23 @@ public class MatchingService {
     void applyRejectByBoormi(UUID offerId) {
         log.debug("부르미 거절 액션 실행: offerId={}", offerId);
 
-        findOffer(offerId).ifPresentOrElse(
-                matchOffer -> {
-                    matchOffer.rejectByBoormi();
+        // 해당 match가 PENDING_BOORMI_CONFIRMATION 상태가 아니라면 이미 수락/만료/취소 등으로 처리가 된거임
+        findOffer(offerId)
+                .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION)
+                .ifPresentOrElse(
+                        matchOffer -> {
+                            matchOffer.rejectByBoormi();
 
-                    // 거절당한 드리미에게 부르미가 거절했음을 알리고, 다시 배달가능 상태로 변경
-                    sseService.send(matchOffer.dreamiId(), MatchingEventType.BOORMI_REJECTED,
-                            new BoormiRejectedPayload(matchOffer.offerId(), matchOffer.orderId()));
-                    findDreami(matchOffer.dreamiId())
-                            .ifPresent(WaitingDreami::markMatching);
+                            // 거절당한 드리미에게 부르미가 거절했음을 알리고, 다시 배달가능 상태로 변경
+                            sseService.send(matchOffer.dreamiId(), MatchingEventType.BOORMI_REJECTED,
+                                    new BoormiRejectedPayload(matchOffer.offerId(), matchOffer.orderId()));
+                            findDreami(matchOffer.dreamiId())
+                                    .ifPresent(WaitingDreami::markMatching);
 
-                    closeGroupForRematch(matchOffer.orderId());
-                },
-                () -> log.debug("존재하지 않는 제안 부르미 거절 요청, 무시: offerId={}", offerId)
-        );
+                            closeGroupForRematch(matchOffer.orderId());
+                        },
+                        () -> log.debug("거절 가능한 상태가 아닌 제안 부르미 거절 요청, 무시: offerId={}", offerId)
+                );
     }
 
     public void expireDreamiOffer(UUID offerId) {
@@ -470,6 +473,13 @@ public class MatchingService {
      */
     public Optional<UUID> findDreamiIdByOfferId(UUID offerId) {
         return findOffer(offerId).map(MatchOffer::dreamiId);
+    }
+
+    /**
+     * offerId 로 해당 제안이 속한 주문을 조회한다. 드리미 수락 시 ORDERS.order_cd 반영에 사용한다. 해당 오퍼가 없으면 empty.
+     */
+    public Optional<UUID> findOrderIdByOfferId(UUID offerId) {
+        return findOffer(offerId).map(MatchOffer::orderId);
     }
 
     Optional<WaitingDreami> findDreami(UUID dreamiId) {

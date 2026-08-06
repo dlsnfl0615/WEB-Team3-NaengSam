@@ -18,6 +18,7 @@ import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
@@ -310,7 +311,7 @@ BoormiServiceTest {
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
-        then(orderService).should(never()).cancel(any(), any());
+        then(orderService).should(never()).cancel(any(Orders.class), any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
@@ -325,7 +326,7 @@ BoormiServiceTest {
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.NOT_ORDER_OWNER);
-        then(orderService).should(never()).cancel(any(), any());
+        then(orderService).should(never()).cancel(any(Orders.class), any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
@@ -340,7 +341,7 @@ BoormiServiceTest {
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.CANNOT_CANCEL_AFTER_PICKUP);
-        then(orderService).should(never()).cancel(any(), any());
+        then(orderService).should(never()).cancel(any(Orders.class), any());
         then(matchingService).should(never()).cancelOrderByBoormi(any());
     }
 
@@ -428,5 +429,70 @@ BoormiServiceTest {
                 .isEqualTo(OrderErrorCode.NO_DREAMI_TO_CONFIRM);
         then(matchingRepository).should(never()).save(any());
         then(matchingService).should(never()).acceptByBoormi(any());
+    }
+
+    @Test
+    void 거절_정상이면_MATCHING으로_되돌리고_매칭엔진에_거절을_제출한다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID offerId = UUID.randomUUID();
+        Orders order = confirmableOrder(boormiId, UUID.randomUUID(),
+                OrderCd.PENDING_BOORMI_CONFIRMATION);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(matchingService.isBoormiOfferOwner(offerId, boormiId)).willReturn(true);
+
+        boormiService.rejectDreami(boormiId, orderId, offerId);
+
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.MATCHING);
+        assertThat(order.getDreamiId()).isNull();
+        then(matchingService).should().rejectByBoormi(offerId);
+        then(matchingRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 거절_비소유자면_NOT_ORDER_OWNER_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Orders order = order(UUID.randomUUID(), OrderCd.PENDING_BOORMI_CONFIRMATION);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.rejectDreami(boormiId, orderId, UUID.randomUUID()));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.NOT_ORDER_OWNER);
+        then(matchingService).should(never()).rejectByBoormi(any());
+    }
+
+    @Test
+    void 거절_상태가_PENDING_BOORMI_CONFIRMATION이_아니면_CANNOT_CANCEL_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.MATCHING);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.rejectDreami(boormiId, orderId, UUID.randomUUID()));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.CANNOT_CANCEL);
+        then(matchingService).should(never()).rejectByBoormi(any());
+    }
+
+    @Test
+    void 거절_제안이_본인_주문의_것이_아니면_NOT_OFFER_OWNER_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID offerId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(matchingService.isBoormiOfferOwner(offerId, boormiId)).willReturn(false);
+
+        Throwable thrown = catchThrowable(() -> boormiService.rejectDreami(boormiId, orderId, offerId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
+        then(matchingService).should(never()).rejectByBoormi(any());
     }
 }

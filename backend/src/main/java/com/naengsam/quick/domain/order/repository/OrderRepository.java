@@ -1,14 +1,22 @@
 package com.naengsam.quick.domain.order.repository;
 
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface OrderRepository extends JpaRepository<Orders, UUID> {
+
+    /**
+     * 드리미가 지금 수행 중인 배달 건을 찾는다. 드리미는 한 번에 하나만 수행하므로 단건 조회다.
+     */
+    Optional<Orders> findByDreamiIdAndOrderCd(UUID dreamiId, OrderCd orderCd);
+
     @Query(value = """
             SELECT COUNT(*) FROM ORDERS o
             WHERE o.order_cd NOT IN ('COMPLETED','CANCELLED','CLAIM_REVIEW')
@@ -27,7 +35,7 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
             LIMIT :limit
             """, nativeQuery = true)
     List<Orders> findFirstPageByBoormi(@Param("boormiId") UUID boormiId,
-            @Param("status") String status, @Param("limit") int limit);
+                                       @Param("status") String status, @Param("limit") int limit);
 
     /**
      * 부르미 주문 목록 커서 이후 페이지. keyset 조건으로 (dtm, order_id) 가 커서보다 작은 행만 이어서 조회한다. status 가 null 이면 전체 상태를 조회한다.
@@ -42,6 +50,7 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
             LIMIT :limit
             """, nativeQuery = true)
     List<Orders> findPageByBoormiAfterCursor(@Param("boormiId") UUID boormiId,
-            @Param("status") String status, @Param("cursorDtm") LocalDateTime cursorDtm,
-            @Param("cursorId") UUID cursorId, @Param("limit") int limit);
+                                             @Param("status") String status,
+                                             @Param("cursorDtm") LocalDateTime cursorDtm,
+                                             @Param("cursorId") UUID cursorId, @Param("limit") int limit);
 }

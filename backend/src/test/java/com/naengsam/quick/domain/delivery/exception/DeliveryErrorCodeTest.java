@@ -44,6 +44,7 @@ class DeliveryErrorCodeTest {
                         tuple("DELIVERY_027", HttpStatus.CONFLICT),
                         tuple("DELIVERY_028", HttpStatus.CONFLICT),
                         tuple("DELIVERY_029", HttpStatus.CONFLICT),
-                        tuple("DELIVERY_030", HttpStatus.CONFLICT));
+                        tuple("DELIVERY_030", HttpStatus.CONFLICT),
+                        tuple("DELIVERY_031", HttpStatus.FORBIDDEN));
     }
 }

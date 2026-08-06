@@ -20,7 +20,11 @@ import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRep
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
+import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
+import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
@@ -39,7 +43,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * 드리미 서비스 단위 테스트. 프로필 조회 시 이름/평점/거절횟수를, 주변 콜 조회 시 위치/거리와 주문 상세를 올바르게 조합하는지 확인한다.
+ * 드리미 서비스 단위 테스트. 프로필 조회 시 이름/평점/거절횟수를, 현재 배달 카드 조회 시 주문 상세를,
+ * 주변 콜 조회 시 위치/거리와 주문 상세를 올바르게 조합하는지 확인한다.
  */
 @ExtendWith(MockitoExtension.class)
 class DreamiServiceTest {
@@ -54,10 +59,13 @@ class DreamiServiceTest {
     private DreamiRequestDeniedDetailsRepository dreamiRequestDeniedDetailsRepository;
 
     @Mock
+    private OrderRepository orderRepository;
+
+    @Mock
     private NearbyOrderFinder nearbyOrderFinder;
 
     @Mock
-    private OrderRepository orderRepository;
+    private MatchingService matchingService;
 
     @InjectMocks
     private DreamiService dreamiService;
@@ -180,6 +188,37 @@ class DreamiServiceTest {
         assertThatCode(() -> dreamiService.assertNotAlreadyApproved(dreamiId)).doesNotThrowAnyException();
     }
 
+    // ---------- findCurrentDeliveryCard ----------
+
+    @Test
+    void 현재배달카드조회_진행중인_주문이_있으면_카드정보를_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        ReflectionTestUtils.setField(order, "itemName", "서류봉투");
+        ReflectionTestUtils.setField(order, "orderCd", OrderCd.IN_PROGRESS);
+        given(orderRepository.findByDreamiIdAndOrderCd(dreamiId, OrderCd.IN_PROGRESS))
+                .willReturn(Optional.of(order));
+
+        OrderSummaryDto result = dreamiService.findCurrentDeliveryCard(dreamiId);
+
+        assertThat(result.orderId()).isEqualTo(orderId);
+        assertThat(result.itemName()).isEqualTo("서류봉투");
+        assertThat(result.orderCd()).isEqualTo(OrderCd.IN_PROGRESS);
+    }
+
+    @Test
+    void 현재배달카드조회_진행중인_주문이_없으면_ORDER_NOT_FOUND_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        given(orderRepository.findByDreamiIdAndOrderCd(dreamiId, OrderCd.IN_PROGRESS))
+                .willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.findCurrentDeliveryCard(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+    }
+
     // ---------- findNearbyCalls ----------
 
     @Test
@@ -222,5 +261,132 @@ class DreamiServiceTest {
         Throwable thrown = catchThrowable(() -> dreamiService.findNearbyCalls(request));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+    }
+
+    // ---------- goOnline ----------
+
+    @Test
+    void 온라인전환_드리미가_없으면_NOT_FOUND_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.goOnline(dreamiId, location));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+        verify(matchingService, never()).registerDreami(any(), any());
+    }
+
+    @Test
+    void 온라인전환_승인되지_않았으면_NOT_APPROVED_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey"); // 기본 상태 REQUESTED
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+
+        Throwable thrown = catchThrowable(() -> dreamiService.goOnline(dreamiId, location));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_APPROVED);
+        verify(matchingService, never()).registerDreami(any(), any());
+    }
+
+    @Test
+    void 온라인전환_수행중인_주문이_있으면_ALREADY_HAS_ACTIVE_ORDER_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+        given(orderRepository.countActiveOrders(dreamiId)).willReturn(1L);
+
+        Throwable thrown = catchThrowable(() -> dreamiService.goOnline(dreamiId, location));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.ALREADY_HAS_ACTIVE_ORDER);
+        verify(matchingService, never()).registerDreami(any(), any());
+    }
+
+    @Test
+    void 온라인전환_승인됐고_활성주문이_없으면_매칭서비스에_등록한다() {
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+        given(orderRepository.countActiveOrders(dreamiId)).willReturn(0L);
+
+        dreamiService.goOnline(dreamiId, location);
+
+        verify(matchingService).registerDreami(dreamiId, location);
+    }
+
+    // ---------- acceptOffer ----------
+
+    @Test
+    void 제안수락_본인에게_온_제안이_아니면_NOT_OFFER_OWNER_예외() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(false);
+
+        Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(offerId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
+        verify(matchingService, never()).acceptByDreami(any());
+        verify(orderRepository, never()).findById(any());
+    }
+
+    @Test
+    void 제안수락_제안에_해당하는_주문을_찾을_수_없으면_ORDER_NOT_FOUND_예외() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(offerId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+        verify(matchingService, never()).acceptByDreami(any());
+    }
+
+    @Test
+    void 제안수락_정상이면_주문을_PENDING_BOORMI_CONFIRMATION으로_전이하고_매칭엔진에_수락을_알린다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.of(orderId));
+        given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
+
+        dreamiService.acceptOffer(offerId, dreamiId);
+
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
+        verify(matchingService).acceptByDreami(offerId);
+    }
+
+    // ---------- rejectOffer ----------
+
+    @Test
+    void 제안거절_본인에게_온_제안이_아니면_NOT_OFFER_OWNER_예외() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(false);
+
+        Throwable thrown = catchThrowable(() -> dreamiService.rejectOffer(offerId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
+        verify(matchingService, never()).rejectByDreami(any());
+    }
+
+    @Test
+    void 제안거절_정상이면_매칭엔진에_거절을_알리고_주문은_건드리지_않는다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+
+        dreamiService.rejectOffer(offerId, dreamiId);
+
+        verify(matchingService).rejectByDreami(offerId);
+        verify(orderRepository, never()).findById(any());
     }
 }
