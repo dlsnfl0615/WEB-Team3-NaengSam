@@ -85,7 +85,7 @@ public class BoormiController {
     @ApiErrorCodes(enumClass = OrderErrorCode.class,
             codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER", "INVALID_DREAMI_CONFIRMATION", "NO_DREAMI_TO_CONFIRM"})
     public void confirmDreami(@LoginUser UUID boormiId, @PathVariable UUID orderId,
-            @Valid @RequestBody ConfirmDreamiRequest request) {
+                              @Valid @RequestBody ConfirmDreamiRequest request) {
         boormiService.confirmDreami(boormiId, orderId, request.offerId());
     }
 
@@ -94,10 +94,10 @@ public class BoormiController {
     @PostMapping("/calls/{orderId}/reject-dreami")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = OrderErrorCode.class,
-            codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER", "INVALID_DREAMI_REJECTION"})
+            codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER", "CANNOT_CANCEL"})
     @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
     public void rejectDreami(@LoginUser UUID boormiId, @PathVariable UUID orderId,
-            @Valid @RequestBody RejectDreamiRequest request) {
+                             @Valid @RequestBody RejectDreamiRequest request) {
         boormiService.rejectDreami(boormiId, orderId, request.offerId());
     }
 }
