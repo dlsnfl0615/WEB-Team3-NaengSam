@@ -6,7 +6,9 @@ import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
+import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
+import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,8 +34,9 @@ public class DeliveryController {
     private final DeliveryService deliveryService;
 
     @Operation(summary = "배달 상세 조회", description = "추적 화면용. 출발지·도착지 좌표와 현재 드리미 위치를 반환한다.")
-    @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
-            codes = {"DELIVERY_NOT_FOUND", "NOT_ASSIGNED_DREAMI", "NOT_ORDER_BOORMI"})
+    @ApiErrorCodes(enumClass = DeliveryErrorCode.class, codes = {"DELIVERY_NOT_FOUND"})
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
+    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"NOT_RESOURCE_OWNER"})
     @GetMapping("/orders/{orderId}")
     public DeliveryDetailResponseDto getDeliveryDetail(
             @PathVariable UUID orderId, @LoginUser UUID userId) {
