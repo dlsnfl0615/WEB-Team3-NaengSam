@@ -25,12 +25,15 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.CancelRepository;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
 import com.naengsam.quick.domain.payment.entity.MoneyTxType;
 import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -144,31 +147,38 @@ public class DreamiService {
         long completedCount = orderRepository.countByDreamiIdAndOrderCd(dreamiId, OrderCd.COMPLETED);
 
         YearMonth thisMonth = YearMonth.now();
-        long thisMonthRevenue = sumForMonth(dreamiId, thisMonth);
-        long lastMonthRevenue = sumForMonth(dreamiId, thisMonth.minusMonths(1));
+        YearMonth rangeStart = thisMonth.minusMonths(5);
+        Map<YearMonth, MonthlyMoneyAggregate> byMonth = moneyTxRepository
+                .aggregateByDreamiIdAndTypeBetween(dreamiId, MoneyTxType.SETTLEMENT,
+                        rangeStart.atDay(1).atStartOfDay(), thisMonth.plusMonths(1).atDay(1).atStartOfDay())
+                .stream()
+                .collect(Collectors.toMap(MonthlyMoneyAggregate::yearMonth, aggregate -> aggregate));
+
+        long thisMonthRevenue = amountOf(byMonth, thisMonth);
+        long lastMonthRevenue = amountOf(byMonth, thisMonth.minusMonths(1));
         long growthPercent = lastMonthRevenue == 0 ? 0
                 : Math.round((thisMonthRevenue - lastMonthRevenue) * 100.0 / lastMonthRevenue);
 
-        long thisMonthCount = countForMonth(dreamiId, thisMonth);
+        long thisMonthCount = countOf(byMonth, thisMonth);
         long marketAverageSurplus = thisMonthRevenue - MARKET_AVERAGE_UNIT_PRICE * thisMonthCount;
 
         List<MonthlyRevenueDto> recentSixMonths = IntStream.rangeClosed(0, 5)
                 .mapToObj(thisMonth::minusMonths)
                 .sorted()
-                .map(month -> new MonthlyRevenueDto(month, sumForMonth(dreamiId, month)))
+                .map(month -> new MonthlyRevenueDto(month, amountOf(byMonth, month)))
                 .toList();
 
         return DreamiDashboardDto.of(completedCount, thisMonthRevenue, growthPercent,
                 marketAverageSurplus, recentSixMonths);
     }
 
-    private long sumForMonth(UUID dreamiId, YearMonth month) {
-        return moneyTxRepository.sumAmountByDreamiIdAndTypeBetween(dreamiId, MoneyTxType.SETTLEMENT,
-                month.atDay(1).atStartOfDay(), month.plusMonths(1).atDay(1).atStartOfDay());
+    private long amountOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {
+        MonthlyMoneyAggregate aggregate = byMonth.get(month);
+        return aggregate == null ? 0 : aggregate.totalAmount();
     }
 
-    private long countForMonth(UUID dreamiId, YearMonth month) {
-        return moneyTxRepository.countByDreamiIdAndTypeBetween(dreamiId, MoneyTxType.SETTLEMENT,
-                month.atDay(1).atStartOfDay(), month.plusMonths(1).atDay(1).atStartOfDay());
+    private long countOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {
+        MonthlyMoneyAggregate aggregate = byMonth.get(month);
+        return aggregate == null ? 0 : aggregate.count();
     }
 }
