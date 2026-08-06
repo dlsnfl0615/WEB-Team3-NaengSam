@@ -219,7 +219,7 @@ class DeliveryServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
 
-        deliveryService.cancelByDreami(orderId);
+        cancelByDreami(orderId);
 
         verify(sseService).send(eq(boormiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
     }
@@ -230,7 +230,7 @@ class DeliveryServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
 
-        deliveryService.cancelByBoormi(orderId);
+        cancelByBoormi(orderId);
 
         verify(sseService).send(eq(dreamiId), eq(DeliveryEventType.DELIVERY_CANCELLED), any());
     }
@@ -319,7 +319,7 @@ class DeliveryServiceTest {
     void 드리미취소_정상이면_PICKUP_CANCELLED_BY_DREAMI로_전이() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
-        DeliveryStatusResponseDto result = deliveryService.cancelByDreami(orderId);
+        DeliveryStatusResponseDto result = cancelByDreami(orderId);
 
         assertThat(result.message()).isEqualTo("픽업 취소 완료");
         assertThat(result.status()).isEqualTo(PICKUP_CANCELLED_BY_DREAMI);
@@ -362,7 +362,7 @@ class DeliveryServiceTest {
     void 드리미취소되면_주문을_DREAMI_취소자로_CANCELLED_전이시킨다() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
-        deliveryService.cancelByDreami(orderId);
+        cancelByDreami(orderId);
 
         verify(orderService).cancel(orderId, CancelerCd.DREAMI);
     }
@@ -371,7 +371,7 @@ class DeliveryServiceTest {
     void 부르미취소되면_주문을_BOORMI_취소자로_CANCELLED_전이시킨다() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
-        deliveryService.cancelByBoormi(orderId);
+        cancelByBoormi(orderId);
 
         verify(orderService).cancel(orderId, CancelerCd.BOORMI);
     }
@@ -383,6 +383,30 @@ class DeliveryServiceTest {
         deliveryService.cancelByAdmin(orderId);
 
         verify(orderService).cancel(orderId, CancelerCd.ADMIN);
+    }
+
+    @Test
+    void 드리미취소_배정되지않은_드리미면_NOT_ASSIGNED_DREAMI_예외() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+        UUID otherDreamiId = UUID.randomUUID();
+
+        Throwable thrown = catchThrowable(() -> deliveryService.cancelByDreami(orderId, otherDreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.NOT_ASSIGNED_DREAMI);
+        assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
+        verify(orderService, never()).cancel(eq(orderId), any());
+    }
+
+    @Test
+    void 부르미취소_주문의_부르미가_아니면_NOT_ORDER_BOORMI_예외() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+        UUID otherBoormiId = UUID.randomUUID();
+
+        Throwable thrown = catchThrowable(() -> deliveryService.cancelByBoormi(orderId, otherBoormiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.NOT_ORDER_BOORMI);
+        assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
+        verify(orderService, never()).cancel(eq(orderId), any());
     }
 
     @Test

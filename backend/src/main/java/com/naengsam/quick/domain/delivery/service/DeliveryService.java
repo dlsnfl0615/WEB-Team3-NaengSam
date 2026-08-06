@@ -94,16 +94,20 @@ public class DeliveryService {
         });
     }
 
-    // "픽업" 과정에서 드리미의 취소
+    // "픽업" 과정에서 드리미의 취소 (요청자가 이 배달에 배정된 드리미 본인인지 검증한다)
     @Transactional
-    public DeliveryStatusResponseDto cancelByDreami(UUID orderId) {
-        return transition(orderId, this::doCancelByDreami);
+    public DeliveryStatusResponseDto cancelByDreami(UUID orderId, UUID dreamiId) {
+        return transition(orderId, delivery -> {
+            return doCancelByDreami(delivery, dreamiId);
+        });
     }
 
-    // 픽업 중에 부르미가 취소
+    // 픽업 중에 부르미가 취소 (요청자가 이 주문을 접수한 부르미 본인인지 검증한다)
     @Transactional
-    public DeliveryStatusResponseDto cancelByBoormi(UUID orderId) {
-        return transition(orderId, this::doCancelByBoormi);
+    public DeliveryStatusResponseDto cancelByBoormi(UUID orderId, UUID boormiId) {
+        return transition(orderId, delivery -> {
+            return doCancelByBoormi(delivery, boormiId);
+        });
     }
 
     // 픽업 중에 관리자가 취소
@@ -216,7 +220,12 @@ public class DeliveryService {
         return "픽업 완료";
     }
 
-    private String doCancelByDreami(Delivery delivery) {
+    private String doCancelByDreami(Delivery delivery, UUID dreamiId) {
+        // 이 배달에 배정된 드리미 본인만 취소할 수 있다.
+        if (!delivery.getDreamiId().equals(dreamiId)) {
+            throw new BusinessException(DeliveryErrorCode.NOT_ASSIGNED_DREAMI);
+        }
+
         // 픽업 단계(정상/지연)에서만 드리미가 취소할 수 있다.
         // 이미 취소된 건(부르미/드리미/관리자)은 중복 취소, 배달 중/완료/종료·파트너 인계·반송 단계는 취소 불가
         DeliveryCd deliveryCd = delivery.getDeliveryCd();
@@ -244,7 +253,12 @@ public class DeliveryService {
         return "픽업 취소 완료";
     }
 
-    private String doCancelByBoormi(Delivery delivery) {
+    private String doCancelByBoormi(Delivery delivery, UUID boormiId) {
+        // 이 주문을 접수한 부르미 본인만 취소할 수 있다.
+        if (!delivery.getBoormiId().equals(boormiId)) {
+            throw new BusinessException(DeliveryErrorCode.NOT_ORDER_BOORMI);
+        }
+
         // 픽업 단계(정상/지연)에서만 부르미가 취소할 수 있다.
         // 이미 취소된 건(부르미/드리미/관리자)은 중복 취소, 배달 중/완료/종료·파트너 인계·반송 단계는 취소 불가
         DeliveryCd deliveryCd = delivery.getDeliveryCd();

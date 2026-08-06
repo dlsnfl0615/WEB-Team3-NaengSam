@@ -83,10 +83,16 @@ public class OrderService {
     }
 
     /**
-     * 주문을 취소 상태로 전이하고 취소 이력(CANCEL)을 저장한다. 주문 상태 변경은 영속 상태 dirty checking 으로 반영된다.
+     * 주문을 취소 상태로 전이하고 취소 이력(CANCEL)을 저장한다. 이미 종료된 주문(취소·완료·클레임)은 취소할 수 없어
+     * CANNOT_CANCEL 예외를 던진다(호출자의 상태·소유권 검증과 무관하게 지켜야 하는 주문 자신의 불변식). 주문 상태 변경은
+     * 영속 상태 dirty checking 으로 반영된다.
      */
     @Transactional
     public void cancel(Orders order, CancelerCd cancelerCd) {
+        OrderCd status = order.getOrderCd();
+        if (status == OrderCd.CANCELLED || status == OrderCd.COMPLETED || status == OrderCd.CLAIM_REVIEW) {
+            throw new BusinessException(OrderErrorCode.CANNOT_CANCEL);
+        }
         order.cancel();
         cancelRepository.save(Cancel.create(order.getOrderId(), cancelerCd, false));
     }
