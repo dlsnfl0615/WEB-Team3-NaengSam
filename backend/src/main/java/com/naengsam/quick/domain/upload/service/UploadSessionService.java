@@ -22,6 +22,26 @@ public class UploadSessionService {
     private final S3PresignService s3PresignService;
     private final UploadSessionRepository uploadSessionRepository;
 
+    /**
+     * key의 스코프를 검증하고, S3에 실제 업로드됐는지 확인한 뒤 소비 처리한다. 클라이언트는 업로드가 끝났다고 확신한 뒤에만 이 메서드를 부르므로,
+     * 업로드가 안 된 상태는 정상적인 중간 상태가 아니라 예외로 처리한다.
+     *
+     * @return 이번 호출로 처음 소비됐는지(재시도로 이미 소비된 요청이면 false)
+     */
+    @Transactional
+    public boolean checkUpload(UploadPurpose uploadPurpose, UUID boormiId, String key) {
+        // 다른 사람에게 발급됐거나 다른 용도로 발급된 key를 그대로 제출하는 것을 막는다.
+        validateScope(uploadPurpose, boormiId, null, key);
+
+        // 업로드가 완료되지 않은 상태라면
+        if (!s3PresignService.isFileUploaded(key)) {
+            throw new BusinessException(UploadErrorCode.FILE_NOT_FOUND);
+        }
+
+        // 세션을 소비 처리한다. 재시도로 이미 소비된 요청이면 저장을 반복하지 않는다.
+        return consume(key);
+    }
+
     @Transactional
     public PresignedUrlResponseDto issue(UploadPurpose purpose, UUID boormiId, UUID resourceId, String fileName) {
         if (purpose.isResourceScopeRequired() && resourceId == null) {
@@ -45,8 +65,7 @@ public class UploadSessionService {
     }
 
     /**
-     * 세션을 소비 처리한다. 조건부 UPDATE(ISSUED일 때만 CONSUMED로) 하나로 전이시키므로, 동시에 같은 key로 호출돼도
-     * 단 하나의 호출만 true를 받는다.
+     * 세션을 소비 처리한다. 조건부 UPDATE(ISSUED일 때만 CONSUMED로) 하나로 전이시키므로, 동시에 같은 key로 호출돼도 단 하나의 호출만 true를 받는다.
      *
      * @return 이번 호출로 새로 소비됐으면 true, 이미 소비된 상태(재시도)라 아무것도 하지 않았으면 false
      */
