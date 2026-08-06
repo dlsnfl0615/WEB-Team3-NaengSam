@@ -1,7 +1,6 @@
 package com.naengsam.quick.domain.upload.service;
 
 import com.naengsam.quick.domain.upload.dto.PresignedUrlResponseDto;
-import com.naengsam.quick.domain.upload.dto.UploadCheckResult;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.entity.UploadSession;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
@@ -24,23 +23,23 @@ public class UploadSessionService {
     private final UploadSessionRepository uploadSessionRepository;
 
     /**
-     * key의 스코프를 검증하고, S3에 실제 업로드됐는지 확인한 뒤 소비 처리한다.
+     * key의 스코프를 검증하고, S3에 실제 업로드됐는지 확인한 뒤 소비 처리한다. 클라이언트는 업로드가 끝났다고 확신한 뒤에만 이 메서드를 부르므로,
+     * 업로드가 안 된 상태는 정상적인 중간 상태가 아니라 예외로 처리한다.
      *
-     * @return 업로드가 안 됐으면 {@code UploadCheckResult(false, false)}. 업로드됐으면 {@code uploaded=true}이고,
-     * {@code newlyConsumed}는 이번 호출로 처음 소비됐는지(재시도로 이미 소비된 요청이면 false) 나타낸다.
+     * @return 이번 호출로 처음 소비됐는지(재시도로 이미 소비된 요청이면 false)
      */
     @Transactional
-    public UploadCheckResult checkUpload(UploadPurpose uploadPurpose, UUID boormiId, String key) {
+    public boolean checkUpload(UploadPurpose uploadPurpose, UUID boormiId, String key) {
         // 다른 사람에게 발급됐거나 다른 용도로 발급된 key를 그대로 제출하는 것을 막는다.
         validateScope(uploadPurpose, boormiId, null, key);
 
         // 업로드가 완료되지 않은 상태라면
         if (!s3PresignService.isFileUploaded(key)) {
-            return new UploadCheckResult(false, false);
+            throw new BusinessException(UploadErrorCode.FILE_NOT_FOUND);
         }
 
         // 세션을 소비 처리한다. 재시도로 이미 소비된 요청이면 저장을 반복하지 않는다.
-        return new UploadCheckResult(true, consume(key));
+        return consume(key);
     }
 
     @Transactional

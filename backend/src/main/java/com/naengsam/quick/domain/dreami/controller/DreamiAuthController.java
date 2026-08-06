@@ -3,7 +3,6 @@ package com.naengsam.quick.domain.dreami.controller;
 import com.naengsam.quick.domain.dreami.dto.DreamiAuthReqeustDto;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.service.DreamiService;
-import com.naengsam.quick.domain.upload.dto.UploadCheckResult;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
@@ -43,28 +42,22 @@ public class DreamiAuthController {
     @ApiErrorCodes(enumClass = DreamiErrorCode.class, codes = {"ALREADY_APPROVED"})
     @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"FILE_NOT_FOUND", "KEY_OWNER_MISMATCH",
             "STORAGE_UPLOAD_FAILED"})
-    public Boolean verifyUploadedDocuments(@Valid @RequestBody DreamiAuthReqeustDto requestDto,
-                                           @LoginUser UUID boormiId) {
+    public void verifyUploadedDocuments(@Valid @RequestBody DreamiAuthReqeustDto requestDto,
+                                        @LoginUser UUID boormiId) {
         // 승인 완료됐을 때는 해당 api 호출해서 값 덮어쓰지 못하게 해야함
         // reviewing, requested, rejected일 때는 다시 제출 허용
         dreamiService.assertNotAlreadyApproved(boormiId);
 
-        UploadCheckResult idCardResult = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
+        // 클라이언트는 S3 업로드가 끝난 뒤에만 이걸 부르므로, 업로드가 안 돼있으면 FILE_NOT_FOUND 예외로 끝난다.
+        boolean idCardNewlyConsumed = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
                 requestDto.idCardKey());
-        UploadCheckResult criminalRecordResult = uploadSessionService.checkUpload(
+        boolean criminalRecordNewlyConsumed = uploadSessionService.checkUpload(
                 UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, requestDto.criminalRecordKey());
-
-        // 하나라도 아직 업로드되지 않았다면
-        if (!idCardResult.uploaded() || !criminalRecordResult.uploaded()) {
-            return false;
-        }
 
         // 재시도로 둘 다 이미 소비된 요청이면 저장을 반복하지 않는다.
         // 하나만 거짓인 경우 예시: 범죄 이력 조회서는 통과되지 않아서 이 파일만 다시 제출해야 할 때 신분증 사진은 newlyConsumed = false
-        if (idCardResult.newlyConsumed() || criminalRecordResult.newlyConsumed()) {
+        if (idCardNewlyConsumed || criminalRecordNewlyConsumed) {
             dreamiService.saveVerificationFileKeys(boormiId, requestDto.idCardKey(), requestDto.criminalRecordKey());
         }
-
-        return true;
     }
 }

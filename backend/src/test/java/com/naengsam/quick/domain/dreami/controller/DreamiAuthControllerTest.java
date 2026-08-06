@@ -7,12 +7,10 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.service.DreamiService;
-import com.naengsam.quick.domain.upload.dto.UploadCheckResult;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
@@ -73,9 +71,9 @@ class DreamiAuthControllerTest {
         String idCardKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
         String criminalRecordKey = "uploads/DREAMI_CRIMINAL_RECORD/bbb-criminal.png";
         when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, idCardKey))
-                .thenReturn(new UploadCheckResult(true, true));
+                .thenReturn(true);
         when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, criminalRecordKey))
-                .thenReturn(new UploadCheckResult(true, true));
+                .thenReturn(true);
 
         mockMvc.perform(post("/api/v1/dreami/verification")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId)
@@ -83,8 +81,7 @@ class DreamiAuthControllerTest {
                         .content("""
                                 {"idCardKey": "%s", "criminalRecordKey": "%s"}
                                 """.formatted(idCardKey, criminalRecordKey)))
-                .andExpect(status().isOk())
-                .andExpect(content().string("true"));
+                .andExpect(status().isOk());
 
         verify(dreamiService).saveVerificationFileKeys(boormiId, idCardKey, criminalRecordKey);
     }
@@ -108,14 +105,12 @@ class DreamiAuthControllerTest {
     }
 
     @Test
-    void 아직_업로드가_안됐으면_저장하지_않고_false를_반환한다() throws Exception {
+    void 아직_업로드가_안됐으면_FILE_NOT_FOUND_예외이고_저장하지_않는다() throws Exception {
         UUID boormiId = UUID.randomUUID();
         String idCardKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
         String criminalRecordKey = "uploads/DREAMI_CRIMINAL_RECORD/bbb-criminal.png";
-        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, idCardKey))
-                .thenReturn(new UploadCheckResult(false, false));
-        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, criminalRecordKey))
-                .thenReturn(new UploadCheckResult(true, true));
+        doThrow(new BusinessException(UploadErrorCode.FILE_NOT_FOUND))
+                .when(uploadSessionService).checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, idCardKey);
 
         mockMvc.perform(post("/api/v1/dreami/verification")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId)
@@ -123,8 +118,7 @@ class DreamiAuthControllerTest {
                         .content("""
                                 {"idCardKey": "%s", "criminalRecordKey": "%s"}
                                 """.formatted(idCardKey, criminalRecordKey)))
-                .andExpect(status().isOk())
-                .andExpect(content().string("false"));
+                .andExpect(status().isNotFound());
 
         verify(dreamiService, never()).saveVerificationFileKeys(any(), any(), any());
     }
@@ -135,9 +129,9 @@ class DreamiAuthControllerTest {
         String idCardKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
         String criminalRecordKey = "uploads/DREAMI_CRIMINAL_RECORD/bbb-criminal.png";
         when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, idCardKey))
-                .thenReturn(new UploadCheckResult(true, false));
+                .thenReturn(false);
         when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, criminalRecordKey))
-                .thenReturn(new UploadCheckResult(true, false));
+                .thenReturn(false);
 
         mockMvc.perform(post("/api/v1/dreami/verification")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId)
@@ -145,8 +139,7 @@ class DreamiAuthControllerTest {
                         .content("""
                                 {"idCardKey": "%s", "criminalRecordKey": "%s"}
                                 """.formatted(idCardKey, criminalRecordKey)))
-                .andExpect(status().isOk())
-                .andExpect(content().string("true"));
+                .andExpect(status().isOk());
 
         verify(dreamiService, never()).saveVerificationFileKeys(any(), any(), any());
     }

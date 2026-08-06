@@ -9,7 +9,6 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.naengsam.quick.domain.upload.dto.PresignedUrlResponseDto;
-import com.naengsam.quick.domain.upload.dto.UploadCheckResult;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.entity.UploadSession;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
@@ -162,37 +161,35 @@ class UploadSessionServiceTest {
     }
 
     @Test
-    void 확인시_아직_업로드가_안됐으면_uploaded와_newlyConsumed_모두_false() {
+    void 확인시_아직_업로드가_안됐으면_FILE_NOT_FOUND_예외이고_소비하지_않는다() {
         UUID boormiId = UUID.randomUUID();
         UploadSession session = UploadSession.create(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "uploads/x/y-a.png");
         given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
         given(s3PresignService.isFileUploaded("uploads/x/y-a.png")).willReturn(false);
 
-        UploadCheckResult result = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
-                "uploads/x/y-a.png");
+        Throwable thrown = catchThrowable(() -> uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD,
+                boormiId, "uploads/x/y-a.png"));
 
-        assertThat(result.uploaded()).isFalse();
-        assertThat(result.newlyConsumed()).isFalse();
+        assertThat(errorCodeOf(thrown)).isEqualTo(UploadErrorCode.FILE_NOT_FOUND);
         verify(uploadSessionRepository, never()).markConsumedIfIssued(any());
     }
 
     @Test
-    void 확인시_업로드됐고_처음_소비되면_uploaded와_newlyConsumed_모두_true() {
+    void 확인시_업로드됐고_처음_소비되면_true를_반환한다() {
         UUID boormiId = UUID.randomUUID();
         UploadSession session = UploadSession.create(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "uploads/x/y-a.png");
         given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
         given(s3PresignService.isFileUploaded("uploads/x/y-a.png")).willReturn(true);
         given(uploadSessionRepository.markConsumedIfIssued("uploads/x/y-a.png")).willReturn(1);
 
-        UploadCheckResult result = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
+        boolean result = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
                 "uploads/x/y-a.png");
 
-        assertThat(result.uploaded()).isTrue();
-        assertThat(result.newlyConsumed()).isTrue();
+        assertThat(result).isTrue();
     }
 
     @Test
-    void 확인시_재시도로_이미_소비된_요청이면_uploaded는_true지만_newlyConsumed는_false() {
+    void 확인시_재시도로_이미_소비된_요청이면_false를_반환한다() {
         UUID boormiId = UUID.randomUUID();
         UploadSession session = UploadSession.create(UploadPurpose.DREAMI_ID_CARD, boormiId, null, "uploads/x/y-a.png");
         session.consume();
@@ -200,10 +197,9 @@ class UploadSessionServiceTest {
         given(s3PresignService.isFileUploaded("uploads/x/y-a.png")).willReturn(true);
         given(uploadSessionRepository.markConsumedIfIssued("uploads/x/y-a.png")).willReturn(0);
 
-        UploadCheckResult result = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
+        boolean result = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
                 "uploads/x/y-a.png");
 
-        assertThat(result.uploaded()).isTrue();
-        assertThat(result.newlyConsumed()).isFalse();
+        assertThat(result).isFalse();
     }
 }
