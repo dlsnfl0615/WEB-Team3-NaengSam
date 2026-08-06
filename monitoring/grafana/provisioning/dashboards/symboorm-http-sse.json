@@ -1,0 +1,364 @@
+{
+  "id": null,
+  "uid": "symboorm-http-sse",
+  "title": "SymBoorm — HTTP & SSE",
+  "description": "우리 백엔드 고유 지표. JVM/HikariCP 는 커뮤니티 대시보드(19004, 4701)를 import 해서 본다.",
+  "tags": ["symboorm", "backend"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "application",
+        "label": "application",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "definition": "label_values(application)",
+        "query": {
+          "qryType": 1,
+          "query": "label_values(application)",
+          "refId": "application"
+        },
+        "refresh": 1,
+        "sort": 1,
+        "includeAll": true,
+        "allValue": ".*",
+        "multi": false,
+        "current": { "text": "All", "value": "$__all" },
+        "options": []
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "title": "HTTP",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "timeseries",
+      "title": "엔드포인트별 응답시간 p95 (SSE 제외)",
+      "description": "SSE 는 연결 유지 시간이 최대 1시간이라 지연 그래프를 왜곡한다. uri 에서 제외한다.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 5,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "histogram_quantile(0.95, sum by (le, uri) (rate(http_server_requests_seconds_bucket{application=~\"$application\", uri!~\".*subscribe.*\"}[5m])))",
+          "legendFormat": "{{uri}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "엔드포인트별 RPS (SSE 제외)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 5,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (uri) (rate(http_server_requests_seconds_count{application=~\"$application\", uri!~\".*subscribe.*\"}[1m]))",
+          "legendFormat": "{{uri}}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "5xx 비율",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 9 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "min": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.01 },
+              { "color": "red", "value": 0.05 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(http_server_requests_seconds_count{application=~\"$application\", status=~\"5..\"}[5m])) / sum(rate(http_server_requests_seconds_count{application=~\"$application\"}[5m]))",
+          "legendFormat": "5xx"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "상태코드별 요청률",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 9, "x": 6, "y": 9 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "stacking": { "mode": "normal" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "right", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (status) (rate(http_server_requests_seconds_count{application=~\"$application\", uri!~\".*subscribe.*\"}[1m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "처리 중 요청 수 (SSE 연결 포함)",
+      "description": "http.server.requests.active 는 LongTaskTimer 라 SSE 처럼 오래 열려 있는 요청도 포함한다.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 9, "x": 15, "y": 9 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 5,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(http_server_requests_active_seconds_count{application=~\"$application\"})",
+          "legendFormat": "in-flight"
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "SSE",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "현재 SSE 연결 수",
+      "description": "서버는 클라이언트가 조용히 끊은 것을 다음 전송 시도 때에야 안다. heartbeat 이 없으므로 이 값은 실제보다 클 수 있다(상한선).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 15 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [{ "color": "blue", "value": null }]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(sse_connections_active{application=~\"$application\"})",
+          "legendFormat": "active"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "이벤트 전송률 (이벤트 이름별)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 9, "x": 6, "y": 15 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (event) (rate(sse_events_sent_total{application=~\"$application\"}[1m]))",
+          "legendFormat": "{{event}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "연결 수립 / 종료율 (종료는 원인별)",
+      "description": "send_failed 가 꾸준히 오르면 죽은 연결이 쌓이다가 전송 시점에 정리되고 있다는 뜻이다.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 9, "x": 15, "y": 15 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 5,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(sse_connections_opened_total{application=~\"$application\"}[5m]))",
+          "legendFormat": "opened"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (reason) (rate(sse_connections_closed_total{application=~\"$application\"}[5m]))",
+          "legendFormat": "closed / {{reason}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "전송 실패 이벤트 (원인별)",
+      "description": "not_connected = 미연결 사용자에게 보내려 함. send_failed = 죽은 클라이언트라 전송 중 예외.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 22 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (reason) (rate(sse_events_dropped_total{application=~\"$application\"}[5m]))",
+          "legendFormat": "{{reason}}"
+        }
+      ]
+    }
+  ]
+}

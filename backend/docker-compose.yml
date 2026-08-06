@@ -1,8 +1,13 @@
-# 배포 서버용 compose 파일.
+# 배포 서버용 백엔드 compose 파일.
 # CI 가 DockerHub 에 올린 이미지를 pull 해서, .env 를 런타임에 주입해 실행한다.
 # (이미지에는 시크릿이 들어있지 않다 — jar 만 들어있음)
 #
+# 모니터링(Prometheus·Grafana)은 이 파일에 없다. 저장소 루트의 monitoring/ 폴더에서
+# 별도 compose 로 관리한다 — CI 를 타지 않고, 백엔드와 따로 재기동할 수 있다.
+#
 # 사용법 (배포 서버에서):
+#   0) (최초 1회) 모니터링과 공유할 네트워크 생성
+#      docker network create symboorm
 #   1) 같은 폴더에 .env 를 둔다 (.env.example 참고, 실제 운영 값으로 채움)
 #   2) docker compose pull   # 최신 이미지 받기
 #   3) docker compose up -d   # 백그라운드 기동
@@ -10,6 +15,8 @@
 #
 # 이미지 태그/계정은 환경변수로 덮어쓸 수 있다:
 #   DOCKERHUB_USERNAME=myid IMAGE_TAG=main docker compose up -d
+#
+# 모니터링 스택은 ../monitoring/README.md 참고.
 
 services:
   backend:
@@ -17,7 +24,15 @@ services:
     container_name: symboorm-backend
     restart: always
     ports:
-      - "8080:8080"
+      - "8080:8080"   # 액츄에이터 포트 8081 은 의도적으로 공개하지 않는다 — prometheus 만 내부에서 접근
     # application.properties 의 ${DATABASE_URL} 등을 이 파일 값으로 주입
     env_file:
       - .env
+    networks:
+      - symboorm
+
+networks:
+  # 모니터링 스택과 공유하는 네트워크. 어느 쪽 compose 도 소유하지 않는다.
+  # prometheus 가 이 네트워크 안에서 backend:8081 로 액츄에이터를 긁는다.
+  symboorm:
+    external: true
