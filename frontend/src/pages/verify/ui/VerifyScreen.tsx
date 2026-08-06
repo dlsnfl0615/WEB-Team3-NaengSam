@@ -46,7 +46,8 @@ export function VerifyScreen() {
       ])
       const updated = await verify(idCardKey, criminalRecordKey)
       if (!updated) {
-        setError('업로드 확인에 실패했어요. 다시 시도해 주세요.')
+        // verify()는 세션이 없을 때만 null을 반환한다(업로드 확인 실패는 예외로 던져져 catch에서 처리됨).
+        navigate(ROUTES.login, { replace: true })
         return
       }
       // 홈 화면에서 "심사 중" 토스트를 띄우도록 신호만 실어 보낸다(문구는 홈이 소유).

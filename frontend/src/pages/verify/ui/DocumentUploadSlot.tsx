@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Icon } from '@/shared/ui'
 
 export interface DocumentUploadSlotProps {
@@ -14,14 +14,25 @@ export interface DocumentUploadSlotProps {
 export function DocumentUploadSlot({ label, onSelect, disabled }: DocumentUploadSlotProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  // 재선택/언마운트 시 이전 blob URL을 해제하기 위해 현재 URL을 들고 있는다.
+  const previewUrlRef = useRef<string | null>(null)
 
   const onChangeFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     e.target.value = '' // 같은 파일 재선택 허용
     if (!file) return
-    setPreview(URL.createObjectURL(file))
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+    const url = URL.createObjectURL(file)
+    previewUrlRef.current = url
+    setPreview(url)
     onSelect(file)
   }
+
+  useEffect(() => {
+    return () => {
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
+    }
+  }, [])
 
   return (
     <div className="flex flex-col gap-1.5">
