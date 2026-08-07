@@ -23,6 +23,7 @@ import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRep
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
+import com.naengsam.quick.domain.matching.event.DreamiAcceptedEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
@@ -32,6 +33,7 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
+import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
 import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
 import com.naengsam.quick.global.code.BaseErrorCode;
@@ -47,6 +49,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
@@ -76,6 +79,9 @@ class DreamiServiceTest {
 
     @Mock
     private MoneyTxRepository moneyTxRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private DreamiService dreamiService;
@@ -337,7 +343,7 @@ class DreamiServiceTest {
         YearMonth thisMonth = YearMonth.now();
         YearMonth lastMonth = thisMonth.minusMonths(1);
         given(orderRepository.countByDreamiIdAndOrderCd(dreamiId, OrderCd.COMPLETED)).willReturn(7L);
-        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), any(), any()))
+        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), eq(MoneyTxStatusCd.SETTLED), any(), any()))
                 .willReturn(List.of(
                         new MonthlyMoneyAggregate(thisMonth.getYear(), thisMonth.getMonthValue(), 116_000L, 10L),
                         new MonthlyMoneyAggregate(lastMonth.getYear(), lastMonth.getMonthValue(), 100_000L, 8L)));
@@ -358,7 +364,7 @@ class DreamiServiceTest {
     void 대시보드조회_지난달_수익이_0이면_증감률은_0퍼센트다() {
         UUID dreamiId = UUID.randomUUID();
         given(orderRepository.countByDreamiIdAndOrderCd(dreamiId, OrderCd.COMPLETED)).willReturn(0L);
-        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), any(), any()))
+        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), eq(MoneyTxStatusCd.SETTLED), any(), any()))
                 .willReturn(List.of());
 
         DreamiDashboardDto result = dreamiService.getDashboard(dreamiId);
@@ -378,7 +384,7 @@ class DreamiServiceTest {
         Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(offerId, dreamiId));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
-        verify(matchingService, never()).acceptByDreami(any());
+        verify(eventPublisher, never()).publishEvent(any(DreamiAcceptedEvent.class));
         verify(orderRepository, never()).findById(any());
     }
 
@@ -392,11 +398,11 @@ class DreamiServiceTest {
         Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(offerId, dreamiId));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
-        verify(matchingService, never()).acceptByDreami(any());
+        verify(eventPublisher, never()).publishEvent(any(DreamiAcceptedEvent.class));
     }
 
     @Test
-    void 제안수락_정상이면_주문을_PENDING_BOORMI_CONFIRMATION으로_전이하고_매칭엔진에_수락을_알린다() {
+    void 제안수락_정상이면_주문을_PENDING_BOORMI_CONFIRMATION으로_전이하고_커밋후_처리용_이벤트를_발행한다() {
         UUID offerId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
@@ -409,7 +415,8 @@ class DreamiServiceTest {
         dreamiService.acceptOffer(offerId, dreamiId);
 
         assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
-        verify(matchingService).acceptByDreami(offerId);
+        verify(matchingService, never()).acceptByDreami(any()); // 커밋 전에는 엔진에 직접 제출하지 않는다
+        verify(eventPublisher).publishEvent(new DreamiAcceptedEvent(offerId));
     }
 
     // ---------- rejectOffer ----------

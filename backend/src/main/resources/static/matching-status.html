@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>매칭 엔진 상황판</title>
+    <style>
+        :root {
+            --bg: #0f1115;
+            --panel: #181b22;
+            --border: #2a2f3a;
+            --text: #e6e8ec;
+            --muted: #9aa3b2;
+            --accent: #4f8cff;
+            --green: #34d399;
+            --red: #f87171;
+            --yellow: #fbbf24;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+            line-height: 1.5;
+        }
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(15, 17, 21, 0.94);
+            backdrop-filter: blur(8px);
+        }
+        h1 { margin: 0; font-size: 18px; }
+        h2 {
+            margin: 0 0 12px;
+            color: var(--muted);
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .status-pill, .tag {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+        .status-pill { padding: 4px 10px; font-size: 12px; }
+        .status-pill.on { border-color: var(--green); color: var(--green); }
+        .status-pill.error { border-color: var(--red); color: var(--red); }
+        .tag { padding: 2px 7px; font-size: 11px; }
+        .tag.info { border-color: var(--green); color: var(--green); }
+        .tag.warning { border-color: var(--yellow); color: var(--yellow); }
+        .tag.danger { border-color: var(--red); color: var(--red); }
+        main { padding: 20px 24px 40px; }
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        .count { font-size: 28px; font-weight: 700; }
+        .count-label { color: var(--muted); font-size: 12px; }
+        .layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1.4fr) minmax(320px, 0.6fr);
+            gap: 16px;
+            align-items: start;
+        }
+        .stack { display: flex; flex-direction: column; gap: 16px; }
+        .panel {
+            min-width: 0;
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--panel);
+        }
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .panel-header h2 { margin: 0; }
+        .cards { display: grid; gap: 10px; }
+        .group-card, .dreami-card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #12151b;
+        }
+        .group-card { padding: 12px; }
+        .group-title, .dreami-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .group-meta {
+            display: flex;
+            gap: 14px;
+            margin: 7px 0 10px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+        .dreami-card { padding: 10px 12px; }
+        .dreami-location { margin-top: 3px; color: var(--muted); font-size: 11px; }
+        .mono { font-family: "SF Mono", Menlo, Consolas, monospace; }
+        .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .muted, .empty { color: var(--muted); font-size: 12px; }
+        .empty { padding: 14px 4px; text-align: center; }
+        .error-box {
+            display: none;
+            margin-bottom: 16px;
+            padding: 10px 12px;
+            border: 1px solid rgba(248, 113, 113, 0.45);
+            border-radius: 8px;
+            background: rgba(248, 113, 113, 0.08);
+            color: var(--red);
+            font-size: 12px;
+        }
+        .row { display: flex; gap: 8px; }
+        input {
+            min-width: 0;
+            flex: 1;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            outline: none;
+            background: #0f1115;
+            color: var(--text);
+            font: 12px "SF Mono", Menlo, Consolas, monospace;
+        }
+        input:focus { border-color: var(--accent); }
+        button {
+            padding: 8px 12px;
+            border: 0;
+            border-radius: 6px;
+            background: var(--accent);
+            color: white;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        button:hover { filter: brightness(1.1); }
+        button:disabled { cursor: not-allowed; opacity: 0.5; }
+        button.secondary { background: #2a2f3a; color: var(--text); }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td {
+            padding: 7px 8px;
+            border-bottom: 1px solid var(--border);
+            text-align: left;
+        }
+        th { color: var(--muted); font-weight: 500; }
+        tr:last-child td { border-bottom: 0; }
+        @media (max-width: 900px) {
+            header { align-items: flex-start; padding: 14px 16px; }
+            main { padding: 16px; }
+            .layout { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 560px) {
+            header { flex-direction: column; }
+            .summary { grid-template-columns: 1fr; }
+            .row { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+<header>
+    <div>
+        <h1>🐝 매칭 엔진 상황판</h1>
+        <div id="updatedAt" class="muted">조회 대기 중</div>
+    </div>
+    <div class="toolbar">
+        <span id="pollStatus" class="status-pill">자동 갱신 준비</span>
+        <button id="refreshButton" type="button" onclick="refreshDashboard(true)">지금 갱신</button>
+        <button id="pollButton" class="secondary" type="button" onclick="togglePolling()">자동 갱신 중지</button>
+    </div>
+</header>
+
+<main>
+    <div id="errorBox" class="error-box"></div>
+
+    <section class="summary">
+        <div class="panel">
+            <div id="dreamiCount" class="count">-</div>
+            <div class="count-label">대기 드리미</div>
+        </div>
+        <div class="panel">
+            <div id="orderCount" class="count">-</div>
+            <div class="count-label">열린 주문</div>
+        </div>
+        <div class="panel">
+            <div id="groupCount" class="count">-</div>
+            <div class="count-label">조회된 오퍼 그룹</div>
+        </div>
+    </section>
+
+    <div class="layout">
+        <div class="stack">
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>매칭 그룹</h2>
+                    <span class="muted">열린 주문 기준</span>
+                </div>
+                <div id="groups" class="cards"><div class="empty">조회 중…</div></div>
+            </section>
+
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>주문 직접 조회</h2>
+                    <span id="trackedStatus" class="muted"></span>
+                </div>
+                <div class="row">
+                    <input id="orderIdInput" type="text" placeholder="orderId UUID" autocomplete="off"/>
+                    <button type="button" onclick="inspectOrder()">그룹 조회</button>
+                </div>
+                <div id="trackedGroup" style="margin-top:12px">
+                    <div class="empty">orderId를 입력하면 해당 그룹을 계속 추적합니다.</div>
+                </div>
+            </section>
+        </div>
+
+        <section class="panel">
+            <div class="panel-header">
+                <h2>드리미 상태</h2>
+                <span class="muted">대기열 전체</span>
+            </div>
+            <div id="dreamis" class="cards"><div class="empty">조회 중…</div></div>
+        </section>
+    </div>
+</main>
+
+<script>
+    const DEBUG_API = "/api/v1/debug/matching";
+    const POLL_INTERVAL_MS = 2_000;
+    let pollTimer = null;
+    let refreshing = false;
+    let trackedOrderId = "";
+
+    async function apiFetch(path) {
+        const response = await fetch(path, { credentials: "same-origin" });
+        let body = null;
+        try { body = await response.json(); } catch (ignored) {}
+        if (!response.ok) {
+            throw new Error(body?.message ?? `${response.status} ${response.statusText}`);
+        }
+        return body?.result;
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"']/g, character => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+        })[character]);
+    }
+
+    function shortId(value) {
+        if (!value) return "-";
+        return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-4)}` : value;
+    }
+
+    function statusClass(status) {
+        if (status === "MATCHED") return "info";
+        if (status?.includes("REJECTED") || status?.includes("EXPIRED")) return "danger";
+        if (status === "CLOSED" || status === "WITHDRAWN") return "";
+        return "warning";
+    }
+
+    function statusTag(status) {
+        const value = status ?? "UNKNOWN";
+        return `<span class="tag ${statusClass(value)}">${escapeHtml(value)}</span>`;
+    }
+
+    function formatLocation(location) {
+        if (location?.latitude == null || location?.longitude == null) return "위치 없음";
+        return `${Number(location.latitude).toFixed(5)}, ${Number(location.longitude).toFixed(5)}`;
+    }
+
+    function offerTable(offers = []) {
+        if (!offers.length) return '<div class="empty">생성된 오퍼가 없습니다.</div>';
+        const rows = offers.map(offer => `
+            <tr>
+                <td class="mono" title="${escapeHtml(offer.offerId)}">${escapeHtml(shortId(offer.offerId))}</td>
+                <td class="mono" title="${escapeHtml(offer.dreamiId)}">${escapeHtml(shortId(offer.dreamiId))}</td>
+                <td>${statusTag(offer.status)}</td>
+            </tr>
+        `).join("");
+        return `
+            <table>
+                <thead><tr><th>offerId</th><th>dreamiId</th><th>상태</th></tr></thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    }
+
+    function groupCard(group) {
+        return `
+            <article class="group-card">
+                <div class="group-title">
+                    <span class="mono ellipsis" title="${escapeHtml(group.orderId)}">${escapeHtml(group.orderId ?? "orderId 없음")}</span>
+                    ${statusTag(group.status)}
+                </div>
+                <div class="group-meta">
+                    <span>오퍼 ${group.offers?.length ?? 0}개</span>
+                    <span>재매칭 ${group.rematchRequired ? "필요" : "불필요"}</span>
+                </div>
+                ${offerTable(group.offers)}
+            </article>
+        `;
+    }
+
+    function renderGroups(groups) {
+        document.getElementById("groups").innerHTML = groups.length
+            ? groups.map(groupCard).join("")
+            : '<div class="empty">현재 열린 매칭 그룹이 없습니다.</div>';
+    }
+
+    function renderDreamis(dreamis) {
+        document.getElementById("dreamis").innerHTML = dreamis.length
+            ? dreamis.map(dreami => `
+                <article class="dreami-card">
+                    <div style="min-width:0">
+                        <div class="mono ellipsis" title="${escapeHtml(dreami.dreamiId)}">${escapeHtml(dreami.dreamiId ?? "dreamiId 없음")}</div>
+                        <div class="dreami-location">${escapeHtml(formatLocation(dreami.location))}</div>
+                    </div>
+                    ${statusTag(dreami.status)}
+                </article>
+            `).join("")
+            : '<div class="empty">등록된 대기 드리미가 없습니다.</div>';
+    }
+
+    function showError(message) {
+        const errorBox = document.getElementById("errorBox");
+        errorBox.textContent = message ?? "";
+        errorBox.style.display = message ? "block" : "none";
+    }
+
+    async function fetchGroup(orderId) {
+        return apiFetch(`${DEBUG_API}/orders/${encodeURIComponent(orderId)}/group`);
+    }
+
+    async function refreshTrackedGroup() {
+        if (!trackedOrderId) return;
+        const container = document.getElementById("trackedGroup");
+        const status = document.getElementById("trackedStatus");
+        try {
+            const group = await fetchGroup(trackedOrderId);
+            container.innerHTML = group
+                ? groupCard(group)
+                : '<div class="empty">매칭 그룹이 아직 생성되지 않았습니다.</div>';
+            status.textContent = "추적 중";
+        } catch (error) {
+            container.innerHTML = `<div class="empty">${escapeHtml(error.message)}</div>`;
+            status.textContent = "조회 실패";
+        }
+    }
+
+    async function refreshDashboard(manual = false) {
+        if (refreshing) return;
+        refreshing = true;
+        const refreshButton = document.getElementById("refreshButton");
+        const pollStatus = document.getElementById("pollStatus");
+        refreshButton.disabled = true;
+        refreshButton.textContent = "갱신 중";
+        pollStatus.textContent = manual ? "수동 갱신 중" : "자동 갱신 중";
+
+        try {
+            const [dreamis, orders] = await Promise.all([
+                apiFetch(`${DEBUG_API}/dreamis`),
+                apiFetch(`${DEBUG_API}/orders/waiting`),
+            ]);
+            const groupResults = await Promise.allSettled(
+                (orders ?? []).filter(order => order.orderId).map(order => fetchGroup(order.orderId)),
+            );
+            const groups = groupResults
+                .filter(result => result.status === "fulfilled" && result.value)
+                .map(result => result.value);
+
+            document.getElementById("dreamiCount").textContent = String(dreamis?.length ?? 0);
+            document.getElementById("orderCount").textContent = String(orders?.length ?? 0);
+            document.getElementById("groupCount").textContent = String(groups.length);
+            renderDreamis(dreamis ?? []);
+            renderGroups(groups);
+            document.getElementById("updatedAt").textContent =
+                `${new Date().toLocaleTimeString("ko-KR")} 기준 · 2초 간격`;
+            pollStatus.className = "status-pill on";
+            pollStatus.textContent = pollTimer ? "자동 갱신 정상" : "수동 갱신 완료";
+            showError("");
+            await refreshTrackedGroup();
+        } catch (error) {
+            pollStatus.className = "status-pill error";
+            pollStatus.textContent = "조회 실패";
+            showError(`매칭 상태를 불러오지 못했습니다: ${error.message}`);
+        } finally {
+            refreshing = false;
+            refreshButton.disabled = false;
+            refreshButton.textContent = "지금 갱신";
+        }
+    }
+
+    function inspectOrder() {
+        const input = document.getElementById("orderIdInput");
+        const orderId = input.value.trim();
+        if (!orderId) return;
+        trackedOrderId = orderId;
+        localStorage.setItem("matching-status:orderId", orderId);
+        void refreshTrackedGroup();
+    }
+
+    function startPolling() {
+        if (pollTimer) return;
+        pollTimer = window.setInterval(() => void refreshDashboard(), POLL_INTERVAL_MS);
+        document.getElementById("pollButton").textContent = "자동 갱신 중지";
+    }
+
+    function stopPolling() {
+        if (pollTimer) window.clearInterval(pollTimer);
+        pollTimer = null;
+        document.getElementById("pollButton").textContent = "자동 갱신 시작";
+        const pollStatus = document.getElementById("pollStatus");
+        pollStatus.className = "status-pill";
+        pollStatus.textContent = "자동 갱신 중지됨";
+    }
+
+    function togglePolling() {
+        if (pollTimer) stopPolling();
+        else {
+            startPolling();
+            void refreshDashboard(true);
+        }
+    }
+
+    document.getElementById("orderIdInput").addEventListener("keydown", event => {
+        if (event.key === "Enter") inspectOrder();
+    });
+    const savedOrderId = localStorage.getItem("matching-status:orderId");
+    if (savedOrderId) document.getElementById("orderIdInput").value = savedOrderId;
+    startPolling();
+    void refreshDashboard();
+</script>
+</body>
+</html>
