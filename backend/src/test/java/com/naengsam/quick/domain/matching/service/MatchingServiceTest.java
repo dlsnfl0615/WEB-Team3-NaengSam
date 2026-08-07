@@ -41,7 +41,7 @@ class MatchingServiceTest {
 
     // 오퍼 팝업 payload 생성에만 쓰이는 주문 표시 스냅샷. 값 자체는 대부분의 테스트에서 검증 대상이 아니다.
     private static final OrderSummaryDto ORDER_SUMMARY = new OrderSummaryDto(
-            UUID.randomUUID(), "품목", null, null, 5000L, 20,
+            UUID.randomUUID(), "품목", null, null, 5000L, 20, 1200L,
             "픽업별칭", "픽업주소", "도착별칭", "도착주소", "img", LocalDateTime.now());
 
     private MatchingService matchingService;
@@ -1256,6 +1256,7 @@ class MatchingServiceTest {
         when(order.getDeliveryAmount()).thenReturn(8000L);
         when(order.getItemName()).thenReturn("생수 2박스");
         when(order.getDeliveryEta()).thenReturn(25);
+        when(order.getDeliveryDistance()).thenReturn(3200L);
         when(order.getOriginAlias()).thenReturn("우리집");
         when(order.getOriginAddressLine1()).thenReturn("서울시 강남구");
         when(order.getDestinationAlias()).thenReturn("회사");
@@ -1275,6 +1276,7 @@ class MatchingServiceTest {
         assertThat(payload.deliveryAmount()).isEqualTo(8000L);
         assertThat(payload.itemName()).isEqualTo("생수 2박스");
         assertThat(payload.deliveryEta()).isEqualTo(25);
+        assertThat(payload.deliveryDistance()).isEqualTo(3200L);
         assertThat(payload.originAlias()).isEqualTo("우리집");
         assertThat(payload.originAddressLine1()).isEqualTo("서울시 강남구");
         assertThat(payload.destinationAlias()).isEqualTo("회사");

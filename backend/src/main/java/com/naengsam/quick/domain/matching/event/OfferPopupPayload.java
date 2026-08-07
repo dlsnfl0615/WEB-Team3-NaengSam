@@ -15,6 +15,7 @@ public record OfferPopupPayload(
         Long deliveryAmount,             // 요금
         String itemName,
         int deliveryEta,
+        Long deliveryDistance,           // 출발지-도착지 예상 거리(m)
         String originAlias,              // 픽업지 별칭
         String originAddressLine1,       // 픽업지 기본주소
         String destinationAlias,         // 도착지 별칭
@@ -30,6 +31,7 @@ public record OfferPopupPayload(
                 summary.deliveryAmount(),
                 summary.itemName(),
                 summary.deliveryEta(),
+                summary.deliveryDistance(),
                 summary.originAlias(),
                 summary.originAddressLine1(),
                 summary.destinationAlias(),
