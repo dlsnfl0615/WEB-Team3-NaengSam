@@ -12,6 +12,7 @@ import static org.mockito.Mockito.when;
 
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
@@ -1113,6 +1114,21 @@ class MatchingServiceTest {
         // then
         assertThat(result).isFalse();
         verify(matchingEngine, never()).submit(any());
+    }
+
+    @Test
+    void 부르미_확정_이벤트를_받으면_엔진_큐에_AcceptByBoormi_액션이_제출된다() {
+        // given
+        UUID offerId = UUID.randomUUID();
+
+        // when
+        matchingService.onBoormiConfirmed(new BoormiConfirmedEvent(offerId));
+
+        // then
+        ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
+        verify(matchingEngine).submit(captor.capture());
+        assertThat(captor.getValue()).isInstanceOf(AcceptByBoormi.class);
+        assertThat(((AcceptByBoormi) captor.getValue()).offerId()).isEqualTo(offerId);
     }
 
     @Test

@@ -2,6 +2,7 @@ package com.naengsam.quick.domain.matching.service;
 
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
 import com.naengsam.quick.domain.matching.event.BoormiRejectedPayload;
 import com.naengsam.quick.domain.matching.event.DreamiInfoPayload;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
@@ -33,6 +34,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 /**
  * 부르미 - 드리미 매칭 로직 스켈레톤. 로직 자체는 원본 그대로 두고, 컴파일/자료구조/네이밍 일관성만 보정한 버전.
@@ -186,6 +189,15 @@ public class MatchingService {
      */
     public void acceptByBoormi(UUID offerId) {
         matchingEngine.submit(new AcceptByBoormi(this, offerId));
+    }
+
+    /**
+     * 부르미 확정 트랜잭션이 커밋된 뒤에만 매칭엔진에 수락을 제출한다. 엔진 스레드는 별도 트랜잭션으로 주문을 다시 읽어 배달을 시작하므로, 커밋 전에 제출하면 아직
+     * IN_PROGRESS 가 아닌 주문을 보고 배달 시작이 실패한다. 롤백된 확정은 이벤트가 폐기되어 엔진까지 가지 않는다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onBoormiConfirmed(BoormiConfirmedEvent event) {
+        acceptByBoormi(event.offerId());
     }
 
     /**

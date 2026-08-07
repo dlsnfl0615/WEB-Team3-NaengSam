@@ -18,6 +18,7 @@ import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.MatchingService;
@@ -39,6 +40,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
@@ -68,6 +70,9 @@ BoormiServiceTest {
 
     @Mock
     private MatchingRepository matchingRepository;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private BoormiService boormiService;
@@ -371,7 +376,7 @@ BoormiServiceTest {
     }
 
     @Test
-    void 확정_정상이면_dreamiId를_채우고_IN_PROGRESS_전이하며_MATCHING을_저장한다() {
+    void 확정_정상이면_dreamiId를_채우고_IN_PROGRESS_전이하며_커밋후_처리용_이벤트를_발행한다() {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         UUID offerId = UUID.randomUUID();
@@ -385,7 +390,8 @@ BoormiServiceTest {
         assertThat(order.getOrderCd()).isEqualTo(OrderCd.IN_PROGRESS);
         assertThat(order.getDreamiId()).isEqualTo(dreamiId);
         then(matchingRepository).should().save(any());
-        then(matchingService).should().acceptByBoormi(offerId);
+        then(matchingService).should(never()).acceptByBoormi(any()); // 커밋 전에는 엔진에 직접 제출하지 않는다
+        then(eventPublisher).should().publishEvent(new BoormiConfirmedEvent(offerId));
     }
 
     @Test
@@ -401,7 +407,7 @@ BoormiServiceTest {
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.NOT_ORDER_OWNER);
-        then(matchingService).should(never()).acceptByBoormi(any());
+        then(eventPublisher).should(never()).publishEvent(any(BoormiConfirmedEvent.class));
     }
 
     @Test
@@ -416,7 +422,7 @@ BoormiServiceTest {
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.INVALID_DREAMI_CONFIRMATION);
-        then(matchingService).should(never()).acceptByBoormi(any());
+        then(eventPublisher).should(never()).publishEvent(any(BoormiConfirmedEvent.class));
     }
 
     @Test
@@ -434,7 +440,7 @@ BoormiServiceTest {
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.NO_DREAMI_TO_CONFIRM);
         then(matchingRepository).should(never()).save(any());
-        then(matchingService).should(never()).acceptByBoormi(any());
+        then(eventPublisher).should(never()).publishEvent(any(BoormiConfirmedEvent.class));
     }
 
     @Test

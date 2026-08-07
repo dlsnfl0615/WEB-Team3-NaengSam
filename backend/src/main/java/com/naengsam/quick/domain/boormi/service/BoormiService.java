@@ -12,6 +12,7 @@ import com.naengsam.quick.domain.boormi.entity.Charge;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.entity.Matching;
+import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.MatchingService;
@@ -29,6 +30,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -52,6 +54,7 @@ public class BoormiService {
     private final OrderService orderService;
     private final OrderRepository orderRepository;
     private final MatchingRepository matchingRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 부르미의 주문 요청을 접수한다. 출발지/도착지 도로명주소를 좌표로 변환해 주문(ORDERS)을 생성·저장한 뒤 결제를 시작하고 매칭 큐에 등록한다.
@@ -121,7 +124,7 @@ public class BoormiService {
 
     /**
      * 부르미가 수락한 드리미를 최종 확정한다. 확정 대기(PENDING_BOORMI_CONFIRMATION) 상태의 자기 주문만 확정할 수 있으며, DB 주문을 IN_PROGRESS 로 전이한 뒤 매칭엔진에
-     * 부르미 수락을 제출한다.
+     * 부르미 수락을 제출한다. 매칭엔진 제출은 이 트랜잭션이 커밋된 뒤에 일어난다.
      */
     @Transactional
     public void confirmDreami(UUID boormiId, UUID orderId, UUID offerId) {
@@ -143,7 +146,9 @@ public class BoormiService {
         matching.markAccepted();                 // 확정 순간을 매칭 성사 시각으로 기록
         matchingRepository.save(matching);       // MATCHING 이력 저장
 
-        matchingService.acceptByBoormi(offerId); // 인메모리 오퍼 MATCHED 확정 (fire-and-forget)
+        // 매칭엔진은 별도 스레드/트랜잭션에서 배달을 시작하므로, 이 트랜잭션이 커밋된 뒤에 제출해야
+        // IN_PROGRESS 전이를 볼 수 있다. 커밋 후 처리는 MatchingService 의 리스너가 담당한다.
+        eventPublisher.publishEvent(new BoormiConfirmedEvent(offerId));
     }
     
     /**
