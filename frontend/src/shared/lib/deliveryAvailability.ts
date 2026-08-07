@@ -8,7 +8,7 @@ export interface UntrackableDeliveryNotice {
   message: string;
 }
 
-/** 현재 추적 화면에서 다룰 수 없는 인계·반송·완료·취소·종료 상태의 안내 문구를 반환한다. */
+/** 추적 화면에 다시 진입할 수 없는 완료·취소·종료 상태의 안내 문구를 반환한다. */
 export function getUntrackableDeliveryNotice(
   status: DeliveryStatusResponseDtoStatus | undefined,
 ): UntrackableDeliveryNotice | null {
@@ -33,21 +33,6 @@ export function getUntrackableDeliveryNotice(
         title: "배달이 완료되었어요.",
         message: "완료된 배달은 더 이상 추적할 수 없어요.",
       };
-    case DeliveryCd.PARTNER_HANDOFF_PENDING:
-      return {
-        title: "파트너 인계 중인 배달이에요",
-        message: "파트너 인계가 시작된 배달은 이 화면에서 추적할 수 없어요.",
-      };
-    case DeliveryCd.TRANSFERRED_TO_PARTNER:
-      return {
-        title: "파트너에게 인계된 배달이에요",
-        message: "파트너에게 인계된 배달은 이 화면에서 추적할 수 없어요.",
-      };
-    case DeliveryCd.RETURNING:
-      return {
-        title: "반송 중인 배달이에요",
-        message: "반송 중인 배달은 이 화면에서 추적할 수 없어요.",
-      };
     case DeliveryCd.RETURNED:
       return {
         title: "이미 반송 완료된 배달이에요",
@@ -58,6 +43,18 @@ export function getUntrackableDeliveryNotice(
         title: "이미 종료된 배달이에요",
         message: "종료된 배달은 더 이상 추적할 수 없어요.",
       };
+    case DeliveryCd.PICKUP_DELAYED:
+      // TODO: 픽업 지연 상태의 추적 화면 정책이 정해지면 처리한다.
+      return null;
+    case DeliveryCd.PARTNER_HANDOFF_PENDING:
+      // TODO: 파트너 인계 대기 상태의 추적 화면 정책이 정해지면 처리한다.
+      return null;
+    case DeliveryCd.TRANSFERRED_TO_PARTNER:
+      // TODO: 파트너 인계 완료 상태의 추적 화면 정책이 정해지면 처리한다.
+      return null;
+    case DeliveryCd.RETURNING:
+      // TODO: 반송 중 상태의 추적 화면 정책이 정해지면 처리한다.
+      return null;
     default:
       return null;
   }
