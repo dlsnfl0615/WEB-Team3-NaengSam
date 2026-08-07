@@ -10,6 +10,7 @@ import {
 } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { api, isApiError } from "@/shared/api";
+import { useMatchingStore } from "@/shared/store/matchingStore";
 import {
   ORDER_PROGRESS,
   toBoormiOrder,
@@ -22,6 +23,15 @@ export function DriverPanel() {
   const [current, setCurrent] = useState<BoormiOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const goOffline = useMatchingStore((s) => s.goOffline);
+  const matchingMessage = useMatchingStore((s) => s.message);
+  const [endingSession, setEndingSession] = useState(false);
+
+  const onEndSession = async () => {
+    setEndingSession(true);
+    await goOffline();
+    setEndingSession(false);
+  };
 
   useEffect(() => {
     let alive = true;
@@ -53,14 +63,27 @@ export function DriverPanel() {
       <Card variant="hero" className="flex flex-col gap-3">
         <p className="text-xl font-bold tracking-[-0.4px]">드리미 시작하기</p>
         <div className="h-[9px] w-3/4 rounded-[5px] bg-navy-700" />
-        <Button
-          variant="primary"
-          arrow
-          block
-          onClick={() => navigate(ROUTES.matching)}
-        >
-          드리미 시작하기
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="shrink-0 whitespace-nowrap"
+            onClick={onEndSession}
+            disabled={endingSession}
+          >
+            종료
+          </Button>
+          <Button
+            variant="primary"
+            arrow
+            block
+            onClick={() => navigate(ROUTES.matching)}
+          >
+            드리미 시작하기
+          </Button>
+        </div>
+        {matchingMessage && (
+          <p className="text-2xs text-status-danger">{matchingMessage}</p>
+        )}
       </Card>
 
       <SectionHeader title="진행 중인 드림" count={current ? 1 : 0} />
@@ -88,8 +111,8 @@ export function DriverPanel() {
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="오늘의 수익" value="₩42,500" variant="accent" />
-        <StatCard label="완료 건수" value="8건" />
+        <StatCard label="오늘의 수익" value="₩0" variant="accent" />
+        <StatCard label="완료 건수" value="0건" />
       </div>
     </>
   );
