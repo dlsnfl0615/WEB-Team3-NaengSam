@@ -23,6 +23,15 @@ function formatCode(orderId: string): string {
     return `#${orderId.slice(0, 8)}`;
 }
 
+/** 장소 별칭을 우선하고, 없으면 기본주소를 표시한다. */
+function formatPlace(
+    alias: string | null,
+    address: string | null,
+    fallback: string,
+): string {
+    return alias?.trim() || address?.trim() || fallback;
+}
+
 /**
  * 전역 매칭 팝업. 백엔드 SSE로 받은 제안이 있으면 어느 화면에서든 바텀에 뜬다.
  * - 드리미: `offer_popup` 수신 → 콜 카드(수락). 배달 추적 화면 이동은 `delivery_started_dreami` 수신 시.
@@ -123,17 +132,22 @@ export function MatchingPopup() {
                     <CallCard
                         code={formatCode(call.orderId)}
                         price={
-                            call.call?.expectedRevenue != null
-                                ? `₩${call.call.expectedRevenue.toLocaleString()}`
+                            call.deliveryAmount != null
+                                ? `₩${call.deliveryAmount.toLocaleString()}`
                                 : "금액 확인 중"
                         }
-                        place={call.call?.itemName ?? "물품 배송"}
-                        route={
-                            call.call?.expectedEtaMinutes != null
-                                ? `예상 ${call.call.expectedEtaMinutes}분`
-                                : ""
-                        }
-                        pickupDistance={formatDistance(call.call?.distanceMeters)}
+                        place={call.itemName ?? "물품 배송"}
+                        route={`${formatPlace(
+                            call.originAlias,
+                            call.originAddressLine1,
+                            "출발지",
+                        )} → ${formatPlace(
+                            call.destinationAlias,
+                            call.destinationAddressLine1,
+                            "도착지",
+                        )}`}
+                        pickupDistance={formatDistance(call.distanceMeters)}
+                        eta={`${call.deliveryEta}분`}
                         onReject={rejectOffer}
                         onAccept={onAcceptCall}
                     />

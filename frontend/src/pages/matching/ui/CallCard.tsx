@@ -7,9 +7,11 @@ export interface CallCardProps {
   price: string;
   /** 건물·장소 이름 */
   place: string;
-  /** 층 이동 경로(예: "24F → 12F") */
+  /** 출발지 → 도착지 경로 */
   route: string;
   pickupDistance: string;
+  /** 예상 배송 시간 */
+  eta: string;
   /** 목적지 거리. 값이 없으면 항목을 숨긴다. */
   dropoffDistance?: string;
   /** 물품 유형. 값이 없으면 항목을 숨긴다. */
@@ -28,6 +30,7 @@ export function CallCard({
   place,
   route,
   pickupDistance,
+  eta,
   dropoffDistance,
   itemType,
   onReject,
@@ -49,6 +52,11 @@ export function CallCard({
 
       <div className="flex items-start">
         <CallStat label="픽업 거리" value={pickupDistance} />
+        <CallStat
+          label="예상 시간"
+          value={eta}
+          className="ml-auto text-right"
+        />
         {dropoffDistance && (
           <CallStat
             label="목적지 거리"

@@ -18,12 +18,24 @@ interface Coords {
   longitude: number;
 }
 
-/** 드리미가 받은 제안(SSE `offer_popup`). */
-export interface PendingOffer {
+/** 백엔드 SSE `offer_popup` payload. */
+interface OfferPopupPayload {
   offerId: string;
   orderId: string;
-  /** 주변 콜 캐시에서 찾은 주문 정보(없으면 undefined — 금액·물품 미표시). */
-  call?: NearbyCallDto;
+  deliveryAmount: number | null;
+  itemName: string | null;
+  deliveryEta: number;
+  originAlias: string | null;
+  originAddressLine1: string | null;
+  destinationAlias: string | null;
+  destinationAddressLine1: string | null;
+  imageKey: string | null;
+  ttlSeconds: number;
+}
+
+/** 드리미가 받은 제안. 픽업 거리만 주변 콜 캐시에서 보충한다. */
+export interface PendingOffer extends OfferPopupPayload {
+  distanceMeters?: number;
 }
 
 /** 부르미가 받은 드리미 수락 알림(SSE `dreami_info`) + 드리미 프로필. */
@@ -37,7 +49,7 @@ export interface IncomingDreami {
 interface MatchingState {
   /** 드리미 온라인(콜 수신 가능) 상태. */
   online: boolean;
-  /** 주변 콜 목록. 제안 팝업의 주문 정보 소스로도 쓴다. */
+  /** 주변 콜 목록. 제안 팝업의 픽업 거리 보조 데이터로도 쓴다. */
   nearbyCalls: NearbyCallDto[];
   pendingOffer: PendingOffer | null;
   incomingDreami: IncomingDreami | null;
@@ -129,17 +141,14 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   message: null,
   submitting: false,
 
-  // 드리미: 새 제안 도착. 주문 정보는 주변 콜 캐시에서 채운다.
+  // 드리미: 새 제안 도착. 표시 정보는 SSE payload를 쓰고 거리만 주변 콜 캐시에서 보충한다.
   receiveOfferPopup: (payload) => {
-    const { offerId, orderId } = payload as {
-      offerId: string;
-      orderId: string;
-    };
+    const offer = payload as OfferPopupPayload;
     set((s) => ({
       pendingOffer: {
-        offerId,
-        orderId,
-        call: s.nearbyCalls.find((c) => c.orderId === orderId),
+        ...offer,
+        distanceMeters: s.nearbyCalls.find((c) => c.orderId === offer.orderId)
+          ?.distanceMeters,
       },
       // 새 제안이 왔으면 지난 안내는 지운다(카드 뒤에 남아 나중에 다시 뜨는 것 방지).
       message: null,
