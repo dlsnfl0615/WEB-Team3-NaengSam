@@ -3,12 +3,16 @@ package com.naengsam.quick.domain.matching.service;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
+import com.naengsam.quick.domain.matching.event.BoormiRejectedDreamiEvent;
 import com.naengsam.quick.domain.matching.event.BoormiRejectedPayload;
+import com.naengsam.quick.domain.matching.event.DreamiAcceptedEvent;
 import com.naengsam.quick.domain.matching.event.DreamiInfoPayload;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
+import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
 import com.naengsam.quick.domain.matching.event.NotificationErrorPayload;
 import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
+import com.naengsam.quick.domain.matching.event.OrderCancelledByBoormiEvent;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
@@ -145,6 +149,15 @@ public class MatchingService {
     }
 
     /**
+     * 주문 접수 트랜잭션이 커밋된 뒤에만 매칭엔진에 매칭 시작을 제출한다. 커밋 전에 제출하면 엔진이 오퍼 팝업을 먼저 보내, 드리미가 아직 저장되지 않은 주문을 수락하려 할 수 있다.
+     * 롤백된 접수는 이벤트가 폐기되어 엔진까지 가지 않는다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onMatchingStartRequested(MatchingStartRequestedEvent event) {
+        startMatching(event.order());
+    }
+
+    /**
      * 부르미가 매칭 진행 중인 주문을 직접 취소한다. 호출 스레드에서 곧바로 확인 가능한 취소 가능 여부(진행 중인 방이 있는지)만 빠르게 걸러내며, 취소할 방이 없거나 이미 종료된 방이면 큐에 넣지 않고
      * false를 반환한다. 방이 존재했다면 실패 사유를 부르미에게 SSE로 알린다. 실제 취소는 엔진 스레드에서 순차 처리된다.
      *
@@ -164,6 +177,14 @@ public class MatchingService {
     }
 
     /**
+     * 주문 취소 트랜잭션이 커밋된 뒤에만 매칭엔진에 제안 회수를 제출한다. 커밋 전에 제출하면 취소가 롤백돼도 인메모리 방은 이미 종료된 채로 남아, 주문이 영영 재매칭되지 않는다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onOrderCancelledByBoormi(OrderCancelledByBoormiEvent event) {
+        cancelOrderByBoormi(event.orderId());
+    }
+
+    /**
      * 드리미가 제안(팝업)을 수락한다. 큐 제출 전에는 유효성을 검사하지 않으며, 이미 종료/회수된 제안이거나 존재하지 않는 제안이면 엔진 스레드에서 실패를 판단해 SSE로 알린다. 수락이 확정되면 나머지
      * 오퍼는 회수(WITHDRAWN)되고 부르미에게 확인 팝업이 전달된다.
      *
@@ -171,6 +192,15 @@ public class MatchingService {
      */
     public void acceptByDreami(UUID offerId) {
         matchingEngine.submit(new AcceptByDreami(this, offerId));
+    }
+
+    /**
+     * 드리미 수락 트랜잭션이 커밋된 뒤에만 매칭엔진에 수락을 제출한다. 엔진은 곧바로 부르미에게 확인 팝업을 보내는데, 부르미의 확정은 주문이
+     * PENDING_BOORMI_CONFIRMATION 인지 검사하므로 커밋 전에 제출하면 그 확정이 실패한다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onDreamiAccepted(DreamiAcceptedEvent event) {
+        acceptByDreami(event.offerId());
     }
 
     /**
@@ -207,6 +237,15 @@ public class MatchingService {
      */
     public void rejectByBoormi(UUID offerId) {
         matchingEngine.submit(new RejectByBoormi(this, offerId));
+    }
+
+    /**
+     * 부르미 거절 트랜잭션이 커밋된 뒤에만 매칭엔진에 거절을 제출한다. 엔진은 곧바로 재오퍼를 돌리므로, 커밋 전에 제출하면 다른 드리미가 먼저 수락해 커밋한
+     * PENDING_BOORMI_CONFIRMATION 을 이 트랜잭션의 MATCHING 복귀가 덮어써 주문이 고착된다.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onBoormiRejectedDreami(BoormiRejectedDreamiEvent event) {
+        rejectByBoormi(event.offerId());
     }
 
     // ────────────────────────────── 내부 구현체 ──────────────────────────────
@@ -477,7 +516,10 @@ public class MatchingService {
         return Comparator.comparing(WaitingDreami::updatedAt);
     }
 
-    private boolean isOpenGroupExists(UUID orderId) {
+    /**
+     * 해당 주문에 진행 중(OPEN)인 방이 이미 있는지 확인한다. 주문 접수 시 중복 매칭 시작을 트랜잭션 안에서 걸러내는 데도 쓴다.
+     */
+    public boolean isOpenGroupExists(UUID orderId) {
         OrderOfferGroup existingGroup = orderOfferGroupsByOrderId.get(orderId);
         return existingGroup != null && existingGroup.status() == OrderOfferGroupStatus.OPEN;
     }

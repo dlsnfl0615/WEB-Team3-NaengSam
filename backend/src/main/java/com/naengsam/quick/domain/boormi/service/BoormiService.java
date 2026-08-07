@@ -13,6 +13,9 @@ import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.entity.Matching;
 import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
+import com.naengsam.quick.domain.matching.event.BoormiRejectedDreamiEvent;
+import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
+import com.naengsam.quick.domain.matching.event.OrderCancelledByBoormiEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.MatchingService;
@@ -93,9 +96,11 @@ public class BoormiService {
 
         orderService.createOrders(orders);
         paymentService.payWithPoint(boormiId, orderId, charge.amount());
-        if (!matchingService.startMatching(orders)) {
+        if (matchingService.isOpenGroupExists(orderId)) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);
         }
+        // 엔진은 매칭 시작 즉시 드리미에게 오퍼 팝업을 보내므로, 주문이 커밋된 뒤에 제출해야 드리미가 그 주문을 조회할 수 있다.
+        eventPublisher.publishEvent(new MatchingStartRequestedEvent(orders));
         return orders.getOrderId();
     }
 
@@ -119,7 +124,10 @@ public class BoormiService {
 
         orderService.cancel(order, CancelerCd.BOORMI); // 주문 취소 상태 전이 + 취소 이력 저장
         paymentService.refundByPoint(orderId);         // 결제 포인트 전액 환불 (SSE 알림 전에 DB 작업을 끝낸다)
-        matchingService.cancelOrderByBoormi(orderId);  // 제안 회수 + 드리미 SSE 알림
+
+        // 커밋 전에 제출하면 취소가 롤백돼도 인메모리 방은 이미 종료된 채로 남아 주문이 영영 재매칭되지 않는다.
+        // 제안 회수 + 드리미 SSE 알림은 커밋 후 MatchingService 의 리스너가 담당한다.
+        eventPublisher.publishEvent(new OrderCancelledByBoormiEvent(orderId));
     }
 
     /**
@@ -171,7 +179,9 @@ public class BoormiService {
 
         order.rejectDreami();                    // MATCHING 복귀 + dreami_id 해제 (dirty checking)
 
-        matchingService.rejectByBoormi(offerId); // 인메모리 오퍼 BOORMI_REJECTED + 재오퍼 (fire-and-forget)
+        // 엔진은 거절 즉시 재오퍼를 돌리므로, 커밋 전에 제출하면 다른 드리미가 먼저 수락해 커밋한
+        // PENDING_BOORMI_CONFIRMATION 을 이 트랜잭션의 MATCHING 복귀가 덮어써 주문이 고착된다.
+        eventPublisher.publishEvent(new BoormiRejectedDreamiEvent(offerId));
     }
 
     /**
