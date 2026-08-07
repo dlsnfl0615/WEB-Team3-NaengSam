@@ -21,11 +21,3 @@ export function signup(dto: SignupRequest): Promise<AuthUser> {
     email: dto.email,
   });
 }
-
-/** 본인인증(드리미 등록). 목: 역할에 드리미를 추가한 유저를 반환. */
-export function verifyIdentity(user: AuthUser): Promise<AuthUser> {
-  const roles = user.roles.includes("드리미")
-    ? user.roles
-    : [...user.roles, "드리미" as const];
-  return mockRequest<AuthUser>({ ...user, roles });
-}

@@ -717,7 +717,7 @@ const getProfile = (
     }
 
 /**
- * 드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다.
+ * 드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다. 진행 중인 배달이 없으면 result가 null이다.
  * @summary 현재 수행 중인 배달 카드 조회
  */
 const findCurrentDeliveryCard = (

@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { api, SESSION_PROBE_HEADER } from "@/shared/api";
 import type { UserDto } from "@/shared/api";
-import { verifyIdentity } from "@/shared/mock/authService";
 import type { AuthUser, LoginRequest, SignupRequest } from "@/shared/mock/types";
 
 interface SessionState {
@@ -13,8 +12,8 @@ interface SessionState {
   bootstrap: () => Promise<void>;
   login: (dto: LoginRequest) => Promise<AuthUser>;
   signup: (dto: SignupRequest) => Promise<AuthUser>;
-  /** 로그인 유저의 본인인증(드리미 등록). 미로그인 시 null. */
-  verify: () => Promise<AuthUser | null>;
+  /** 로그인 유저의 본인인증(드리미 등록). 업로드 확인 실패는 예외로 던져진다(호출부에서 처리), 미로그인 시엔 null. */
+  verify: (idCardKey: string, criminalRecordKey: string) => Promise<AuthUser | null>;
   logout: () => Promise<void>;
 }
 
@@ -82,11 +81,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     });
     return get().login({ email: dto.email, password: dto.password });
   },
-  verify: async () => {
-    // 본인인증(드리미 등록)은 dreami 도메인 소관 — 아직 목 유지(후속 연동).
+  verify: async (idCardKey, criminalRecordKey) => {
+    // S3 업로드가 실제로 끝났는지 서버에서 확인한 뒤에만 인증 신청을 저장한다. 실패(미업로드/이미 승인 등)는 예외로 던져진다.
     const { user } = get();
     if (!user) return null;
-    const updated = await verifyIdentity(user);
+    await api.verifyUploadedDocuments({ idCardKey, criminalRecordKey });
+    // isDreami가 반영된 최신 사용자 정보로 세션을 갱신한다.
+    const { result } = await api.me();
+    const updated = toAuthUser(result ?? {});
     set({ user: updated });
     return updated;
   },
