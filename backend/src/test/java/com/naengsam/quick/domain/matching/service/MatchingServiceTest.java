@@ -17,6 +17,7 @@ import com.naengsam.quick.domain.matching.event.BoormiRejectedDreamiEvent;
 import com.naengsam.quick.domain.matching.event.DreamiAcceptedEvent;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
+import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
 import com.naengsam.quick.domain.matching.event.OrderCancelledByBoormiEvent;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
@@ -24,6 +25,7 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.LocalDateTime;
@@ -36,6 +38,11 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class MatchingServiceTest {
+
+    // 오퍼 팝업 payload 생성에만 쓰이는 주문 표시 스냅샷. 값 자체는 대부분의 테스트에서 검증 대상이 아니다.
+    private static final OrderSummaryDto ORDER_SUMMARY = new OrderSummaryDto(
+            UUID.randomUUID(), "품목", null, null, 5000L, 20,
+            "픽업별칭", "픽업주소", "도착별칭", "도착주소", "img", LocalDateTime.now());
 
     private MatchingService matchingService;
     private MatchingEngine matchingEngine;
@@ -932,7 +939,7 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiId,
                 MatchOfferStatus.OFFERED);
         OrderOfferGroup group =
-                new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offer));
+                new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer));
         group.closeForRematch();
         getOrderOfferGroups().put(orderId, group);
         getDreamiMap().put(dreamiId, new WaitingDreami(
@@ -968,7 +975,7 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiIdC,
                 MatchOfferStatus.OFFERED);
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offerA, offerB, offerC));
+                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offerA, offerB, offerC));
         getOrderOfferGroups().put(orderId, group);
         for (UUID dreamiId : List.of(dreamiIdA, dreamiIdB, dreamiIdC)) {
             getDreamiMap().put(dreamiId, new WaitingDreami(
@@ -1007,7 +1014,7 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiIdC,
                 MatchOfferStatus.OFFERED);
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offerA, offerB, offerC));
+                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offerA, offerB, offerC));
         getOrderOfferGroups().put(orderId, group);
         for (UUID dreamiId : List.of(dreamiIdA, dreamiIdB, dreamiIdC)) {
             getDreamiMap().put(dreamiId, new WaitingDreami(
@@ -1047,7 +1054,7 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiIdC,
                 MatchOfferStatus.DREAMI_EXPIRED);
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offerA, offerB, offerC));
+                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offerA, offerB, offerC));
         getOrderOfferGroups().put(orderId, group);
 
         // when
@@ -1069,7 +1076,7 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiId,
                 MatchOfferStatus.OFFERED);
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offer));
+                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer));
         getOrderOfferGroups().put(orderId, group);
         getDreamiMap().put(dreamiId, new WaitingDreami(
                 dreamiId, mock(GeoPoint.class),
@@ -1092,7 +1099,7 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         OrderOfferGroup group =
-                new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of());
+                new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of());
         getOrderOfferGroups().put(orderId, group);
         when(matchingEngine.submit(any())).thenReturn(true);
 
@@ -1156,7 +1163,7 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         OrderOfferGroup group =
-                new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of());
+                new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of());
         getOrderOfferGroups().put(orderId, group);
 
         // when
@@ -1221,7 +1228,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(dreamiId, location);
 
         OrderOfferGroup group =
-                new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), List.of());
+                new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of());
         group.closeForRematch();
         getOrderOfferGroups().put(orderId, group);
 
@@ -1238,13 +1245,52 @@ class MatchingServiceTest {
     }
 
     @Test
+    void 매칭을_시작하면_오퍼팝업_payload에_주문_상세정보가_담긴다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        matchingService.applyRegisterDreami(dreamiId, mock(GeoPoint.class));
+
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+        when(order.getDeliveryAmount()).thenReturn(8000L);
+        when(order.getItemName()).thenReturn("생수 2박스");
+        when(order.getDeliveryEta()).thenReturn(25);
+        when(order.getOriginAlias()).thenReturn("우리집");
+        when(order.getOriginAddressLine1()).thenReturn("서울시 강남구");
+        when(order.getDestinationAlias()).thenReturn("회사");
+        when(order.getDestinationAddressLine1()).thenReturn("서울시 성동구");
+        when(order.getImageKey()).thenReturn("img-key");
+
+        // when
+        matchingService.applyStartMatching(order);
+
+        // then
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(sseService).send(eq(dreamiId), eq(MatchingEventType.OFFER_POPUP), captor.capture());
+
+        assertThat(captor.getValue()).isInstanceOf(OfferPopupPayload.class);
+        OfferPopupPayload payload = (OfferPopupPayload) captor.getValue();
+        assertThat(payload.orderId()).isEqualTo(orderId);
+        assertThat(payload.deliveryAmount()).isEqualTo(8000L);
+        assertThat(payload.itemName()).isEqualTo("생수 2박스");
+        assertThat(payload.deliveryEta()).isEqualTo(25);
+        assertThat(payload.originAlias()).isEqualTo("우리집");
+        assertThat(payload.originAddressLine1()).isEqualTo("서울시 강남구");
+        assertThat(payload.destinationAlias()).isEqualTo("회사");
+        assertThat(payload.destinationAddressLine1()).isEqualTo("서울시 성동구");
+        assertThat(payload.imageKey()).isEqualTo("img-key");
+        assertThat(payload.ttlSeconds()).isEqualTo(30L);
+    }
+
+    @Test
     void 재매칭_대상_그룹이_없으면_스케줄된_재매칭_실행시_아무일도_일어나지_않는다() {
         // given
         UUID orderId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
 
         OrderOfferGroup group =
-                new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), List.of());
+                new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of());
         getOrderOfferGroups().put(orderId, group);
 
         // when
@@ -1292,7 +1338,7 @@ class MatchingServiceTest {
                 offerId, orderId, UUID.randomUUID(), MatchOfferStatus.OFFERED);
         getOffersById().put(offerId, offer);
         getOrderOfferGroups().put(orderId,
-                new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), List.of(offer)));
+                new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer)));
 
         assertThat(matchingService.isBoormiOfferOwner(offerId, boormiId)).isTrue();
     }
@@ -1306,7 +1352,7 @@ class MatchingServiceTest {
                 offerId, orderId, UUID.randomUUID(), MatchOfferStatus.OFFERED);
         getOffersById().put(offerId, offer);
         getOrderOfferGroups().put(orderId,
-                new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), List.of(offer)));
+                new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer)));
 
         assertThat(matchingService.isBoormiOfferOwner(offerId, UUID.randomUUID())).isFalse();
     }
