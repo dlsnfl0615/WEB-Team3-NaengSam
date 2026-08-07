@@ -16,6 +16,7 @@ import type { Coords } from "@/shared/ui";
 import {
   recallDeliveryStage,
   rememberDeliveryStage,
+  getClosedDeliveryNotice,
   useSse,
   type SseHandlers,
 } from "@/shared/lib";
@@ -68,6 +69,12 @@ export function RealDeliveryTracking({
   const [detailLoading, setDetailLoading] = useState(true);
   const [detailError, setDetailError] = useState(
     "잠시 후 다시 시도해 주세요.",
+  );
+  const [detailModalTitle, setDetailModalTitle] = useState(
+    "배달 정보를 불러오지 못했어요",
+  );
+  const [detailGuidance, setDetailGuidance] = useState(
+    "정보를 확인하기 전에는 배달 기능을 사용할 수 없어요.",
   );
   const [detailCanRetry, setDetailCanRetry] = useState(true);
   const detailRequestId = useRef(0);
@@ -128,6 +135,18 @@ export function RealDeliveryTracking({
         if (requestId !== detailRequestId.current) return;
         if (!result) throw new Error("배달 정보가 비어 있습니다.");
 
+        const closedNotice = getClosedDeliveryNotice(result.status);
+        if (closedNotice) {
+          if (result.status) rememberDeliveryStage(orderId, result.status);
+          setReadyOrderId(null);
+          setAttemptedOrderId(orderId);
+          setDetailModalTitle(closedNotice.title);
+          setDetailError(closedNotice.message);
+          setDetailGuidance("");
+          setDetailCanRetry(false);
+          return;
+        }
+
         if (result.originLatitude != null && result.originLongitude != null)
           setPickup({
             latitude: result.originLatitude,
@@ -158,6 +177,10 @@ export function RealDeliveryTracking({
         setAttemptedOrderId(orderId);
         setDetailError(
           isApiError(e) ? e.message : "잠시 후 다시 시도해 주세요.",
+        );
+        setDetailModalTitle("배달 정보를 불러오지 못했어요");
+        setDetailGuidance(
+          "정보를 확인하기 전에는 배달 기능을 사용할 수 없어요.",
         );
         setDetailCanRetry(![401, 403, 404].includes(errorStatus));
       })
@@ -355,7 +378,9 @@ export function RealDeliveryTracking({
 
       <BlockingLoadErrorModal
         open={detailAttempted && !detailReady}
+        title={detailModalTitle}
         message={detailError}
+        guidance={detailGuidance}
         retrying={detailLoading}
         canRetry={detailCanRetry}
         onRetry={() => {

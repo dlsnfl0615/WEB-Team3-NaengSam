@@ -9,3 +9,7 @@ export {
   type DreamiLocationBroadcastState,
 } from './geo/useDreamiLocationBroadcast'
 export { rememberDeliveryStage, recallDeliveryStage } from './deliveryStageMemo'
+export {
+  getClosedDeliveryNotice,
+  type ClosedDeliveryNotice,
+} from './deliveryAvailability'

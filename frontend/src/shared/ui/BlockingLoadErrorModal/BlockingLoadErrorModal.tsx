@@ -4,33 +4,33 @@ import { Modal } from "../Modal/Modal";
 
 export interface BlockingLoadErrorModalProps {
   open: boolean;
+  title?: string;
   message: string;
+  guidance?: string;
   retrying: boolean;
   canRetry: boolean;
   onRetry: () => void;
   onExit: () => void;
 }
 
-/** 필수 초기 데이터를 불러오지 못했을 때 화면 기능을 차단하는 오류 모달. */
+/** 상세 조회 실패 또는 추적 불가 상태에서 배달 기능을 차단하는 안내 모달. */
 export function BlockingLoadErrorModal({
   open,
+  title = "배달 정보를 불러오지 못했어요",
   message,
+  guidance = "정보를 확인하기 전에는 배달 기능을 사용할 수 없어요.",
   retrying,
   canRetry,
   onRetry,
   onExit,
 }: BlockingLoadErrorModalProps) {
   return (
-    <Modal open={open} label="배달 정보 조회 실패">
+    <Modal open={open} label={title}>
       <Card className="flex flex-col gap-4 text-center">
         <div className="flex flex-col gap-1">
-          <h2 className="text-md font-bold text-navy-900">
-            배달 정보를 불러오지 못했어요
-          </h2>
+          <h2 className="text-md font-bold text-navy-900">{title}</h2>
           <p className="text-2xs text-muted">{message}</p>
-          <p className="text-2xs text-muted">
-            정보를 확인하기 전에는 배달 기능을 사용할 수 없어요.
-          </p>
+          {guidance && <p className="text-2xs text-muted">{guidance}</p>}
         </div>
 
         <div className="flex gap-2">
