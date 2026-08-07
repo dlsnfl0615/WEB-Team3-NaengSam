@@ -11,6 +11,7 @@ export const ROUTES = {
   requestCreate: "/request-create",
   destinationSearch: "/destination-search",
   matching: "/matching",
+  matchingStatus: "/matching-status",
   rejectReason: "/reject-reason",
   deliveryTrack: "/delivery-track",
   deliveryDetail: "/delivery-detail",
