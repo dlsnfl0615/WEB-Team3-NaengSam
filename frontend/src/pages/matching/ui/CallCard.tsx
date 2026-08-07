@@ -43,9 +43,9 @@ export function CallCard({
         <p className="text-xl font-bold text-teal-700">{price}</p>
       </div>
 
-      <div className="text-xl font-bold tracking-[-0.4px] text-navy-900">
-        <p>{place}</p>
-        <p>{route}</p>
+      <div className="font-bold text-navy-900">
+        <p className="text-xl tracking-[-0.4px]">{place}</p>
+        <p className="mt-3 text-base">{route}</p>
       </div>
 
       <div className="h-px bg-track" />
