@@ -10,6 +10,7 @@ export interface CallCardProps {
   /** 출발지 → 도착지 경로 */
   route: string;
   pickupDistance: string;
+  deliveryDistance: string;
   /** 예상 배송 시간 */
   eta: string;
   /** 목적지 거리. 값이 없으면 항목을 숨긴다. */
@@ -30,6 +31,7 @@ export function CallCard({
   place,
   route,
   pickupDistance,
+  deliveryDistance,
   eta,
   dropoffDistance,
   itemType,
@@ -52,6 +54,11 @@ export function CallCard({
 
       <div className="flex items-start">
         <CallStat label="픽업 거리" value={pickupDistance} />
+        <CallStat
+          label="배송 거리"
+          value={deliveryDistance}
+          className="ml-6"
+        />
         <CallStat
           label="예상 시간"
           value={eta}

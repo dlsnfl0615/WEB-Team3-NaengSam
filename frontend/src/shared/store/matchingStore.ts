@@ -25,8 +25,13 @@ interface OfferPopupPayload {
   deliveryAmount: number | null;
   itemName: string | null;
   deliveryEta: number;
+  deliveryDistance: number | null;
+  originLatitude: number | null;
+  originLongitude: number | null;
   originAlias: string | null;
   originAddressLine1: string | null;
+  destinationLatitude: number | null;
+  destinationLongitude: number | null;
   destinationAlias: string | null;
   destinationAddressLine1: string | null;
   imageKey: string | null;

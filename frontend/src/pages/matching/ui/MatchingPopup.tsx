@@ -11,7 +11,7 @@ import {CallCard} from "./CallCard";
 import {OfferCard} from "./OfferCard";
 
 /** 거리(m) → 표시 라벨. */
-function formatDistance(meters?: number): string {
+function formatDistance(meters?: number | null): string {
     if (meters == null) return "-";
     return meters >= 1000
         ? `${(meters / 1000).toFixed(1)}km`
@@ -147,6 +147,7 @@ export function MatchingPopup() {
                             "도착지",
                         )}`}
                         pickupDistance={formatDistance(call.distanceMeters)}
+                        deliveryDistance={formatDistance(call.deliveryDistance)}
                         eta={`${call.deliveryEta}분`}
                         onReject={rejectOffer}
                         onAccept={onAcceptCall}
