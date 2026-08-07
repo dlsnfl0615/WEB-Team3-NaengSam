@@ -10,6 +10,6 @@ export {
 } from './geo/useDreamiLocationBroadcast'
 export { rememberDeliveryStage, recallDeliveryStage } from './deliveryStageMemo'
 export {
-  getClosedDeliveryNotice,
-  type ClosedDeliveryNotice,
+  getUntrackableDeliveryNotice,
+  type UntrackableDeliveryNotice,
 } from './deliveryAvailability'

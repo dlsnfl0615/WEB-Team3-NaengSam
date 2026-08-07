@@ -16,7 +16,7 @@ import type { Coords } from "@/shared/ui";
 import {
   recallDeliveryStage,
   rememberDeliveryStage,
-  getClosedDeliveryNotice,
+  getUntrackableDeliveryNotice,
   useSse,
   type SseHandlers,
 } from "@/shared/lib";
@@ -35,8 +35,6 @@ interface RealDeliveryTrackingProps {
   initialStatus?: DeliveryStatusResponseDtoStatus;
 }
 
-/** 종료(완료/취소) 이벤트 후 화면 전환까지의 대기 시간(토스트 노출용). */
-const TERMINAL_NAV_DELAY_MS = 1600;
 /** 진행 중 알림 토스트가 화면에 머무는 시간. */
 const TRANSIENT_TOAST_MS = 4000;
 
@@ -90,22 +88,35 @@ export function RealDeliveryTracking({
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
-  const navTimer = useRef<number | null>(null);
   const toastTimer = useRef<number | null>(null);
-
-  // 종료 상태에서 토스트를 잠시 보여준 뒤 화면을 전환한다. 중복 예약을 막고 unmount 시 정리한다.
-  const scheduleNav = (to: string) => {
-    if (navTimer.current !== null) return;
-    navTimer.current = window.setTimeout(
-      () => navigate(to, { replace: true }),
-      TERMINAL_NAV_DELAY_MS,
-    );
-  };
 
   // 상태 전이는 항상 스냅샷에 남긴다(재진입 시 픽업중으로 되돌아가지 않도록).
   const applyStatus = (next: DeliveryStatusResponseDtoStatus) => {
     setStatus(next);
     rememberDeliveryStage(orderId, next);
+  };
+
+  // SSE로 종료 상태를 받으면 토스트·지연 이동 대신 즉시 차단 모달로 전환한다.
+  const showClosedDeliveryModal = (
+    nextStatus: DeliveryStatusResponseDtoStatus,
+    message?: string,
+  ) => {
+    const notice = getUntrackableDeliveryNotice(nextStatus);
+    if (toastTimer.current !== null) {
+      clearTimeout(toastTimer.current);
+      toastTimer.current = null;
+    }
+    applyStatus(nextStatus);
+    setReadyOrderId(null);
+    setAttemptedOrderId(orderId);
+    setConfirmOpen(false);
+    setToast(null);
+    setDetailModalTitle(notice?.title ?? "배달이 종료됐어요");
+    setDetailError(
+      message ?? notice?.message ?? "종료된 배달은 더 이상 추적할 수 없어요.",
+    );
+    setDetailGuidance("");
+    setDetailCanRetry(false);
   };
 
   // 진행 중 알림 토스트: 잠시 노출 후 자동으로 사라진다.
@@ -120,7 +131,6 @@ export function RealDeliveryTracking({
 
   useEffect(
     () => () => {
-      if (navTimer.current !== null) clearTimeout(navTimer.current);
       if (toastTimer.current !== null) clearTimeout(toastTimer.current);
     },
     [],
@@ -135,7 +145,7 @@ export function RealDeliveryTracking({
         if (requestId !== detailRequestId.current) return;
         if (!result) throw new Error("배달 정보가 비어 있습니다.");
 
-        const closedNotice = getClosedDeliveryNotice(result.status);
+        const closedNotice = getUntrackableDeliveryNotice(result.status);
         if (closedNotice) {
           if (result.status) rememberDeliveryStage(orderId, result.status);
           setReadyOrderId(null);
@@ -224,18 +234,18 @@ export function RealDeliveryTracking({
     delivery_completed: (data) => {
       const dto = forThisOrder(data);
       if (!dto) return;
-      applyStatus(dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERED);
-      setToast({ title: "배달이 완료됐어요", description: dto.message });
-      scheduleNav(ROUTES.deliveryComplete);
+      showClosedDeliveryModal(
+        dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERED,
+        dto.message,
+      );
     },
     delivery_cancelled: (data) => {
       const dto = forThisOrder(data);
       if (!dto) return;
-      applyStatus(
+      showClosedDeliveryModal(
         dto.status ?? DeliveryStatusResponseDtoStatus.PICKUP_CANCELLED_BY_ADMIN,
+        dto.message,
       );
-      setToast({ title: "배달이 취소됐어요", description: dto.message });
-      scheduleNav(ROUTES.home);
     },
   };
 

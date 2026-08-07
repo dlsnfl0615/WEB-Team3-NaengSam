@@ -8,7 +8,6 @@ import {
   MapCard,
   Modal,
   ScreenShell,
-  Toast,
   DeliveryRouteMap,
 } from "@/shared/ui";
 import type { Coords } from "@/shared/ui";
@@ -17,7 +16,7 @@ import type { DeliveryStatusResponseDto } from "@/shared/api";
 import {
   recallDeliveryStage,
   rememberDeliveryStage,
-  getClosedDeliveryNotice,
+  getUntrackableDeliveryNotice,
   useSse,
   useDreamiLocationBroadcast,
   type SseHandlers,
@@ -29,9 +28,6 @@ import {
 } from "@/shared/store/deliveryStore";
 import { TRACK_STAGES, type TrackStage } from "./statuses";
 import { TrackOverlay } from "./TrackOverlay";
-
-/** 상대편(부르미/관리자) 취소 알림을 보여준 뒤 홈으로 나가기까지의 대기 시간. */
-const CANCEL_NAV_DELAY_MS = 1800;
 
 /**
  * 실시간 배송 추적 화면(Figma node 191:972, 191:989).
@@ -87,20 +83,6 @@ export function DeliveryTrackScreen() {
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
-  // 상대편(부르미/관리자)이 취소하면 SSE로 통지받아 알림을 띄우고 홈으로 나간다.
-  const [sseToast, setSseToast] = useState<{
-    title: string;
-    description?: string;
-  } | null>(null);
-  const navTimer = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (navTimer.current !== null) clearTimeout(navTimer.current);
-    },
-    [],
-  );
-
   const loadDeliveryDetail = useCallback(() => {
     if (!isRealMode || !orderId) return;
     const requestId = ++detailRequestId.current;
@@ -111,7 +93,7 @@ export function DeliveryTrackScreen() {
         if (requestId !== detailRequestId.current) return;
         if (!result) throw new Error("배달 정보가 비어 있습니다.");
 
-        const closedNotice = getClosedDeliveryNotice(result.status);
+        const closedNotice = getUntrackableDeliveryNotice(result.status);
         if (closedNotice) {
           if (result.status) rememberDeliveryStage(orderId, result.status);
           setReadyOrderId(null);
@@ -177,16 +159,19 @@ export function DeliveryTrackScreen() {
     delivery_cancelled: (data) => {
       const dto = data as DeliveryStatusResponseDto;
       if (dto?.orderId !== orderId) return;
-      setSseToast({
-        title: "배달이 취소됐어요",
-        description: dto.message ?? "상대방이 배달을 취소했어요.",
-      });
-      if (navTimer.current === null) {
-        navTimer.current = window.setTimeout(
-          () => navigate(ROUTES.home, { replace: true }),
-          CANCEL_NAV_DELAY_MS,
-        );
-      }
+      const cancelledStatus =
+        dto.status ?? DeliveryStatusResponseDtoStatus.PICKUP_CANCELLED_BY_ADMIN;
+      const notice = getUntrackableDeliveryNotice(cancelledStatus);
+      rememberDeliveryStage(orderId, cancelledStatus);
+      setReadyOrderId(null);
+      setAttemptedOrderId(orderId);
+      setConfirmOpen(false);
+      setDetailModalTitle(notice?.title ?? "배달이 취소됐어요");
+      setDetailError(
+        dto.message ?? notice?.message ?? "상대방이 배달을 취소했어요.",
+      );
+      setDetailGuidance("");
+      setDetailCanRetry(false);
     },
   };
 
@@ -275,17 +260,6 @@ export function DeliveryTrackScreen() {
 
   return (
     <ScreenShell>
-      {/* 상대편 취소 SSE 알림(화면 위에 떠서 표시) */}
-      {sseToast && (
-        <div className="fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
-          <Toast
-            icon="bell"
-            title={sseToast.title}
-            description={sseToast.description}
-          />
-        </div>
-      )}
-
       {/* 풀블리드 지도 + 지도 위 뒤로가기 */}
       <div className="relative -mx-4 -mt-6">
         <MapCard
