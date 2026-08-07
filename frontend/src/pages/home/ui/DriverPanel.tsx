@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
@@ -7,6 +7,7 @@ import {
   LocationBar,
   SectionHeader,
   StatCard,
+  Toast,
 } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { api, isApiError } from "@/shared/api";
@@ -17,6 +18,8 @@ import {
   type BoormiOrder,
 } from "@/shared/store/boormiOrderAdapter";
 
+const TRANSIENT_TOAST_MS = 4000;
+
 /** 홈 화면의 드리미(배송인) 본문. 현재 수행 중인 배달을 실제 API로 조회한다. */
 export function DriverPanel() {
   const navigate = useNavigate();
@@ -26,12 +29,30 @@ export function DriverPanel() {
   const goOffline = useMatchingStore((s) => s.goOffline);
   const matchingMessage = useMatchingStore((s) => s.message);
   const [endingSession, setEndingSession] = useState(false);
+  const [toast, setToast] = useState<{ title: string; description?: string } | null>(
+    null,
+  );
+  const toastTimer = useRef<number | null>(null);
 
   const onEndSession = async () => {
     setEndingSession(true);
+    useMatchingStore.setState({ message: null });
     await goOffline();
+    // 실패 시엔 matchingMessage가 채워지므로, 비어있을 때만(=성공) 토스트를 띄운다.
+    if (!useMatchingStore.getState().message) {
+      setToast({ title: "오프라인으로 전환됐어요", description: "드리미 활동이 종료됐어요." });
+    }
     setEndingSession(false);
   };
+
+  // 토스트 자동 소멸.
+  useEffect(() => {
+    if (!toast) return;
+    toastTimer.current = window.setTimeout(() => setToast(null), TRANSIENT_TOAST_MS);
+    return () => {
+      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
+    };
+  }, [toast]);
 
   useEffect(() => {
     let alive = true;
@@ -58,6 +79,12 @@ export function DriverPanel() {
 
   return (
     <>
+      {toast && (
+        <div className="fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
+          <Toast icon="bell" title={toast.title} description={toast.description} />
+        </div>
+      )}
+
       <LocationBar location="Office Hub: Zone A" status="4층 대기" />
 
       <Card variant="hero" className="flex flex-col gap-3">
