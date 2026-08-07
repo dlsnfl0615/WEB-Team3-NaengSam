@@ -1,4 +1,4 @@
-import { Badge, Button } from "@/shared/ui";
+import { Badge, Button, DeliveryRouteMap } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
 
 export interface CallCardProps {
@@ -40,15 +40,18 @@ export function CallCard({
 }: CallCardProps) {
   return (
     <div className="flex flex-col gap-3 rounded-md border-2 border-status-success bg-surface p-4 shadow-card">
+      <p className="text-xl font-bold tracking-[-0.4px] text-navy-900">
+        {place}
+      </p>
+
+      <DeliveryRouteMap height={280} />
+
       <div className="flex items-start justify-between">
         <Badge tone="info">새로운 콜! {code}</Badge>
         <p className="text-xl font-bold text-teal-700">{price}</p>
       </div>
 
-      <div className="font-bold text-navy-900">
-        <p className="text-xl tracking-[-0.4px]">{place}</p>
-        <p className="mt-3 text-base">{route}</p>
-      </div>
+      <p className="text-base font-bold text-navy-900">{route}</p>
 
       <div className="h-px bg-track" />
 
