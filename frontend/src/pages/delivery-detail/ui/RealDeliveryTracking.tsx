@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
+  BlockingLoadErrorModal,
   Card,
   DeliveryRouteMap,
   Icon,
@@ -61,7 +62,17 @@ export function RealDeliveryTracking({
   const [location, setLocation] = useState<DeliveryLocationDto | null>(null);
   const [pickup, setPickup] = useState<Coords | undefined>(undefined);
   const [dropoff, setDropoff] = useState<Coords | undefined>(undefined);
-  const [detailError, setDetailError] = useState<string | null>(null);
+  // 상세 조회 성공 전에는 SSE·취소 등 모든 배달 기능을 차단한다.
+  const [readyOrderId, setReadyOrderId] = useState<string | null>(null);
+  const [attemptedOrderId, setAttemptedOrderId] = useState<string | null>(null);
+  const [detailLoading, setDetailLoading] = useState(true);
+  const [detailError, setDetailError] = useState(
+    "잠시 후 다시 시도해 주세요.",
+  );
+  const [detailCanRetry, setDetailCanRetry] = useState(true);
+  const detailRequestId = useRef(0);
+  const detailReady = readyOrderId === orderId;
+  const detailAttempted = attemptedOrderId === orderId;
   const [toast, setToast] = useState<{
     title: string;
     description?: string;
@@ -108,13 +119,15 @@ export function RealDeliveryTracking({
     [],
   );
 
-  // 마운트 시 출발지·도착지 좌표(+초기 드리미 위치)를 1회 받아온다. 이후 위치는 SSE가 갱신한다.
-  useEffect(() => {
-    let cancelled = false;
-    api
+  const loadDeliveryDetail = useCallback(() => {
+    const requestId = ++detailRequestId.current;
+
+    return api
       .getDeliveryDetail(orderId)
       .then(({ result }) => {
-        if (cancelled || !result) return;
+        if (requestId !== detailRequestId.current) return;
+        if (!result) throw new Error("배달 정보가 비어 있습니다.");
+
         if (result.originLatitude != null && result.originLongitude != null)
           setPickup({
             latitude: result.originLatitude,
@@ -129,19 +142,37 @@ export function RealDeliveryTracking({
             longitude: result.destinationLongitude,
           });
         // SSE가 아직 위치를 안 줬으면 응답의 currentLocation으로 시드한다.
-        const seed = result.currentLocation;
-        if (seed) setLocation((prev) => prev ?? seed);
+        setLocation(result.currentLocation ?? null);
+
+        if (result.status) {
+          setStatus(result.status);
+          rememberDeliveryStage(orderId, result.status);
+        }
+        setReadyOrderId(orderId);
+        setAttemptedOrderId(orderId);
       })
       .catch((e) => {
-        if (!cancelled)
-          setDetailError(
-            isApiError(e) ? e.message : "배달 정보를 불러오지 못했어요.",
-          );
+        if (requestId !== detailRequestId.current) return;
+        const errorStatus = isApiError(e) ? e.status : 0;
+        setReadyOrderId(null);
+        setAttemptedOrderId(orderId);
+        setDetailError(
+          isApiError(e) ? e.message : "잠시 후 다시 시도해 주세요.",
+        );
+        setDetailCanRetry(![401, 403, 404].includes(errorStatus));
+      })
+      .finally(() => {
+        if (requestId === detailRequestId.current) setDetailLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
   }, [orderId]);
+
+  // 마운트 시 출발지·도착지 좌표(+초기 드리미 위치)를 1회 받아온다. 실패하면 배달 기능을 차단한다.
+  useEffect(() => {
+    void loadDeliveryDetail();
+    return () => {
+      detailRequestId.current += 1;
+    };
+  }, [loadDeliveryDetail]);
 
   // 이 주문의 이벤트만 통과시킨다.
   const forThisOrder = (data: unknown): DeliveryStatusResponseDto | null => {
@@ -185,7 +216,7 @@ export function RealDeliveryTracking({
     },
   };
 
-  const { connected } = useSse(handlers);
+  const { connected } = useSse(handlers, { enabled: detailReady });
 
   const view = realTrackView(status);
   const driver: Coords | undefined =
@@ -198,7 +229,7 @@ export function RealDeliveryTracking({
 
   // 부르미가 배달 취소를 확정하면 백엔드에 취소를 요청하고 홈으로 돌아간다(드리미에게는 SSE로 통지됨).
   const confirmCancel = async () => {
-    if (canceling) return;
+    if (canceling || !detailReady) return;
     setCanceling(true);
     setCancelError(null);
     try {
@@ -230,7 +261,7 @@ export function RealDeliveryTracking({
         </div>
       )}
 
-      {!connected && !toast && (
+      {detailReady && !connected && !toast && (
         <p className="pt-2 text-2xs text-muted">실시간 연결 중…</p>
       )}
 
@@ -258,10 +289,6 @@ export function RealDeliveryTracking({
           />
         </MapCard>
 
-        {detailError && (
-          <p className="text-2xs text-status-danger">{detailError}</p>
-        )}
-
         <Card className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-pill bg-teal-50 text-teal-700">
             <Icon name="pin" size={18} />
@@ -279,7 +306,7 @@ export function RealDeliveryTracking({
         <Button block variant="outline">
           연락하기
         </Button>
-        {!view.terminal && (
+        {detailReady && !view.terminal && (
           <button
             type="button"
             onClick={() => {
@@ -325,6 +352,18 @@ export function RealDeliveryTracking({
           </div>
         </Card>
       </Modal>
+
+      <BlockingLoadErrorModal
+        open={detailAttempted && !detailReady}
+        message={detailError}
+        retrying={detailLoading}
+        canRetry={detailCanRetry}
+        onRetry={() => {
+          setDetailLoading(true);
+          void loadDeliveryDetail();
+        }}
+        onExit={() => navigate(ROUTES.home, { replace: true })}
+      />
     </ScreenShell>
   );
 }
