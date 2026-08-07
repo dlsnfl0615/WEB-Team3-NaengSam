@@ -96,8 +96,8 @@ export function RealDeliveryTracking({
     rememberDeliveryStage(orderId, next);
   };
 
-  // SSE로 종료 상태를 받으면 토스트·지연 이동 대신 즉시 차단 모달로 전환한다.
-  const showClosedDeliveryModal = (
+  // SSE로 취소 상태를 받으면 토스트·지연 이동 대신 즉시 차단 모달로 전환한다.
+  const showCancellationModal = (
     nextStatus: DeliveryStatusResponseDtoStatus,
     message?: string,
   ) => {
@@ -234,15 +234,20 @@ export function RealDeliveryTracking({
     delivery_completed: (data) => {
       const dto = forThisOrder(data);
       if (!dto) return;
-      showClosedDeliveryModal(
-        dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERED,
-        dto.message,
-      );
+      const completedStatus =
+        dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERED;
+      if (toastTimer.current !== null) {
+        clearTimeout(toastTimer.current);
+        toastTimer.current = null;
+      }
+      applyStatus(completedStatus);
+      setToast(null);
+      navigate(ROUTES.deliveryComplete, { replace: true });
     },
     delivery_cancelled: (data) => {
       const dto = forThisOrder(data);
       if (!dto) return;
-      showClosedDeliveryModal(
+      showCancellationModal(
         dto.status ?? DeliveryStatusResponseDtoStatus.PICKUP_CANCELLED_BY_ADMIN,
         dto.message,
       );
