@@ -2,6 +2,7 @@ package com.naengsam.quick.domain.matching.event;
 
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.UUID;
 
@@ -16,8 +17,12 @@ public record OfferPopupPayload(
         String itemName,
         int deliveryEta,
         Long deliveryDistance,           // 출발지-도착지 예상 거리(m)
+        BigDecimal originLatitude,       // 픽업지 위도
+        BigDecimal originLongitude,      // 픽업지 경도
         String originAlias,              // 픽업지 별칭
         String originAddressLine1,       // 픽업지 기본주소
+        BigDecimal destinationLatitude,  // 도착지 위도
+        BigDecimal destinationLongitude, // 도착지 경도
         String destinationAlias,         // 도착지 별칭
         String destinationAddressLine1,  // 도착지 기본주소
         String imageKey,
@@ -32,8 +37,12 @@ public record OfferPopupPayload(
                 summary.itemName(),
                 summary.deliveryEta(),
                 summary.deliveryDistance(),
+                summary.originLatitude(),
+                summary.originLongitude(),
                 summary.originAlias(),
                 summary.originAddressLine1(),
+                summary.destinationLatitude(),
+                summary.destinationLongitude(),
                 summary.destinationAlias(),
                 summary.destinationAddressLine1(),
                 summary.imageKey(),

@@ -28,6 +28,7 @@ import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -42,7 +43,9 @@ class MatchingServiceTest {
     // 오퍼 팝업 payload 생성에만 쓰이는 주문 표시 스냅샷. 값 자체는 대부분의 테스트에서 검증 대상이 아니다.
     private static final OrderSummaryDto ORDER_SUMMARY = new OrderSummaryDto(
             UUID.randomUUID(), "품목", null, null, 5000L, 20, 1200L,
-            "픽업별칭", "픽업주소", "도착별칭", "도착주소", "img", LocalDateTime.now());
+            BigDecimal.valueOf(37.1), BigDecimal.valueOf(127.1), "픽업별칭", "픽업주소",
+            BigDecimal.valueOf(37.2), BigDecimal.valueOf(127.2), "도착별칭", "도착주소",
+            "img", LocalDateTime.now());
 
     private MatchingService matchingService;
     private MatchingEngine matchingEngine;
@@ -1257,8 +1260,12 @@ class MatchingServiceTest {
         when(order.getItemName()).thenReturn("생수 2박스");
         when(order.getDeliveryEta()).thenReturn(25);
         when(order.getDeliveryDistance()).thenReturn(3200L);
+        when(order.getOriginLatitude()).thenReturn(BigDecimal.valueOf(37.4979));
+        when(order.getOriginLongitude()).thenReturn(BigDecimal.valueOf(127.0276));
         when(order.getOriginAlias()).thenReturn("우리집");
         when(order.getOriginAddressLine1()).thenReturn("서울시 강남구");
+        when(order.getDestinationLatitude()).thenReturn(BigDecimal.valueOf(37.5445));
+        when(order.getDestinationLongitude()).thenReturn(BigDecimal.valueOf(127.0559));
         when(order.getDestinationAlias()).thenReturn("회사");
         when(order.getDestinationAddressLine1()).thenReturn("서울시 성동구");
         when(order.getImageKey()).thenReturn("img-key");
@@ -1277,8 +1284,12 @@ class MatchingServiceTest {
         assertThat(payload.itemName()).isEqualTo("생수 2박스");
         assertThat(payload.deliveryEta()).isEqualTo(25);
         assertThat(payload.deliveryDistance()).isEqualTo(3200L);
+        assertThat(payload.originLatitude()).isEqualByComparingTo(BigDecimal.valueOf(37.4979));
+        assertThat(payload.originLongitude()).isEqualByComparingTo(BigDecimal.valueOf(127.0276));
         assertThat(payload.originAlias()).isEqualTo("우리집");
         assertThat(payload.originAddressLine1()).isEqualTo("서울시 강남구");
+        assertThat(payload.destinationLatitude()).isEqualByComparingTo(BigDecimal.valueOf(37.5445));
+        assertThat(payload.destinationLongitude()).isEqualByComparingTo(BigDecimal.valueOf(127.0559));
         assertThat(payload.destinationAlias()).isEqualTo("회사");
         assertThat(payload.destinationAddressLine1()).isEqualTo("서울시 성동구");
         assertThat(payload.imageKey()).isEqualTo("img-key");
