@@ -33,6 +33,7 @@ public class DeliveryController {
 
     private final DeliveryService deliveryService;
 
+    // 배달 추적 페이지를 로드할 때 먼저 호출해야하는 함수
     @Operation(summary = "배달 상세 조회", description = "추적 화면용. 출발지·도착지 좌표와 현재 드리미 위치를 반환한다.")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class, codes = {"DELIVERY_NOT_FOUND"})
     @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
