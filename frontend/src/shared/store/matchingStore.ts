@@ -54,6 +54,8 @@ export interface IncomingDreami {
 interface MatchingState {
   /** 드리미 온라인(콜 수신 가능) 상태. */
   online: boolean;
+  /** 온라인 전환 때 GPS로 취득한 드리미 현재 좌표. */
+  dreamiCoords: Coords | null;
   /** 주변 콜 목록. 제안 팝업의 픽업 거리 보조 데이터로도 쓴다. */
   nearbyCalls: NearbyCallDto[];
   pendingOffer: PendingOffer | null;
@@ -140,6 +142,7 @@ function toMessage(e: unknown, fallback: string): string {
  */
 export const useMatchingStore = create<MatchingState>((set, get) => ({
   online: false,
+  dreamiCoords: null,
   nearbyCalls: [],
   pendingOffer: null,
   incomingDreami: null,
@@ -206,7 +209,12 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     set({ message: message ?? "매칭 요청 처리에 실패했어요." });
   },
 
-  clearOffers: () => set({ pendingOffer: null, incomingDreami: null }),
+  clearOffers: () =>
+    set({
+      dreamiCoords: null,
+      pendingOffer: null,
+      incomingDreami: null,
+    }),
 
   startDreamiSession: async () => {
     // 이미 온라인이면 재등록하지 않는다(서버가 "이미 등록된 드리미입니다"로 응답한다).
@@ -216,10 +224,11 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     try {
       coords = await getCurrentCoords();
       await api.goOnline(coords);
-      set({ online: true, message: null });
+      set({ online: true, dreamiCoords: coords, message: null });
     } catch (e) {
       set({
         online: false,
+        dreamiCoords: null,
         message: toMessage(e, "온라인 전환에 실패했어요."),
       });
       return;
@@ -242,7 +251,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   goOffline: async () => {
     try {
       await api.goOffline();
-      set({ online: false, pendingOffer: null });
+      set({ online: false, dreamiCoords: null, pendingOffer: null });
     } catch (e) {
       set({ message: toMessage(e, "오프라인 전환에 실패했어요.") });
     }

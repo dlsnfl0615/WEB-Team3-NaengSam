@@ -1,4 +1,9 @@
-import { Badge, Button, DeliveryRouteMap } from "@/shared/ui";
+import {
+  Badge,
+  Button,
+  DeliveryRouteMap,
+  type Coords,
+} from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
 
 export interface CallCardProps {
@@ -9,6 +14,9 @@ export interface CallCardProps {
   place: string;
   /** 출발지 → 도착지 경로 */
   route: string;
+  pickup?: Coords; // 출발지(픽업 위치) 위도 경도
+  dropoff?: Coords; // 도착지 위도 경도
+  currentLocation?: Coords; // 드리미 현재 위치
   pickupDistance: string;
   deliveryDistance: string;
   /** 예상 배송 시간 */
@@ -30,6 +38,9 @@ export function CallCard({
   price,
   place,
   route,
+  pickup,
+  dropoff,
+  currentLocation,
   pickupDistance,
   deliveryDistance,
   eta,
@@ -44,7 +55,13 @@ export function CallCard({
         {place}
       </p>
 
-      <DeliveryRouteMap height={280} />
+      <DeliveryRouteMap
+        pickup={pickup}
+        dropoff={dropoff}
+        driver={currentLocation}
+        driverLabel="내 위치"
+        height={280}
+      />
 
       <div className="flex items-start justify-between">
         <Badge tone="info">새로운 콜! {code}</Badge>

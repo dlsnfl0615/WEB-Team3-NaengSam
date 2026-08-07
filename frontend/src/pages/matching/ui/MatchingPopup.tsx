@@ -2,7 +2,7 @@ import {useEffect} from "react";
 import {useLocation, useNavigate} from "react-router-dom";
 import {ROUTES} from "@/shared/config/routes";
 import {type SseHandlers, useSse} from "@/shared/lib";
-import {Toast} from "@/shared/ui";
+import {Toast, type Coords} from "@/shared/ui";
 import type {DeliveryStatusResponseDto} from "@/shared/api";
 import {useMatchingStore} from "@/shared/store/matchingStore";
 import {useSessionStore} from "@/shared/store/sessionStore";
@@ -32,6 +32,15 @@ function formatPlace(
     return alias?.trim() || address?.trim() || fallback;
 }
 
+/** nullable 위·경도를 지도 컴포넌트 좌표로 변환한다. */
+function toCoords(
+    latitude: number | null,
+    longitude: number | null,
+): Coords | undefined {
+    if (latitude == null || longitude == null) return undefined;
+    return {latitude, longitude};
+}
+
 /**
  * 전역 매칭 팝업. 백엔드 SSE로 받은 제안이 있으면 어느 화면에서든 바텀에 뜬다.
  * - 드리미: `offer_popup` 수신 → 콜 카드(수락). 배달 추적 화면 이동은 `delivery_started_dreami` 수신 시.
@@ -43,6 +52,7 @@ export function MatchingPopup() {
     const {pathname} = useLocation();
     const isAuthenticated = useSessionStore((s) => s.isAuthenticated);
     const pendingOffer = useMatchingStore((s) => s.pendingOffer);
+    const dreamiCoords = useMatchingStore((s) => s.dreamiCoords);
     const incomingDreami = useMatchingStore((s) => s.incomingDreami);
     const submitting = useMatchingStore((s) => s.submitting);
     const acceptOffer = useMatchingStore((s) => s.acceptOffer);
@@ -146,6 +156,15 @@ export function MatchingPopup() {
                             call.destinationAddressLine1,
                             "도착지",
                         )}`}
+                        pickup={toCoords(
+                            call.originLatitude,
+                            call.originLongitude,
+                        )}
+                        dropoff={toCoords(
+                            call.destinationLatitude,
+                            call.destinationLongitude,
+                        )}
+                        currentLocation={dreamiCoords ?? undefined}
                         pickupDistance={formatDistance(call.distanceMeters)}
                         deliveryDistance={formatDistance(call.deliveryDistance)}
                         eta={`${call.deliveryEta}분`}
