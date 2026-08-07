@@ -17,7 +17,6 @@ export interface CallCardProps {
   pickup?: Coords; // 출발지(픽업 위치) 위도 경도
   dropoff?: Coords; // 도착지 위도 경도
   currentLocation?: Coords; // 드리미 현재 위치
-  pickupDistance: string;
   deliveryDistance: string;
   /** 예상 배송 시간 */
   eta: string;
@@ -41,7 +40,6 @@ export function CallCard({
   pickup,
   dropoff,
   currentLocation,
-  pickupDistance,
   deliveryDistance,
   eta,
   dropoffDistance,
@@ -73,12 +71,7 @@ export function CallCard({
       <div className="h-px bg-track" />
 
       <div className="flex items-start">
-        <CallStat label="픽업 거리" value={pickupDistance} />
-        <CallStat
-          label="배송 거리"
-          value={deliveryDistance}
-          className="ml-6"
-        />
+        <CallStat label="배송 거리" value={deliveryDistance} />
         <CallStat
           label="예상 시간"
           value={eta}
