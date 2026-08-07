@@ -23,6 +23,7 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
+import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
 import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
 import com.naengsam.quick.global.exception.BusinessException;
@@ -176,7 +177,7 @@ public class DreamiService {
         YearMonth rangeStart = thisMonth.minusMonths(5);
         // WALLET 은 boormi_id 로 소유자를 식별하며, dreamiId 는 boormiId 와 동일한 값이다.
         Map<YearMonth, MonthlyMoneyAggregate> byMonth = moneyTxRepository
-                .aggregateByBoormiIdAndTypeBetween(dreamiId, MoneyTxTypeCd.SETTLEMENT,
+                .aggregateByBoormiIdAndTypeBetween(dreamiId, MoneyTxTypeCd.SETTLEMENT, MoneyTxStatusCd.SETTLED,
                         rangeStart.atDay(1).atStartOfDay(), thisMonth.plusMonths(1).atDay(1).atStartOfDay())
                 .stream()
                 .collect(Collectors.toMap(MonthlyMoneyAggregate::yearMonth, aggregate -> aggregate));

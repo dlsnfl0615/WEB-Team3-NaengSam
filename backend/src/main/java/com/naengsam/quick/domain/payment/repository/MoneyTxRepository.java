@@ -2,6 +2,7 @@ package com.naengsam.quick.domain.payment.repository;
 
 import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
 import com.naengsam.quick.domain.payment.entity.MoneyTx;
+import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -16,9 +17,11 @@ public interface MoneyTxRepository extends JpaRepository<MoneyTx, UUID> {
             + "YEAR(mt.createdDtm), MONTH(mt.createdDtm), SUM(mt.amount), COUNT(mt)) "
             + "FROM MoneyTx mt, Wallet w "
             + "WHERE mt.walletId = w.walletId AND w.boormiId = :boormiId AND mt.type = :type "
+            + "AND mt.status = :status "
             + "AND mt.createdDtm >= :start AND mt.createdDtm < :end "
             + "GROUP BY YEAR(mt.createdDtm), MONTH(mt.createdDtm)")
     List<MonthlyMoneyAggregate> aggregateByBoormiIdAndTypeBetween(
             @Param("boormiId") UUID boormiId, @Param("type") MoneyTxTypeCd type,
+            @Param("status") MoneyTxStatusCd status,
             @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }

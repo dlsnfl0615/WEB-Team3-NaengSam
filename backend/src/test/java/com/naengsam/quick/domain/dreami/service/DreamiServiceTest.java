@@ -32,6 +32,7 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
+import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
 import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
 import com.naengsam.quick.global.code.BaseErrorCode;
@@ -337,7 +338,7 @@ class DreamiServiceTest {
         YearMonth thisMonth = YearMonth.now();
         YearMonth lastMonth = thisMonth.minusMonths(1);
         given(orderRepository.countByDreamiIdAndOrderCd(dreamiId, OrderCd.COMPLETED)).willReturn(7L);
-        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), any(), any()))
+        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), eq(MoneyTxStatusCd.SETTLED), any(), any()))
                 .willReturn(List.of(
                         new MonthlyMoneyAggregate(thisMonth.getYear(), thisMonth.getMonthValue(), 116_000L, 10L),
                         new MonthlyMoneyAggregate(lastMonth.getYear(), lastMonth.getMonthValue(), 100_000L, 8L)));
@@ -358,7 +359,7 @@ class DreamiServiceTest {
     void 대시보드조회_지난달_수익이_0이면_증감률은_0퍼센트다() {
         UUID dreamiId = UUID.randomUUID();
         given(orderRepository.countByDreamiIdAndOrderCd(dreamiId, OrderCd.COMPLETED)).willReturn(0L);
-        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), any(), any()))
+        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), eq(MoneyTxStatusCd.SETTLED), any(), any()))
                 .willReturn(List.of());
 
         DreamiDashboardDto result = dreamiService.getDashboard(dreamiId);
