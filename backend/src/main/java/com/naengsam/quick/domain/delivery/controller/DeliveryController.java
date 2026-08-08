@@ -103,7 +103,8 @@ public class DeliveryController {
     @PostMapping("/orders/{orderId}/finish")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
             codes = {"NOT_ASSIGNED_DREAMI", "DELIVERY_NOT_FOUND", "DELIVERY_COMPLETION_PHOTO_MISSING",
-                    "DELIVERY_ALREADY_CANCELLED", "DELIVERY_ALREADY_COMPLETED", "PICKUP_NOT_COMPLETED"})
+                    "DELIVERY_ALREADY_CANCELLED", "DELIVERY_ALREADY_COMPLETED",
+                    "DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP"})
     @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"KEY_OWNER_MISMATCH", "STORAGE_UPLOAD_FAILED"})
     public DeliveryStatusResponseDto finishDelivery(
             @PathVariable UUID orderId, @LoginUser UUID dreamiId,

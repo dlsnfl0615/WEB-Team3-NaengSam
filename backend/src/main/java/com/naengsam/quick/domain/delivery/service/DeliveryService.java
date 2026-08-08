@@ -355,7 +355,8 @@ public class DeliveryService {
         boolean isValid = switch (deliveryCd) {
             case DELIVERING -> true;
             // 픽업 중에 배달 완료 요청이 온 경우 (픽업하자마자 바로 완료 요청하지 않는 이상 드묾)
-            case PICKUP_NORMAL, PICKUP_DELAYED -> throw new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED);
+            case PICKUP_NORMAL, PICKUP_DELAYED ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP);
             case PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN ->
                     throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
             case DELIVERED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
