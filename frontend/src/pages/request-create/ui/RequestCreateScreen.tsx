@@ -89,10 +89,13 @@ export function RequestCreateScreen() {
     setSubmitting(true);
     setError(null);
     try {
-      await createOrder(toOrderRequest(form));
-      // 등록한 콜은 홈 "진행 중인 부름"에 노출된다.
-      // (매칭 팝업/진행 화면은 드리미·mock 영역으로 이번 범위 밖)
-      navigate(ROUTES.home, { replace: true });
+      const orderId = await createOrder(toOrderRequest(form));
+      if (!orderId) {
+        setError("등록한 부름 정보를 확인하지 못했어요. 다시 시도해주세요.");
+        return;
+      }
+      // 생성된 부름을 식별할 수 있도록 주문 ID와 함께 드리미 대기 화면으로 이동한다.
+      navigate(`${ROUTES.matching}?orderId=${orderId}`, { replace: true });
     } catch (e) {
       setError(
         isApiError(e) ? e.message : "콜 등록에 실패했어요. 다시 시도해주세요.",
