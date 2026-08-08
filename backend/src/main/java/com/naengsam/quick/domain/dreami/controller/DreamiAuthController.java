@@ -50,9 +50,9 @@ public class DreamiAuthController {
 
         // 클라이언트는 S3 업로드가 끝난 뒤에만 이걸 부르므로, 업로드가 안 돼있으면 FILE_NOT_FOUND 예외로 끝난다.
         boolean idCardNewlyConsumed = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
-                requestDto.idCardKey());
+                null, requestDto.idCardKey());
         boolean criminalRecordNewlyConsumed = uploadSessionService.checkUpload(
-                UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, requestDto.criminalRecordKey());
+                UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, null, requestDto.criminalRecordKey());
 
         // 재시도로 둘 다 이미 소비된 요청이면 저장을 반복하지 않는다.
         // 하나만 거짓인 경우 예시: 범죄 이력 조회서는 통과되지 않아서 이 파일만 다시 제출해야 할 때 신분증 사진은 newlyConsumed = false
