@@ -236,7 +236,7 @@ export function DeliveryTrackScreen() {
   // 모달에서 "취소하기" 확정 시 실제로 취소를 진행한다.
   // 실 모드는 백엔드에 드리미 픽업 취소를 요청하고, mock 모드는 기존 스토어 흐름을 탄다.
   const confirmCancel = async () => {
-    if (canceling) return;
+    if (canceling || !detailReady) return;
     setCanceling(true);
     setCancelError(null);
     try {
