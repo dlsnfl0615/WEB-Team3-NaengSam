@@ -18,10 +18,11 @@ function timeLabel(time: string): string {
   return `오늘 ${hh}:${mm}`;
 }
 
-/** 활동 내역 리스트 아이템. 상단(아이콘칩·제목·배달 ID·상태) + 하단(시각·별점·메모·금액). */
+/** 활동 내역 리스트 아이템. 상단(아이콘칩·제목·상태) + 하단(시각·별점·메모·금액). */
 export function ActivityItem({ record, earned, onClick }: ActivityItemProps) {
   const tone =
     record.status === "완료" ? "neutral" : toneForStatus(record.status);
+  const isFinished = record.status === "완료" || record.status === "사고";
 
   return (
     <Card
@@ -37,17 +38,14 @@ export function ActivityItem({ record, earned, onClick }: ActivityItemProps) {
             {record.title}
           </p>
           <p className="truncate text-xs text-muted">{record.route}</p>
-          {earned && (
-            <p className="truncate text-2xs text-muted">
-              배달 ID {record.id}
-            </p>
-          )}
         </div>
         <Badge tone={tone}>{record.status}</Badge>
       </div>
 
       <div className="flex items-center gap-1 border-t border-track pt-3 text-xs text-muted">
-        <span>{timeLabel(record.time)}</span>
+        <span>
+          {isFinished ? `완료 시각: ${timeLabel(record.time)}` : timeLabel(record.time)}
+        </span>
         <span>·</span>
         {earned &&
           (record.rating !== undefined ? (
