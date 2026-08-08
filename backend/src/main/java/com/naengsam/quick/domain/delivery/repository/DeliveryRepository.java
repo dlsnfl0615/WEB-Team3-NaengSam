@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,4 +23,7 @@ public interface DeliveryRepository extends JpaRepository<Delivery, UUID> {
     // 락 없는 단순 조회(상세 조회 등 readOnly 트랜잭션용).
     @Query("SELECT d FROM Delivery d WHERE d.orderId = :orderId")
     Optional<Delivery> findByOrderIdWithoutLock(@Param("orderId") UUID orderId);
+
+    // 드리미 활동 내역처럼 여러 주문의 배달 상태·완료 시각을 한 번에 조회할 때 쓰는 배치 조회(락 없음).
+    List<Delivery> findAllByOrderIdIn(List<UUID> orderIds);
 }
