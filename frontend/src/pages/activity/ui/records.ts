@@ -1,7 +1,6 @@
 import type { IconName } from "@/shared/ui";
-import type { Role } from "@/shared/lib/role/RoleContext";
-import type { Delivery, DeliveryStatus } from "@/shared/mock/types";
 import type { BoormiOrder } from "@/shared/store/boormiOrderAdapter";
+import type { DreamiOrder } from "@/shared/store/dreamiOrderAdapter";
 
 /** 활동 내역 필터 칩 목록. */
 export const ACTIVITY_FILTERS = ["전체", "진행중", "완료", "취소"] as const;
@@ -24,35 +23,22 @@ export interface ActivityRecord {
   amount: string;
 }
 
-/** 배달 상태 → 필터 칩 분류. */
-function statusToFilter(status: DeliveryStatus): Exclude<ActivityFilter, "전체"> {
-  if (status === "완료") return "완료";
-  if (status === "취소" || status === "사고") return "취소";
-  return "진행중";
-}
-
-/** 배달 목록을 현재 역할 관점의 활동 내역으로 파생. */
-export function toActivityRecords(
-  deliveries: Delivery[],
-  role: Role,
-): ActivityRecord[] {
-  return deliveries
-    .filter((d) => d.myRole === role)
-    .map((d) => ({
-      id: d.id,
-      icon: d.icon,
-      title: d.title,
-      route: `${d.pickup} → ${d.dropoff}`,
-      status: d.status,
-      filter: statusToFilter(d.status),
-      time: d.time,
-      note: d.note ?? "",
-      rating: d.rating,
-      amount:
-        role === "드리미"
-          ? `+₩${d.price.toLocaleString()}`
-          : `₩${d.price.toLocaleString()}`,
-    }));
+/** 드리미 배달 내역(실제 API) → 활동 내역 레코드(드리미 관점). */
+export function toActivityRecordFromDreamiOrder(
+  order: DreamiOrder,
+): ActivityRecord {
+  return {
+    id: order.id,
+    icon: order.icon,
+    title: order.title,
+    route: order.route,
+    status: order.statusLabel,
+    filter: order.filter,
+    time: order.time,
+    note: "",
+    rating: order.rating,
+    amount: `+₩${order.amount.toLocaleString()}`,
+  };
 }
 
 /** 부르미 주문(실제 API) → 활동 내역 레코드(부르미 관점). */
