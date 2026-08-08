@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.dreami.controller;
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiOnlineRequest;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
+import com.naengsam.quick.domain.dreami.dto.DreamiTodayStatsDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.service.DreamiService;
@@ -101,5 +102,13 @@ public class DreamiController {
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     public DreamiDashboardDto getDashboard(@LoginUser UUID dreamiId) {
         return dreamiService.getDashboard(dreamiId);
+    }
+
+    @Operation(summary = "드리미 오늘 통계 조회",
+            description = "홈 화면에 보여줄 오늘 하루 스코프의 수익·완료 건수를 조회한다.")
+    @GetMapping("/dashboard/today")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    public DreamiTodayStatsDto getTodayStats(@LoginUser UUID dreamiId) {
+        return dreamiService.getTodayStats(dreamiId);
     }
 }

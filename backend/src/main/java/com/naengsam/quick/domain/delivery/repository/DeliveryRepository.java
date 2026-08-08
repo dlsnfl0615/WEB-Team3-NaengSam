@@ -1,12 +1,14 @@
 package com.naengsam.quick.domain.delivery.repository;
 
 import com.naengsam.quick.domain.delivery.entity.Delivery;
+import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -22,4 +24,8 @@ public interface DeliveryRepository extends JpaRepository<Delivery, UUID> {
     // 락 없는 단순 조회(상세 조회 등 readOnly 트랜잭션용).
     @Query("SELECT d FROM Delivery d WHERE d.orderId = :orderId")
     Optional<Delivery> findByOrderIdWithoutLock(@Param("orderId") UUID orderId);
+
+    // 홈 화면의 "오늘의 완료 건수" 집계용. deliveryEndDtm은 markDelivered 시점에만 채워진다.
+    long countByDreamiIdAndDeliveryCdAndDeliveryEndDtmBetween(
+            UUID dreamiId, DeliveryCd deliveryCd, LocalDateTime start, LocalDateTime end);
 }

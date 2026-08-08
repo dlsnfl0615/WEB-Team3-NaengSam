@@ -11,8 +11,11 @@ import static org.mockito.Mockito.verify;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
+import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
+import com.naengsam.quick.domain.dreami.dto.DreamiTodayStatsDto;
 import com.naengsam.quick.domain.dreami.dto.MonthlyRevenueDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
@@ -70,6 +73,9 @@ class DreamiServiceTest {
 
     @Mock
     private OrderRepository orderRepository;
+
+    @Mock
+    private DeliveryRepository deliveryRepository;
 
     @Mock
     private NearbyOrderFinder nearbyOrderFinder;
@@ -371,6 +377,40 @@ class DreamiServiceTest {
 
         assertThat(result.monthOverMonthGrowthPercent()).isEqualTo(0L);
         assertThat(result.thisMonthCount()).isEqualTo(0L);
+    }
+
+    // ---------- getTodayStats ----------
+
+    @Test
+    void 오늘통계조회_오늘_정산금액과_완료건수를_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(
+                eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), eq(MoneyTxStatusCd.SETTLED), any(), any()))
+                .willReturn(List.of(new MonthlyMoneyAggregate(2026, 8, 24_000L, 3L)));
+        given(deliveryRepository.countByDreamiIdAndDeliveryCdAndDeliveryEndDtmBetween(
+                eq(dreamiId), eq(DeliveryCd.DELIVERED), any(), any()))
+                .willReturn(3L);
+
+        DreamiTodayStatsDto result = dreamiService.getTodayStats(dreamiId);
+
+        assertThat(result.todayRevenue()).isEqualTo(24_000L);
+        assertThat(result.todayCompletedCount()).isEqualTo(3L);
+    }
+
+    @Test
+    void 오늘통계조회_오늘_정산_내역이_없으면_0을_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(
+                eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), eq(MoneyTxStatusCd.SETTLED), any(), any()))
+                .willReturn(List.of());
+        given(deliveryRepository.countByDreamiIdAndDeliveryCdAndDeliveryEndDtmBetween(
+                eq(dreamiId), eq(DeliveryCd.DELIVERED), any(), any()))
+                .willReturn(0L);
+
+        DreamiTodayStatsDto result = dreamiService.getTodayStats(dreamiId);
+
+        assertThat(result.todayRevenue()).isEqualTo(0L);
+        assertThat(result.todayCompletedCount()).isEqualTo(0L);
     }
 
     // ---------- acceptOffer ----------

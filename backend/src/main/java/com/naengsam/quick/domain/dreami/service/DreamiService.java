@@ -2,8 +2,11 @@ package com.naengsam.quick.domain.dreami.service;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
+import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
+import com.naengsam.quick.domain.dreami.dto.DreamiTodayStatsDto;
 import com.naengsam.quick.domain.dreami.dto.MonthlyRevenueDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
@@ -28,6 +31,8 @@ import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
 import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
 import com.naengsam.quick.global.exception.BusinessException;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +52,7 @@ public class DreamiService {
     private final BoormiRepository boormiRepository;
     private final DreamiRequestDeniedDetailsRepository dreamiRequestDeniedDetailsRepository;
     private final OrderRepository orderRepository;
+    private final DeliveryRepository deliveryRepository;
     private final NearbyOrderFinder nearbyOrderFinder;
     private final MatchingService matchingService;
     private final MoneyTxRepository moneyTxRepository;
@@ -214,5 +220,29 @@ public class DreamiService {
     private long countOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {
         MonthlyMoneyAggregate aggregate = byMonth.get(month);
         return aggregate == null ? 0 : aggregate.count();
+    }
+
+    /**
+     * 홈 화면의 "오늘의 수익"/"완료 건수" — 오늘 하루 스코프로 집계한다. 오늘의 수익은 정산(SETTLEMENT) 중 이미
+     * 확정(SETTLED)된 금액만 센다. 완료 건수는 오늘 배달 완료(markDelivered) 처리된 건수다.
+     */
+    @Transactional(readOnly = true)
+    public DreamiTodayStatsDto getTodayStats(UUID dreamiId) {
+        LocalDate today = LocalDate.now();
+        LocalDateTime start = today.atStartOfDay();
+        LocalDateTime end = today.plusDays(1).atStartOfDay();
+
+        // WALLET 은 boormi_id 로 소유자를 식별하며, dreamiId 는 boormiId 와 동일한 값이다.
+        long todayRevenue = moneyTxRepository
+                .aggregateByBoormiIdAndTypeBetween(
+                        dreamiId, MoneyTxTypeCd.SETTLEMENT, MoneyTxStatusCd.SETTLED, start, end)
+                .stream()
+                .mapToLong(MonthlyMoneyAggregate::totalAmount)
+                .sum();
+
+        long todayCompletedCount = deliveryRepository
+                .countByDreamiIdAndDeliveryCdAndDeliveryEndDtmBetween(dreamiId, DeliveryCd.DELIVERED, start, end);
+
+        return DreamiTodayStatsDto.of(todayRevenue, todayCompletedCount);
     }
 }
