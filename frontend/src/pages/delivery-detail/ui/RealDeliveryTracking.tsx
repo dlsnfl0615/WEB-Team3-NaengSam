@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
@@ -17,6 +17,7 @@ import {
   recallDeliveryStage,
   rememberDeliveryStage,
   getUntrackableDeliveryNotice,
+  useDeliveryDetailGate,
   useSse,
   type SseHandlers,
 } from "@/shared/lib";
@@ -59,25 +60,35 @@ export function RealDeliveryTracking({
       DeliveryStatusResponseDtoStatus.PICKUP_NORMAL,
   );
   const [location, setLocation] = useState<DeliveryLocationDto | null>(null);
-  const [pickup, setPickup] = useState<Coords | undefined>(undefined);
-  const [dropoff, setDropoff] = useState<Coords | undefined>(undefined);
   // 상세 조회 성공 전에는 SSE·취소 등 모든 배달 기능을 차단한다.
-  const [readyOrderId, setReadyOrderId] = useState<string | null>(null);
-  const [attemptedOrderId, setAttemptedOrderId] = useState<string | null>(null);
-  const [detailLoading, setDetailLoading] = useState(true);
-  const [detailError, setDetailError] = useState(
-    "잠시 후 다시 시도해 주세요.",
-  );
-  const [detailModalTitle, setDetailModalTitle] = useState(
-    "배달 정보를 불러오지 못했어요",
-  );
-  const [detailGuidance, setDetailGuidance] = useState(
-    "정보를 확인하기 전에는 배달 기능을 사용할 수 없어요.",
-  );
-  const [detailCanRetry, setDetailCanRetry] = useState(true);
-  const detailRequestId = useRef(0);
-  const detailReady = readyOrderId === orderId;
-  const detailAttempted = attemptedOrderId === orderId;
+  const {
+    detail,
+    ready: detailReady,
+    loading: detailLoading,
+    blockingModal,
+    retry: retryDeliveryDetail,
+    block: blockDeliveryDetail,
+  } = useDeliveryDetailGate(orderId, {
+    onLoaded: (loadedDetail) => {
+      // SSE가 아직 위치를 안 줬으면 응답의 currentLocation으로 시드한다.
+      setLocation(loadedDetail.currentLocation ?? null);
+      if (loadedDetail.status) setStatus(loadedDetail.status);
+    },
+  });
+  const pickup: Coords | undefined =
+    detail?.originLatitude != null && detail.originLongitude != null
+      ? {
+          latitude: detail.originLatitude,
+          longitude: detail.originLongitude,
+        }
+      : undefined;
+  const dropoff: Coords | undefined =
+    detail?.destinationLatitude != null && detail.destinationLongitude != null
+      ? {
+          latitude: detail.destinationLatitude,
+          longitude: detail.destinationLongitude,
+        }
+      : undefined;
   const [toast, setToast] = useState<{
     title: string;
     description?: string;
@@ -107,16 +118,15 @@ export function RealDeliveryTracking({
       toastTimer.current = null;
     }
     applyStatus(nextStatus);
-    setReadyOrderId(null);
-    setAttemptedOrderId(orderId);
     setConfirmOpen(false);
     setToast(null);
-    setDetailModalTitle(notice?.title ?? "배달이 종료됐어요");
-    setDetailError(
-      message ?? notice?.message ?? "종료된 배달은 더 이상 추적할 수 없어요.",
-    );
-    setDetailGuidance("");
-    setDetailCanRetry(false);
+    blockDeliveryDetail({
+      title: notice?.title ?? "배달이 종료됐어요",
+      message:
+        message ??
+        notice?.message ??
+        "종료된 배달은 더 이상 추적할 수 없어요.",
+    });
   };
 
   // 진행 중 알림 토스트: 잠시 노출 후 자동으로 사라진다.
@@ -135,77 +145,6 @@ export function RealDeliveryTracking({
     },
     [],
   );
-
-  const loadDeliveryDetail = useCallback(() => {
-    const requestId = ++detailRequestId.current;
-
-    return api
-      .getDeliveryDetail(orderId)
-      .then(({ result }) => {
-        if (requestId !== detailRequestId.current) return;
-        if (!result) throw new Error("배달 정보가 비어 있습니다.");
-
-        const closedNotice = getUntrackableDeliveryNotice(result.status);
-        if (closedNotice) {
-          if (result.status) rememberDeliveryStage(orderId, result.status);
-          setReadyOrderId(null);
-          setAttemptedOrderId(orderId);
-          setDetailModalTitle(closedNotice.title);
-          setDetailError(closedNotice.message);
-          setDetailGuidance("");
-          setDetailCanRetry(false);
-          return;
-        }
-
-        if (result.originLatitude != null && result.originLongitude != null)
-          setPickup({
-            latitude: result.originLatitude,
-            longitude: result.originLongitude,
-          });
-        if (
-          result.destinationLatitude != null &&
-          result.destinationLongitude != null
-        )
-          setDropoff({
-            latitude: result.destinationLatitude,
-            longitude: result.destinationLongitude,
-          });
-        // SSE가 아직 위치를 안 줬으면 응답의 currentLocation으로 시드한다.
-        setLocation(result.currentLocation ?? null);
-
-        if (result.status) {
-          setStatus(result.status);
-          rememberDeliveryStage(orderId, result.status);
-        }
-        setReadyOrderId(orderId);
-        setAttemptedOrderId(orderId);
-      })
-      .catch((e) => {
-        if (requestId !== detailRequestId.current) return;
-        const errorStatus = isApiError(e) ? e.status : 0;
-        setReadyOrderId(null);
-        setAttemptedOrderId(orderId);
-        setDetailError(
-          isApiError(e) ? e.message : "잠시 후 다시 시도해 주세요.",
-        );
-        setDetailModalTitle("배달 정보를 불러오지 못했어요");
-        setDetailGuidance(
-          "정보를 확인하기 전에는 배달 기능을 사용할 수 없어요.",
-        );
-        setDetailCanRetry(![401, 403, 404].includes(errorStatus));
-      })
-      .finally(() => {
-        if (requestId === detailRequestId.current) setDetailLoading(false);
-      });
-  }, [orderId]);
-
-  // 마운트 시 출발지·도착지 좌표(+초기 드리미 위치)를 1회 받아온다. 실패하면 배달 기능을 차단한다.
-  useEffect(() => {
-    void loadDeliveryDetail();
-    return () => {
-      detailRequestId.current += 1;
-    };
-  }, [loadDeliveryDetail]);
 
   // 이 주문의 이벤트만 통과시킨다.
   const forThisOrder = (data: unknown): DeliveryStatusResponseDto | null => {
@@ -392,16 +331,13 @@ export function RealDeliveryTracking({
       </Modal>
 
       <BlockingLoadErrorModal
-        open={detailAttempted && !detailReady}
-        title={detailModalTitle}
-        message={detailError}
-        guidance={detailGuidance}
+        open={blockingModal.open}
+        title={blockingModal.title}
+        message={blockingModal.message}
+        guidance={blockingModal.guidance}
         retrying={detailLoading}
-        canRetry={detailCanRetry}
-        onRetry={() => {
-          setDetailLoading(true);
-          void loadDeliveryDetail();
-        }}
+        canRetry={blockingModal.canRetry}
+        onRetry={retryDeliveryDetail}
         onExit={() => navigate(ROUTES.home, { replace: true })}
       />
     </ScreenShell>

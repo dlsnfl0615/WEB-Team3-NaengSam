@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Button,
@@ -10,13 +10,13 @@ import {
   ScreenShell,
   DeliveryRouteMap,
 } from "@/shared/ui";
-import type { Coords } from "@/shared/ui";
 import { api, isApiError, DeliveryStatusResponseDtoStatus } from "@/shared/api";
 import type { DeliveryStatusResponseDto } from "@/shared/api";
 import {
   recallDeliveryStage,
   rememberDeliveryStage,
   getUntrackableDeliveryNotice,
+  useDeliveryDetailGate,
   useSse,
   useDreamiLocationBroadcast,
   type SseHandlers,
@@ -45,22 +45,14 @@ export function DeliveryTrackScreen() {
   const isRealMode = Boolean(orderId);
 
   // 실 배달의 상세 조회가 성공해야만 위치 전송·SSE·상태 전이 기능을 활성화한다.
-  const [readyOrderId, setReadyOrderId] = useState<string | null>(null);
-  const [attemptedOrderId, setAttemptedOrderId] = useState<string | null>(null);
-  const [detailLoading, setDetailLoading] = useState(isRealMode);
-  const [detailError, setDetailError] = useState(
-    "잠시 후 다시 시도해 주세요.",
-  );
-  const [detailModalTitle, setDetailModalTitle] = useState(
-    "배달 정보를 불러오지 못했어요",
-  );
-  const [detailGuidance, setDetailGuidance] = useState(
-    "정보를 확인하기 전에는 배달 기능을 사용할 수 없어요.",
-  );
-  const [detailCanRetry, setDetailCanRetry] = useState(true);
-  const detailRequestId = useRef(0);
-  const detailReady = !isRealMode || readyOrderId === orderId;
-  const detailAttempted = attemptedOrderId === orderId;
+  const {
+    detail,
+    ready: detailReady,
+    loading: detailLoading,
+    blockingModal,
+    retry: retryDeliveryDetail,
+    block: blockDeliveryDetail,
+  } = useDeliveryDetailGate(orderId, { enabled: isRealMode });
 
   // 실 모드(드리미)에서만 현재 GPS 위치를 5초 주기로 백엔드에 전송한다(픽업중·배송중 모두 커버).
   // 반환된 최신 좌표는 이 화면 지도에도 표시한다.
@@ -73,87 +65,27 @@ export function DeliveryTrackScreen() {
   const complete = useDeliveryStore((s) => s.complete);
   const cancel = useDeliveryStore((s) => s.cancel);
 
-  // 실 모드에서 출발지·도착지 좌표(+도착지 주소)를 1회 받아온다(엔드포인트가 드리미도 허용).
-  const [pickup, setPickup] = useState<Coords | undefined>(undefined);
-  const [dropoff, setDropoff] = useState<Coords | undefined>(undefined);
-  const [destAddress, setDestAddress] = useState<string | undefined>(undefined);
+  // 실 모드에서 조회한 출발지·도착지 좌표(+도착지 주소)를 사용한다(엔드포인트가 드리미도 허용).
+  const pickup =
+    detail?.originLatitude != null && detail.originLongitude != null
+      ? {
+          latitude: detail.originLatitude,
+          longitude: detail.originLongitude,
+        }
+      : undefined;
+  const dropoff =
+    detail?.destinationLatitude != null && detail.destinationLongitude != null
+      ? {
+          latitude: detail.destinationLatitude,
+          longitude: detail.destinationLongitude,
+        }
+      : undefined;
+  const destAddress = detail?.destinationAddressLine1;
 
   // 픽업 취소 확인 모달 상태
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
-
-  const loadDeliveryDetail = useCallback(() => {
-    if (!isRealMode || !orderId) return;
-    const requestId = ++detailRequestId.current;
-
-    return api
-      .getDeliveryDetail(orderId)
-      .then(({ result }) => {
-        if (requestId !== detailRequestId.current) return;
-        if (!result) throw new Error("배달 정보가 비어 있습니다.");
-
-        const closedNotice = getUntrackableDeliveryNotice(result.status);
-        if (closedNotice) {
-          if (result.status) rememberDeliveryStage(orderId, result.status);
-          setReadyOrderId(null);
-          setAttemptedOrderId(orderId);
-          setDetailModalTitle(closedNotice.title);
-          setDetailError(closedNotice.message);
-          setDetailGuidance("");
-          setDetailCanRetry(false);
-          return;
-        }
-
-        if (result.originLatitude != null && result.originLongitude != null)
-          setPickup({
-            latitude: result.originLatitude,
-            longitude: result.originLongitude,
-          });
-        if (
-          result.destinationLatitude != null &&
-          result.destinationLongitude != null
-        )
-          setDropoff({
-            latitude: result.destinationLatitude,
-            longitude: result.destinationLongitude,
-          });
-        if (result.destinationAddressLine1)
-          setDestAddress(result.destinationAddressLine1);
-
-        if (result.status) {
-          rememberDeliveryStage(orderId, result.status);
-        }
-        setReadyOrderId(orderId);
-        setAttemptedOrderId(orderId);
-      })
-      .catch((e) => {
-        if (requestId !== detailRequestId.current) return;
-        const status = isApiError(e) ? e.status : 0;
-        setReadyOrderId(null);
-        setAttemptedOrderId(orderId);
-        setDetailError(
-          isApiError(e) ? e.message : "잠시 후 다시 시도해 주세요.",
-        );
-        setDetailModalTitle("배달 정보를 불러오지 못했어요");
-        setDetailGuidance(
-          "정보를 확인하기 전에는 배달 기능을 사용할 수 없어요.",
-        );
-        setDetailCanRetry(![401, 403, 404].includes(status));
-      })
-      .finally(() => {
-        if (requestId === detailRequestId.current) setDetailLoading(false);
-      });
-  }, [isRealMode, orderId]);
-
-  // 실 모드 마운트 시 출발지·도착지 좌표를 1회 받아온다. 실패하면 배달 기능을 차단한다.
-  useEffect(() => {
-    if (!isRealMode || !orderId) return;
-    void loadDeliveryDetail();
-    return () => {
-      detailRequestId.current += 1;
-    };
-  }, [isRealMode, orderId, loadDeliveryDetail]);
 
   const sseHandlers: SseHandlers = {
     delivery_cancelled: (data) => {
@@ -163,15 +95,12 @@ export function DeliveryTrackScreen() {
         dto.status ?? DeliveryStatusResponseDtoStatus.PICKUP_CANCELLED_BY_ADMIN;
       const notice = getUntrackableDeliveryNotice(cancelledStatus);
       rememberDeliveryStage(orderId, cancelledStatus);
-      setReadyOrderId(null);
-      setAttemptedOrderId(orderId);
       setConfirmOpen(false);
-      setDetailModalTitle(notice?.title ?? "배달이 취소됐어요");
-      setDetailError(
-        dto.message ?? notice?.message ?? "상대방이 배달을 취소했어요.",
-      );
-      setDetailGuidance("");
-      setDetailCanRetry(false);
+      blockDeliveryDetail({
+        title: notice?.title ?? "배달이 취소됐어요",
+        message:
+          dto.message ?? notice?.message ?? "상대방이 배달을 취소했어요.",
+      });
     },
   };
 
@@ -355,16 +284,13 @@ export function DeliveryTrackScreen() {
       </Modal>
 
       <BlockingLoadErrorModal
-        open={isRealMode && detailAttempted && !detailReady}
-        title={detailModalTitle}
-        message={detailError}
-        guidance={detailGuidance}
+        open={blockingModal.open}
+        title={blockingModal.title}
+        message={blockingModal.message}
+        guidance={blockingModal.guidance}
         retrying={detailLoading}
-        canRetry={detailCanRetry}
-        onRetry={() => {
-          setDetailLoading(true);
-          void loadDeliveryDetail();
-        }}
+        canRetry={blockingModal.canRetry}
+        onRetry={retryDeliveryDetail}
         onExit={() => navigate(ROUTES.home, { replace: true })}
       />
     </ScreenShell>
