@@ -1,7 +1,6 @@
 package com.naengsam.quick.domain.delivery.repository;
 
 import com.naengsam.quick.domain.delivery.entity.Delivery;
-import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -26,6 +25,10 @@ public interface DeliveryRepository extends JpaRepository<Delivery, UUID> {
     Optional<Delivery> findByOrderIdWithoutLock(@Param("orderId") UUID orderId);
 
     // 홈 화면의 "오늘의 완료 건수" 집계용. deliveryEndDtm은 markDelivered 시점에만 채워진다.
-    long countByDreamiIdAndDeliveryCdAndDeliveryEndDtmBetween(
-            UUID dreamiId, DeliveryCd deliveryCd, LocalDateTime start, LocalDateTime end);
+    // start 이상, end 미만(상한 배타)으로 MoneyTxRepository의 오늘 수익 집계와 "오늘" 경계를 동일하게 맞춘다.
+    @Query("SELECT COUNT(d) FROM Delivery d "
+            + "WHERE d.dreamiId = :dreamiId AND d.deliveryCd = com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERED "
+            + "AND d.deliveryEndDtm >= :start AND d.deliveryEndDtm < :end")
+    long countDeliveredBetween(@Param("dreamiId") UUID dreamiId,
+            @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 }

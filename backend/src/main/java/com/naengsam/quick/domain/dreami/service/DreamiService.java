@@ -2,7 +2,6 @@ package com.naengsam.quick.domain.dreami.service;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
-import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
@@ -240,8 +239,7 @@ public class DreamiService {
                 .mapToLong(MonthlyMoneyAggregate::totalAmount)
                 .sum();
 
-        long todayCompletedCount = deliveryRepository
-                .countByDreamiIdAndDeliveryCdAndDeliveryEndDtmBetween(dreamiId, DeliveryCd.DELIVERED, start, end);
+        long todayCompletedCount = deliveryRepository.countDeliveredBetween(dreamiId, start, end);
 
         return DreamiTodayStatsDto.of(todayRevenue, todayCompletedCount);
     }

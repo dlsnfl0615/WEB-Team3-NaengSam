@@ -11,7 +11,6 @@ import static org.mockito.Mockito.verify;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
-import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
@@ -387,8 +386,7 @@ class DreamiServiceTest {
         given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(
                 eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), eq(MoneyTxStatusCd.SETTLED), any(), any()))
                 .willReturn(List.of(new MonthlyMoneyAggregate(2026, 8, 24_000L, 3L)));
-        given(deliveryRepository.countByDreamiIdAndDeliveryCdAndDeliveryEndDtmBetween(
-                eq(dreamiId), eq(DeliveryCd.DELIVERED), any(), any()))
+        given(deliveryRepository.countDeliveredBetween(eq(dreamiId), any(), any()))
                 .willReturn(3L);
 
         DreamiTodayStatsDto result = dreamiService.getTodayStats(dreamiId);
@@ -403,8 +401,7 @@ class DreamiServiceTest {
         given(moneyTxRepository.aggregateByBoormiIdAndTypeBetween(
                 eq(dreamiId), eq(MoneyTxTypeCd.SETTLEMENT), eq(MoneyTxStatusCd.SETTLED), any(), any()))
                 .willReturn(List.of());
-        given(deliveryRepository.countByDreamiIdAndDeliveryCdAndDeliveryEndDtmBetween(
-                eq(dreamiId), eq(DeliveryCd.DELIVERED), any(), any()))
+        given(deliveryRepository.countDeliveredBetween(eq(dreamiId), any(), any()))
                 .willReturn(0L);
 
         DreamiTodayStatsDto result = dreamiService.getTodayStats(dreamiId);
