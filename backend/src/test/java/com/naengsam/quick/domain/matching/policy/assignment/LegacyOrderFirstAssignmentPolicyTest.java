@@ -155,7 +155,7 @@ class LegacyOrderFirstAssignmentPolicyTest {
                         candidateWithDistance(orderId, worseScoreLongWait, 100L, Duration.ofMinutes(30))));
 
         LegacyOrderFirstAssignmentPolicy distanceScoredPolicy =
-                new LegacyOrderFirstAssignmentPolicy(MatchingCandidate::distanceMeters);
+                new LegacyOrderFirstAssignmentPolicy(candidate -> (long) candidate.distanceMeters());
 
         MatchingPlan plan = distanceScoredPolicy.createPlan(problem);
 
