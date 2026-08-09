@@ -33,6 +33,20 @@ function itemCdLabel(itemCd?: string): string | null {
   return itemCd ? ITEM_CD_LABELS[itemCd] ?? null : null;
 }
 
+// 재매칭 대기 등으로 인해 짧은 순간 IN_PROGRESS/CANCELLED 등이 함께 보일 수 있어 전체 값에 라벨을 준비한다.
+const ORDER_CD_LABELS: Record<string, string> = {
+  MATCHING: "매칭 중",
+  PENDING_BOORMI_CONFIRMATION: "다른 드리미가 수락, 부르미 확인 중",
+  IN_PROGRESS: "이미 배달 시작됨",
+  COMPLETED: "배달 완료됨",
+  CANCELLED: "취소됨",
+  CLAIM_REVIEW: "클레임 심사 중",
+};
+
+function orderCdLabel(orderCd?: string): string | null {
+  return orderCd ? ORDER_CD_LABELS[orderCd] ?? null : null;
+}
+
 function fullAddress(line1?: string, line2?: string): string | null {
   if (!line1) return null;
   return line2 ? `${line1} ${line2}` : line1;
@@ -114,6 +128,7 @@ export function MatchingScreen() {
         },
         itemName: call.itemName,
         itemCd: call.itemCd,
+        orderCd: call.orderCd,
         expectedRevenue: call.expectedRevenue,
         expectedEtaMinutes: call.expectedEtaMinutes,
         pickupEtaMinutes: call.pickupEtaMinutes,
@@ -133,8 +148,10 @@ export function MatchingScreen() {
       call.destinationAddressLine2,
     );
     const itemLabel = itemCdLabel(call.itemCd);
+    const statusLabel = orderCdLabel(call.orderCd);
 
     const rows = [
+      statusLabel ? `상태: ${statusLabel}` : null,
       origin ? `출발지: ${origin}` : null,
       destination ? `도착지: ${destination}` : null,
       call.expectedEtaMinutes != null

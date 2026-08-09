@@ -6,6 +6,7 @@
  */
 import type { GeoPoint } from './geoPoint';
 import type { NearbyCallDtoItemCd } from './nearbyCallDtoItemCd';
+import type { NearbyCallDtoOrderCd } from './nearbyCallDtoOrderCd';
 
 export interface NearbyCallDto {
   orderId?: string;
@@ -13,6 +14,7 @@ export interface NearbyCallDto {
   distanceMeters?: number;
   itemName?: string;
   itemCd?: NearbyCallDtoItemCd;
+  orderCd?: NearbyCallDtoOrderCd;
   expectedRevenue?: number;
   expectedEtaMinutes?: number;
   pickupEtaMinutes?: number;

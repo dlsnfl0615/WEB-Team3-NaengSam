@@ -58,6 +58,7 @@ export * from './me200';
 export * from './monthlyRevenueDto';
 export * from './nearbyCallDto';
 export * from './nearbyCallDtoItemCd';
+export * from './nearbyCallDtoOrderCd';
 export * from './nearbyDreamiDto';
 export * from './nearbyDreamiRequest';
 export * from './nearbyOrderDto';

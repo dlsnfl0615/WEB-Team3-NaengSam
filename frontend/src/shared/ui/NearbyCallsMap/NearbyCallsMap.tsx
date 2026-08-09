@@ -10,6 +10,7 @@ export interface NearbyCall {
   location: Coords;
   itemName?: string;
   itemCd?: string;
+  orderCd?: string;
   expectedRevenue?: number;
   expectedEtaMinutes?: number;
   pickupEtaMinutes?: number;
