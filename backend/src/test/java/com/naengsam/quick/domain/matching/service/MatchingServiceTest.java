@@ -26,6 +26,7 @@ import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -49,7 +50,8 @@ class MatchingServiceTest {
         sseService = mock(SseService.class);
         offerTimeoutScheduler = mock(OfferTimeoutScheduler.class);
         deliveryService = mock(DeliveryService.class);
-        matchingService = new MatchingService(matchingEngine, sseService, offerTimeoutScheduler, deliveryService);
+        matchingService = new MatchingService(
+                matchingEngine, sseService, offerTimeoutScheduler, deliveryService, Clock.systemDefaultZone());
     }
 
     @Test
@@ -930,7 +932,7 @@ class MatchingServiceTest {
 
         MatchOffer offer = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiId,
-                MatchOfferStatus.OFFERED);
+                MatchOfferStatus.OFFERED, LocalDateTime.now());
         OrderOfferGroup group =
                 new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offer));
         group.closeForRematch();
@@ -960,13 +962,13 @@ class MatchingServiceTest {
 
         MatchOffer offerA = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiIdA,
-                MatchOfferStatus.OFFERED);
+                MatchOfferStatus.OFFERED, LocalDateTime.now());
         MatchOffer offerB = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiIdB,
-                MatchOfferStatus.OFFERED);
+                MatchOfferStatus.OFFERED, LocalDateTime.now());
         MatchOffer offerC = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiIdC,
-                MatchOfferStatus.OFFERED);
+                MatchOfferStatus.OFFERED, LocalDateTime.now());
         OrderOfferGroup group = new OrderOfferGroup(
                 orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offerA, offerB, offerC));
         getOrderOfferGroups().put(orderId, group);
@@ -999,13 +1001,13 @@ class MatchingServiceTest {
 
         MatchOffer offerA = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiIdA,
-                MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+                MatchOfferStatus.PENDING_BOORMI_CONFIRMATION, LocalDateTime.now());
         MatchOffer offerB = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiIdB,
-                MatchOfferStatus.OFFERED);
+                MatchOfferStatus.OFFERED, LocalDateTime.now());
         MatchOffer offerC = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiIdC,
-                MatchOfferStatus.OFFERED);
+                MatchOfferStatus.OFFERED, LocalDateTime.now());
         OrderOfferGroup group = new OrderOfferGroup(
                 orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offerA, offerB, offerC));
         getOrderOfferGroups().put(orderId, group);
@@ -1039,13 +1041,13 @@ class MatchingServiceTest {
 
         MatchOffer offerA = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiIdA,
-                MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+                MatchOfferStatus.PENDING_BOORMI_CONFIRMATION, LocalDateTime.now());
         MatchOffer offerB = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiIdB,
-                MatchOfferStatus.DREAMI_REJECTED);
+                MatchOfferStatus.DREAMI_REJECTED, LocalDateTime.now());
         MatchOffer offerC = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiIdC,
-                MatchOfferStatus.DREAMI_EXPIRED);
+                MatchOfferStatus.DREAMI_EXPIRED, LocalDateTime.now());
         OrderOfferGroup group = new OrderOfferGroup(
                 orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offerA, offerB, offerC));
         getOrderOfferGroups().put(orderId, group);
@@ -1067,7 +1069,7 @@ class MatchingServiceTest {
 
         MatchOffer offer = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiId,
-                MatchOfferStatus.OFFERED);
+                MatchOfferStatus.OFFERED, LocalDateTime.now());
         OrderOfferGroup group = new OrderOfferGroup(
                 orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offer));
         getOrderOfferGroups().put(orderId, group);
@@ -1260,7 +1262,7 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         MatchOffer offer = new MatchOffer(
-                offerId, orderId, dreamiId, MatchOfferStatus.OFFERED);
+                offerId, orderId, dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
         getOffersById().put(offerId, offer);
 
         assertThat(matchingService.isDreamiOfferOwner(offerId, dreamiId)).isTrue();
@@ -1272,7 +1274,7 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         MatchOffer offer = new MatchOffer(
-                offerId, orderId, dreamiId, MatchOfferStatus.OFFERED);
+                offerId, orderId, dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
         getOffersById().put(offerId, offer);
 
         assertThat(matchingService.isDreamiOfferOwner(offerId, UUID.randomUUID())).isFalse();
@@ -1289,7 +1291,7 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
         MatchOffer offer = new MatchOffer(
-                offerId, orderId, UUID.randomUUID(), MatchOfferStatus.OFFERED);
+                offerId, orderId, UUID.randomUUID(), MatchOfferStatus.OFFERED, LocalDateTime.now());
         getOffersById().put(offerId, offer);
         getOrderOfferGroups().put(orderId,
                 new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), List.of(offer)));
@@ -1303,7 +1305,7 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
         MatchOffer offer = new MatchOffer(
-                offerId, orderId, UUID.randomUUID(), MatchOfferStatus.OFFERED);
+                offerId, orderId, UUID.randomUUID(), MatchOfferStatus.OFFERED, LocalDateTime.now());
         getOffersById().put(offerId, offer);
         getOrderOfferGroups().put(orderId,
                 new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), List.of(offer)));

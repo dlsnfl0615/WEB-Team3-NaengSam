@@ -14,6 +14,7 @@ import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -46,7 +47,7 @@ class MatchingServiceConcurrencyTest {
         matchingEngine = new MatchingEngine();
         matchingEngine.start();
         matchingService = new MatchingService(matchingEngine, mock(SseService.class), mock(OfferTimeoutScheduler.class),
-                mock(DeliveryService.class));
+                mock(DeliveryService.class), Clock.systemDefaultZone());
         requestThreads = Executors.newFixedThreadPool(16);
     }
 

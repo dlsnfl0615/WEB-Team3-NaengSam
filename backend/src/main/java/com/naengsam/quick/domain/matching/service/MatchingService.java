@@ -22,6 +22,7 @@ import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.model.WaitingOrder;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -82,6 +83,7 @@ public class MatchingService {
     private final SseService sseService;
     private final OfferTimeoutScheduler offerTimeoutScheduler;
     private final DeliveryService deliveryService;
+    private final Clock clock;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -251,7 +253,7 @@ public class MatchingService {
     // ────────────────────────────── 내부 구현체 ──────────────────────────────
     void applyRegisterDreami(UUID dreamiId, GeoPoint location) {
         dreamiMap.put(dreamiId,
-                new WaitingDreami(dreamiId, location, WaitingDreamiStatus.MATCHING, LocalDateTime.now()));
+                new WaitingDreami(dreamiId, location, WaitingDreamiStatus.MATCHING, LocalDateTime.now(clock)));
         log.debug("드리미 등록 처리 완료: dreamiId={}, location={}", dreamiId, location);
         // 재매칭 대기 중인 주문이 있으면 방금 등록된 드리미에게 오퍼를 시도한다.
         retryRematchWaitingGroups();
@@ -331,7 +333,8 @@ public class MatchingService {
         List<MatchOffer> newOffers = new ArrayList<>();
         for (WaitingDreami dreami : candidates) {
             UUID offerId = UUID.randomUUID(); // 제안UUID (드리미 1명당 1개)
-            MatchOffer offer = new MatchOffer(offerId, group.orderId(), dreami.dreamiId(), MatchOfferStatus.OFFERED);
+            MatchOffer offer = new MatchOffer(
+                    offerId, group.orderId(), dreami.dreamiId(), MatchOfferStatus.OFFERED, LocalDateTime.now(clock));
             newOffers.add(offer);
 
             offersById.put(offerId, offer);
@@ -360,14 +363,15 @@ public class MatchingService {
             return;
         }
 
+        LocalDateTime now = LocalDateTime.now(clock);
         for (MatchOffer offer : group.offers()) {
             if (offer.status() == MatchOfferStatus.OFFERED) {
-                offer.withdraw();
+                offer.withdraw(now);
                 findDreami(offer.dreamiId()).ifPresent(WaitingDreami::markMatching);
                 sseService.send(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
                         new OfferClosedPayload(offer.offerId(), "부르미가 주문을 취소함"));
             } else if (offer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION) {
-                offer.rejectByBoormi();
+                offer.rejectByBoormi(now);
                 findDreami(offer.dreamiId()).ifPresent(WaitingDreami::markMatching);
                 sseService.send(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
                         new OfferClosedPayload(offer.offerId(), "부르미가 주문을 취소함"));
@@ -391,6 +395,7 @@ public class MatchingService {
             return;
         }
         UUID acceptedDreamiId = matchOffer.dreamiId();
+        LocalDateTime now = LocalDateTime.now(clock);
 
         // 수락한 사람의 상태를 PENDING_BOORMI_CONFIRMATION로 변경
         // 나머지 매칭오퍼 상태를 WITHDRAW로 변경
@@ -398,14 +403,14 @@ public class MatchingService {
             // 수락한사람은 PENDING_BOORMI_CONFIRMATION
             // 나머지 사람은 WITHDRAWN
             if (offer.dreamiId().equals(acceptedDreamiId)) {
-                offer.acceptByDreami();
+                offer.acceptByDreami(now);
                 offerTimeoutScheduler.scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
                 sseService.send(group.boormiId(), MatchingEventType.DREAMI_INFO, DreamiInfoPayload.from(offer));
             } else if (offer.status() == MatchOfferStatus.OFFERED) {
                 // 아직 응답 대기중(OFFERED)인 오퍼만 회수한다.
                 // 이미 거절/만료됐거나 다른 방으로 넘어간 드리미의 상태는 건드리지 않는다.
-                offer.withdraw();
+                offer.withdraw(now);
                 // 선착순에서 패배한 드리미를 다시 매칭 수락가능한 상태로 변경
                 findDreami(offer.dreamiId())
                         .ifPresent(WaitingDreami::markMatching);
@@ -421,7 +426,7 @@ public class MatchingService {
         findOffer(offerId).ifPresentOrElse(
                 offer -> {
                     findDreami(offer.dreamiId()).ifPresent(WaitingDreami::markMatching);
-                    offer.rejectByDreami();
+                    offer.rejectByDreami(LocalDateTime.now(clock));
                     sseService.send(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
                             new OfferClosedPayload(offer.offerId(), "거절 완료"));
                     closeGroupIfExhausted(offer.orderId());
@@ -435,7 +440,7 @@ public class MatchingService {
 
         findOffer(offerId).ifPresentOrElse(
                 matchOffer -> {
-                    matchOffer.confirmByBoormi(); // 부르미까지 수락 완료
+                    matchOffer.confirmByBoormi(LocalDateTime.now(clock)); // 부르미까지 수락 완료
                     findOrderOfferGroup(matchOffer.orderId())
                             .ifPresentOrElse(
                                     group -> {
@@ -458,7 +463,7 @@ public class MatchingService {
                 .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION)
                 .ifPresentOrElse(
                         matchOffer -> {
-                            matchOffer.rejectByBoormi();
+                            matchOffer.rejectByBoormi(LocalDateTime.now(clock));
 
                             // 거절당한 드리미에게 부르미가 거절했음을 알리고, 다시 배달가능 상태로 변경
                             sseService.send(matchOffer.dreamiId(), MatchingEventType.BOORMI_REJECTED,
@@ -483,7 +488,7 @@ public class MatchingService {
         findOffer(offerId)
                 .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.OFFERED)
                 .ifPresent(matchOffer -> {
-                    matchOffer.expireByDreami();
+                    matchOffer.expireByDreami(LocalDateTime.now(clock));
                     findDreami(matchOffer.dreamiId())
                             .ifPresent(WaitingDreami::markMatching);
                     closeGroupIfExhausted(matchOffer.orderId());
@@ -502,7 +507,7 @@ public class MatchingService {
                 .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION)
                 .ifPresent(matchOffer -> {
                     // 드리미가 다시 배달이 가능하게 바꿔야함
-                    matchOffer.expireByBoormi();
+                    matchOffer.expireByBoormi(LocalDateTime.now(clock));
                     findDreami(matchOffer.dreamiId())
                             .ifPresent(WaitingDreami::markMatching);
                     closeGroupForRematch(matchOffer.orderId());

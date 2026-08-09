@@ -233,7 +233,7 @@ class MatchingDebugControllerTest {
         UUID dreamiId = UUID.randomUUID();
 
         MatchOffer offer = new MatchOffer(
-                offerId, orderId, dreamiId, MatchOfferStatus.OFFERED);
+                offerId, orderId, dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
         OrderOfferGroup group =
                 new OrderOfferGroup(orderId, UUID.randomUUID(),
                         new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)), List.of(offer));
