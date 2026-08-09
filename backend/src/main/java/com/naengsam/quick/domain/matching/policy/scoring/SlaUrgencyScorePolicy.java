@@ -33,7 +33,7 @@ public class SlaUrgencyScorePolicy implements MatchingScorePolicy {
 
     @Override
     public long score(MatchingCandidate candidate) {
-        long normalizedDistance = normalize(candidate.distanceMeters(), maxMatchingDistance);
+        long normalizedDistance = normalize(Math.round(candidate.distanceMeters()), maxMatchingDistance);
         long normalizedOrderWait = normalize(candidate.orderWaitingTime().toMillis(), slaThreshold.toMillis());
 
         long urgencyPenalty = urgencyWeight * (normalizedOrderWait * normalizedOrderWait / SCALE);

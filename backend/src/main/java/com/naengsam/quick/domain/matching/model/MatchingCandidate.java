@@ -13,7 +13,7 @@ import java.util.UUID;
 public record MatchingCandidate(
         UUID orderId,
         UUID dreamiId,
-        long distanceMeters,
+        double distanceMeters,
         Duration orderWaitingTime,
         Duration dreamiWaitingTime,
         int orderCandidateCount,
