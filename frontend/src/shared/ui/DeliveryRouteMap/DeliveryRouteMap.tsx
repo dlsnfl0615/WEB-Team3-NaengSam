@@ -18,6 +18,8 @@ export interface DeliveryRouteMapProps {
   driver?: Coords;
   /** 드리미 핀 라벨. 기본값은 "드리미". (내 위치 등으로 사용될 수 있음)*/
   driverLabel?: string;
+  /** 추천 이동경로 좌표 목록. 있으면 폴리라인으로 그린다(첫 로드부터 표시). */
+  route?: Coords[];
   /** 지도 높이(px). 기본 340. */
   height?: number;
   /** 모서리 반경·테두리 제거(풀블리드 지도용, MapCard `flat`과 함께). */
@@ -92,6 +94,7 @@ export function DeliveryRouteMap({
   dropoff,
   driver,
   driverLabel = "드리미", // 기본 값은 "드리미"
+  route,
   height = 340,
   flat = false,
 }: DeliveryRouteMapProps) {
@@ -101,6 +104,7 @@ export function DeliveryRouteMap({
   const storeRef = useRef<Record<Role, { marker?: unknown; overlay?: unknown }>>(
     { pickup: {}, dropoff: {}, driver: {} },
   );
+  const routeLineRef = useRef<unknown>(null);
   const didFitRef = useRef(false);
   const [status, setStatus] = useState<"loading" | "ready" | "disabled">(
     "loading",
@@ -132,6 +136,7 @@ export function DeliveryRouteMap({
       kakaoRef.current = null;
       mapRef.current = null;
       storeRef.current = { pickup: {}, dropoff: {}, driver: {} };
+      routeLineRef.current = null;
       didFitRef.current = false;
     };
   }, []);
@@ -159,7 +164,7 @@ export function DeliveryRouteMap({
     const kakao = kakaoRef.current;
     const map = mapRef.current;
     if (status !== "ready" || !kakao || !map || didFitRef.current) return;
-    const present = [pickup, dropoff, driver].filter(
+    const present = [pickup, dropoff, driver, ...(route ?? [])].filter(
       (c): c is Coords => c != null,
     );
     if (present.length === 0) return;
@@ -175,7 +180,7 @@ export function DeliveryRouteMap({
       map.setBounds(bounds);
     }
     didFitRef.current = true;
-  }, [status, pickup, dropoff, driver]);
+  }, [status, pickup, dropoff, driver, route]);
 
   if (status === "disabled") {
     const present: [string, Coords][] = [
