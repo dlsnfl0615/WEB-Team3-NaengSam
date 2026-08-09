@@ -93,7 +93,10 @@ public class MatchingService {
      */
     public List<WaitingOrder> waitingOrders() {
         return orderOfferGroupsByOrderId.values().stream()
-                .filter(group -> group.status() == OrderOfferGroupStatus.OPEN)
+                // OPEN: 오퍼 응답 대기 중. CLOSED+rematchRequired: 후보가 없어 재매칭을 기다리는 중.
+                // rematchRequired가 false인 CLOSED(취소된 주문)는 제외한다.
+                .filter(group -> group.status() == OrderOfferGroupStatus.OPEN
+                        || (group.status() == OrderOfferGroupStatus.CLOSED && group.rematchRequired()))
                 .map(group -> new WaitingOrder(group.orderId(), group.location()))
                 .toList();
     }

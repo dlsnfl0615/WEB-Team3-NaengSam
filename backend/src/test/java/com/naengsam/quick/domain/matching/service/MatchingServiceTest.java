@@ -24,6 +24,7 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
+import com.naengsam.quick.domain.matching.model.WaitingOrder;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.LocalDateTime;
@@ -712,6 +713,46 @@ class MatchingServiceTest {
         // then (rematchRequired가 false이므로 취소된 그룹은 스캔 대상에서 제외되어야 한다)
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
         assertThat(group.offers()).hasSize(offersBeforeScan);
+    }
+
+    @Test
+    void waitingOrders는_OPEN과_재매칭_대상_CLOSED_그룹만_반환하고_취소된_그룹은_제외한다() {
+        // given
+        UUID openOrderId = UUID.randomUUID();
+        UUID rematchOrderId = UUID.randomUUID();
+        UUID cancelledOrderId = UUID.randomUUID();
+
+        GeoPoint location = mock(GeoPoint.class);
+
+        Orders openOrder = mock(Orders.class);
+        when(openOrder.getOrderId()).thenReturn(openOrderId);
+        Orders cancelledOrder = mock(Orders.class);
+        when(cancelledOrder.getOrderId()).thenReturn(cancelledOrderId);
+        Orders rematchOrder = mock(Orders.class);
+        when(rematchOrder.getOrderId()).thenReturn(rematchOrderId);
+
+        // 후보가 있을 때 시작 → OPEN(오퍼로 소진된 후보는 이후 주문의 후보에서 빠진다)
+        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+        matchingService.applyStartMatching(openOrder);
+
+        // 새 후보로 시작해 OPEN 상태에서 부르미가 취소 → CLOSED, rematchRequired=false
+        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+        matchingService.applyStartMatching(cancelledOrder);
+        matchingService.applyCancelOrderByBoormi(cancelledOrderId);
+
+        // 후보가 없는 채로 시작 → CLOSED, rematchRequired=true
+        matchingService.applyStartMatching(rematchOrder);
+
+        // when
+        List<UUID> waitingOrderIds =
+                matchingService.waitingOrders().stream()
+                        .map(WaitingOrder::orderId)
+                        .toList();
+
+        // then
+        assertThat(waitingOrderIds)
+                .contains(openOrderId, rematchOrderId)
+                .doesNotContain(cancelledOrderId);
     }
 
     @Test
