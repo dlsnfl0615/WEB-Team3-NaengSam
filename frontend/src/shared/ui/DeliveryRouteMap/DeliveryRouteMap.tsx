@@ -159,7 +159,29 @@ export function DeliveryRouteMap({
     });
   }, [status, pickup, dropoff, driver, driverLabel]);
 
-  // 존재하는 핀들로 최초 1회만 뷰포트를 맞춘다(이후 드리미 이동 시 강제 recenter 안 함 → 튐 방지).
+  // 추천 이동경로를 폴리라인으로 그린다(좌표가 바뀌면 다시 그림). 핀처럼 ref에 보관해 중복 생성을 막는다.
+  useEffect(() => {
+    const kakao = kakaoRef.current;
+    const map = mapRef.current;
+    if (status !== "ready" || !kakao || !map) return;
+    if (routeLineRef.current) {
+      (routeLineRef.current as ReturnType<typeof kakao.maps.Polyline>).setMap(
+        null,
+      );
+      routeLineRef.current = null;
+    }
+    if (!route || route.length < 2) return;
+    routeLineRef.current = new kakao.maps.Polyline({
+      map,
+      path: route.map((c) => new kakao.maps.LatLng(c.latitude, c.longitude)),
+      strokeWeight: 5,
+      strokeColor: "#00b7a7", // teal-500
+      strokeOpacity: 0.9,
+      strokeStyle: "solid",
+    });
+  }, [status, route]);
+
+  // 존재하는 핀들·경로로 최초 1회만 뷰포트를 맞춘다(이후 드리미 이동 시 강제 recenter 안 함 → 튐 방지).
   useEffect(() => {
     const kakao = kakaoRef.current;
     const map = mapRef.current;
