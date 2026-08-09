@@ -1,6 +1,7 @@
 package com.naengsam.quick.domain.matching.policy.assignment;
 
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -8,16 +9,25 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
- * 배정 알고리즘에 입력되는 문제 정의. 특정 시점에 매칭 대상인 주문·드리미 정보와, 이미 필터링을 거친 허용 후보 조합({@link MatchingCandidate})의 묶음이며 빈 목록도 허용한다.
- * candidates는 이미 필터링된 허용 목록이므로, 배정 알고리즘은 여기 없는 주문-드리미 조합을 결과에 포함할 수 없다. 거절·만료 이력을 읽어 후보에서 제외하는 책임은 이 레코드가 아니라 이 문제를 만드는
- * 쪽(MatchingAssignmentProblemFactory)에 있다.
+ * 배정 알고리즘에 입력되는 문제 정의. evaluatedAt은 이 문제를 평가하는 기준 시각이며, 후보의
+ * {@link com.naengsam.quick.domain.matching.model.PreviousOfferInteraction#occurredAt()}과의 경과 시간은
+ * {@code Duration.between(interaction.occurredAt(), problem.evaluatedAt())}으로 계산한다. 운영 연결 시에는
+ * occurredAt과 evaluatedAt이 같은 JVM/DB 시간대 기준이라는 전제가 필요하다.
+ * <p>orders·dreamis는 특정 시점에 매칭 대상인 주문·드리미 정보이고, candidates는 이미 필터링을 거친 허용 후보
+ * 조합({@link MatchingCandidate})이며 빈 목록도 허용한다. candidates는 이미 필터링된 허용 목록이므로, 배정
+ * 알고리즘은 여기 없는 주문-드리미 조합을 결과에 포함할 수 없다. 거절·만료 이력을 읽어 후보에서 제외하는 책임은 이
+ * 레코드가 아니라 이 문제를 만드는 쪽(MatchingAssignmentProblemFactory)에 있다.
  */
 public record MatchingAssignmentProblem(
+        LocalDateTime evaluatedAt,
         List<MatchingOrderInput> orders,
         List<MatchingDreamiInput> dreamis,
         List<MatchingCandidate> candidates
 ) {
     public MatchingAssignmentProblem {
+        if (evaluatedAt == null) {
+            throw new IllegalArgumentException("evaluatedAt은 null일 수 없습니다.");
+        }
         if (orders == null) {
             throw new IllegalArgumentException("orders는 null일 수 없습니다.");
         }

@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -41,6 +42,6 @@ class OrderWaitScorePolicyTest {
     private MatchingCandidate candidate(Duration orderWaitingTime, Duration dreamiWaitingTime, long distanceMeters) {
         return new MatchingCandidate(
                 UUID.randomUUID(), UUID.randomUUID(), distanceMeters,
-                orderWaitingTime, dreamiWaitingTime, 0, 0);
+                orderWaitingTime, dreamiWaitingTime, 0, 0, Optional.empty());
     }
 }

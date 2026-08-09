@@ -12,7 +12,9 @@ import com.naengsam.quick.domain.matching.policy.scoring.ScarcityAwareScorePolic
 import com.naengsam.quick.domain.matching.policy.scoring.ScarcityScoreWeights;
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -30,6 +32,7 @@ import org.junit.jupiter.api.Test;
 class AssignmentScoringPolicySubstitutionTest {
 
     private static final GeoPoint LOCATION = new GeoPoint(BigDecimal.ZERO, BigDecimal.ZERO);
+    private static final LocalDateTime EVALUATED_AT = LocalDateTime.of(2026, 8, 9, 9, 0);
 
     private final UUID orderA = UUID.randomUUID();
     private final UUID orderB = UUID.randomUUID();
@@ -110,7 +113,7 @@ class AssignmentScoringPolicySubstitutionTest {
     }
 
     private MatchingAssignmentProblem sharedProblem() {
-        return new MatchingAssignmentProblem(
+        return new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderA, 1), orderInput(orderB, 1)),
                 List.of(dreamiInput(dreamiShared), dreamiInput(dreamiFiller1), dreamiInput(dreamiFiller2)),
                 List.of(
@@ -133,6 +136,6 @@ class AssignmentScoringPolicySubstitutionTest {
     private MatchingCandidate candidate(UUID orderId, UUID dreamiId, long distanceMeters,
             Duration orderWaitingTime, Duration dreamiWaitingTime, int orderCandidateCount, int dreamiCandidateCount) {
         return new MatchingCandidate(orderId, dreamiId, distanceMeters, orderWaitingTime, dreamiWaitingTime,
-                orderCandidateCount, dreamiCandidateCount);
+                orderCandidateCount, dreamiCandidateCount, Optional.empty());
     }
 }

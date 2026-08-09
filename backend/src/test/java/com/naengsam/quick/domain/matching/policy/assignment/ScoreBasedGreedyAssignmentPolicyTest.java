@@ -7,7 +7,9 @@ import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 import com.naengsam.quick.domain.matching.policy.scoring.DistanceOnlyScorePolicy;
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -19,6 +21,7 @@ import org.junit.jupiter.api.Test;
 class ScoreBasedGreedyAssignmentPolicyTest {
 
     private static final GeoPoint LOCATION = new GeoPoint(BigDecimal.ZERO, BigDecimal.ZERO);
+    private static final LocalDateTime EVALUATED_AT = LocalDateTime.of(2026, 8, 9, 9, 0);
 
     private final ScoreBasedGreedyAssignmentPolicy policy =
             new ScoreBasedGreedyAssignmentPolicy(new DistanceOnlyScorePolicy());
@@ -30,7 +33,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID dreamiForA = UUID.randomUUID();
         UUID dreamiForB = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderA, 1), orderInput(orderB, 1)),
                 List.of(dreamiInput(dreamiForA), dreamiInput(dreamiForB)),
                 List.of(
@@ -50,7 +53,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID orderB = UUID.randomUUID();
         UUID sharedDreami = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderA, 1), orderInput(orderB, 1)),
                 List.of(dreamiInput(sharedDreami)),
                 List.of(
@@ -69,7 +72,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID dreami2 = UUID.randomUUID();
         UUID dreami3 = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId, 2)),
                 List.of(dreamiInput(dreami1), dreamiInput(dreami2), dreamiInput(dreami3)),
                 List.of(
@@ -90,7 +93,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID sharedDreami = UUID.randomUUID();
         UUID onlyForB = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderA, 1), orderInput(orderB, 1)),
                 List.of(dreamiInput(sharedDreami), dreamiInput(onlyForB)),
                 List.of(
@@ -114,7 +117,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID orderLongWait = UUID.randomUUID();
         UUID sharedDreami = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderShortWait, 1), orderInput(orderLongWait, 1)),
                 List.of(dreamiInput(sharedDreami)),
                 List.of(
@@ -130,7 +133,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
     void 후보가_없는_주문은_제안이_생성되지_않는다() {
         UUID orderId = UUID.randomUUID();
         MatchingAssignmentProblem problem =
-                new MatchingAssignmentProblem(List.of(orderInput(orderId, 3)), List.of(), List.of());
+                new MatchingAssignmentProblem(EVALUATED_AT, List.of(orderInput(orderId, 3)), List.of(), List.of());
 
         MatchingPlan plan = policy.createPlan(problem);
 
@@ -139,7 +142,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
 
     @Test
     void 빈_주문과_빈_드리미_배치는_빈_계획을_반환한다() {
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(List.of(), List.of(), List.of());
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT, List.of(), List.of(), List.of());
 
         MatchingPlan plan = policy.createPlan(problem);
 
@@ -152,7 +155,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID dreami1 = UUID.randomUUID();
         UUID dreami2 = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId, 1)),
                 List.of(dreamiInput(dreami1), dreamiInput(dreami2)),
                 List.of(
@@ -174,7 +177,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID dreami3 = UUID.randomUUID();
         UUID dreami4 = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderA, 2), orderInput(orderB, 1)),
                 List.of(dreamiInput(dreami1), dreamiInput(dreami2), dreamiInput(dreami3), dreamiInput(dreami4)),
                 List.of(
@@ -206,7 +209,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID dreamiB1 = UUID.randomUUID();
         UUID dreamiB2 = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderA, 2), orderInput(orderB, 1)),
                 List.of(dreamiInput(dreamiA1), dreamiInput(dreamiA2), dreamiInput(dreamiA3),
                         dreamiInput(dreamiB1), dreamiInput(dreamiB2)),
@@ -229,7 +232,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID orderWithoutCandidates = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderWithCandidates, 1), orderInput(orderWithoutCandidates, 1)),
                 List.of(dreamiInput(dreamiId)),
                 List.of(candidate(orderWithCandidates, dreamiId, 10L, Duration.ZERO, Duration.ZERO)));
@@ -247,7 +250,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID dreami2 = UUID.randomUUID();
         UUID dreami3 = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId, 3)),
                 List.of(dreamiInput(dreami1), dreamiInput(dreami2), dreamiInput(dreami3)),
                 List.of(
@@ -267,7 +270,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID dreami1 = UUID.randomUUID();
         UUID dreami2 = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId, 5)),
                 List.of(dreamiInput(dreami1), dreamiInput(dreami2)),
                 List.of(
@@ -285,7 +288,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
         UUID dreami1 = UUID.randomUUID();
         UUID dreami2 = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId, 3)),
                 List.of(dreamiInput(dreami1), dreamiInput(dreami2)),
                 List.of(
@@ -316,6 +319,7 @@ class ScoreBasedGreedyAssignmentPolicyTest {
 
     private MatchingCandidate candidate(UUID orderId, UUID dreamiId, long distanceMeters,
             Duration orderWaitingTime, Duration dreamiWaitingTime) {
-        return new MatchingCandidate(orderId, dreamiId, distanceMeters, orderWaitingTime, dreamiWaitingTime, 0, 0);
+        return new MatchingCandidate(
+                orderId, dreamiId, distanceMeters, orderWaitingTime, dreamiWaitingTime, 0, 0, Optional.empty());
     }
 }

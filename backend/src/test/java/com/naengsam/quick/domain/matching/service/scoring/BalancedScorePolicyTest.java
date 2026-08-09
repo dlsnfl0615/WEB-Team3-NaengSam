@@ -7,6 +7,7 @@ import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -113,6 +114,6 @@ class BalancedScorePolicyTest {
     private MatchingCandidate candidate(long distanceMeters, Duration orderWaitingTime, Duration dreamiWaitingTime) {
         return new MatchingCandidate(
                 UUID.randomUUID(), UUID.randomUUID(), distanceMeters,
-                orderWaitingTime, dreamiWaitingTime, 0, 0);
+                orderWaitingTime, dreamiWaitingTime, 0, 0, Optional.empty());
     }
 }

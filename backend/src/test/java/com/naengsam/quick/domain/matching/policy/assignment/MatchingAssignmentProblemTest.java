@@ -7,8 +7,10 @@ import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -19,10 +21,11 @@ import org.junit.jupiter.api.Test;
 class MatchingAssignmentProblemTest {
 
     private static final GeoPoint LOCATION = new GeoPoint(BigDecimal.ZERO, BigDecimal.ZERO);
+    private static final LocalDateTime EVALUATED_AT = LocalDateTime.of(2026, 8, 9, 9, 0);
 
     @Test
     void orders_dreamis_candidates가_모두_비어있어도_생성된다() {
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(List.of(), List.of(), List.of());
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT, List.of(), List.of(), List.of());
 
         assertThat(problem.orders()).isEmpty();
         assertThat(problem.dreamis()).isEmpty();
@@ -33,7 +36,7 @@ class MatchingAssignmentProblemTest {
     void orders_목록은_불변이다() {
         List<MatchingOrderInput> mutableOrders = new ArrayList<>();
         mutableOrders.add(orderInput(UUID.randomUUID()));
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(mutableOrders, List.of(), List.of());
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT, mutableOrders, List.of(), List.of());
 
         Throwable thrown = catchThrowable(() -> problem.orders().add(orderInput(UUID.randomUUID())));
 
@@ -44,7 +47,7 @@ class MatchingAssignmentProblemTest {
     void dreamis_목록은_불변이다() {
         List<MatchingDreamiInput> mutableDreamis = new ArrayList<>();
         mutableDreamis.add(dreamiInput(UUID.randomUUID()));
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(List.of(), mutableDreamis, List.of());
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT, List.of(), mutableDreamis, List.of());
 
         Throwable thrown = catchThrowable(() -> problem.dreamis().add(dreamiInput(UUID.randomUUID())));
 
@@ -57,7 +60,7 @@ class MatchingAssignmentProblemTest {
         UUID dreamiId = UUID.randomUUID();
         List<MatchingCandidate> mutableCandidates = new ArrayList<>();
         mutableCandidates.add(candidate(orderId, dreamiId));
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId)), List.of(dreamiInput(dreamiId)), mutableCandidates);
 
         Throwable thrown = catchThrowable(() -> problem.candidates().add(candidate(orderId, dreamiId)));
@@ -69,7 +72,7 @@ class MatchingAssignmentProblemTest {
     void 원본_목록을_수정해도_문제_내부_목록은_바뀌지_않는다() {
         List<MatchingOrderInput> mutableOrders = new ArrayList<>();
         mutableOrders.add(orderInput(UUID.randomUUID()));
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(mutableOrders, List.of(), List.of());
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT, mutableOrders, List.of(), List.of());
 
         mutableOrders.add(orderInput(UUID.randomUUID()));
 
@@ -82,7 +85,7 @@ class MatchingAssignmentProblemTest {
         List<MatchingOrderInput> orders =
                 List.of(orderInput(duplicatedOrderId), orderInput(duplicatedOrderId));
 
-        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(orders, List.of(), List.of()));
+        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(EVALUATED_AT, orders, List.of(), List.of()));
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
     }
@@ -93,28 +96,35 @@ class MatchingAssignmentProblemTest {
         List<MatchingDreamiInput> dreamis =
                 List.of(dreamiInput(duplicatedDreamiId), dreamiInput(duplicatedDreamiId));
 
-        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(List.of(), dreamis, List.of()));
+        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(EVALUATED_AT, List.of(), dreamis, List.of()));
+
+        assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void evaluatedAt이_null이면_예외가_발생한다() {
+        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(null, List.of(), List.of(), List.of()));
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void orders가_null이면_예외가_발생한다() {
-        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(null, List.of(), List.of()));
+        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(EVALUATED_AT, null, List.of(), List.of()));
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void dreamis가_null이면_예외가_발생한다() {
-        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(List.of(), null, List.of()));
+        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(EVALUATED_AT, List.of(), null, List.of()));
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void candidates가_null이면_예외가_발생한다() {
-        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(List.of(), List.of(), null));
+        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(EVALUATED_AT, List.of(), List.of(), null));
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
     }
@@ -124,7 +134,7 @@ class MatchingAssignmentProblemTest {
         List<MatchingCandidate> candidates = new ArrayList<>();
         candidates.add(null);
 
-        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(List.of(), List.of(), candidates));
+        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(EVALUATED_AT, List.of(), List.of(), candidates));
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
     }
@@ -134,7 +144,7 @@ class MatchingAssignmentProblemTest {
         UUID dreamiId = UUID.randomUUID();
         List<MatchingCandidate> candidates = List.of(candidate(UUID.randomUUID(), dreamiId));
 
-        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(
+        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(), List.of(dreamiInput(dreamiId)), candidates));
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
@@ -145,7 +155,7 @@ class MatchingAssignmentProblemTest {
         UUID orderId = UUID.randomUUID();
         List<MatchingCandidate> candidates = List.of(candidate(orderId, UUID.randomUUID()));
 
-        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(
+        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId)), List.of(), candidates));
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
@@ -157,7 +167,7 @@ class MatchingAssignmentProblemTest {
         UUID dreamiId = UUID.randomUUID();
         List<MatchingCandidate> candidates = List.of(candidate(orderId, dreamiId), candidate(orderId, dreamiId));
 
-        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(
+        Throwable thrown = catchThrowable(() -> new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId)), List.of(dreamiInput(dreamiId)), candidates));
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
@@ -169,10 +179,27 @@ class MatchingAssignmentProblemTest {
         UUID dreamiId = UUID.randomUUID();
         List<MatchingCandidate> candidates = List.of(candidate(orderId, dreamiId));
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId)), List.of(dreamiInput(dreamiId)), candidates);
 
         assertThat(problem.candidates()).hasSize(1);
+    }
+
+    @Test
+    void 후보가_여러_개여도_모두_같은_evaluatedAt을_참조한다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreami1 = UUID.randomUUID();
+        UUID dreami2 = UUID.randomUUID();
+        List<MatchingCandidate> candidates = List.of(candidate(orderId, dreami1), candidate(orderId, dreami2));
+
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+                EVALUATED_AT, List.of(orderInput(orderId)), List.of(dreamiInput(dreami1), dreamiInput(dreami2)),
+                candidates);
+
+        // MatchingCandidate는 evaluatedAt을 직접 갖지 않고, MatchingAssignmentProblem 하나가 문제 전체의
+        // 평가 기준 시각을 대표한다. 후보 수와 관계없이 problem.evaluatedAt()은 하나의 값으로 고정된다.
+        assertThat(problem.candidates()).hasSize(2);
+        assertThat(problem.evaluatedAt()).isEqualTo(EVALUATED_AT);
     }
 
     private MatchingOrderInput orderInput(UUID orderId) {
@@ -184,6 +211,6 @@ class MatchingAssignmentProblemTest {
     }
 
     private MatchingCandidate candidate(UUID orderId, UUID dreamiId) {
-        return new MatchingCandidate(orderId, dreamiId, 0L, Duration.ZERO, Duration.ZERO, 0, 0);
+        return new MatchingCandidate(orderId, dreamiId, 0L, Duration.ZERO, Duration.ZERO, 0, 0, Optional.empty());
     }
 }

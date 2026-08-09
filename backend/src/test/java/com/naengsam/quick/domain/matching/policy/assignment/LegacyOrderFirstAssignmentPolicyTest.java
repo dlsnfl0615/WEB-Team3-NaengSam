@@ -8,7 +8,9 @@ import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
@@ -21,6 +23,7 @@ import org.junit.jupiter.api.Test;
 class LegacyOrderFirstAssignmentPolicyTest {
 
     private static final GeoPoint LOCATION = new GeoPoint(BigDecimal.ZERO, BigDecimal.ZERO);
+    private static final LocalDateTime EVALUATED_AT = LocalDateTime.of(2026, 8, 9, 9, 0);
 
     private final LegacyOrderFirstAssignmentPolicy policy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
 
@@ -33,7 +36,7 @@ class LegacyOrderFirstAssignmentPolicyTest {
         UUID dreami4 = UUID.randomUUID();
         UUID dreami5 = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId, 3)),
                 List.of(dreamiInput(dreami1), dreamiInput(dreami2), dreamiInput(dreami3),
                         dreamiInput(dreami4), dreamiInput(dreami5)),
@@ -56,7 +59,7 @@ class LegacyOrderFirstAssignmentPolicyTest {
         UUID dreami1 = UUID.randomUUID();
         UUID dreami2 = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId, 3)),
                 List.of(dreamiInput(dreami1), dreamiInput(dreami2)),
                 List.of(candidate(orderId, dreami1, Duration.ofMinutes(1)),
@@ -75,7 +78,7 @@ class LegacyOrderFirstAssignmentPolicyTest {
     void 후보가_없는_주문은_제안이_생성되지_않는다() {
         UUID orderId = UUID.randomUUID();
         MatchingAssignmentProblem problem =
-                new MatchingAssignmentProblem(List.of(orderInput(orderId, 3)), List.of(), List.of());
+                new MatchingAssignmentProblem(EVALUATED_AT, List.of(orderInput(orderId, 3)), List.of(), List.of());
 
         MatchingPlan plan = policy.createPlan(problem);
 
@@ -88,7 +91,7 @@ class LegacyOrderFirstAssignmentPolicyTest {
         UUID includedDreami = UUID.randomUUID();
         UUID excludedDreami = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId, 3)),
                 List.of(dreamiInput(includedDreami), dreamiInput(excludedDreami)),
                 List.of(candidate(orderId, includedDreami, Duration.ofMinutes(1))));
@@ -104,7 +107,7 @@ class LegacyOrderFirstAssignmentPolicyTest {
         UUID orderB = UUID.randomUUID();
         UUID sharedDreami = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderA, 1), orderInput(orderB, 1)),
                 List.of(dreamiInput(sharedDreami)),
                 List.of(
@@ -123,7 +126,7 @@ class LegacyOrderFirstAssignmentPolicyTest {
         UUID dreami2 = UUID.randomUUID();
         UUID dreami3 = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId, 2)),
                 List.of(dreamiInput(dreami1), dreamiInput(dreami2), dreamiInput(dreami3)),
                 List.of(
@@ -144,7 +147,7 @@ class LegacyOrderFirstAssignmentPolicyTest {
         UUID betterScoreShortWait = UUID.randomUUID();
         UUID worseScoreLongWait = UUID.randomUUID();
 
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(EVALUATED_AT,
                 List.of(orderInput(orderId, 1)),
                 List.of(dreamiInput(betterScoreShortWait), dreamiInput(worseScoreLongWait)),
                 List.of(
@@ -172,11 +175,12 @@ class LegacyOrderFirstAssignmentPolicyTest {
     }
 
     private MatchingCandidate candidate(UUID orderId, UUID dreamiId, Duration dreamiWaitingTime) {
-        return new MatchingCandidate(orderId, dreamiId, 0L, Duration.ZERO, dreamiWaitingTime, 0, 0);
+        return new MatchingCandidate(orderId, dreamiId, 0L, Duration.ZERO, dreamiWaitingTime, 0, 0, Optional.empty());
     }
 
     private MatchingCandidate candidateWithDistance(
             UUID orderId, UUID dreamiId, long distanceMeters, Duration dreamiWaitingTime) {
-        return new MatchingCandidate(orderId, dreamiId, distanceMeters, Duration.ZERO, dreamiWaitingTime, 0, 0);
+        return new MatchingCandidate(
+                orderId, dreamiId, distanceMeters, Duration.ZERO, dreamiWaitingTime, 0, 0, Optional.empty());
     }
 }
