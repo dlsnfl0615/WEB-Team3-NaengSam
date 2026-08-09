@@ -81,6 +81,13 @@ export function DeliveryTrackScreen() {
         }
       : undefined;
   const destAddress = detail?.destinationAddressLine1;
+  // 백엔드가 내려준 카카오 추천 이동경로. 좌표가 온전한 점만 골라 지도 폴리라인에 넘긴다.
+  const routePath = detail?.routePath
+    ?.filter(
+      (p): p is { latitude: number; longitude: number } =>
+        p.latitude != null && p.longitude != null,
+    )
+    .map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
 
   // 픽업 취소 확인 모달 상태
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -201,6 +208,7 @@ export function DeliveryTrackScreen() {
             pickup={pickup}
             dropoff={dropoff}
             driver={position ?? undefined}
+            route={routePath}
             height={440}
           />
         </MapCard>

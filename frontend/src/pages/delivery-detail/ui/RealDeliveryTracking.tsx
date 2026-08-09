@@ -89,6 +89,13 @@ export function RealDeliveryTracking({
           longitude: detail.destinationLongitude,
         }
       : undefined;
+  // 백엔드가 내려준 카카오 추천 이동경로. 좌표가 온전한 점만 골라 지도 폴리라인에 넘긴다.
+  const routePath: Coords[] | undefined = detail?.routePath
+    ?.filter(
+      (p): p is { latitude: number; longitude: number } =>
+        p.latitude != null && p.longitude != null,
+    )
+    .map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
   const [toast, setToast] = useState<{
     title: string;
     description?: string;
@@ -262,6 +269,7 @@ export function RealDeliveryTracking({
             pickup={pickup}
             dropoff={dropoff}
             driver={driver}
+            route={routePath}
             height={340}
           />
         </MapCard>
