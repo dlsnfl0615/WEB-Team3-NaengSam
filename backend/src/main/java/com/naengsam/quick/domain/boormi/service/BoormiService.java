@@ -30,15 +30,18 @@ import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BoormiService {
@@ -237,7 +240,12 @@ public class BoormiService {
      * 카카오 경로의 실제 이동경로 좌표를 {@code [{latitude, longitude}, ...]} JSON 문자열로 직렬화한다. 주문에 저장해 두면 추적 지도가 폴리라인으로 그린다.
      */
     private String toRoutePathJson(KakaoDirectionsResponseDto.Route route) {
-        return objectMapper.writeValueAsString(RoutePointDto.from(route));
+        try {
+            return objectMapper.writeValueAsString(RoutePointDto.from(route));
+        } catch (JacksonException e) {
+            log.error("카카오 경로 좌표 JSON 직렬화 실패 — 경로 없이 주문을 진행한다", e);
+            return null;
+        }
     }
 
     /**
@@ -276,4 +284,3 @@ public class BoormiService {
         return new GeoPoint(new BigDecimal(address.y()), new BigDecimal(address.x()));
     }
 }
-

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 
 import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
@@ -31,6 +32,7 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.service.PaymentService;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
@@ -261,6 +263,25 @@ BoormiServiceTest {
                 .contains("\"longitude\":127.02700693")
                 .contains("\"latitude\":37.49863151")
                 .contains("\"longitude\":127.02698289");
+    }
+
+    @Test
+    void 주문접수_route_path_직렬화가_실패해도_경로없이_저장_결제_매칭을_진행한다() {
+        UUID boormiId = UUID.randomUUID();
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
+        given(kakaoDirectionsService.getRoute(any(), any())).willReturn(routeOf(5000, 900));
+        willThrow(new JacksonException("직렬화 실패") {
+        }).given(objectMapper).writeValueAsString(any());
+
+        boormiService.subscribeOrder(orderRequest(), boormiId);
+
+        ArgumentCaptor<Orders> captor = ArgumentCaptor.forClass(Orders.class);
+        then(orderService).should().createOrders(captor.capture());
+        Orders saved = captor.getValue();
+        assertThat(saved.getRoutePath()).isNull();
+        then(paymentService).should().payWithPoint(boormiId, saved.getOrderId(), 10100L);
+        then(eventPublisher).should().publishEvent(new MatchingStartRequestedEvent(saved));
     }
 
     @Test
