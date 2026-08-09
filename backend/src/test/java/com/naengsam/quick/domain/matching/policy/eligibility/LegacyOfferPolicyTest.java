@@ -12,15 +12,14 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 /**
- * LegacyOfferEligibilityPolicy가 legacy MatchOffer.shouldExcludeFromRematch()의 제외 규칙을 그대로
- * 재현하는지 확인한다.
+ * LegacyOfferEligibilityPolicy가 legacy MatchOffer.shouldExcludeFromRematch()의 제외 규칙을 그대로 재현하는지 확인한다.
  */
-class LegacyOfferEligibilityPolicyTest {
+class LegacyOfferPolicyTest {
 
     private static final LocalDateTime EVALUATED_AT = LocalDateTime.of(2026, 8, 9, 9, 0);
     private static final LocalDateTime OCCURRED_AT = LocalDateTime.of(2026, 8, 9, 8, 0);
 
-    private final LegacyOfferEligibilityPolicy policy = new LegacyOfferEligibilityPolicy();
+    private final LegacyOfferPolicy policy = new LegacyOfferPolicy();
 
     @Test
     void 이전_이력이_없으면_적격하다() {
