@@ -25,7 +25,7 @@ class MatchingPlanValidatorTest {
     void 제안_수가_maxConcurrentOffers_이내면_통과한다() {
         UUID orderId = UUID.randomUUID();
         MatchingAssignmentProblem problem =
-                new MatchingAssignmentProblem(List.of(orderInput(orderId, 3)), List.of());
+                new MatchingAssignmentProblem(List.of(orderInput(orderId, 3)), List.of(), List.of());
         MatchingPlan plan = new MatchingPlan(Arrays.asList(
                 new MatchingProposal(orderId, UUID.randomUUID()),
                 new MatchingProposal(orderId, UUID.randomUUID())));
@@ -37,7 +37,7 @@ class MatchingPlanValidatorTest {
     void 제안_수가_maxConcurrentOffers를_초과하면_예외가_발생한다() {
         UUID orderId = UUID.randomUUID();
         MatchingAssignmentProblem problem =
-                new MatchingAssignmentProblem(List.of(orderInput(orderId, 1)), List.of());
+                new MatchingAssignmentProblem(List.of(orderInput(orderId, 1)), List.of(), List.of());
         MatchingPlan plan = new MatchingPlan(Arrays.asList(
                 new MatchingProposal(orderId, UUID.randomUUID()),
                 new MatchingProposal(orderId, UUID.randomUUID())));
@@ -49,7 +49,7 @@ class MatchingPlanValidatorTest {
 
     @Test
     void 문제에_없는_orderId에_대한_제안이면_예외가_발생한다() {
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(List.of(), List.of());
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(List.of(), List.of(), List.of());
         MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(UUID.randomUUID(), UUID.randomUUID())));
 
         Throwable thrown = catchThrowable(() -> validator.validate(problem, plan));
