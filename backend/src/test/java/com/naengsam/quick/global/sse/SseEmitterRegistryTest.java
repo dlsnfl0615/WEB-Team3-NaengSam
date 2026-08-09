@@ -3,15 +3,25 @@ package com.naengsam.quick.global.sse;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -110,6 +120,38 @@ class SseEmitterRegistryTest {
     }
 
     @Test
+    void send는_다른_사용자의_연결에는_전송하지_않는다() throws IOException {
+        UUID targetUserId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        SseEmitter target = mock(SseEmitter.class);
+        SseEmitter other = mock(SseEmitter.class);
+        connectionsOf(targetUserId).put("target-connection", target);
+        connectionsOf(otherUserId).put("other-connection", other);
+
+        registry.send(targetUserId, "offer_popup", Map.of());
+
+        verify(target).send(any(SseEmitter.SseEventBuilder.class));
+        verify(other, never()).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    void 여러번_send하면_모든_연결이_각_이벤트를_한번씩_받는다() throws IOException {
+        UUID userId = UUID.randomUUID();
+        SseEmitter emitter1 = mock(SseEmitter.class);
+        SseEmitter emitter2 = mock(SseEmitter.class);
+        connectionsOf(userId).put("connection-1", emitter1);
+        connectionsOf(userId).put("connection-2", emitter2);
+
+        registry.send(userId, "first_event", Map.of("sequence", 1));
+        registry.send(userId, "second_event", Map.of("sequence", 2));
+
+        verify(emitter1, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+        verify(emitter2, times(2)).send(any(SseEmitter.SseEventBuilder.class));
+        assertThat(counter("sse.events.sent", "event", "first_event")).isEqualTo(2.0);
+        assertThat(counter("sse.events.sent", "event", "second_event")).isEqualTo(2.0);
+    }
+
+    @Test
     void 한_연결의_전송이_실패해도_다른_연결은_유지된다() throws IOException {
         UUID userId = UUID.randomUUID();
         SseEmitter failed = mock(SseEmitter.class);
@@ -123,6 +165,83 @@ class SseEmitterRegistryTest {
         verify(active).send(any(SseEmitter.SseEventBuilder.class));
         assertThat(connectionsOf(userId)).containsEntry("connection-2", active)
                 .doesNotContainKey("connection-1");
+    }
+
+    @Test
+    void 전송_실패_정리와_새_연결이_동시에_일어나도_새_emitter는_유지된다() throws Exception {
+        UUID userId = UUID.randomUUID();
+        SseEmitter failed = mock(SseEmitter.class);
+        CountDownLatch sendStarted = new CountDownLatch(1);
+        CountDownLatch allowFailure = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            sendStarted.countDown();
+            if (!allowFailure.await(5, TimeUnit.SECONDS)) {
+                throw new IOException("전송 실패 허용 대기 시간 초과");
+            }
+            throw new IOException("죽은 클라이언트");
+        }).when(failed).send(any(SseEmitter.SseEventBuilder.class));
+        connectionsOf(userId).put("failed-connection", failed);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+
+        try {
+            Future<?> send = executor.submit(() -> registry.send(userId, "offer_popup", Map.of()));
+            assertThat(sendStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            SseEmitter fresh = registry.connect(userId);
+            allowFailure.countDown();
+            send.get(5, TimeUnit.SECONDS);
+
+            assertThat(connectionsOf(userId)).containsValue(fresh);
+            assertThat(meterRegistry.get("sse.connections.active").gauge().value()).isEqualTo(1.0);
+        } finally {
+            allowFailure.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void 여러_스레드에서_동시에_연결해도_emitter가_유실되지_않는다() throws Exception {
+        UUID userId = UUID.randomUUID();
+        int connectionCount = 100;
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        List<Future<SseEmitter>> futures = new ArrayList<>();
+
+        try {
+            for (int i = 0; i < connectionCount; i++) {
+                futures.add(executor.submit(() -> {
+                    assertThat(start.await(5, TimeUnit.SECONDS)).isTrue();
+                    return registry.connect(userId);
+                }));
+            }
+            start.countDown();
+
+            List<SseEmitter> connected = new ArrayList<>();
+            for (Future<SseEmitter> future : futures) {
+                connected.add(future.get(5, TimeUnit.SECONDS));
+            }
+
+            assertThat(connectionsOf(userId)).hasSize(connectionCount);
+            assertThat(connectionsOf(userId).values()).containsExactlyInAnyOrderElementsOf(connected);
+            assertThat(counter("sse.connections.opened")).isEqualTo(connectionCount);
+            assertThat(meterRegistry.get("sse.connections.active").gauge().value()).isEqualTo(connectionCount);
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void active_게이지는_사용자_수가_아니라_전체_연결_수를_집계한다() {
+        UUID firstUserId = UUID.randomUUID();
+        UUID secondUserId = UUID.randomUUID();
+
+        registry.connect(firstUserId);
+        registry.connect(firstUserId);
+        registry.connect(secondUserId);
+
+        assertThat(emitters()).hasSize(2);
+        assertThat(meterRegistry.get("sse.connections.active").gauge().value()).isEqualTo(3.0);
     }
 
     @Test

@@ -83,7 +83,7 @@ SSE 는 `SseEmitter` 기반 async 요청이라 `http_server_requests_seconds` �
 | ------------------------------ | ------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
 | `sse_connections_active`       | Gauge   | —                                                                  | 현재 유지 중인 연결 수                                                            |
 | `sse_connections_opened_total` | Counter | —                                                                  | 누적 연결 수립 수                                                                 |
-| `sse_connections_closed_total` | Counter | `reason` = `completion`/`timeout`/`error`/`send_failed`/`replaced` | 누적 연결 종료 수. `replaced` 는 같은 사용자의 재연결로 기존 연결이 덮어써진 경우 |
+| `sse_connections_closed_total` | Counter | `reason` = `completion`/`timeout`/`error`/`send_failed` | 누적 연결 종료 수 |
 | `sse_events_sent_total`        | Counter | `event` (SSE 이벤트 이름)                                          | 전송 성공한 이벤트 수                                                             |
 | `sse_events_dropped_total`     | Counter | `reason` = `not_connected`/`send_failed`                           | 전송하지 못한 이벤트 수                                                           |
 
