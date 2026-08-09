@@ -161,15 +161,18 @@ public class MatchingService {
     }
 
     /**
-     * 부르미가 매칭 진행 중인 주문을 직접 취소한다. 호출 스레드에서 곧바로 확인 가능한 취소 가능 여부(진행 중인 방이 있는지)만 빠르게 걸러내며, 취소할 방이 없거나 이미 종료된 방이면 큐에 넣지 않고
-     * false를 반환한다. 방이 존재했다면 실패 사유를 부르미에게 SSE로 알린다. 실제 취소는 엔진 스레드에서 순차 처리된다.
+     * 부르미가 매칭 진행 중인 주문을 직접 취소한다. 호출 스레드에서 곧바로 확인 가능한 취소 가능 여부(OPEN이거나, 재매칭 대기 중인 CLOSED)만 빠르게 걸러내며, 취소할 방이 없거나 이미 완전히
+     * 종료된 방(매칭 확정 또는 이미 취소됨)이면 큐에 넣지 않고 false를 반환한다. 방이 존재했다면 실패 사유를 부르미에게 SSE로 알린다. 실제 취소는 엔진 스레드에서 순차 처리된다.
      *
      * @param orderId 취소할 주문 UUID
-     * @return 주문 취소 액션이 큐에 제출되었으면 true, 취소 가능한 진행 중인 방이 없거나 큐 제출에 실패했을 경우 false
+     * @return 주문 취소 액션이 큐에 제출되었으면 true, 취소 가능한 방이 없거나 큐 제출에 실패했을 경우 false
      */
     public boolean cancelOrderByBoormi(UUID orderId) {
         OrderOfferGroup group = orderOfferGroupsByOrderId.get(orderId);
-        if (group == null || group.status() != OrderOfferGroupStatus.OPEN) {
+        boolean cancellable = group != null
+                && (group.status() == OrderOfferGroupStatus.OPEN
+                        || (group.status() == OrderOfferGroupStatus.CLOSED && group.rematchRequired()));
+        if (!cancellable) {
             if (group != null) {
                 sseService.send(group.boormiId(), MatchingEventType.OFFER_ERROR,
                         new NotificationErrorPayload("이미 종료된 주문입니다."));
@@ -358,7 +361,9 @@ public class MatchingService {
             log.debug("존재하지 않는 주문 취소 요청, 무시: orderId={}", orderId);
             return;
         }
-        if (group.status() != OrderOfferGroupStatus.OPEN) {
+        // CLOSED이면서 rematchRequired=false(취소·매칭완료로 이미 종료됨)만 무시한다.
+        // rematchRequired=true(후보가 없어 재매칭 대기 중)는 아직 취소 처리가 안 된 상태이므로 계속 진행해야 한다.
+        if (group.status() == OrderOfferGroupStatus.CLOSED && !group.rematchRequired()) {
             log.debug("이미 종료된 주문 취소 요청, 무시: orderId={}", orderId);
             return;
         }
