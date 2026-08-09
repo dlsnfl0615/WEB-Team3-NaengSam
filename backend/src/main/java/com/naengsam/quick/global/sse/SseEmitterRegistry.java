@@ -13,8 +13,9 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * 로그인 사용자별 SSE 연결을 보관하고 전송한다. 구독마다 서버 내부용 connectionId를 발급하므로, 같은 사용자의 여러 탭과 EventSource
  * 재연결을 독립적으로 유지한다. 도메인에 독립적인 순수 인프라이므로 어느 도메인이든 {@link SseService}를 통해 재사용한다.
  *
- * <p>연결 수/이벤트 전송량은 Micrometer 로 노출한다(Grafana 관측용). 연결 종료 카운트는 {@link #remove}에서만 세는데, 실제로 맵에서 제거에
- * 성공했을 때만 증가시키므로 complete → onCompletion 처럼 콜백이 연쇄로 불려도 한 번만 집계된다.
+ * <p>연결 수/이벤트 전송량은 Micrometer 로 노출한다(Grafana 관측용). 연결 종료 카운트는 {@link #remove}와
+ * {@link #disconnectAll}에서만 세는데, 둘 다 emitter를 완료시키기 전에 맵에서 먼저 제거하므로 complete →
+ * onCompletion 처럼 콜백이 연쇄로 불려도 이미 제거된 뒤라 한 번만 집계된다.
  */
 @Slf4j
 @Component
@@ -89,6 +90,21 @@ public class SseEmitterRegistry {
             remove(userId, connectionId, emitter, "send_failed");
             emitter.completeWithError(e);
         }
+    }
+
+    public void disconnectAll(UUID userId, SseCloseReason reason) {
+        // 콜백에 의한 remove()가 중복 집계되지 않도록, 맵에서 먼저 사용자 엔트리를 통째로 제거한 뒤 emitter를 종료한다.
+        Map<String, SseEmitter> connections = emitters.remove(userId);
+        if (connections == null) {
+            return;
+        }
+
+        String metricReason = reason.name().toLowerCase();
+        connections.values().forEach(emitter -> {
+            meterRegistry.counter("sse.connections.closed", "reason", metricReason).increment();
+            emitter.complete();
+        });
+        log.debug("사용자 SSE 연결 전체 종료: userId={}, reason={}, count={}", userId, reason, connections.size());
     }
 
     private void remove(UUID userId, String connectionId, SseEmitter emitter, String reason) {
