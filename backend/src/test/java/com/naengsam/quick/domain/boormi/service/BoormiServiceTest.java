@@ -31,6 +31,7 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.service.PaymentService;
+import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.math.BigDecimal;
@@ -42,6 +43,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -77,8 +79,30 @@ BoormiServiceTest {
     @Mock
     private ApplicationEventPublisher eventPublisher;
 
+    // 실제 직렬화 결과(route_path JSON)를 검증하기 위해 진짜 ObjectMapper 를 주입한다.
+    @Spy
+    private ObjectMapper objectMapper = new ObjectMapper();
+
     @InjectMocks
     private BoormiService boormiService;
+
+    // 카카오 Route 목 픽스처. 총 거리·시간(요금 계산용)과 실제 이동경로 좌표(path.points, [경도, 위도])를 담는다.
+    private static KakaoDirectionsResponseDto.Route routeOf(int totalDistance, int totalTime) {
+        return routeOf(totalDistance, totalTime, new double[0][]);
+    }
+
+    private static KakaoDirectionsResponseDto.Route routeOf(int totalDistance, int totalTime, double[][] points) {
+        KakaoDirectionsResponseDto.Path path = new KakaoDirectionsResponseDto.Path(points);
+        KakaoDirectionsResponseDto.StepProperties stepProps =
+                new KakaoDirectionsResponseDto.StepProperties(totalDistance, "안내", totalTime, 0, 0);
+        KakaoDirectionsResponseDto.Step step = new KakaoDirectionsResponseDto.Step(stepProps, path);
+        KakaoDirectionsResponseDto.Leg leg = new KakaoDirectionsResponseDto.Leg(
+                new KakaoDirectionsResponseDto.LegProperties(totalDistance, totalTime),
+                new KakaoDirectionsResponseDto.Step[]{step});
+        return new KakaoDirectionsResponseDto.Route(
+                new KakaoDirectionsResponseDto.Properties(totalDistance, totalTime),
+                new KakaoDirectionsResponseDto.Leg[]{leg});
+    }
 
     private static ExpectedValueRequest request(ItemCd itemCd) {
         return new ExpectedValueRequest("서울시 강남구", "서울시 서초구", itemCd);
@@ -114,7 +138,7 @@ BoormiServiceTest {
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
-                .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
+                .willReturn(routeOf(5000, 900));
 
         ExpectedValueDto result = boormiService.expectedValue(request(ItemCd.DOCUMENT));
 
@@ -128,7 +152,7 @@ BoormiServiceTest {
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
-                .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
+                .willReturn(routeOf(5000, 900));
 
         ExpectedValueDto result = boormiService.expectedValue(request(ItemCd.PACKAGE));
 
@@ -140,7 +164,7 @@ BoormiServiceTest {
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
-                .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 901));
+                .willReturn(routeOf(5000, 901));
 
         ExpectedValueDto result = boormiService.expectedValue(request(ItemCd.DOCUMENT));
 
@@ -152,7 +176,7 @@ BoormiServiceTest {
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
-                .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
+                .willReturn(routeOf(5000, 900));
 
         boormiService.expectedValue(request(ItemCd.DOCUMENT));
 
@@ -169,7 +193,7 @@ BoormiServiceTest {
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
-                .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
+                .willReturn(routeOf(5000, 900));
 
         boormiService.subscribeOrder(orderRequest(), boormiId);
 
@@ -205,7 +229,7 @@ BoormiServiceTest {
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         // 거리 2000m, PACKAGE(배율 1.5) → (1500/100*100 + 500/100*160 + 3000)=5300 → ×1.5 = 7950원, 660초 → 11분
         given(kakaoDirectionsService.getRoute(any(), any()))
-                .willReturn(new KakaoDirectionsResponseDto.Properties(2000, 660));
+                .willReturn(routeOf(2000, 660));
 
         OrderRequest packageOrder = new OrderRequest("서울시 강남구", "101동", "서울시 서초구", "202동",
                 "노트북", ItemCd.PACKAGE, "http://img", "파손주의", "문 앞에 두세요");
@@ -216,6 +240,27 @@ BoormiServiceTest {
         Orders saved = captor.getValue();
         assertThat(saved.getDeliveryAmount()).isEqualTo(7950L);
         assertThat(saved.getDeliveryEta()).isEqualTo(11);
+    }
+
+    @Test
+    void 주문접수_카카오_경로좌표를_route_path_JSON으로_저장한다() {
+        UUID boormiId = UUID.randomUUID();
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
+        // path.points 는 [경도, 위도] 순서 → 저장 시 (위도, 경도)로 뒤집혀 직렬화돼야 한다.
+        double[][] points = {{127.02700693, 37.49864277}, {127.02698289, 37.49863151}};
+        given(kakaoDirectionsService.getRoute(any(), any())).willReturn(routeOf(5000, 900, points));
+
+        boormiService.subscribeOrder(orderRequest(), boormiId);
+
+        ArgumentCaptor<Orders> captor = ArgumentCaptor.forClass(Orders.class);
+        then(orderService).should().createOrders(captor.capture());
+        String routePath = captor.getValue().getRoutePath();
+        assertThat(routePath)
+                .contains("\"latitude\":37.49864277")
+                .contains("\"longitude\":127.02700693")
+                .contains("\"latitude\":37.49863151")
+                .contains("\"longitude\":127.02698289");
     }
 
     @Test
@@ -267,7 +312,7 @@ BoormiServiceTest {
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
-                .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
+                .willReturn(routeOf(5000, 900));
         given(matchingService.isOpenGroupExists(any())).willReturn(true);
 
         Throwable thrown = catchThrowable(() -> boormiService.subscribeOrder(orderRequest(), boormiId));
