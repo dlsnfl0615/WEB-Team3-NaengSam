@@ -6,6 +6,7 @@
  */
 import type { DeliveryDetailResponseDtoStatus } from './deliveryDetailResponseDtoStatus';
 import type { DeliveryLocationDto } from './deliveryLocationDto';
+import type { RoutePointDto } from './routePointDto';
 
 export interface DeliveryDetailResponseDto {
   /** 주문 ID */
