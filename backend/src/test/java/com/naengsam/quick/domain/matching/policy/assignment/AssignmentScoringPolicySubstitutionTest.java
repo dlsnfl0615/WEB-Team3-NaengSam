@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import com.naengsam.quick.domain.matching.policy.scoring.DistanceOnlyScorePolicy;
@@ -97,7 +98,7 @@ class AssignmentScoringPolicySubstitutionTest {
      * 모든 정책에서 동일하게 지켜져야 하는 배정 제약: 주문별 maxConcurrentOffers 준수, 드리미 전역 유일성.
      */
     private void assertConstraintsHold(MatchingPlan plan) {
-        new MatchingPlanValidator().validate(sharedProblem(), plan);
+        new MatchingPlanValidator(new LegacyOfferPolicy()).validate(sharedProblem(), plan);
 
         long dreamiShareCount = plan.proposals().size();
         long distinctDreamiCount = plan.proposals().stream().map(MatchingProposal::dreamiId).distinct().count();
