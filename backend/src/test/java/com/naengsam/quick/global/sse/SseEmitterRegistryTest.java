@@ -286,6 +286,101 @@ class SseEmitterRegistryTest {
         assertThat(counter("sse.connections.closed", "reason", "send_failed")).isEqualTo(1.0);
     }
 
+    @Test
+    void disconnectAll은_해당_사용자의_모든_emitter를_종료한다() {
+        UUID userId = UUID.randomUUID();
+        SseEmitter emitter1 = mock(SseEmitter.class);
+        SseEmitter emitter2 = mock(SseEmitter.class);
+        connectionsOf(userId).put("connection-1", emitter1);
+        connectionsOf(userId).put("connection-2", emitter2);
+
+        registry.disconnectAll(userId, SseCloseReason.LOGOUT);
+
+        verify(emitter1).complete();
+        verify(emitter2).complete();
+        assertThat(emitters()).doesNotContainKey(userId);
+    }
+
+    @Test
+    void disconnectAll은_다른_사용자의_emitter는_유지한다() {
+        UUID targetUserId = UUID.randomUUID();
+        UUID otherUserId = UUID.randomUUID();
+        SseEmitter target = mock(SseEmitter.class);
+        SseEmitter other = mock(SseEmitter.class);
+        connectionsOf(targetUserId).put("target-connection", target);
+        connectionsOf(otherUserId).put("other-connection", other);
+
+        registry.disconnectAll(targetUserId, SseCloseReason.LOGOUT);
+
+        verify(target).complete();
+        verify(other, never()).complete();
+        assertThat(connectionsOf(otherUserId)).containsEntry("other-connection", other);
+    }
+
+    @Test
+    void 연결이_없는_사용자를_disconnectAll해도_아무일도_일어나지_않는다() {
+        UUID unknown = UUID.randomUUID();
+
+        registry.disconnectAll(unknown, SseCloseReason.LOGOUT);
+
+        assertThat(emitters()).doesNotContainKey(unknown);
+    }
+
+    @Test
+    void disconnectAll은_연결_수만큼_closed_메트릭을_증가시킨다() {
+        UUID userId = UUID.randomUUID();
+        connectionsOf(userId).put("connection-1", mock(SseEmitter.class));
+        connectionsOf(userId).put("connection-2", mock(SseEmitter.class));
+
+        registry.disconnectAll(userId, SseCloseReason.SESSION_EXPIRED);
+
+        assertThat(counter("sse.connections.closed", "reason", "session_expired")).isEqualTo(2.0);
+    }
+
+    @Test
+    void disconnectAll_이후_completion_콜백이_다시_불려도_closed_메트릭이_중복_집계되지_않는다() {
+        UUID userId = UUID.randomUUID();
+        SseEmitter emitter = mock(SseEmitter.class);
+        connectionsOf(userId).put("connection-1", emitter);
+
+        registry.disconnectAll(userId, SseCloseReason.LOGOUT);
+        // complete()가 실제로 onCompletion 콜백을 다시 태우는 상황을 재현: 이미 맵에서 제거됐으므로 no-op이어야 한다.
+        ReflectionTestUtils.invokeMethod(registry, "remove", userId, "connection-1", emitter, "completion");
+
+        assertThat(counter("sse.connections.closed", "reason", "logout")).isEqualTo(1.0);
+        assertThat(meterRegistry.find("sse.connections.closed").tags("reason", "completion").counter()).isNull();
+    }
+
+    @Test
+    void disconnectAll과_send가_동시에_일어나도_예외없이_안전하다() throws Exception {
+        UUID userId = UUID.randomUUID();
+        SseEmitter emitter = mock(SseEmitter.class);
+        CountDownLatch sendStarted = new CountDownLatch(1);
+        CountDownLatch allowSendToFinish = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            sendStarted.countDown();
+            allowSendToFinish.await(5, TimeUnit.SECONDS);
+            return null;
+        }).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        connectionsOf(userId).put("connection-1", emitter);
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+
+        try {
+            Future<?> send = executor.submit(() -> registry.send(userId, "offer_popup", Map.of()));
+            assertThat(sendStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            registry.disconnectAll(userId, SseCloseReason.LOGOUT);
+            allowSendToFinish.countDown();
+            send.get(5, TimeUnit.SECONDS);
+
+            verify(emitter).complete();
+            assertThat(emitters()).doesNotContainKey(userId);
+        } finally {
+            allowSendToFinish.countDown();
+            executor.shutdownNow();
+        }
+    }
+
     private double counter(String name, String... tags) {
         return meterRegistry.get(name).tags(tags).counter().count();
     }
