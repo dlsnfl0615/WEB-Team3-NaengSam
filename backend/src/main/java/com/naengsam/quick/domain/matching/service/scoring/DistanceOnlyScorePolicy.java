@@ -9,6 +9,6 @@ public class DistanceOnlyScorePolicy implements MatchingScorePolicy {
 
     @Override
     public long score(MatchingCandidate candidate) {
-        return candidate.distanceMeters();
+        return Math.round(candidate.distanceMeters());
     }
 }

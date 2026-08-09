@@ -50,7 +50,7 @@ public class BalancedScorePolicy implements MatchingScorePolicy {
         return Math.round(weighted / weights.totalWeight() * SCALE);
     }
 
-    private double ratio(long value, long base) {
-        return Math.min(1.0, value / (double) base);
+    private double ratio(double value, long base) {
+        return Math.min(1.0, value / base);
     }
 }
