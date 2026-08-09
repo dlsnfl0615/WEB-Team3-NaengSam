@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.dreami.dto;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import java.util.UUID;
 
@@ -16,6 +17,7 @@ public record NearbyCallDto(
         double distanceMeters,
         String itemName,
         ItemCd itemCd,
+        OrderCd orderCd,
         Long expectedRevenue,
         int expectedEtaMinutes,
         int pickupEtaMinutes,
@@ -34,6 +36,7 @@ public record NearbyCallDto(
                 nearby.distanceMeters(),
                 order.getItemName(),
                 order.getItemCd(),
+                order.getOrderCd(),
                 order.getDeliveryAmount(),
                 order.getDeliveryEta(),
                 pickupEtaMinutes(nearby.distanceMeters()),

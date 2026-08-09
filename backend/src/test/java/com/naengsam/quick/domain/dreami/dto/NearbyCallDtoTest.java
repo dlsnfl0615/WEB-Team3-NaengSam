@@ -7,6 +7,7 @@ import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.model.WaitingOrder;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import java.math.BigDecimal;
 import java.util.UUID;
@@ -39,6 +40,7 @@ class NearbyCallDtoTest {
         // then
         assertThat(dto.itemName()).isEqualTo("서류봉투");
         assertThat(dto.itemCd()).isEqualTo(ItemCd.DOCUMENT);
+        assertThat(dto.orderCd()).isEqualTo(OrderCd.MATCHING);
         assertThat(dto.expectedRevenue()).isEqualTo(5_000L);
         assertThat(dto.expectedEtaMinutes()).isEqualTo(12);
         assertThat(dto.distanceMeters()).isEqualTo(distanceMeters);
@@ -47,5 +49,25 @@ class NearbyCallDtoTest {
         assertThat(dto.originAddressLine2()).isEqualTo("농협 삼선교지점");
         assertThat(dto.destinationAddressLine1()).isEqualTo("서울 종로구 대학로 136");
         assertThat(dto.destinationAddressLine2()).isEqualTo("2층");
+    }
+
+    @Test
+    void 다른_드리미가_이미_수락해_부르미_확인을_기다리는_주문은_orderCd로_구분된다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0));
+
+        Orders order = Orders.create(orderId, UUID.randomUUID(), "서류봉투", ItemCd.DOCUMENT,
+                "봉투 A4 사이즈", 5_000L, 12, "문 앞에 놔주세요", null,
+                Addresses.builder().build());
+        order.markPendingBoormiConfirmation();
+
+        NearbyOrderDto nearby = NearbyOrderDto.from(new WaitingOrder(orderId, location), 500.0);
+
+        // when
+        NearbyCallDto dto = NearbyCallDto.from(nearby, order);
+
+        // then
+        assertThat(dto.orderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
     }
 }
