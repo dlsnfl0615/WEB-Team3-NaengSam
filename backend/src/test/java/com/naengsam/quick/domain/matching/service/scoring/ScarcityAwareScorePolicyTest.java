@@ -59,7 +59,7 @@ class ScarcityAwareScorePolicyTest {
     }
 
     @Test
-    void baseScorePolicy가_null이면_예현외가_발생한다() {
+    void baseScorePolicy가_null이면_예외가_발생한다() {
         Throwable thrown = catchThrowable(
                 () -> new ScarcityAwareScorePolicy(null, new ScarcityScoreWeights(10, 45, 45)));
 
