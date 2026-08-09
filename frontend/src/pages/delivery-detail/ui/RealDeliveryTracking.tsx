@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
@@ -59,7 +59,10 @@ export function RealDeliveryTracking({
       recallDeliveryStage(orderId) ??
       DeliveryStatusResponseDtoStatus.PICKUP_NORMAL,
   );
+
+  // location이 바뀌면 RealDeliveryTracking을 다시 렌더링
   const [location, setLocation] = useState<DeliveryLocationDto | null>(null);
+
   // 상세 조회 성공 전에는 SSE·취소 등 모든 배달 기능을 차단한다.
   const {
     detail,
@@ -89,13 +92,18 @@ export function RealDeliveryTracking({
           longitude: detail.destinationLongitude,
         }
       : undefined;
-  // 백엔드가 내려준 카카오 추천 이동경로. 좌표가 온전한 점만 골라 지도 폴리라인에 넘긴다.
-  const routePath: Coords[] | undefined = detail?.routePath
-    ?.filter(
-      (p): p is { latitude: number; longitude: number } =>
-        p.latitude != null && p.longitude != null,
-    )
-    .map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
+  // 백엔드가 내려준 카카오 추천 이동경로. 좌표가 온전한 점만 고르고,
+  // 위치 SSE로 리렌더돼도 같은 배열을 재사용해 폴리라인을 다시 만들지 않는다.
+  const routePath: Coords[] | undefined = useMemo(
+    () =>
+      detail?.routePath
+        ?.filter(
+          (p): p is { latitude: number; longitude: number } =>
+            p.latitude != null && p.longitude != null,
+        )
+        .map((p) => ({ latitude: p.latitude, longitude: p.longitude })),
+    [detail?.routePath],
+  );
   const [toast, setToast] = useState<{
     title: string;
     description?: string;
