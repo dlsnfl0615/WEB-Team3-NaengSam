@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.matching.service.scoring;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.policy.scoring.DistanceOnlyScorePolicy;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

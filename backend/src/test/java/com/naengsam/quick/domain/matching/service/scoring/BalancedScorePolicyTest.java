@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
+import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import java.time.Duration;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;

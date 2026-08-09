@@ -1,11 +1,11 @@
 package com.naengsam.quick.domain.matching.model;
 
+import com.naengsam.quick.domain.matching.policy.scoring.MatchingScorePolicy;
 import java.time.Duration;
 import java.util.UUID;
 
 /**
- * 점수 계산에 필요한 매칭 후보의 원시 입력값. {@link com.naengsam.quick.domain.matching.service.scoring.MatchingScorePolicy}가
- * 소비하는 불변 값 객체이며, 필드 유효성은 생성 시점에 강제한다.
+ * 점수 계산에 필요한 매칭 후보의 원시 입력값. {@link MatchingScorePolicy}가 소비하는 불변 값 객체이며, 필드 유효성은 생성 시점에 강제한다.
  */
 public record MatchingCandidate(
         UUID orderId,
