@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Button,
   Card,
+  Icon,
   MapCard,
   Modal,
   NearbyCallsMap,
@@ -20,6 +21,29 @@ import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
 const TRANSIENT_TOAST_MS = 4000;
 /** 화면에 머무는 동안 주변 콜을 다시 조회하는 주기(ms). */
 const NEARBY_POLL_MS = 5000;
+
+const ITEM_CD_LABELS: Record<string, string> = {
+  DOCUMENT: "서류",
+  SAMPLE: "샘플",
+  PACKAGE: "택배",
+  ETC: "기타",
+};
+
+function itemCdLabel(itemCd?: string): string | null {
+  return itemCd ? ITEM_CD_LABELS[itemCd] ?? null : null;
+}
+
+function fullAddress(line1?: string, line2?: string): string | null {
+  if (!line1) return null;
+  return line2 ? `${line1} ${line2}` : line1;
+}
+
+interface ToastState {
+  title: string;
+  description?: ReactNode;
+  /** true면 자동으로 사라지지 않고 X 버튼으로만 닫힌다(화면 이동 시엔 언마운트로 사라짐). */
+  persistent?: boolean;
+}
 
 /**
  * 매칭(찾는 중) 화면(Figma node 191:763).
@@ -50,14 +74,12 @@ export function MatchingScreen() {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
-  const [toast, setToast] = useState<{ title: string; description?: string } | null>(
-    null,
-  );
+  const [toast, setToast] = useState<ToastState | null>(null);
   const toastTimer = useRef<number | null>(null);
 
-  // 토스트 자동 소멸.
+  // 토스트 자동 소멸(persistent는 X 버튼으로만 닫는다).
   useEffect(() => {
-    if (!toast) return;
+    if (!toast || toast.persistent) return;
     toastTimer.current = window.setTimeout(() => setToast(null), TRANSIENT_TOAST_MS);
     return () => {
       if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
@@ -91,22 +113,59 @@ export function MatchingScreen() {
           longitude: call.location.longitude,
         },
         itemName: call.itemName,
+        itemCd: call.itemCd,
         expectedRevenue: call.expectedRevenue,
         expectedEtaMinutes: call.expectedEtaMinutes,
+        pickupEtaMinutes: call.pickupEtaMinutes,
         distanceMeters: call.distanceMeters,
+        originAddressLine1: call.originAddressLine1,
+        originAddressLine2: call.originAddressLine2,
+        destinationAddressLine1: call.destinationAddressLine1,
+        destinationAddressLine2: call.destinationAddressLine2,
       },
     ];
   });
 
   const handleCallClick = (call: NearbyCall) => {
-    const details = [
-      call.expectedRevenue != null
-        ? `예상수익 ₩${call.expectedRevenue.toLocaleString()}`
+    const origin = fullAddress(call.originAddressLine1, call.originAddressLine2);
+    const destination = fullAddress(
+      call.destinationAddressLine1,
+      call.destinationAddressLine2,
+    );
+    const itemLabel = itemCdLabel(call.itemCd);
+
+    const rows = [
+      origin ? `출발지: ${origin}` : null,
+      destination ? `도착지: ${destination}` : null,
+      call.expectedEtaMinutes != null
+        ? `배달 예상: ${call.expectedEtaMinutes}분${
+            call.expectedRevenue != null
+              ? ` · 예상수익 ₩${call.expectedRevenue.toLocaleString()}`
+              : ""
+          }`
         : null,
-      call.expectedEtaMinutes != null ? `약 ${call.expectedEtaMinutes}분` : null,
-      call.distanceMeters != null ? `${Math.round(call.distanceMeters)}m` : null,
+      call.pickupEtaMinutes != null || call.distanceMeters != null
+        ? `픽업까지: ${
+            call.pickupEtaMinutes != null ? `약 ${call.pickupEtaMinutes}분` : ""
+          }${
+            call.distanceMeters != null
+              ? ` (${Math.round(call.distanceMeters)}m)`
+              : ""
+          }`
+        : null,
     ].filter((v): v is string => v !== null);
-    setToast({ title: call.itemName ?? "콜 정보", description: details.join(" · ") });
+
+    setToast({
+      title: itemLabel ? `${call.itemName ?? "콜 정보"} (${itemLabel})` : call.itemName ?? "콜 정보",
+      description: (
+        <div className="flex flex-col gap-0.5">
+          {rows.map((row) => (
+            <p key={row}>{row}</p>
+          ))}
+        </div>
+      ),
+      persistent: true,
+    });
   };
 
   const handleStart = async () => {
@@ -149,7 +208,23 @@ export function MatchingScreen() {
     <ScreenShell>
       {toast && (
         <div className="fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
-          <Toast icon="bell" title={toast.title} description={toast.description} />
+          <Toast
+            icon="bell"
+            title={toast.title}
+            description={toast.description}
+            action={
+              toast.persistent ? (
+                <button
+                  type="button"
+                  aria-label="닫기"
+                  className="shrink-0 text-white/70"
+                  onClick={() => setToast(null)}
+                >
+                  <Icon name="close" size={16} />
+                </button>
+              ) : undefined
+            }
+          />
         </div>
       )}
 

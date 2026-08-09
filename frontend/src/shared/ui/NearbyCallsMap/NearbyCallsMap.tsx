@@ -9,9 +9,15 @@ export interface NearbyCall {
   id: string;
   location: Coords;
   itemName?: string;
+  itemCd?: string;
   expectedRevenue?: number;
   expectedEtaMinutes?: number;
+  pickupEtaMinutes?: number;
   distanceMeters?: number;
+  originAddressLine1?: string;
+  originAddressLine2?: string;
+  destinationAddressLine1?: string;
+  destinationAddressLine2?: string;
 }
 
 export interface NearbyCallsMapProps {

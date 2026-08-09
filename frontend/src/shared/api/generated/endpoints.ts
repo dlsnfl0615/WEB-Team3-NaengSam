@@ -25,14 +25,12 @@ import type {
   FindNearbyOrders200,
   FinishDelivery200,
   GeoPoint,
-  Get200,
   GetCoordinates200,
   GetDashboard200,
   GetDeliveryDetail200,
   GetMyOrders200,
   GetMyOrdersParams,
   GetOrderOfferGroup200,
-  GetParams,
   GetPresignedUrl200,
   GetPresignedUrlParams,
   GetProfile200,
@@ -45,7 +43,6 @@ import type {
   OrderAndStartParams,
   OrderRequest,
   PickupFinishByDreami200,
-  PutParams,
   RegisterDreami200,
   RejectDreamiRequest,
   SaveAddress200,
@@ -68,29 +65,6 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
   export const getOpenAPIDefinition = () => {
-const get = (
-    params: GetParams,
- options?: SecondParameter<typeof customInstance<Get200>>,) => {
-      return customInstance<Get200>(
-      {url: `/api/v1/upload/dev-storage`, method: 'GET',
-        params
-    },
-      options);
-    }
-
-const put = (
-    putBody: string,
-    params: PutParams,
- options?: SecondParameter<typeof customInstance<void>>,) => {
-      return customInstance<void>(
-      {url: `/api/v1/upload/dev-storage`, method: 'PUT',
-      headers: {'Content-Type': 'application/json', },
-      data: putBody,
-        params
-    },
-      options);
-    }
-
 /**
  * 휴대폰 번호로 인증번호를 발송한다.
  * @summary 인증문자 발송
@@ -817,9 +791,7 @@ const unsubscribeOrder = (
       options);
     }
 
-return {get,put,sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getMyOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,changeRole,me,getPresignedUrl,subscribe,getProfile,findCurrentDeliveryCard,getDashboard,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
-export type GetResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['get']>>>
-export type PutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['put']>>>
+return {sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getMyOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,changeRole,me,getPresignedUrl,subscribe,getProfile,findCurrentDeliveryCard,getDashboard,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
 export type SendVerificationCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['sendVerificationCode']>>>
 export type VerifyCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['verifyCode']>>>
 export type SignupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['signup']>>>
