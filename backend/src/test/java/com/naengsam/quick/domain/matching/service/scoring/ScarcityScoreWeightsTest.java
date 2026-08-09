@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.matching.service;
+package com.naengsam.quick.domain.matching.service.scoring;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;

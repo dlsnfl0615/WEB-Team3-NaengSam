@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.matching.service;
+package com.naengsam.quick.domain.matching.service.scoring;
 
 /**
  * {@link BalancedScorePolicy}가 사용하는 거리·주문 대기시간·드리미 대기시간 가중치. {@link BalancedScorePolicy}가 합으로

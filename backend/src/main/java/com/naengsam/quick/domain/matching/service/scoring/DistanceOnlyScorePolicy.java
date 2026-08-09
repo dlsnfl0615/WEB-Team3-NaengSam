@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.matching.service;
+package com.naengsam.quick.domain.matching.service.scoring;
 
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 import org.springframework.stereotype.Component;

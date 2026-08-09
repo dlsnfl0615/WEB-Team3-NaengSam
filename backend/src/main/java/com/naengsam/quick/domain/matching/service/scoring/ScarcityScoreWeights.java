@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.matching.service;
+package com.naengsam.quick.domain.matching.service.scoring;
 
 /**
  * {@link ScarcityAwareScorePolicy}가 사용하는 기본 점수·주문 희소성·드리미 희소성 가중치. {@link ScarcityAwareScorePolicy}가
