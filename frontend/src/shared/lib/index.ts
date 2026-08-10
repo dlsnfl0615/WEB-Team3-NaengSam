@@ -1,6 +1,8 @@
 /** shared/lib 공개 API. */
 export { cn } from './cn'
-export { useSse, type SseHandlers, type SseState } from './sse/useSse'
+export { useSse, type UseSseOptions } from './sse/useSse'
+export { SseProvider } from './sse/SseProvider'
+export type { SseHandlers, SseState } from './sse/SseContext'
 export { loadKakaoMaps, loadDaumPostcode, KAKAO_MAP_KEY } from './kakao'
 export {
   useDreamiLocationBroadcast,
