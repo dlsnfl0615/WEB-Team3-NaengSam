@@ -259,7 +259,7 @@ class PaymentDomainMappingIntegrationTest {
 
     private static Orders order(UUID boormiId) {
         return Orders.create(UUID.randomUUID(), boormiId, "서류봉투", ItemCd.DOCUMENT, null,
-                5_000L, 30, null, null, null, addresses());
+                5_000L, 30, null, null, null, addresses(), null);
     }
 
     private static Addresses addresses() {

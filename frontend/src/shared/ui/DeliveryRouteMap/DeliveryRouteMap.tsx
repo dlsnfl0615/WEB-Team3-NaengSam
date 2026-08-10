@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { loadKakaoMaps } from "@/shared/lib";
 import { cn } from "@/shared/lib/cn";
-import { pinImage } from "./pinImage";
+import { pinImageSrc } from "./pinImage";
 
 /** 위·경도 좌표쌍. */
 export interface Coords {
@@ -18,6 +18,8 @@ export interface DeliveryRouteMapProps {
   driver?: Coords;
   /** 드리미 핀 라벨. 기본값은 "드리미". (내 위치 등으로 사용될 수 있음)*/
   driverLabel?: string;
+  /** 추천 이동경로 좌표 목록. 있으면 폴리라인으로 그린다(첫 로드부터 표시). */
+  route?: Coords[];
   /** 지도 높이(px). 기본 340. */
   height?: number;
   /** 모서리 반경·테두리 제거(풀블리드 지도용, MapCard `flat`과 함께). */
@@ -25,6 +27,13 @@ export interface DeliveryRouteMapProps {
 }
 
 type Role = "pickup" | "dropoff" | "driver";
+type KakaoMap = ReturnType<typeof window.kakao.maps.Map>;
+type KakaoLatLng = ReturnType<typeof window.kakao.maps.LatLng>;
+
+interface DeliveryPinOverlay {
+  setMap(map: KakaoMap | null): void;
+  setPosition(position: KakaoLatLng): void;
+}
 
 /** 역할별 핀 색(theme.css 토큰 hex 재사용)·라벨 텍스트·라벨 배경(토큰 유틸). */
 const ROLE: Record<Role, { color: string; label: string; bg: string }> = {
@@ -33,53 +42,84 @@ const ROLE: Record<Role, { color: string; label: string; bg: string }> = {
   driver: { color: "#b26a00", label: "드리미", bg: "bg-status-warning" }, // status-warning
 };
 
-/** 핀 위에 뜨는 작은 역할 라벨 CustomOverlay를 만든다(핀 높이 40px 위로 띄움). */
-function makeLabel(
+/** 핀과 역할 라벨을 하나의 AbstractOverlay로 만든다. */
+function makePinOverlay(
   kakao: typeof window.kakao,
-  position: ReturnType<typeof window.kakao.maps.LatLng>,
+  map: KakaoMap,
+  position: KakaoLatLng,
   role: Role,
-  label: string, // 핀 위에 뜨는 라벨 문자열
-) {
-  const content = document.createElement("div");
-  content.className = cn(
+  label: string,
+): DeliveryPinOverlay {
+  const root = document.createElement("div");
+  root.className =
+    "pointer-events-none absolute flex flex-col items-center gap-0.5 whitespace-nowrap";
+  root.style.transform = "translate(-50%, -100%)";
+
+  const labelElement = document.createElement("div");
+  labelElement.className = cn(
     "rounded-pill px-1.5 py-0.5 text-2xs font-semibold text-white shadow-card",
     ROLE[role].bg,
   );
-  content.textContent = label;
-  content.style.transform = "translateY(-46px)"; // 핀(40px) 위로 라벨을 올린다
-  return new kakao.maps.CustomOverlay({
-    position,
-    content,
-    xAnchor: 0.5,
-    yAnchor: 0.5,
-  });
+  labelElement.textContent = label;
+
+  const pin = document.createElement("span");
+  pin.setAttribute("aria-hidden", "true");
+  pin.style.width = "30px";
+  pin.style.height = "40px";
+  pin.style.backgroundImage = `url("${pinImageSrc(ROLE[role].color)}")`;
+  pin.style.backgroundPosition = "center";
+  pin.style.backgroundRepeat = "no-repeat";
+  pin.style.backgroundSize = "contain";
+
+  root.append(labelElement, pin);
+
+  class PinOverlay extends kakao.maps.AbstractOverlay {
+    private position = position;
+
+    onAdd() {
+      this.getPanels().overlayLayer.appendChild(root);
+    }
+
+    draw() {
+      const point = this.getProjection().pointFromCoords(this.position);
+      root.style.left = `${point.x}px`;
+      root.style.top = `${point.y}px`;
+    }
+
+    onRemove() {
+      root.remove();
+    }
+
+    setMap(nextMap: KakaoMap | null) {
+      super.setMap(nextMap);
+    }
+
+    setPosition(nextPosition: KakaoLatLng) {
+      this.position = nextPosition;
+      if (this.getMap()) this.draw();
+    }
+  }
+
+  const overlay = new PinOverlay();
+  overlay.setMap(map);
+  return overlay;
 }
 
-/** 마커+라벨을 처음이면 생성하고, 이미 있으면 위치만 옮긴다. */
+/** 핀 오버레이를 처음이면 생성하고, 이미 있으면 위치만 옮긴다. */
 function upsertMarker(
   kakao: typeof window.kakao,
-  map: ReturnType<typeof window.kakao.maps.Map>,
-  store: { marker?: unknown; overlay?: unknown },
+  map: KakaoMap,
+  store: { overlay?: DeliveryPinOverlay },
   role: Role,
   coords: Coords,
   label: string,
 ) {
   const pos = new kakao.maps.LatLng(coords.latitude, coords.longitude);
-  if (store.marker) {
-    (store.marker as ReturnType<typeof kakao.maps.Marker>).setPosition(pos);
-    (store.overlay as ReturnType<typeof kakao.maps.CustomOverlay>)?.setPosition(
-      pos,
-    );
+  if (store.overlay) {
+    store.overlay.setPosition(pos);
     return;
   }
-  store.marker = new kakao.maps.Marker({
-    map,
-    position: pos,
-    image: pinImage(kakao, ROLE[role].color),
-  });
-  const overlay = makeLabel(kakao, pos, role, label);
-  overlay.setMap(map);
-  store.overlay = overlay;
+  store.overlay = makePinOverlay(kakao, map, pos, role, label);
 }
 
 /**
@@ -92,15 +132,19 @@ export function DeliveryRouteMap({
   dropoff,
   driver,
   driverLabel = "드리미", // 기본 값은 "드리미"
+  route,
   height = 340,
   flat = false,
 }: DeliveryRouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const kakaoRef = useRef<typeof window.kakao | null>(null);
-  const mapRef = useRef<ReturnType<typeof window.kakao.maps.Map> | null>(null);
-  const storeRef = useRef<Record<Role, { marker?: unknown; overlay?: unknown }>>(
-    { pickup: {}, dropoff: {}, driver: {} },
-  );
+  const mapRef = useRef<KakaoMap | null>(null);
+  const storeRef = useRef<Record<Role, { overlay?: DeliveryPinOverlay }>>({
+    pickup: {},
+    dropoff: {},
+    driver: {},
+  });
+  const routeLineRef = useRef<unknown>(null);
   const didFitRef = useRef(false);
   const [status, setStatus] = useState<"loading" | "ready" | "disabled">(
     "loading",
@@ -129,9 +173,13 @@ export function DeliveryRouteMap({
 
     return () => {
       cancelled = true;
+      Object.values(storeRef.current).forEach(({ overlay }) =>
+        overlay?.setMap(null),
+      );
       kakaoRef.current = null;
       mapRef.current = null;
       storeRef.current = { pickup: {}, dropoff: {}, driver: {} };
+      routeLineRef.current = null;
       didFitRef.current = false;
     };
   }, []);
@@ -154,12 +202,34 @@ export function DeliveryRouteMap({
     });
   }, [status, pickup, dropoff, driver, driverLabel]);
 
-  // 존재하는 핀들로 최초 1회만 뷰포트를 맞춘다(이후 드리미 이동 시 강제 recenter 안 함 → 튐 방지).
+  // 추천 이동경로를 폴리라인으로 그린다(좌표가 바뀌면 다시 그림). 핀처럼 ref에 보관해 중복 생성을 막는다.
+  useEffect(() => {
+    const kakao = kakaoRef.current;
+    const map = mapRef.current;
+    if (status !== "ready" || !kakao || !map) return;
+    if (routeLineRef.current) {
+      (routeLineRef.current as ReturnType<typeof kakao.maps.Polyline>).setMap(
+        null,
+      );
+      routeLineRef.current = null;
+    }
+    if (!route || route.length < 2) return;
+    routeLineRef.current = new kakao.maps.Polyline({
+      map,
+      path: route.map((c) => new kakao.maps.LatLng(c.latitude, c.longitude)),
+      strokeWeight: 5,
+      strokeColor: "#00b7a7", // teal-500
+      strokeOpacity: 0.9,
+      strokeStyle: "solid",
+    });
+  }, [status, route]);
+
+  // 존재하는 핀들·경로로 최초 1회만 뷰포트를 맞춘다(이후 드리미 이동 시 강제 recenter 안 함 → 튐 방지).
   useEffect(() => {
     const kakao = kakaoRef.current;
     const map = mapRef.current;
     if (status !== "ready" || !kakao || !map || didFitRef.current) return;
-    const present = [pickup, dropoff, driver].filter(
+    const present = [pickup, dropoff, driver, ...(route ?? [])].filter(
       (c): c is Coords => c != null,
     );
     if (present.length === 0) return;
@@ -175,7 +245,7 @@ export function DeliveryRouteMap({
       map.setBounds(bounds);
     }
     didFitRef.current = true;
-  }, [status, pickup, dropoff, driver]);
+  }, [status, pickup, dropoff, driver, route]);
 
   if (status === "disabled") {
     const present: [string, Coords][] = [

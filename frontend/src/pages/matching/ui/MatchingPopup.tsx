@@ -52,7 +52,7 @@ export function MatchingPopup() {
     const {pathname} = useLocation();
     const isAuthenticated = useSessionStore((s) => s.isAuthenticated);
     const pendingOffer = useMatchingStore((s) => s.pendingOffer);
-    const dreamiCoords = useMatchingStore((s) => s.dreamiCoords);
+    const dreamiCoords = useMatchingStore((s) => s.myLocation);
     const incomingDreami = useMatchingStore((s) => s.incomingDreami);
     const submitting = useMatchingStore((s) => s.submitting);
     const acceptOffer = useMatchingStore((s) => s.acceptOffer);

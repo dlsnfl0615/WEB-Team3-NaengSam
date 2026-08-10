@@ -5,6 +5,7 @@ import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -40,9 +41,12 @@ public record DeliveryDetailResponseDto(
         String destinationAddressLine1,
 
         @Schema(description = "물건 이름", example = "서류봉투")
-        String itemName
+        String itemName,
+
+        @Schema(description = "카카오 추천 도보 이동경로 좌표 목록(지도 폴리라인용). 경로 정보가 없으면 빈 배열")
+        List<RoutePointDto> routePath
 ) {
-    public static DeliveryDetailResponseDto from(Delivery delivery, Orders order) {
+    public static DeliveryDetailResponseDto from(Delivery delivery, Orders order, List<RoutePointDto> routePath) {
         DeliveryLocationDto currentLocation = delivery.getCurrentLatitude() == null
                 ? null
                 : new DeliveryLocationDto(
@@ -59,6 +63,7 @@ public record DeliveryDetailResponseDto(
                 order.getDestinationLatitude(),
                 order.getDestinationLongitude(),
                 order.getDestinationAddressLine1(),
-                order.getItemName());
+                order.getItemName(),
+                routePath);
     }
 }

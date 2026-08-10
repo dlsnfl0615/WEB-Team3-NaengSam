@@ -21,7 +21,7 @@ export function Toast({ icon = 'bell', title, description, action }: ToastProps)
       <div className="min-w-0 flex-1">
         <p className="truncate text-base font-bold">{title}</p>
         {description && (
-          <p className="truncate text-xs text-track">{description}</p>
+          <div className="text-xs text-track">{description}</div>
         )}
       </div>
       {action}
