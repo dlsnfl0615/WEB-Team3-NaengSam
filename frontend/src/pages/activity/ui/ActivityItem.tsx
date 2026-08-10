@@ -1,4 +1,4 @@
-import { Badge, Card, Icon, IconChip, toneForStatus } from "@/shared/ui";
+import { Badge, Card, IconChip, toneForStatus } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
 import type { ActivityRecord } from "./records";
 
@@ -9,10 +9,20 @@ export interface ActivityItemProps {
   onClick?: () => void;
 }
 
-/** 활동 내역 리스트 아이템. 상단(아이콘칩·제목·상태) + 하단(시각·메모·금액). */
+/** 아직 완료되지 않아 시각이 없는 건(진행 중)은 현재 시각으로 보여준다. */
+function timeLabel(time: string): string {
+  if (time) return time;
+  const now = new Date();
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  return `오늘 ${hh}:${mm}`;
+}
+
+/** 활동 내역 리스트 아이템. 상단(아이콘칩·제목·상태) + 하단(시각·별점·메모·금액). */
 export function ActivityItem({ record, earned, onClick }: ActivityItemProps) {
   const tone =
     record.status === "완료" ? "neutral" : toneForStatus(record.status);
+  const isFinished = record.status === "완료" || record.status === "사고";
 
   return (
     <Card
@@ -33,14 +43,10 @@ export function ActivityItem({ record, earned, onClick }: ActivityItemProps) {
       </div>
 
       <div className="flex items-center gap-1 border-t border-track pt-3 text-xs text-muted">
-        <span>{record.time}</span>
+        <span>
+          {isFinished ? `완료 시각: ${timeLabel(record.time)}` : timeLabel(record.time)}
+        </span>
         <span>·</span>
-        {record.rating !== undefined && (
-          <>
-            <Icon name="star" size={12} className="text-teal-700" />
-            <span>{record.rating.toFixed(1)}</span>
-          </>
-        )}
         <span className="truncate">{record.note}</span>
         <span
           className={cn(
