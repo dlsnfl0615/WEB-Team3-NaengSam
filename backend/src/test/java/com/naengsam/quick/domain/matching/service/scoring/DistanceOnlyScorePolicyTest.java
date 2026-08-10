@@ -3,7 +3,9 @@ package com.naengsam.quick.domain.matching.service.scoring;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.policy.scoring.DistanceOnlyScorePolicy;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -40,6 +42,6 @@ class DistanceOnlyScorePolicyTest {
     private MatchingCandidate candidateWithDistance(long distanceMeters) {
         return new MatchingCandidate(
                 UUID.randomUUID(), UUID.randomUUID(), distanceMeters,
-                Duration.ZERO, Duration.ZERO, 0, 0);
+                Duration.ZERO, Duration.ZERO, 0, 0, Optional.empty());
     }
 }

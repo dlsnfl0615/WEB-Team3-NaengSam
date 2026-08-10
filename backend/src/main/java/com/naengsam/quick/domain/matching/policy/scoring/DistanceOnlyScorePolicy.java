@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.matching.service.scoring;
+package com.naengsam.quick.domain.matching.policy.scoring;
 
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 
