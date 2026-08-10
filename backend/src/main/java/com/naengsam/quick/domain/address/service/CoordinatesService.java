@@ -6,6 +6,7 @@ import com.naengsam.quick.global.exception.BusinessException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Duration;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
@@ -39,7 +40,8 @@ public class CoordinatesService {
     }
 
     /**
-     * 카카오 로컬 API로 도로명주소를 위도/경도로 변환한다.
+     * 카카오 로컬 API로 도로명주소를 위도/경도로 변환한다. 검색 결과가 없거나 도로명주소가 없는 경우도
+     * 여기서 걸러내므로, 호출한 곳은 {@code documents().getFirst().roadAddress()}를 바로 써도 안전하다.
      */
     public CoordinatesResponseDto getCoordinates(String roadAddress) {
 
@@ -48,8 +50,9 @@ public class CoordinatesService {
                 .build()
                 .toUri();
 
+        CoordinatesResponseDto response;
         try {
-            return restClient.get()
+            response = restClient.get()
                     .uri(uri)
                     .header("Authorization", "KakaoAK " + restApiKey)
                     .retrieve()
@@ -61,5 +64,12 @@ public class CoordinatesService {
             log.warn("카카오 좌표 변환 API 호출 실패: {}", roadAddress, e);
             throw new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
         }
+
+        List<CoordinatesResponseDto.Document> documents = response.documents();
+        if (documents.isEmpty() || documents.getFirst().roadAddress() == null) {
+            log.warn("카카오 좌표 변환 결과 없음(검색 결과 없음 또는 도로명주소 없음): {}", roadAddress);
+            throw new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
+        }
+        return response;
     }
 }

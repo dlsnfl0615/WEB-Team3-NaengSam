@@ -5,8 +5,6 @@ import com.naengsam.quick.domain.address.dto.AddressResponseDto;
 import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
 import com.naengsam.quick.domain.address.entity.Address;
 import com.naengsam.quick.domain.address.repository.AddressRepository;
-import com.naengsam.quick.global.code.GeneralErrorCode;
-import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.session.LoginUser;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -27,11 +25,7 @@ public class AddressService {
      */
     public UUID saveAddress(AddressRequestDto requestDto, @LoginUser UUID boormiId) {
         CoordinatesResponseDto coordinates = coordinatesService.getCoordinates(requestDto.addressLine1());
-        List<CoordinatesResponseDto.Document> documents = coordinates.documents();
-        if (documents.isEmpty()) {
-            throw new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
-        }
-        CoordinatesResponseDto.RoadAddress roadAddress = documents.getFirst().roadAddress();
+        CoordinatesResponseDto.RoadAddress roadAddress = coordinates.documents().getFirst().roadAddress();
 
         Address address = Address.builder()
                 .addressId(UUID.randomUUID())
