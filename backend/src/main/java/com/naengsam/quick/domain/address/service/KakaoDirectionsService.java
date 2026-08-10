@@ -1,7 +1,9 @@
 package com.naengsam.quick.domain.address.service;
 
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
+import com.naengsam.quick.domain.address.exception.AddressErrorCode;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.net.URI;
@@ -70,10 +72,37 @@ public class KakaoDirectionsService {
             throw new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
         }
 
-        if (response == null || !"OK".equals(response.status()) || response.route() == null
-                || response.route().properties() == null) {
+        if (response == null) {
+            throw new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
+        }
+
+        if (!"OK".equals(response.status())) {
+            throw new BusinessException(toErrorCode(response.status()));
+        }
+
+        if (response.route() == null || response.route().properties() == null) {
             throw new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
         }
         return response.route();
+    }
+
+    private BaseErrorCode toErrorCode(String status) {
+        if (status == null) {
+            log.warn("카카오 도보 길찾기 API가 상태코드 없이 응답함");
+            return GeneralErrorCode.EXTERNAL_SERVICE_ERROR;
+        }
+
+        return switch (status) {
+            case "SAME_POINT" -> AddressErrorCode.SAME_POINT;
+            case "START_LINK_NOT_FOUND" -> AddressErrorCode.START_LINK_NOT_FOUND;
+            case "END_LINK_NOT_FOUND" -> AddressErrorCode.END_LINK_NOT_FOUND;
+            case "TOO_MANY_SEARCH_LINK" -> AddressErrorCode.TOO_MANY_SEARCH_LINK;
+            case "TOO_FAR_AWAY" -> AddressErrorCode.TOO_FAR_AWAY;
+            case "ROUTE_RESULT_NOT_FOUND" -> AddressErrorCode.ROUTE_RESULT_NOT_FOUND;
+            default -> {
+                log.warn("카카오 도보 길찾기 API가 알 수 없는 상태코드로 응답함: {}", status);
+                yield GeneralErrorCode.EXTERNAL_SERVICE_ERROR;
+            }
+        };
     }
 }
