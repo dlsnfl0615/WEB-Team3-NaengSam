@@ -5,6 +5,7 @@ import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -43,10 +44,17 @@ public record DeliveryDetailResponseDto(
         @Schema(description = "물건 이름", example = "서류봉투")
         String itemName,
 
-        @Schema(description = "카카오 추천 도보 이동경로 좌표 목록(지도 폴리라인용). 경로 정보가 없으면 빈 배열")
-        List<RoutePointDto> routePath
+        @Schema(description = "픽업지→도착지 카카오 추천 도보 경로 좌표 목록(픽업 후 지도 폴리라인용). 경로 정보가 없으면 빈 배열")
+        List<RoutePointDto> routePath,
+
+        @Schema(description = "드리미 위치→픽업지 카카오 추천 도보 경로 좌표 목록(픽업 전 지도 폴리라인용). 아직 계산 전이면 빈 배열")
+        List<RoutePointDto> deliveryRoutePath,
+
+        @Schema(description = "배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta). 아직 계산 전이면 null")
+        LocalDateTime estimatedCompletionTime
 ) {
-    public static DeliveryDetailResponseDto from(Delivery delivery, Orders order, List<RoutePointDto> routePath) {
+    public static DeliveryDetailResponseDto from(Delivery delivery, Orders order,
+            List<RoutePointDto> routePath, List<RoutePointDto> deliveryRoutePath) {
         DeliveryLocationDto currentLocation = delivery.getCurrentLatitude() == null
                 ? null
                 : new DeliveryLocationDto(
@@ -64,6 +72,8 @@ public record DeliveryDetailResponseDto(
                 order.getDestinationLongitude(),
                 order.getDestinationAddressLine1(),
                 order.getItemName(),
-                routePath);
+                routePath,
+                deliveryRoutePath,
+                delivery.getEstimatedCompletionDtm());
     }
 }
