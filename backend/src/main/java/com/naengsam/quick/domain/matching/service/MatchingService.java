@@ -25,9 +25,11 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPr
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlan;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
+import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
+import jakarta.annotation.PostConstruct;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -87,20 +89,21 @@ public class MatchingService {
     private final Map<UUID, WaitingDreami> dreamiMap = new ConcurrentHashMap<>();
     private final MatchingEngine matchingEngine;
     private final SseService sseService;
-    private final OfferTimeoutScheduler offerTimeoutScheduler;
+    private final MatchingActionScheduler matchingActionScheduler;
     private final DeliveryService deliveryService;
     private final Clock clock;
     private final MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
     private final MatchingAssignmentPolicy matchingAssignmentPolicy;
     private final MatchingPlanApplier matchingPlanApplier;
+    private final MatchingPolicyProperties matchingPolicyProperties;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
     }
 
     /**
-     * 매칭 시작 후(WAITING/OPEN) 아직 확정되지 않은, 대기 중인 주문 목록을 조회한다. 한 부르미가 여러 주문을 동시에 가질 수 있으므로 부르미 단위가 아니라 주문 단위로 도출한다. 별도 등록 큐 없이
-     * {@link #startMatching}/{@link #cancelOrderByBoormi}로만 대기 상태가 결정되므로, 진행 중인 {@link OrderOfferGroup}에서 직접 도출한다.
+     * 매칭 시작 후(WAITING/OPEN) 아직 확정되지 않은, 대기 중인 주문 목록을 조회한다. 한 부르미가 여러 주문을 동시에 가질 수 있으므로 부르미 단위가 아니라 주문 단위로 도출한다. 별도 등록 큐
+     * 없이 {@link #startMatching}/{@link #cancelOrderByBoormi}로만 대기 상태가 결정되므로, 진행 중인 {@link OrderOfferGroup}에서 직접 도출한다.
      */
     public List<WaitingOrder> waitingOrders() {
         return orderOfferGroupsByOrderId.values().stream()
@@ -111,8 +114,7 @@ public class MatchingService {
 
     /**
      * 상태와 무관한 전체 주문 그룹 목록. 상태별 필터링은 호출자(예:
-     * {@link com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler})가
-     * 담당한다.
+     * {@link com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler})가 담당한다.
      */
     public List<OrderOfferGroup> orderOfferGroups() {
         return List.copyOf(orderOfferGroupsByOrderId.values());
@@ -169,8 +171,8 @@ public class MatchingService {
     }
 
     /**
-     * 주문 접수 트랜잭션이 커밋된 뒤에만 매칭엔진에 매칭 시작을 제출한다. 커밋 전에 제출하면 엔진이 오퍼 팝업을 먼저 보내, 드리미가 아직 저장되지 않은 주문을 수락하려 할 수 있다.
-     * 롤백된 접수는 이벤트가 폐기되어 엔진까지 가지 않는다.
+     * 주문 접수 트랜잭션이 커밋된 뒤에만 매칭엔진에 매칭 시작을 제출한다. 커밋 전에 제출하면 엔진이 오퍼 팝업을 먼저 보내, 드리미가 아직 저장되지 않은 주문을 수락하려 할 수 있다. 롤백된 접수는 이벤트가
+     * 폐기되어 엔진까지 가지 않는다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onMatchingStartRequested(MatchingStartRequestedEvent event) {
@@ -215,8 +217,8 @@ public class MatchingService {
     }
 
     /**
-     * 드리미 수락 트랜잭션이 커밋된 뒤에만 매칭엔진에 수락을 제출한다. 엔진은 곧바로 부르미에게 확인 팝업을 보내는데, 부르미의 확정은 주문이
-     * PENDING_BOORMI_CONFIRMATION 인지 검사하므로 커밋 전에 제출하면 그 확정이 실패한다.
+     * 드리미 수락 트랜잭션이 커밋된 뒤에만 매칭엔진에 수락을 제출한다. 엔진은 곧바로 부르미에게 확인 팝업을 보내는데, 부르미의 확정은 주문이 PENDING_BOORMI_CONFIRMATION 인지 검사하므로
+     * 커밋 전에 제출하면 그 확정이 실패한다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onDreamiAccepted(DreamiAcceptedEvent event) {
@@ -242,8 +244,8 @@ public class MatchingService {
     }
 
     /**
-     * 부르미 확정 트랜잭션이 커밋된 뒤에만 매칭엔진에 수락을 제출한다. 엔진 스레드는 별도 트랜잭션으로 주문을 다시 읽어 배달을 시작하므로, 커밋 전에 제출하면 아직
-     * IN_PROGRESS 가 아닌 주문을 보고 배달 시작이 실패한다. 롤백된 확정은 이벤트가 폐기되어 엔진까지 가지 않는다.
+     * 부르미 확정 트랜잭션이 커밋된 뒤에만 매칭엔진에 수락을 제출한다. 엔진 스레드는 별도 트랜잭션으로 주문을 다시 읽어 배달을 시작하므로, 커밋 전에 제출하면 아직 IN_PROGRESS 가 아닌 주문을 보고
+     * 배달 시작이 실패한다. 롤백된 확정은 이벤트가 폐기되어 엔진까지 가지 않는다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onBoormiConfirmed(BoormiConfirmedEvent event) {
@@ -260,8 +262,8 @@ public class MatchingService {
     }
 
     /**
-     * 부르미 거절 트랜잭션이 커밋된 뒤에만 매칭엔진에 거절을 제출한다. 엔진은 곧바로 재오퍼를 돌리므로, 커밋 전에 제출하면 다른 드리미가 먼저 수락해 커밋한
-     * PENDING_BOORMI_CONFIRMATION 을 이 트랜잭션의 MATCHING 복귀가 덮어써 주문이 고착된다.
+     * 부르미 거절 트랜잭션이 커밋된 뒤에만 매칭엔진에 거절을 제출한다. 엔진은 곧바로 재오퍼를 돌리므로, 커밋 전에 제출하면 다른 드리미가 먼저 수락해 커밋한 PENDING_BOORMI_CONFIRMATION
+     * 을 이 트랜잭션의 MATCHING 복귀가 덮어써 주문이 고착된다.
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onBoormiRejectedDreami(BoormiRejectedDreamiEvent event) {
@@ -305,6 +307,16 @@ public class MatchingService {
         return matchingEngine.submit(new RunMatchingAssignmentCycle(this));
     }
 
+    /**
+     * 서비스 기동 시 batch window(matching.batch-window)마다 배치 매칭 사이클을 반복 실행하도록 예약한다. 반복 예약은 {@link MatchingActionScheduler}가
+     * 담당하므로, 이 메서드는 최초 등록만 하고 실제 반복/복구 로직에는 관여하지 않는다.
+     */
+    @PostConstruct
+    void scheduleMatchingAssignmentCycle() {
+        matchingActionScheduler.scheduleRepeating(new RunMatchingAssignmentCycle(this),
+                matchingPolicyProperties.batchWindow());
+    }
+
     void applyRunMatchingAssignmentCycle() {
         MatchingAssignmentProblem problem = matchingAssignmentProblemAssembler.assemble();
         MatchingPlan plan = matchingAssignmentPolicy.createPlan(problem);
@@ -313,8 +325,7 @@ public class MatchingService {
     }
 
     /**
-     * 재매칭 대기(WAITING) 상태의 방들에 대해 오퍼 라운드를 다시 시도한다. {@link #attemptOfferRound}는 그룹 맵의 키를 추가/삭제하지 않으므로
-     * 스냅샷 순회로 안전하다.
+     * 재매칭 대기(WAITING) 상태의 방들에 대해 오퍼 라운드를 다시 시도한다. {@link #attemptOfferRound}는 그룹 맵의 키를 추가/삭제하지 않으므로 스냅샷 순회로 안전하다.
      */
     private void retryRematchWaitingGroups() {
         List<OrderOfferGroup> waitingGroups = orderOfferGroupsByOrderId.values().stream()
@@ -342,10 +353,10 @@ public class MatchingService {
     }
 
     /**
-     * 방에 아직 제안받지 않은 대기 드리미가 있으면 다음 오퍼 라운드를 진행하고, 없으면 재매칭 대기(WAITING)로 둔다. 최초 매칭 시작과 소진 후 재매칭이 모두 이 메서드를 재사용한다.
-     * 이미 취소(CANCELLED)되었거나 확정(MATCHED)된 그룹은 다시 열리면 안 되므로 아무 것도 하지 않는다.
-     * {@link MatchOffer#shouldExcludeFromRematch()}에 따라, 명시적으로 거절했거나 드리미 응답 timeout(DREAMI_EXPIRED)인 드리미는 재제안 대상에서 제외하고
-     * 타의로 회수됐거나(WITHDRAWN) 부르미 응답 timeout(BOORMI_EXPIRED)인 드리미는 다시 후보에 포함한다.
+     * 방에 아직 제안받지 않은 대기 드리미가 있으면 다음 오퍼 라운드를 진행하고, 없으면 재매칭 대기(WAITING)로 둔다. 최초 매칭 시작과 소진 후 재매칭이 모두 이 메서드를 재사용한다. 이미
+     * 취소(CANCELLED)되었거나 확정(MATCHED)된 그룹은 다시 열리면 안 되므로 아무 것도 하지 않는다. {@link MatchOffer#shouldExcludeFromRematch()}에 따라,
+     * 명시적으로 거절했거나 드리미 응답 timeout(DREAMI_EXPIRED)인 드리미는 재제안 대상에서 제외하고 타의로 회수됐거나(WITHDRAWN) 부르미 응답
+     * timeout(BOORMI_EXPIRED)인 드리미는 다시 후보에 포함한다.
      */
     private void attemptOfferRound(OrderOfferGroup group) {
         if (!group.isActive()) {
@@ -380,7 +391,7 @@ public class MatchingService {
             offersById.put(offerId, offer);
             offerIdsByDreamiId.computeIfAbsent(dreami.dreamiId(), k -> new HashSet<>()).add(offerId);
             dreami.markProposed();
-            offerTimeoutScheduler.scheduleDreamiOfferTimeout(offerId, OFFER_TTL);
+            matchingActionScheduler.scheduleDreamiOfferTimeout(offerId, OFFER_TTL);
         }
         group.addOffersAndOpen(newOffers);
 
@@ -445,7 +456,7 @@ public class MatchingService {
             // 나머지 사람은 WITHDRAWN
             if (offer.dreamiId().equals(acceptedDreamiId)) {
                 offer.acceptByDreami(now);
-                offerTimeoutScheduler.scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
+                matchingActionScheduler.scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
                 sseService.send(group.boormiId(), MatchingEventType.DREAMI_INFO, DreamiInfoPayload.from(offer));
             } else if (offer.status() == MatchOfferStatus.OFFERED) {

@@ -30,11 +30,13 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPr
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlan;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
+import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -57,24 +59,26 @@ class MatchingServiceTest {
     private MatchingService matchingService;
     private MatchingEngine matchingEngine;
     private SseService sseService;
-    private OfferTimeoutScheduler offerTimeoutScheduler;
+    private MatchingActionScheduler matchingActionScheduler;
     private DeliveryService deliveryService;
     private MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
     private MatchingAssignmentPolicy matchingAssignmentPolicy;
     private MatchingPlanApplier matchingPlanApplier;
+    private MatchingPolicyProperties matchingPolicyProperties;
 
     @BeforeEach
     void setUp() {
         matchingEngine = mock(MatchingEngine.class);
         sseService = mock(SseService.class);
-        offerTimeoutScheduler = mock(OfferTimeoutScheduler.class);
+        matchingActionScheduler = mock(MatchingActionScheduler.class);
         deliveryService = mock(DeliveryService.class);
         matchingAssignmentProblemAssembler = mock(MatchingAssignmentProblemAssembler.class);
         matchingAssignmentPolicy = mock(MatchingAssignmentPolicy.class);
         matchingPlanApplier = mock(MatchingPlanApplier.class);
+        matchingPolicyProperties = mock(MatchingPolicyProperties.class);
         matchingService = new MatchingService(
-                matchingEngine, sseService, offerTimeoutScheduler, deliveryService, Clock.systemDefaultZone(),
-                matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier);
+                matchingEngine, sseService, matchingActionScheduler, deliveryService, Clock.systemDefaultZone(),
+                matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties);
     }
 
     @Test
@@ -1312,6 +1316,21 @@ class MatchingServiceTest {
         assertThat(dreamiMapCaptor.getValue()).isSameAs(getDreamiMap());
         assertThat(offersCaptor.getValue()).isSameAs(getOffersById());
         assertThat(offerIdsCaptor.getValue()).isSameAs(getOfferIdsByDreamiId());
+    }
+
+    @Test
+    void 서비스_기동_시_batch_window_주기로_배치_매칭_사이클_반복_예약을_등록한다() {
+        // given
+        Duration batchWindow = Duration.ofMillis(200);
+        when(matchingPolicyProperties.batchWindow()).thenReturn(batchWindow);
+
+        // when
+        matchingService.scheduleMatchingAssignmentCycle();
+
+        // then
+        ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
+        verify(matchingActionScheduler).scheduleRepeating(captor.capture(), eq(batchWindow));
+        assertThat(captor.getValue()).isInstanceOf(RunMatchingAssignmentCycle.class);
     }
 
     @Test
