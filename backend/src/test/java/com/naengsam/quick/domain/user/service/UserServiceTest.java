@@ -64,7 +64,7 @@ class UserServiceTest {
     }
 
     private static Boormi activeBoormi() {
-        return Boormi.create("user@test.com", "pass123", "홍길동", "01012345678",
+        return Boormi.create("user@test.com", PasswordHasher.hash("pass123"), "홍길동", "01012345678",
                 LocalDate.of(1990, 1, 1));
     }
 
@@ -87,6 +87,8 @@ class UserServiceTest {
         ArgumentCaptor<Boormi> captor = ArgumentCaptor.forClass(Boormi.class);
         verify(boormiRepository).save(captor.capture());
         assertThat(captor.getValue().getPhoneNumber()).isEqualTo("01012345678");
+        assertThat(captor.getValue().getPassword()).isNotEqualTo("pass123");
+        assertThat(PasswordHasher.matches("pass123", captor.getValue().getPassword())).isTrue();
         verify(walletService).createWallet(captor.getValue().getBoormiId());
         verify(smsVerificationService).consumeVerified("01012345678");
         assertThat(result.isDreami()).isFalse();

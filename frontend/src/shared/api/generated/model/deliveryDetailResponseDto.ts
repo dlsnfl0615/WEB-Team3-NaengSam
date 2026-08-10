@@ -6,6 +6,7 @@
  */
 import type { DeliveryDetailResponseDtoStatus } from './deliveryDetailResponseDtoStatus';
 import type { DeliveryLocationDto } from './deliveryLocationDto';
+import type { RoutePointDto } from './routePointDto';
 
 export interface DeliveryDetailResponseDto {
   /** 주문 ID */
@@ -28,4 +29,6 @@ export interface DeliveryDetailResponseDto {
   destinationAddressLine1?: string;
   /** 물건 이름 */
   itemName?: string;
+  /** 카카오 추천 도보 이동경로 좌표 목록(지도 폴리라인용). 경로 정보가 없으면 빈 배열 */
+  routePath?: RoutePointDto[];
 }

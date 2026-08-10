@@ -10,18 +10,12 @@ import java.util.Base64;
 import java.util.UUID;
 
 /**
- * 주문 목록 커서. 정렬 키(delivery_request_dtm, order_id)를 그대로 담아 Base64 로 인코딩한 불투명 문자열로 주고받는다. 시각은 epochMilli 로 직렬화해 타임존/포맷 흔들림을 없앤다.
+ * 주문 목록 커서. 정렬 키(delivery_request_dtm, order_id)를 그대로 담아 Base64 로 인코딩한 불투명 문자열로 주고받는다. 시각은 epochMilli 로 직렬화해 타임존/포맷
+ * 흔들림을 없앤다.
  */
 public record OrderCursor(LocalDateTime dtm, UUID orderId) {
 
-    private static final ZoneId ZONE = ZoneId.systemDefault();
-
-    public String encode() {
-        long epochMilli = dtm.atZone(ZONE).toInstant().toEpochMilli();
-        String raw = epochMilli + "|" + orderId;
-        return Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(raw.getBytes(StandardCharsets.UTF_8));
-    }
+    private static final ZoneId ZONE = ZoneId.of("Asia/Seoul");
 
     public static OrderCursor decode(String cursor) {
         try {
@@ -37,5 +31,12 @@ public record OrderCursor(LocalDateTime dtm, UUID orderId) {
         } catch (IllegalArgumentException e) {
             throw new BusinessException(OrderErrorCode.INVALID_CURSOR);
         }
+    }
+
+    public String encode() {
+        long epochMilli = dtm.atZone(ZONE).toInstant().toEpochMilli();
+        String raw = epochMilli + "|" + orderId;
+        return Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(raw.getBytes(StandardCharsets.UTF_8));
     }
 }

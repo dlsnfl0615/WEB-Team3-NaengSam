@@ -1,8 +1,12 @@
 package com.naengsam.quick.domain.delivery.service;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
+import com.naengsam.quick.domain.delivery.dto.RoutePointDto;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCertification;
@@ -33,6 +37,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -67,6 +73,7 @@ public class DeliveryService {
     private final UserService userService;
     private final OrderService orderService;
     private final ApplicationEventPublisher eventPublisher;
+    private final ObjectMapper objectMapper;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -100,7 +107,21 @@ public class DeliveryService {
             throw new BusinessException(AuthErrorCode.NOT_RESOURCE_OWNER);
         }
 
-        return DeliveryDetailResponseDto.from(delivery, order);
+        return DeliveryDetailResponseDto.from(delivery, order, parseRoutePath(order.getRoutePath()));
+    }
+
+    // 주문에 저장된 추천 이동경로 JSON을 좌표 목록으로 복원한다. 값이 없거나 손상됐으면 빈 목록(지도는 핀만 표시).
+    private List<RoutePointDto> parseRoutePath(String routePathJson) {
+        if (routePathJson == null || routePathJson.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            return objectMapper.readValue(routePathJson, new TypeReference<List<RoutePointDto>>() {
+            });
+        } catch (JacksonException e) {
+            log.warn("주문 route_path 역직렬화 실패 — 경로 없이 응답한다", e);
+            return Collections.emptyList();
+        }
     }
 
     // ===== 공개 메서드 (동기 요청) — 주문 단위 락 안에서 상태 전이를 실행하고 결과를 돌려준다 =====
@@ -353,7 +374,8 @@ public class DeliveryService {
         boolean isValid = switch (deliveryCd) {
             case DELIVERING -> true;
             // 픽업 중에 배달 완료 요청이 온 경우 (픽업하자마자 바로 완료 요청하지 않는 이상 드묾)
-            case PICKUP_NORMAL, PICKUP_DELAYED -> throw new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED);
+            case PICKUP_NORMAL, PICKUP_DELAYED ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP);
             case PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN ->
                     throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
             case DELIVERED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
