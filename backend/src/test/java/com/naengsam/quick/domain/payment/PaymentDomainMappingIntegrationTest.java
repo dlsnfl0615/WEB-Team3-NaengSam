@@ -1,12 +1,15 @@
 package com.naengsam.quick.domain.payment;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 
 import com.naengsam.quick.domain.address.dto.Addresses;
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.payment.dto.MoneyTransactionRow;
+import com.naengsam.quick.domain.payment.dto.PointTransactionRow;
 import com.naengsam.quick.domain.payment.entity.Exchange;
 import com.naengsam.quick.domain.payment.entity.MoneyLedger;
 import com.naengsam.quick.domain.payment.entity.MoneyTx;
@@ -42,6 +45,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.TestPropertySource;
 
 /**
@@ -175,6 +179,52 @@ class PaymentDomainMappingIntegrationTest {
         assertThat(exchangeRepository.findById(exchange.getExchangesId()))
                 .get().extracting(Exchange::getPointTxId, Exchange::getMoneyTxId)
                 .containsExactly(exchangeIn.getPointTxId(), exchangeOut.getMoneyTxId());
+    }
+
+    @Test
+    void 머니에서_포인트로_전환한_거래는_주문없이_확정상태로_저장된다() {
+        Wallet wallet = walletRepository.save(Wallet.create(boormiId));
+        moneyWalletRepository.save(MoneyWallet.create(wallet.getWalletId()));
+        MoneyTx exchangeOut = moneyTxRepository.save(
+                MoneyTx.createSettled(wallet.getWalletId(), MoneyTxTypeCd.EXCHANGE_OUT, 5_000L, null));
+
+        flushAndClear();
+
+        // 전환은 근거가 될 주문이 없다. MONEY_TX.order_id 가 NOT NULL 이면 여기서 깨진다.
+        assertThat(moneyTxRepository.findById(exchangeOut.getMoneyTxId()))
+                .get().extracting(MoneyTx::getType, MoneyTx::getStatus, MoneyTx::getOrderId)
+                .containsExactly(MoneyTxTypeCd.EXCHANGE_OUT, MoneyTxStatusCd.SETTLED, null);
+    }
+
+    @Test
+    void 최근내역_조회는_원장과_거래유형을_함께_최신순으로_돌려준다() {
+        Wallet wallet = walletRepository.save(Wallet.create(boormiId));
+        UUID walletId = wallet.getWalletId();
+        pointWalletRepository.save(PointWallet.create(walletId));
+        moneyWalletRepository.save(MoneyWallet.create(walletId));
+        PointTx charge = pointTxRepository.save(
+                PointTx.create(walletId, PointTxTypeCd.CHARGE, 10_000L, null, null));
+        PointTx payment = pointTxRepository.save(
+                PointTx.create(walletId, PointTxTypeCd.PAYMENT, 4_000L, null, orderId));
+        pointLedgerRepository.save(PointLedger.create(walletId, charge.getPointTxId(), 10_000L, 10_000L));
+        pointLedgerRepository.save(PointLedger.create(walletId, payment.getPointTxId(), -4_000L, 6_000L));
+
+        MoneyTx settlement = moneyTxRepository.save(
+                MoneyTx.create(walletId, MoneyTxTypeCd.SETTLEMENT, 8_000L, orderId));
+        moneyLedgerRepository.save(MoneyLedger.create(walletId, settlement.getMoneyTxId(), 8_000L, 8_000L));
+
+        flushAndClear();
+
+        assertThat(pointLedgerRepository.findRecentByWalletId(walletId, PageRequest.ofSize(20)))
+                .extracting(PointTransactionRow::type, PointTransactionRow::amount,
+                        PointTransactionRow::balanceAfter)
+                .containsExactlyInAnyOrder(
+                        tuple(PointTxTypeCd.CHARGE, 10_000L, 10_000L),
+                        tuple(PointTxTypeCd.PAYMENT, -4_000L, 6_000L));
+        assertThat(moneyLedgerRepository.findRecentByWalletId(walletId, PageRequest.ofSize(20)))
+                .singleElement()
+                .extracting(MoneyTransactionRow::type, MoneyTransactionRow::amount)
+                .containsExactly(MoneyTxTypeCd.SETTLEMENT, 8_000L);
     }
 
     @Test
