@@ -701,12 +701,12 @@ class DeliveryServiceTest {
     }
 
     @Test
-    void 배달완료_픽업전이면_PICKUP_NOT_COMPLETED_예외() {
+    void 배달완료_픽업전이면_DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP_예외() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
         Throwable thrown = catchThrowable(() -> finish(orderId));
 
-        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.PICKUP_NOT_COMPLETED);
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP);
         assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
     }
 
