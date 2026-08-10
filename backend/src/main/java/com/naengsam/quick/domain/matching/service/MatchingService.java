@@ -100,6 +100,15 @@ public class MatchingService {
                 .toList();
     }
 
+    /**
+     * 상태와 무관한 전체 주문 그룹 목록. 상태별 필터링은 호출자(예:
+     * {@link com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler})가
+     * 담당한다.
+     */
+    public List<OrderOfferGroup> orderOfferGroups() {
+        return List.copyOf(orderOfferGroupsByOrderId.values());
+    }
+
     // ────────────────────────────── 외부 API ──────────────────────────────
     // 외부에서는 이 메서드로 액션을 큐에 넣기만 한다. 실제 상태 변경은 엔진 스레드에서 apply*가 수행한다.
 

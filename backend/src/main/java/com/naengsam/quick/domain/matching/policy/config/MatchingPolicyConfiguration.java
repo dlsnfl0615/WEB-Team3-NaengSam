@@ -2,6 +2,7 @@ package com.naengsam.quick.domain.matching.policy.config;
 
 import com.naengsam.quick.domain.matching.policy.assignment.LegacyOrderFirstAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemFactory;
 import com.naengsam.quick.domain.matching.policy.assignment.ScoreBasedGreedyAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibilityPolicy;
@@ -57,5 +58,11 @@ public class MatchingPolicyConfiguration {
                         cooldown.dreamiRejection(), cooldown.boormiRejection(), cooldown.dreamiExpiration());
             }
         };
+    }
+
+    @Bean
+    public MatchingAssignmentProblemFactory matchingAssignmentProblemFactory(
+            MatchingEligibilityPolicy matchingEligibilityPolicy) {
+        return new MatchingAssignmentProblemFactory(matchingEligibilityPolicy);
     }
 }
