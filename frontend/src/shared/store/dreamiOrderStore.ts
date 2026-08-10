@@ -1,12 +1,12 @@
 import { create } from "zustand";
 import { api, isApiError } from "@/shared/api";
-import { toDreamiOrder, type DreamiOrder } from "./dreamiOrderAdapter";
+import { toBoormiOrder, type BoormiOrder } from "./boormiOrderAdapter";
 
 /** 한 번에 불러올 배달 수. */
 const PAGE_SIZE = 20;
 
 interface DreamiOrderState {
-  deliveries: DreamiOrder[];
+  deliveries: BoormiOrder[];
   nextCursor?: string;
   hasNext: boolean;
   loading: boolean;
@@ -20,8 +20,8 @@ interface DreamiOrderState {
 }
 
 /**
- * 드리미 활동 내역 전역 스토어. getDeliveryHistory 커서 페이지네이션 결과를 담는다.
- * 필터링은 클라이언트에서 orderCd/deliveryCd를 그룹핑(전체/진행중/완료/취소)하므로 항상 전체를 조회한다.
+ * 드리미 활동 내역 전역 스토어. getDreamiOrders 커서 페이지네이션 결과를 담는다.
+ * 필터링은 클라이언트에서 orderCd를 그룹핑(전체/진행중/완료/취소)하므로 항상 전체를 조회한다.
  */
 export const useDreamiOrderStore = create<DreamiOrderState>((set, get) => ({
   deliveries: [],
@@ -34,9 +34,9 @@ export const useDreamiOrderStore = create<DreamiOrderState>((set, get) => ({
   load: async () => {
     set({ loading: true, error: null });
     try {
-      const { result } = await api.getDeliveryHistory({ size: PAGE_SIZE });
+      const { result } = await api.getDreamiOrders({ size: PAGE_SIZE });
       set({
-        deliveries: (result?.deliveries ?? []).map(toDreamiOrder),
+        deliveries: (result?.orders ?? []).map(toBoormiOrder),
         nextCursor: result?.nextCursor,
         hasNext: result?.hasNext ?? false,
         loading: false,
@@ -54,14 +54,14 @@ export const useDreamiOrderStore = create<DreamiOrderState>((set, get) => ({
     if (!hasNext || !nextCursor || loadingMore) return;
     set({ loadingMore: true, error: null });
     try {
-      const { result } = await api.getDeliveryHistory({
+      const { result } = await api.getDreamiOrders({
         cursor: nextCursor,
         size: PAGE_SIZE,
       });
       set((s) => ({
         deliveries: [
           ...s.deliveries,
-          ...(result?.deliveries ?? []).map(toDreamiOrder),
+          ...(result?.orders ?? []).map(toBoormiOrder),
         ],
         nextCursor: result?.nextCursor,
         hasNext: result?.hasNext ?? false,

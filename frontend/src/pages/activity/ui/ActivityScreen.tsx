@@ -24,7 +24,7 @@ import {
 
 /**
  * 활동 내역 리스트 화면(Figma node 191:266, 191:1118).
- * 부르미 탭은 부르미 API(getMyOrders), 드리미 탭은 드리미 API(getDeliveryHistory)를 사용한다.
+ * 부르미 탭은 부르미 API(getBoormiOrders), 드리미 탭은 드리미 API(getDreamiOrders)를 사용한다.
  */
 export function ActivityScreen() {
   const navigate = useNavigate();

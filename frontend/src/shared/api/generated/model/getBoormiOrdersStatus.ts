@@ -5,10 +5,10 @@
  * OpenAPI spec version: v0
  */
 
-export type DreamiDeliveryHistoryDtoOrderCd = typeof DreamiDeliveryHistoryDtoOrderCd[keyof typeof DreamiDeliveryHistoryDtoOrderCd];
+export type GetBoormiOrdersStatus = typeof GetBoormiOrdersStatus[keyof typeof GetBoormiOrdersStatus];
 
 
-export const DreamiDeliveryHistoryDtoOrderCd = {
+export const GetBoormiOrdersStatus = {
   MATCHING: 'MATCHING',
   PENDING_BOORMI_CONFIRMATION: 'PENDING_BOORMI_CONFIRMATION',
   IN_PROGRESS: 'IN_PROGRESS',

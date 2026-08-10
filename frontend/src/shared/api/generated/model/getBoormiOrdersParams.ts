@@ -4,10 +4,10 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
-import type { GetMyOrdersStatus } from './getMyOrdersStatus';
+import type { GetBoormiOrdersStatus } from './getBoormiOrdersStatus';
 
-export type GetMyOrdersParams = {
+export type GetBoormiOrdersParams = {
 cursor?: string;
 size?: number;
-status?: GetMyOrdersStatus;
+status?: GetBoormiOrdersStatus;
 };

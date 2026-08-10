@@ -1,4 +1,4 @@
-import { Badge, Card, Icon, IconChip, toneForStatus } from "@/shared/ui";
+import { Badge, Card, IconChip, toneForStatus } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
 import type { ActivityRecord } from "./records";
 
@@ -47,15 +47,6 @@ export function ActivityItem({ record, earned, onClick }: ActivityItemProps) {
           {isFinished ? `완료 시각: ${timeLabel(record.time)}` : timeLabel(record.time)}
         </span>
         <span>·</span>
-        {earned &&
-          (record.rating !== undefined ? (
-            <>
-              <Icon name="star" size={12} className="text-teal-700" />
-              <span>{record.rating.toFixed(1)}</span>
-            </>
-          ) : (
-            <span>리뷰 없음</span>
-          ))}
         <span className="truncate">{record.note}</span>
         <span
           className={cn(

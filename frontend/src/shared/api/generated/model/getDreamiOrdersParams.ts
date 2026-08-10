@@ -4,8 +4,10 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { GetDreamiOrdersStatus } from './getDreamiOrdersStatus';
 
-export type GetDeliveryHistoryParams = {
+export type GetDreamiOrdersParams = {
 cursor?: string;
 size?: number;
+status?: GetDreamiOrdersStatus;
 };
