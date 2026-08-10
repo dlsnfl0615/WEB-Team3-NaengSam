@@ -4,6 +4,7 @@ import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryPhotoRequest;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
+import com.naengsam.quick.domain.delivery.dto.DreamiLocationResponseDto;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
@@ -45,15 +46,16 @@ public class DeliveryController {
     }
 
     @Operation(summary = "드리미 위치 갱신",
-            description = "드리미가 5~10초마다 호출해 현재 위치만 전달한다. 성공 시 ack만 응답하고, 상태 변경은 SSE로 전달된다. "
+            description = "드리미가 5~10초마다 호출해 현재 위치를 전달한다. 첫 위치가 도착하면 서버가 계산한 '드리미→픽업지' 경로와 "
+                    + "배송완료예상시간을 함께 응답한다(아직 계산 전이면 빈 목록/null). 상태 변경은 SSE로 전달된다. "
                     + "이미 취소/완료된 주문이면 폴링 중단 신호로 에러를 응답한다.")
     @PostMapping("/orders/{orderId}/dreami-location")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
             codes = {"LOCATION_COLLECTION_FAILED", "DELIVERY_NOT_FOUND", "DELIVERY_ALREADY_CANCELLED",
                     "DELIVERY_ALREADY_COMPLETED"})
-    public void updateDreamiLocation(
+    public DreamiLocationResponseDto updateDreamiLocation(
             @PathVariable UUID orderId, @RequestBody(required = false) DreamiLocationRequest location) {
-        deliveryService.updateDreamiLocation(orderId, location);
+        return deliveryService.updateDreamiLocation(orderId, location);
     }
 
     @Operation(summary = "드리미 픽업 완료",

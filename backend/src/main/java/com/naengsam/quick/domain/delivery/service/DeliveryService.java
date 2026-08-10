@@ -9,6 +9,7 @@ import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
+import com.naengsam.quick.domain.delivery.dto.DreamiLocationResponseDto;
 import com.naengsam.quick.domain.delivery.dto.RoutePointDto;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
@@ -45,7 +46,6 @@ import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
@@ -135,12 +135,25 @@ public class DeliveryService {
 
     // ===== 공개 메서드 (동기 요청) — 주문 단위 락 안에서 상태 전이를 실행하고 결과를 돌려준다 =====
 
-    // 드리미 위치 정보를 전달 (이 메소드를 5~10초마다 드리미가 호출해야함). 위치만 갱신하고 응답은 ack(void)다.
+    // 드리미 위치 정보를 전달 (이 메소드를 5~10초마다 드리미가 호출해야함). 위치를 갱신하고,
+    // 첫 위치면 방금 계산·저장된 '드리미→픽업지' 경로와 배송완료예상시간을, 이후엔 이미 저장된 값을 그대로 응답에 담아 돌려준다.
+    // (프론트가 이 응답만으로 지도·배송완료예상시간을 갱신할 수 있어 별도 재조회가 필요 없다.)
     @Transactional
-    public void updateDreamiLocation(UUID orderId, DreamiLocationRequest location) {
-        transition(orderId, delivery -> {
-            doUpdateDreamiLocation(delivery, location);
-        });
+    public DreamiLocationResponseDto updateDreamiLocation(UUID orderId, DreamiLocationRequest location) {
+        Delivery delivery = deliveryRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+
+        doUpdateDreamiLocation(delivery, location);
+
+        // 경로(좌표 배열)는 매 5초마다 중복 전송하지 않도록, 클라이언트가 요청에서 명시적으로 요청할 때만(includeRoute) 실어 보낸다.
+        // 아직 경로가 없는 드리미는 true로 계속 요청하다가, 한 번 받으면 false로 바꿔 이후엔 위치만 보낸다.
+        // 하위호환: includeRoute가 없으면(null) 예전처럼 경로를 담아 보낸다.
+        boolean includeRoute =
+                location == null || location.includeRoute() == null || location.includeRoute();
+
+        return new DreamiLocationResponseDto(
+                includeRoute ? parseRoutePath(delivery.getRoutePath()) : null,
+                includeRoute ? delivery.getEstimatedCompletionDtm() : null);
     }
 
     // 픽업 완료 (드리미가 업로드한 픽업 인증 사진 key를 함께 받아 검증한다)
@@ -194,19 +207,10 @@ public class DeliveryService {
         return DeliveryStatusResponseDto.from(delivery, message);
     }
 
-    // 상태 스냅샷 DTO가 필요 없는 전이(위치 갱신 등)용. 주문 단위 락은 위와 동일하게 잡고, 응답 DTO는 만들지 않는다
-    // (컨트롤러가 void를 반환하면 CommonResponse가 result=null 성공 봉투로 감싼다).
-    private void transition(UUID orderId, Consumer<Delivery> logic) {
-        Delivery delivery = deliveryRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
-
-        logic.accept(delivery);
-    }
-
     // ===== 실제 상태 전이 로직 (주문 락 안에서 실행) =====
 
-    // 위치만 갱신하고 부르미에게 SSE로 전달한다. 취소/완료 상태에 대한 예외는 드리미 폴링을 멈추게 하는 신호로 남긴다
-    // (취소 알림 자체는 취소 시점에 이미 드리미에게 SSE로 push된다).
+    // 위치를 갱신하고 부르미에게 SSE로 전달한다. 첫 위치면 '드리미→픽업지' 경로·배송완료예상시간을 1회 계산해 저장한다.
+    // 취소/완료 상태에 대한 예외는 드리미 폴링을 멈추게 하는 신호로 남긴다(취소 알림 자체는 취소 시점에 이미 드리미에게 SSE로 push된다).
     private void doUpdateDreamiLocation(Delivery delivery, DreamiLocationRequest location) {
 
         // 이미 완료되거나 취소된 주문이면 위치를 더 이상 갱신하지 않음

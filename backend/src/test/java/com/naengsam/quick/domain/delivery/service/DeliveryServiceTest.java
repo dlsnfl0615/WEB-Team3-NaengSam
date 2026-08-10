@@ -6,6 +6,7 @@ import com.naengsam.quick.domain.address.service.KakaoDirectionsService;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
+import com.naengsam.quick.domain.delivery.dto.DreamiLocationResponseDto;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCertification;
@@ -182,6 +183,10 @@ class DeliveryServiceTest {
         return new DreamiLocationRequest(new BigDecimal(latitude), new BigDecimal(longitude));
     }
 
+    private DreamiLocationRequest location(String latitude, String longitude, boolean includeRoute) {
+        return new DreamiLocationRequest(new BigDecimal(latitude), new BigDecimal(longitude), includeRoute);
+    }
+
     // 세 취소 경로를 orderId 하나로 실행하는 헬퍼. 드리미/부르미는 등록된 소유자 본인으로 호출해 소유권 검증을 통과시키고,
     // 그 이후의 상태 가드 분기만 검증되도록 한다.
     private List<Function<UUID, DeliveryStatusResponseDto>> cancelOperations() {
@@ -337,7 +342,8 @@ class DeliveryServiceTest {
         given(kakaoDirectionsService.getRoute(any(), any())).willReturn(routeWith(300)); // 300초 = 5분
 
         LocalDateTime before = LocalDateTime.now();
-        deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
+        DreamiLocationResponseDto response =
+                deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
         LocalDateTime after = LocalDateTime.now();
 
         Delivery saved = registeredDeliveries.get(orderId);
@@ -346,6 +352,10 @@ class DeliveryServiceTest {
         assertThat(saved.getEstimatedCompletionDtm())
                 .isBetween(before.plusMinutes(25), after.plusMinutes(25));
         verify(kakaoDirectionsService).getRoute(any(), any());
+
+        // 응답에도 방금 계산된 경로·배송완료예상시간이 담겨 나간다(프론트가 재조회 없이 바로 반영).
+        assertThat(response.deliveryRoutePath()).hasSize(2);
+        assertThat(response.estimatedCompletionTime()).isEqualTo(saved.getEstimatedCompletionDtm());
     }
 
     @Test
@@ -356,10 +366,30 @@ class DeliveryServiceTest {
         Delivery delivery = registeredDeliveries.get(orderId);
         ReflectionTestUtils.setField(delivery, "routePath", "[{\"latitude\":37.4,\"longitude\":127.0}]");
 
-        deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
+        DreamiLocationResponseDto response =
+                deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
 
+        // 이미 저장돼 있으므로 카카오를 다시 호출하지 않고, 요청이 경로를 원했으므로(기본값) 저장된 경로를 그대로 돌려준다.
         verify(kakaoDirectionsService, never()).getRoute(any(), any());
-        assertThat(delivery.getEstimatedCompletionDtm()).isNull();
+        assertThat(response.deliveryRoutePath()).hasSize(1);
+    }
+
+    @Test
+    void 경로를_원하지_않으면_includeRoute_false_응답에_경로와_완료시간을_담지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+        Delivery delivery = registeredDeliveries.get(orderId);
+        ReflectionTestUtils.setField(delivery, "routePath", "[{\"latitude\":37.4,\"longitude\":127.0}]");
+        ReflectionTestUtils.setField(delivery, "estimatedCompletionDtm", LocalDateTime.now().plusMinutes(25));
+
+        DreamiLocationResponseDto response = deliveryService.updateDreamiLocation(
+                orderId, location("37.40000000", "127.00000000", false));
+
+        // 클라이언트가 경로를 원치 않으면(이미 받음) 좌표 배열을 중복 전송하지 않는다.
+        assertThat(response.deliveryRoutePath()).isNull();
+        assertThat(response.estimatedCompletionTime()).isNull();
+        verify(kakaoDirectionsService, never()).getRoute(any(), any());
     }
 
     @Test
