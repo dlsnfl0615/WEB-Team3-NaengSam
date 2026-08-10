@@ -197,8 +197,10 @@ class DeliveryServiceTest {
 
     // 주문자는 활성 드리미가 아니고(false), 배달자는 활성 드리미(true)인 정상 역할 상태를 스텁한다.
     private void stubValidRoles(UUID boormiId, UUID dreamiId) {
-        given(userService.getUserInfo(boormiId)).willReturn(new UserDto(boormiId, "b@t.com", "부르미", false));
-        given(userService.getUserInfo(dreamiId)).willReturn(new UserDto(dreamiId, "d@t.com", "드리미", true));
+        given(userService.getUserInfo(boormiId))
+                .willReturn(new UserDto(boormiId, "b@t.com", "부르미", false, null, null));
+        given(userService.getUserInfo(dreamiId))
+                .willReturn(new UserDto(dreamiId, "d@t.com", "드리미", true, null, null));
     }
 
     private void stubOrderStatus(UUID orderId, OrderCd orderCd) {
@@ -438,8 +440,10 @@ class DeliveryServiceTest {
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
         stubOrderStatus(orderId, OrderCd.IN_PROGRESS);
-        given(userService.getUserInfo(boormiId)).willReturn(new UserDto(boormiId, "b@t.com", "부르미", false));
-        given(userService.getUserInfo(dreamiId)).willReturn(new UserDto(dreamiId, "d@t.com", "드리미", false));
+        given(userService.getUserInfo(boormiId))
+                .willReturn(new UserDto(boormiId, "b@t.com", "부르미", false, null, null));
+        given(userService.getUserInfo(dreamiId))
+                .willReturn(new UserDto(dreamiId, "d@t.com", "드리미", false, null, null));
 
         Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
 

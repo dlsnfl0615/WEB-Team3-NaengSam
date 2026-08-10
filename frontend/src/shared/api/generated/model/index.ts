@@ -94,6 +94,7 @@ export * from './subscribe200';
 export * from './subscribeOrder200';
 export * from './updateDreamiLocation200';
 export * from './userDto';
+export * from './userDtoActiveRole';
 export * from './verifyCodeRequest';
 export * from './waitingDreamis200';
 export * from './waitingOrders200';

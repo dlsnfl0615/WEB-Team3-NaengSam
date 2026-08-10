@@ -52,6 +52,10 @@ export interface AuthUser {
   name: string;
   /** 가입/보유 역할. */
   roles: Role[];
+  /** 현재 진행 중인 주문에서 맡고 있는 역할. */
+  activeRole?: "BOORMI" | "DREAMI";
+  /** 드리미로 진행 중인 주문 식별자. */
+  activeOrderId?: string;
   rating: number;
   email: string;
 }
