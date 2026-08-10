@@ -333,7 +333,7 @@ BoormiServiceTest {
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
-                .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
+                .willReturn(routeOf(5000, 900));
         given(matchingService.isActiveGroupExists(any())).willReturn(true);
 
         Throwable thrown = catchThrowable(() -> boormiService.subscribeOrder(orderRequest(), boormiId));
