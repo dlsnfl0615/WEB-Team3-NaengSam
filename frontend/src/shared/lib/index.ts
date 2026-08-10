@@ -2,6 +2,11 @@
 export { cn } from './cn'
 export { formatArrivalTime } from './formatArrivalTime'
 export { useSse, type UseSseOptions } from './sse/useSse'
+export {
+  useSseReconnectSync,
+  SSE_RECONNECT_POLL_INTERVAL_MS,
+  type UseSseReconnectSyncOptions,
+} from './sse/useSseReconnectSync'
 export { SseProvider } from './sse/SseProvider'
 export { SseStatusBanner } from './sse/SseStatusBanner'
 export type { SseHandlers, SseState, SseStatus } from './sse/SseContext'
