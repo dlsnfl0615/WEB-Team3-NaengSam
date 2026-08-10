@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.policy.scoring.SlaUrgencyScorePolicy;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -97,6 +99,6 @@ class SlaUrgencyScorePolicyTest {
     private MatchingCandidate candidate(long distanceMeters, Duration orderWaitingTime) {
         return new MatchingCandidate(
                 UUID.randomUUID(), UUID.randomUUID(), distanceMeters,
-                orderWaitingTime, Duration.ZERO, 0, 0);
+                orderWaitingTime, Duration.ZERO, 0, 0, Optional.empty());
     }
 }

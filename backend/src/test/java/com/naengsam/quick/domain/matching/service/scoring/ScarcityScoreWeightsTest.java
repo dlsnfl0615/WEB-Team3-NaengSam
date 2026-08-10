@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.matching.service.scoring;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.naengsam.quick.domain.matching.policy.scoring.ScarcityScoreWeights;
 import org.junit.jupiter.api.Test;
 
 /**
