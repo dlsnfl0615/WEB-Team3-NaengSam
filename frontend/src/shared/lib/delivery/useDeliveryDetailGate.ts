@@ -40,6 +40,8 @@ export interface DeliveryDetailGateState {
   loading: boolean;
   blockingModal: DeliveryDetailBlockingModalState;
   retry: () => void;
+  /** ready 상태를 유지한 채 상세를 조용히 다시 불러온다(경로·배송완료예상시간이 뒤늦게 계산됐을 때 반영용). */
+  refresh: () => void;
   block: (notice: DeliveryDetailBlockNotice) => void;
 }
 
