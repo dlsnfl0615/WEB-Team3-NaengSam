@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.order.dto;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -16,8 +17,13 @@ public record OrderSummaryDto(
         OrderCd orderCd,
         Long deliveryAmount,
         int deliveryEta,
+        Long deliveryDistance,
+        BigDecimal originLatitude,
+        BigDecimal originLongitude,
         String originAlias,
         String originAddressLine1,
+        BigDecimal destinationLatitude,
+        BigDecimal destinationLongitude,
         String destinationAlias,
         String destinationAddressLine1,
         String imageKey,
@@ -31,8 +37,13 @@ public record OrderSummaryDto(
                 order.getOrderCd(),
                 order.getDeliveryAmount(),
                 order.getDeliveryEta(),
+                order.getDeliveryDistance(),
+                order.getOriginLatitude(),
+                order.getOriginLongitude(),
                 order.getOriginAlias(),
                 order.getOriginAddressLine1(),
+                order.getDestinationLatitude(),
+                order.getDestinationLongitude(),
                 order.getDestinationAlias(),
                 order.getDestinationAddressLine1(),
                 order.getImageKey(),
