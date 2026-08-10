@@ -26,7 +26,9 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblem;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlan;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -36,6 +38,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -56,6 +59,9 @@ class MatchingServiceTest {
     private SseService sseService;
     private OfferTimeoutScheduler offerTimeoutScheduler;
     private DeliveryService deliveryService;
+    private MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
+    private MatchingAssignmentPolicy matchingAssignmentPolicy;
+    private MatchingPlanApplier matchingPlanApplier;
 
     @BeforeEach
     void setUp() {
@@ -63,10 +69,12 @@ class MatchingServiceTest {
         sseService = mock(SseService.class);
         offerTimeoutScheduler = mock(OfferTimeoutScheduler.class);
         deliveryService = mock(DeliveryService.class);
+        matchingAssignmentProblemAssembler = mock(MatchingAssignmentProblemAssembler.class);
+        matchingAssignmentPolicy = mock(MatchingAssignmentPolicy.class);
+        matchingPlanApplier = mock(MatchingPlanApplier.class);
         matchingService = new MatchingService(
                 matchingEngine, sseService, offerTimeoutScheduler, deliveryService, Clock.systemDefaultZone(),
-                mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),
-                mock(MatchingPlanApplier.class));
+                matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier);
     }
 
     @Test
@@ -1266,6 +1274,47 @@ class MatchingServiceTest {
     }
 
     @Test
+    void 배치_매칭_사이클_실행_요청은_엔진_큐에_RunMatchingAssignmentCycle_액션을_제출한다() {
+        // given
+        when(matchingEngine.submit(any())).thenReturn(true);
+
+        // when
+        boolean result = matchingService.runMatchingAssignmentCycle();
+
+        // then
+        assertThat(result).isTrue();
+        ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
+        verify(matchingEngine).submit(captor.capture());
+        assertThat(captor.getValue()).isInstanceOf(RunMatchingAssignmentCycle.class);
+    }
+
+    @Test
+    void 배치_매칭_사이클_액션은_스냅샷_조립_배정안_산출_적용을_한번에_수행한다() {
+        // given
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(LocalDateTime.now(), List.of(), List.of(), List.of());
+        MatchingPlan plan = new MatchingPlan(List.of());
+        when(matchingAssignmentProblemAssembler.assemble()).thenReturn(problem);
+        when(matchingAssignmentPolicy.createPlan(problem)).thenReturn(plan);
+
+        // when
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        // then
+        ArgumentCaptor<Map<UUID, OrderOfferGroup>> groupsCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<UUID, WaitingDreami>> dreamiMapCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<UUID, MatchOffer>> offersCaptor = ArgumentCaptor.forClass(Map.class);
+        ArgumentCaptor<Map<UUID, Set<UUID>>> offerIdsCaptor = ArgumentCaptor.forClass(Map.class);
+        verify(matchingPlanApplier).apply(
+                eq(problem), eq(plan), any(LocalDateTime.class),
+                groupsCaptor.capture(), dreamiMapCaptor.capture(), offersCaptor.capture(), offerIdsCaptor.capture());
+        // 배정 검증(validate)과 실제 적용(apply)이 같은 엔진 상태를 봐야 원자성이 보장되므로, 스냅샷이 아니라 살아있는 맵 참조 그대로 전달돼야 한다.
+        assertThat(groupsCaptor.getValue()).isSameAs(getOrderOfferGroups());
+        assertThat(dreamiMapCaptor.getValue()).isSameAs(getDreamiMap());
+        assertThat(offersCaptor.getValue()).isSameAs(getOffersById());
+        assertThat(offerIdsCaptor.getValue()).isSameAs(getOfferIdsByDreamiId());
+    }
+
+    @Test
     void 재매칭_대상_그룹이_있으면_스케줄된_재매칭_실행시_대기중인_드리미에게_오퍼가_간다() {
         // given
         UUID orderId = UUID.randomUUID();
@@ -1445,6 +1494,15 @@ class MatchingServiceTest {
                 ReflectionTestUtils.getField(
                         matchingService,
                         "dreamiMap"
+                );
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<UUID, Set<UUID>> getOfferIdsByDreamiId() {
+        return (Map<UUID, Set<UUID>>)
+                ReflectionTestUtils.getField(
+                        matchingService,
+                        "offerIdsByDreamiId"
                 );
     }
 }
