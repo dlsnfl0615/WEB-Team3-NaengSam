@@ -4,10 +4,11 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { BoormiOrdersResponse } from './boormiOrdersResponse';
 
-export type Get200 = {
+export type GetDreamiOrders200 = {
   isSuccess?: boolean;
   code?: string;
   message?: string;
-  result?: string;
+  result?: BoormiOrdersResponse;
 };

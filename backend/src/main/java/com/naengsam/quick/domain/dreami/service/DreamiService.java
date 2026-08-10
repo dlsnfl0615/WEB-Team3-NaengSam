@@ -18,11 +18,14 @@ import com.naengsam.quick.domain.matching.event.DreamiAcceptedEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
+import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.entity.Role;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
 import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
@@ -47,6 +50,7 @@ public class DreamiService {
     private final BoormiRepository boormiRepository;
     private final DreamiRequestDeniedDetailsRepository dreamiRequestDeniedDetailsRepository;
     private final OrderRepository orderRepository;
+    private final OrderService orderService;
     private final NearbyOrderFinder nearbyOrderFinder;
     private final MatchingService matchingService;
     private final MoneyTxRepository moneyTxRepository;
@@ -206,6 +210,14 @@ public class DreamiService {
                 thisMonthCount, recentSixMonths);
     }
 
+    /**
+     * 드리미가 수행한(수행 중인) 배달을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하다.
+     */
+    @Transactional(readOnly = true)
+    public BoormiOrdersResponse getMyOrders(UUID dreamiId, String cursor, int size, OrderCd status) {
+        return orderService.getOrders(dreamiId, Role.DREAMI, cursor, size, status);
+    }
+
     private long amountOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {
         MonthlyMoneyAggregate aggregate = byMonth.get(month);
         return aggregate == null ? 0 : aggregate.totalAmount();
@@ -215,4 +227,5 @@ public class DreamiService {
         MonthlyMoneyAggregate aggregate = byMonth.get(month);
         return aggregate == null ? 0 : aggregate.count();
     }
+
 }
