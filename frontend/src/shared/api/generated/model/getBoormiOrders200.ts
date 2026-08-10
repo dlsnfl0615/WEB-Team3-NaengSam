@@ -6,7 +6,7 @@
  */
 import type { BoormiOrdersResponse } from './boormiOrdersResponse';
 
-export type GetMyOrders200 = {
+export type GetBoormiOrders200 = {
   isSuccess?: boolean;
   code?: string;
   message?: string;

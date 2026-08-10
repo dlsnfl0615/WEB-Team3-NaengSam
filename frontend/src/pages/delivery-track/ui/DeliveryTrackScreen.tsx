@@ -1,21 +1,22 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Button,
+  BlockingLoadErrorModal,
   Card,
   Icon,
   MapCard,
   Modal,
   ScreenShell,
-  Toast,
   DeliveryRouteMap,
 } from "@/shared/ui";
-import type { Coords } from "@/shared/ui";
 import { api, isApiError, DeliveryStatusResponseDtoStatus } from "@/shared/api";
 import type { DeliveryStatusResponseDto } from "@/shared/api";
 import {
   recallDeliveryStage,
   rememberDeliveryStage,
+  getUntrackableDeliveryNotice,
+  useDeliveryDetailGate,
   useSse,
   useDreamiLocationBroadcast,
   type SseHandlers,
@@ -27,9 +28,6 @@ import {
 } from "@/shared/store/deliveryStore";
 import { TRACK_STAGES, type TrackStage } from "./statuses";
 import { TrackOverlay } from "./TrackOverlay";
-
-/** 상대편(부르미/관리자) 취소 알림을 보여준 뒤 홈으로 나가기까지의 대기 시간. */
-const CANCEL_NAV_DELAY_MS = 1800;
 
 /**
  * 실시간 배송 추적 화면(Figma node 191:972, 191:989).
@@ -46,92 +44,68 @@ export function DeliveryTrackScreen() {
   const statusParam = params.get("status");
   const isRealMode = Boolean(orderId);
 
+  // 실 배달의 상세 조회가 성공해야만 위치 전송·SSE·상태 전이 기능을 활성화한다.
+  const {
+    detail,
+    ready: detailReady,
+    loading: detailLoading,
+    blockingModal,
+    retry: retryDeliveryDetail,
+    block: blockDeliveryDetail,
+  } = useDeliveryDetailGate(orderId, { enabled: isRealMode });
+
   // 실 모드(드리미)에서만 현재 GPS 위치를 5초 주기로 백엔드에 전송한다(픽업중·배송중 모두 커버).
   // 반환된 최신 좌표는 이 화면 지도에도 표시한다.
   // 이 position은 서버에서 반환하는게 아니라, 브라우저에서 측정한 GPS 값임
   const { position } = useDreamiLocationBroadcast(orderId, {
-    enabled: isRealMode,
+    enabled: isRealMode && detailReady,
   });
   const active = useActiveDelivery();
   const advance = useDeliveryStore((s) => s.advance);
   const complete = useDeliveryStore((s) => s.complete);
   const cancel = useDeliveryStore((s) => s.cancel);
 
-  // 실 모드에서 출발지·도착지 좌표(+도착지 주소)를 1회 받아온다(엔드포인트가 드리미도 허용).
-  const [pickup, setPickup] = useState<Coords | undefined>(undefined);
-  const [dropoff, setDropoff] = useState<Coords | undefined>(undefined);
-  const [destAddress, setDestAddress] = useState<string | undefined>(undefined);
+  // 실 모드에서 조회한 출발지·도착지 좌표(+도착지 주소)를 사용한다(엔드포인트가 드리미도 허용).
+  const pickup =
+    detail?.originLatitude != null && detail.originLongitude != null
+      ? {
+          latitude: detail.originLatitude,
+          longitude: detail.originLongitude,
+        }
+      : undefined;
+  const dropoff =
+    detail?.destinationLatitude != null && detail.destinationLongitude != null
+      ? {
+          latitude: detail.destinationLatitude,
+          longitude: detail.destinationLongitude,
+        }
+      : undefined;
+  const destAddress = detail?.destinationAddressLine1;
 
   // 픽업 취소 확인 모달 상태
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
-  // 상대편(부르미/관리자)이 취소하면 SSE로 통지받아 알림을 띄우고 홈으로 나간다.
-  const [sseToast, setSseToast] = useState<{
-    title: string;
-    description?: string;
-  } | null>(null);
-  const navTimer = useRef<number | null>(null);
-
-  useEffect(
-    () => () => {
-      if (navTimer.current !== null) clearTimeout(navTimer.current);
-    },
-    [],
-  );
-
-  // 실 모드 마운트 시 출발지·도착지 좌표를 1회 받아온다. 드리미 현재 위치는 GPS(position)로 갱신된다.
-  useEffect(() => {
-    if (!isRealMode || !orderId) return;
-    let cancelled = false;
-    api
-      .getDeliveryDetail(orderId)
-      .then(({ result }) => {
-        if (cancelled || !result) return;
-        if (result.originLatitude != null && result.originLongitude != null)
-          setPickup({
-            latitude: result.originLatitude,
-            longitude: result.originLongitude,
-          });
-        if (
-          result.destinationLatitude != null &&
-          result.destinationLongitude != null
-        )
-          setDropoff({
-            latitude: result.destinationLatitude,
-            longitude: result.destinationLongitude,
-          });
-        if (result.destinationAddressLine1)
-          setDestAddress(result.destinationAddressLine1);
-      })
-      .catch(() => {
-        // 좌표를 못 받아도 드리미 GPS 핀만으로 지도는 동작한다.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isRealMode, orderId]);
-
   const sseHandlers: SseHandlers = {
     delivery_cancelled: (data) => {
       const dto = data as DeliveryStatusResponseDto;
       if (dto?.orderId !== orderId) return;
-      setSseToast({
-        title: "배달이 취소됐어요",
-        description: dto.message ?? "상대방이 배달을 취소했어요.",
+      const cancelledStatus =
+        dto.status ?? DeliveryStatusResponseDtoStatus.PICKUP_CANCELLED_BY_ADMIN;
+      const notice = getUntrackableDeliveryNotice(cancelledStatus);
+      rememberDeliveryStage(orderId, cancelledStatus);
+      setConfirmOpen(false);
+      blockDeliveryDetail({
+        title: notice?.title ?? "배달이 취소됐어요",
+        message:
+          dto.message ?? notice?.message ?? "상대방이 배달을 취소했어요.",
       });
-      if (navTimer.current === null) {
-        navTimer.current = window.setTimeout(
-          () => navigate(ROUTES.home, { replace: true }),
-          CANCEL_NAV_DELAY_MS,
-        );
-      }
     },
   };
 
   // 실 모드에서만 드리미 세션으로 SSE를 구독한다(mock 모드는 구독하지 않음).
-  useSse(sseHandlers, { enabled: isRealMode });
+  useSse(sseHandlers, { enabled: isRealMode && detailReady });
 
   // 배송중으로 넘어온 순간을 기록해 둔다. 홈 카드로 다시 들어오면 `?status=` 가 없어
   // 픽업중으로 되돌아가므로, 그때 이 스냅샷으로 단계를 복원한다.
@@ -163,6 +137,7 @@ export function DeliveryTrackScreen() {
   const distance = active?.distance ?? "450m";
 
   const onAction = async () => {
+    if (!detailReady) return;
     if (isRealMode) {
       // 실 모드: 픽업 완료/전달 완료 모두 사진 인증 화면에서 presign+업로드 후
       // pickup-finish / finish 로 처리한다(둘 다 인증 사진 필수).
@@ -182,6 +157,7 @@ export function DeliveryTrackScreen() {
 
   // 취소 버튼 클릭 → 바로 취소하지 않고 확인 모달을 띄운다.
   const onCancel = () => {
+    if (!detailReady) return;
     setCancelError(null);
     setConfirmOpen(true);
   };
@@ -189,7 +165,7 @@ export function DeliveryTrackScreen() {
   // 모달에서 "취소하기" 확정 시 실제로 취소를 진행한다.
   // 실 모드는 백엔드에 드리미 픽업 취소를 요청하고, mock 모드는 기존 스토어 흐름을 탄다.
   const confirmCancel = async () => {
-    if (canceling) return;
+    if (canceling || !detailReady) return;
     setCanceling(true);
     setCancelError(null);
     try {
@@ -213,17 +189,6 @@ export function DeliveryTrackScreen() {
 
   return (
     <ScreenShell>
-      {/* 상대편 취소 SSE 알림(화면 위에 떠서 표시) */}
-      {sseToast && (
-        <div className="fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
-          <Toast
-            icon="bell"
-            title={sseToast.title}
-            description={sseToast.description}
-          />
-        </div>
-      )}
-
       {/* 풀블리드 지도 + 지도 위 뒤로가기 */}
       <div className="relative -mx-4 -mt-6">
         <MapCard
@@ -270,11 +235,11 @@ export function DeliveryTrackScreen() {
       <footer className="flex flex-col items-center gap-2 pt-4">
         <div className="flex w-full gap-2">
           <Button variant="outline">연락하기</Button>
-          <Button block onClick={onAction}>
+          <Button block disabled={!detailReady} onClick={onAction}>
             {action}
           </Button>
         </div>
-        {cancelable && (
+        {detailReady && cancelable && (
           <button
             type="button"
             onClick={onCancel}
@@ -317,6 +282,17 @@ export function DeliveryTrackScreen() {
           </div>
         </Card>
       </Modal>
+
+      <BlockingLoadErrorModal
+        open={blockingModal.open}
+        title={blockingModal.title}
+        message={blockingModal.message}
+        guidance={blockingModal.guidance}
+        retrying={detailLoading}
+        canRetry={blockingModal.canRetry}
+        onRetry={retryDeliveryDetail}
+        onExit={() => navigate(ROUTES.home, { replace: true })}
+      />
     </ScreenShell>
   );
 }
