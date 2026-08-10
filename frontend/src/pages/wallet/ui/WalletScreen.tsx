@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { BottomNav, Button, Card, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
@@ -13,6 +14,13 @@ export function WalletScreen() {
   const points = useWalletStore((s) => s.points);
   const money = useWalletStore((s) => s.money);
   const transactions = useWalletStore((s) => s.transactions);
+  const loading = useWalletStore((s) => s.loading);
+  const error = useWalletStore((s) => s.error);
+  const load = useWalletStore((s) => s.load);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <ScreenShell footer={<BottomNav />}>
@@ -51,12 +59,14 @@ export function WalletScreen() {
             ₩{money.toLocaleString()}
           </p>
           <div className="mt-2 flex gap-3">
+            {/* 출금은 정산 계좌·PG 연동이 필요해 이번 범위(#257) 밖이다. API가 생기면 활성화한다. */}
             <Button
               variant="outline"
               block
+              disabled
               className="border-transparent bg-track"
             >
-              출금하기
+              출금 준비 중
             </Button>
             <Button
               variant="navy"
@@ -80,11 +90,23 @@ export function WalletScreen() {
               전체 보기
             </button>
           </div>
-          <div className="flex flex-col gap-3">
-            {transactions.map((history) => (
-              <HistoryItem key={history.id} history={history} />
-            ))}
-          </div>
+          {loading && transactions.length === 0 ? (
+            <p className="py-10 text-center text-sm text-muted">불러오는 중…</p>
+          ) : error ? (
+            <p className="py-10 text-center text-sm text-status-danger">
+              {error}
+            </p>
+          ) : transactions.length > 0 ? (
+            <div className="flex flex-col gap-3">
+              {transactions.map((history) => (
+                <HistoryItem key={history.id} history={history} />
+              ))}
+            </div>
+          ) : (
+            <p className="py-10 text-center text-sm text-muted">
+              아직 거래 내역이 없어요.
+            </p>
+          )}
         </div>
       </main>
     </ScreenShell>

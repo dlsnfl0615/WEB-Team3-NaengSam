@@ -10,12 +10,15 @@ import type {
   CancelByAdmin200,
   CancelByBoormi200,
   CancelByDreami200,
+  ChargePoint200,
   ConfirmDreamiRequest,
   DeliveryPhotoRequest,
   DevSubscribe200,
   DreamiAuthRequestDto,
   DreamiLocationRequest,
   DreamiOnlineRequest,
+  ExchangeMoneyToPoint200,
+  ExchangeRequest,
   ExpectedValue200,
   ExpectedValueRequest,
   FindAll200,
@@ -37,6 +40,7 @@ import type {
   GetPresignedUrlParams,
   GetProfile200,
   GetTodayStats200,
+  GetWallet200,
   LoginRequest,
   MatchingStartRequest,
   Me200,
@@ -46,6 +50,7 @@ import type {
   OrderAndStartParams,
   OrderRequest,
   PickupFinishByDreami200,
+  PointChargeRequest,
   RegisterDreami200,
   RejectDreamiRequest,
   SaveAddress200,
@@ -69,6 +74,36 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
   export const getOpenAPIDefinition = () => {
+/**
+ * 결제 금액만큼 포인트를 적립한다(1원 = 1P). PG 연동 전이라 결제는 항상 성공한 것으로 보고 즉시 적립한다.
+ * @summary 포인트 충전
+ */
+const chargePoint = (
+    pointChargeRequest: PointChargeRequest,
+ options?: SecondParameter<typeof customInstance<ChargePoint200>>,) => {
+      return customInstance<ChargePoint200>(
+      {url: `/api/v1/wallet/point/charge`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: pointChargeRequest
+    },
+      options);
+    }
+
+/**
+ * 드리미 수익(머니)을 포인트로 전환한다. 비율은 1:1 이고 수수료는 없다.
+ * @summary 머니 → 포인트 전환
+ */
+const exchangeMoneyToPoint = (
+    exchangeRequest: ExchangeRequest,
+ options?: SecondParameter<typeof customInstance<ExchangeMoneyToPoint200>>,) => {
+      return customInstance<ExchangeMoneyToPoint200>(
+      {url: `/api/v1/wallet/exchange`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: exchangeRequest
+    },
+      options);
+    }
+
 /**
  * 휴대폰 번호로 인증번호를 발송한다.
  * @summary 인증문자 발송
@@ -629,6 +664,19 @@ const getCoordinates = (
     }
 
 /**
+ * 포인트·머니 잔액과 두 지갑을 합친 최근 거래 내역 20건을 조회한다.
+ * @summary 내 지갑 조회
+ */
+const getWallet = (
+
+ options?: SecondParameter<typeof customInstance<GetWallet200>>,) => {
+      return customInstance<GetWallet200>(
+      {url: `/api/v1/wallet`, method: 'GET'
+    },
+      options);
+    }
+
+/**
  * 로그인 한 사용자가 부르미/드리미 전환 가능한지 확인한다.
  * @summary 부르미/드리미 전환
  */
@@ -822,7 +870,9 @@ const unsubscribeOrder = (
       options);
     }
 
-return {sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,changeRole,me,getPresignedUrl,subscribe,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
+return {chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
+export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
+export type ExchangeMoneyToPointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['exchangeMoneyToPoint']>>>
 export type SendVerificationCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['sendVerificationCode']>>>
 export type VerifyCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['verifyCode']>>>
 export type SignupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['signup']>>>
@@ -863,6 +913,7 @@ export type ConfirmDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<type
 export type FindAllResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findAll']>>>
 export type SaveAddressResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['saveAddress']>>>
 export type GetCoordinatesResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getCoordinates']>>>
+export type GetWalletResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getWallet']>>>
 export type ChangeRoleResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['changeRole']>>>
 export type MeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['me']>>>
 export type GetPresignedUrlResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getPresignedUrl']>>>

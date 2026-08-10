@@ -3,13 +3,7 @@ import type { Role } from "@/shared/lib/role/RoleContext";
 
 /** 배달(드림) 라이프사이클 상태. deliveryStore·진행 화면 공용. */
 export type DeliveryStatus =
-  | "요청됨"
-  | "매칭중"
-  | "픽업중"
-  | "배송중"
-  | "완료"
-  | "취소"
-  | "사고";
+  "요청됨" | "매칭중" | "픽업중" | "배송중" | "완료" | "취소" | "사고";
 
 /**
  * 배달 1건. 활동 내역·수익 집계·진행 화면이 모두 이 엔티티에서 파생된다.
@@ -60,27 +54,6 @@ export interface AuthUser {
   email: string;
 }
 
-/** 지갑 거래 1건. */
-export interface WalletTransaction {
-  id: string;
-  icon: IconName;
-  title: string;
-  detail: string;
-  /** 부호 있는 금액(포인트/머니). */
-  amount: number;
-  /** 단위: 포인트("P") 또는 머니("₩"). */
-  unit: "P" | "₩";
-  /** 잔액이 늘어난 내역이면 true. */
-  incoming: boolean;
-}
-
-/** 지갑 잔액 + 최근 내역. walletService 응답. */
-export interface Wallet {
-  points: number;
-  money: number;
-  transactions: WalletTransaction[];
-}
-
 // ── 요청 DTO (REST 바디 모양) ──
 
 export interface LoginRequest {
@@ -106,13 +79,4 @@ export interface CreateDeliveryRequest {
   detail?: string;
   requestTag?: string;
   price: number;
-}
-
-export interface ChargeRequest {
-  amount: number;
-  method?: string;
-}
-
-export interface ConvertRequest {
-  amount: number;
 }

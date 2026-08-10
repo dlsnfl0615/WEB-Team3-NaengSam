@@ -143,7 +143,8 @@ CREATE TABLE `MONEY_TX` (
                             `created_dtm`  timestamp                               NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                             `updated_dtm`  timestamp                               NULL,
                             `type`         enum('SETTLEMENT', 'REVERSAL', 'CLAIM_ADJUSTMENT', 'EXCHANGE_OUT')  NOT NULL,
-                            `order_id`     binary(16)                              NOT NULL,
+                            -- 머니→포인트 전환(EXCHANGE_OUT)은 주문과 무관한 거래라 근거가 될 주문이 없다.
+                            `order_id`     binary(16)                              NULL,
                             `wallet_id`    binary(16)                              NOT NULL
 );
 
