@@ -10,6 +10,7 @@ import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.Charge;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
+import com.naengsam.quick.domain.delivery.dto.RoutePointDto;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.entity.Matching;
 import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
@@ -30,14 +31,18 @@ import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class BoormiService {
@@ -59,6 +64,7 @@ public class BoormiService {
     private final OrderRepository orderRepository;
     private final MatchingRepository matchingRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final ObjectMapper objectMapper;
 
     /**
      * 부르미의 주문 요청을 접수한다. 출발지/도착지 도로명주소를 좌표로 변환해 주문(ORDERS)을 생성·저장한 뒤 결제를 시작하고 매칭 큐에 등록한다.
@@ -75,7 +81,10 @@ public class BoormiService {
         requireDifferentLocation(originCoordinate, destinationCoordinate);
 
         // 요금·예상시간은 클라이언트 전송값을 신뢰하지 않고 견적과 동일한 로직으로 서버가 재계산한다.
-        Charge charge = calculatePrice(originCoordinate, destinationCoordinate, orderRequest.itemCd());
+        // 같은 카카오 응답에서 추천 이동경로 좌표도 함께 받아 주문에 저장한다(추적 지도 폴리라인용).
+        KakaoDirectionsResponseDto.Route route = kakaoDirectionsService.getRoute(originCoordinate, destinationCoordinate);
+        Charge charge = calculatePrice(route, orderRequest.itemCd());
+        String routePath = toRoutePathJson(route);
 
         UUID orderId = UUID.randomUUID();
 
@@ -93,7 +102,7 @@ public class BoormiService {
         Orders orders = Orders.create(orderId, boormiId, orderRequest.itemName(),
                 orderRequest.itemCd(), orderRequest.itemDetail(),
                 (long) charge.amount(), charge.eta(), (long) charge.distance(),
-                orderRequest.deliveryRequest(), orderRequest.imageKey(), addresses);
+                orderRequest.deliveryRequest(), orderRequest.imageKey(), addresses, routePath);
 
         orderService.createOrders(orders);
         paymentService.payWithPoint(boormiId, orderId, charge.amount());
@@ -203,7 +212,8 @@ public class BoormiService {
 
         requireDifferentLocation(origin, destination);
 
-        Charge charge = calculatePrice(origin, destination, request.itemCd());
+        KakaoDirectionsResponseDto.Route route = kakaoDirectionsService.getRoute(origin, destination);
+        Charge charge = calculatePrice(route, request.itemCd());
 
         return new ExpectedValueDto(charge.amount(), charge.eta(), charge.distance());
     }
@@ -212,19 +222,31 @@ public class BoormiService {
      * 두 좌표의 실제 도보 거리·소요시간을 카카오 길찾기로 조회한 뒤 요금과 예상시간(분)을 계산한다. 견적 조회와 주문 접수가 같은 요금을 산출하도록 공유한다. 기본 1.5km까지는 100m당 100원,
      * 초과 구간은 100m당 160원으로 과금하고 물건 유형 배율을 곱한다.
      */
-    private Charge calculatePrice(GeoPoint origin, GeoPoint destination, ItemCd itemCd) {
-        KakaoDirectionsResponseDto.Properties route = kakaoDirectionsService.getRoute(origin, destination);
+    private Charge calculatePrice(KakaoDirectionsResponseDto.Route route, ItemCd itemCd) {
+        KakaoDirectionsResponseDto.Properties properties = route.properties();
 
         //비용 계산
-        int baseDistance = Math.min(route.totalDistance(), BASE_SECTION);
-        int overDistance = Math.max(route.totalDistance() - BASE_SECTION, 0);
+        int baseDistance = Math.min(properties.totalDistance(), BASE_SECTION);
+        int overDistance = Math.max(properties.totalDistance() - BASE_SECTION, 0);
         int price = (baseDistance / UNIT_DISTANCE) * BASE_RATE
                 + (overDistance / UNIT_DISTANCE) * OVER_RATE
                 + BASE_FEE;
 
         //예상 시간
-        int eta = (int) Math.ceil(route.totalTime() / 60.0);
-        return new Charge(route.totalDistance(), (int) Math.round(price * ItemCd.multiplier(itemCd)), eta);
+        int eta = (int) Math.ceil(properties.totalTime() / 60.0);
+        return new Charge(properties.totalDistance(), (int) Math.round(price * ItemCd.multiplier(itemCd)), eta);
+    }
+
+    /**
+     * 카카오 경로의 실제 이동경로 좌표를 {@code [{latitude, longitude}, ...]} JSON 문자열로 직렬화한다. 주문에 저장해 두면 추적 지도가 폴리라인으로 그린다.
+     */
+    private String toRoutePathJson(KakaoDirectionsResponseDto.Route route) {
+        try {
+            return objectMapper.writeValueAsString(RoutePointDto.from(route));
+        } catch (JacksonException e) {
+            log.error("카카오 경로 좌표 JSON 직렬화 실패 — 경로 없이 주문을 진행한다", e);
+            return null;
+        }
     }
 
     /**
@@ -263,4 +285,3 @@ public class BoormiService {
         return new GeoPoint(new BigDecimal(address.y()), new BigDecimal(address.x()));
     }
 }
-

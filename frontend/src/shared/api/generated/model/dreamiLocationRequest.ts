@@ -8,4 +8,6 @@
 export interface DreamiLocationRequest {
   latitude?: number;
   longitude?: number;
+  /** true면 응답에 드리미→픽업지 경로·배송완료예상시간을 포함한다. 이미 받은 뒤에는 false. 생략 시 포함(하위호환). */
+  includeRoute?: boolean;
 }

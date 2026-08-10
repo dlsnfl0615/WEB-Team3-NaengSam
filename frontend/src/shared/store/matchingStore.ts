@@ -7,6 +7,7 @@ import {
   type NearbyCallDto,
   type PendingOfferDto,
 } from "@/shared/api";
+import type { Coords } from "@/shared/ui";
 
 /** 주변 콜 조회 반경(m)·최대 건수(백엔드 상한 10). */
 const NEARBY_RADIUS_M = 3000;
@@ -15,12 +16,6 @@ const NEARBY_COUNT = 10;
 const GEOLOCATION_TIMEOUT_MS = 10_000;
 /** SSE 장애 중 매칭 상태를 되찾기 위한 polling 주기(ms). */
 export const MATCHING_POLL_INTERVAL_MS = 3_000;
-
-/** 위치 API마다 필드명이 달라서(위치등록 latitude/longitude, 주변콜 lat/lng) 내부 표준형을 둔다. */
-interface Coords {
-  latitude: number;
-  longitude: number;
-}
 
 /** 백엔드 SSE `offer_popup` payload. */
 interface OfferPopupPayload {
@@ -58,10 +53,12 @@ export interface IncomingDreami {
 interface MatchingState {
   /** 드리미 온라인(콜 수신 가능) 상태. */
   online: boolean;
-  /** 온라인 전환 때 GPS로 취득한 드리미 현재 좌표. */
-  dreamiCoords: Coords | null;
+  /** 드리미 진입 시 구한 좌표(주변 콜 조회·온라인 전환에 재사용 — GPS 중복 조회 방지). */
+  myLocation: Coords | null;
   /** 주변 콜 목록. 제안 팝업의 픽업 거리 보조 데이터로도 쓴다. */
   nearbyCalls: NearbyCallDto[];
+  /** 주변 콜 조회 실패 사유(온라인 전환 메시지와는 별개 관심사). */
+  nearbyCallsError: string | null;
   pendingOffer: PendingOffer | null;
   incomingDreami: IncomingDreami | null;
   /** 마지막 오류/안내 메시지(팝업·화면에서 노출 후 clearMessage). */
@@ -81,8 +78,10 @@ interface MatchingState {
   receiveOfferError: (payload: unknown) => void;
   /** 화면 이탈·로그아웃 시 진행 중 팝업 정리. */
   clearOffers: () => void;
-  /** 드리미 진입 1회: 좌표를 한 번만 얻어 온라인 전환 → 주변 콜 조회까지 이어서 처리. */
-  startDreamiSession: () => Promise<void>;
+  /** 드리미 화면 진입 시(및 폴링 시) 실행: 좌표를 구해 주변 콜을 조회한다. 온라인 여부와 무관하게 항상 동작한다. */
+  loadNearbyCalls: () => Promise<void>;
+  /** 드리미 온라인 전환. myLocation이 있으면 재사용하고, 없으면 새로 조회한다. */
+  goOnline: () => Promise<void>;
   goOffline: () => Promise<void>;
   /** 드리미 제안 수락 → 성공 시 orderId 반환(실패 시 null). */
   acceptOffer: () => Promise<string | null>;
@@ -198,13 +197,14 @@ let syncing = false;
  * 구독하고, 수신 payload를 아래 `receive*` 액션에 넘긴다.
  *
  * 역할별 흐름:
- * - 드리미: `startDreamiSession` → `offer_popup` 수신 → `acceptOffer`/`rejectOffer`
+ * - 드리미: `loadNearbyCalls`(진입 시/폴링)·`goOnline`(시작하기) → `offer_popup` 수신 → `acceptOffer`/`rejectOffer`
  * - 부르미: 콜 등록(boormiOrderStore) → `dreami_info` 수신 → `confirmDreami`/`rejectDreami`
  */
 export const useMatchingStore = create<MatchingState>((set, get) => ({
   online: false,
-  dreamiCoords: null,
+  myLocation: null,
   nearbyCalls: [],
+  nearbyCallsError: null,
   pendingOffer: null,
   incomingDreami: null,
   message: null,
@@ -272,47 +272,55 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
 
   clearOffers: () =>
     set({
-      dreamiCoords: null,
       pendingOffer: null,
       incomingDreami: null,
     }),
 
-  startDreamiSession: async () => {
-    // 이미 온라인이면 재등록하지 않는다(서버가 "이미 등록된 드리미입니다"로 응답한다).
-    if (get().online) return;
-
-    let coords: Coords;
+  // 온라인 여부와 무관하게 화면 진입 시(및 폴링 시) 항상 실행한다. myLocation이 이미 있으면 재사용한다.
+  loadNearbyCalls: async () => {
+    let coords = get().myLocation;
     try {
-      coords = await getCurrentCoords();
-      await api.goOnline(coords);
-      set({ online: true, dreamiCoords: coords, message: null });
-    } catch (e) {
-      set({
-        online: false,
-        dreamiCoords: null,
-        message: toMessage(e, "온라인 전환에 실패했어요."),
-      });
-      return;
-    }
-
-    // 온라인 전환에 쓴 좌표를 그대로 재사용한다(위치를 다시 물어 실패하는 경로를 없앤다).
-    try {
+      if (!coords) {
+        coords = await getCurrentCoords();
+        set({ myLocation: coords });
+      }
       const { result } = await api.findNearbyCalls({
         lat: coords.latitude,
         lng: coords.longitude,
         radius: NEARBY_RADIUS_M,
         count: NEARBY_COUNT,
       });
-      set({ nearbyCalls: result ?? [] });
+      set({ nearbyCalls: result ?? [], nearbyCallsError: null });
     } catch (e) {
-      set({ message: toMessage(e, "주변 콜을 불러오지 못했어요.") });
+      set({ nearbyCallsError: toMessage(e, "주변 콜을 불러오지 못했어요.") });
+    }
+  },
+
+  goOnline: async () => {
+    // 이미 온라인이면 재등록하지 않는다(서버가 "이미 등록된 드리미입니다"로 응답한다).
+    if (get().online) return;
+
+    // loadNearbyCalls가 이미 구해둔 좌표를 재사용한다(위치를 다시 물어 실패하는 경로를 없앤다).
+    let coords = get().myLocation;
+    try {
+      if (!coords) {
+        coords = await getCurrentCoords();
+        set({ myLocation: coords });
+      }
+      await api.goOnline(coords);
+      set({ online: true, message: null });
+    } catch (e) {
+      set({
+        online: false,
+        message: toMessage(e, "온라인 전환에 실패했어요."),
+      });
     }
   },
 
   goOffline: async () => {
     try {
       await api.goOffline();
-      set({ online: false, dreamiCoords: null, pendingOffer: null });
+      set({ online: false, pendingOffer: null });
     } catch (e) {
       set({ message: toMessage(e, "오프라인 전환에 실패했어요.") });
     }

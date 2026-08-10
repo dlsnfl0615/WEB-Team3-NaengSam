@@ -25,6 +25,7 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
+import com.naengsam.quick.domain.matching.model.WaitingOrder;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
@@ -725,6 +726,70 @@ class MatchingServiceTest {
     }
 
     @Test
+    void 후보가_없어_재매칭_대기중인_그룹도_부르미가_취소하면_정상적으로_취소된다() {
+        // given (등록된 드리미가 없는 상태에서 매칭을 시작 → 후보 없음 → CLOSED, rematchRequired=true)
+        UUID orderId = UUID.randomUUID();
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+
+        matchingService.applyStartMatching(order);
+
+        OrderOfferGroup group = getOrderOfferGroups().get(orderId);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.rematchRequired()).isTrue();
+
+        // when
+        matchingService.applyCancelOrderByBoormi(orderId);
+
+        // then (재매칭 대기 상태였더라도 취소되면 rematchRequired가 false로 바뀌어야 한다)
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.rematchRequired()).isFalse();
+        assertThat(matchingService.waitingOrders())
+                .extracting(WaitingOrder::orderId)
+                .doesNotContain(orderId);
+    }
+
+    @Test
+    void waitingOrders는_OPEN과_재매칭_대상_CLOSED_그룹만_반환하고_취소된_그룹은_제외한다() {
+        // given
+        UUID openOrderId = UUID.randomUUID();
+        UUID rematchOrderId = UUID.randomUUID();
+        UUID cancelledOrderId = UUID.randomUUID();
+
+        GeoPoint location = mock(GeoPoint.class);
+
+        Orders openOrder = mock(Orders.class);
+        when(openOrder.getOrderId()).thenReturn(openOrderId);
+        Orders cancelledOrder = mock(Orders.class);
+        when(cancelledOrder.getOrderId()).thenReturn(cancelledOrderId);
+        Orders rematchOrder = mock(Orders.class);
+        when(rematchOrder.getOrderId()).thenReturn(rematchOrderId);
+
+        // 후보가 있을 때 시작 → OPEN(오퍼로 소진된 후보는 이후 주문의 후보에서 빠진다)
+        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+        matchingService.applyStartMatching(openOrder);
+
+        // 새 후보로 시작해 OPEN 상태에서 부르미가 취소 → CLOSED, rematchRequired=false
+        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+        matchingService.applyStartMatching(cancelledOrder);
+        matchingService.applyCancelOrderByBoormi(cancelledOrderId);
+
+        // 후보가 없는 채로 시작 → CLOSED, rematchRequired=true
+        matchingService.applyStartMatching(rematchOrder);
+
+        // when
+        List<UUID> waitingOrderIds =
+                matchingService.waitingOrders().stream()
+                        .map(WaitingOrder::orderId)
+                        .toList();
+
+        // then
+        assertThat(waitingOrderIds)
+                .contains(openOrderId, rematchOrderId)
+                .doesNotContain(cancelledOrderId);
+    }
+
+    @Test
     void 주문_시작하면_top3_드리미에게_각각_OFFER_POPUP을_보낸다() {
         // given
         UUID orderId = UUID.randomUUID();
@@ -933,8 +998,8 @@ class MatchingServiceTest {
     }
 
     @Test
-    void OPEN이_아닌_그룹을_취소해도_상태가_그대로_보존된다() {
-        // given
+    void 재매칭_대기중인_그룹을_취소하면_남아있는_오퍼도_회수되고_실제로_취소된다() {
+        // given (재매칭 대기 중이지만 아직 정리되지 않은 오퍼가 남아있는 상태를 가정)
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
 
@@ -952,10 +1017,10 @@ class MatchingServiceTest {
         // when
         matchingService.applyCancelOrderByBoormi(orderId);
 
-        // then (기존 상태가 그대로 보존되어야 한다)
+        // then (재매칭 대기 상태는 아직 취소 처리가 안 된 상태이므로, 남은 오퍼를 회수하고 실제로 취소해야 한다)
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
-        assertThat(group.rematchRequired()).isTrue();
-        assertThat(offer.status()).isEqualTo(MatchOfferStatus.OFFERED);
+        assertThat(group.rematchRequired()).isFalse();
+        assertThat(offer.status()).isEqualTo(MatchOfferStatus.WITHDRAWN);
         assertThat(getDreamiMap().get(dreamiId).status())
                 .isEqualTo(WaitingDreamiStatus.MATCHING);
     }
@@ -1121,6 +1186,41 @@ class MatchingServiceTest {
     void 취소할_진행중인_방이_없으면_큐에_제출되지_않고_false를_반환한다() {
         // given
         UUID orderId = UUID.randomUUID();
+
+        // when
+        boolean result = matchingService.cancelOrderByBoormi(orderId);
+
+        // then
+        assertThat(result).isFalse();
+        verify(matchingEngine, never()).submit(any());
+    }
+
+    @Test
+    void 재매칭_대기중인_방도_부르미가_취소하면_엔진_큐에_액션이_제출된다() {
+        // given (후보가 없어 CLOSED, rematchRequired=true인 상태)
+        UUID orderId = UUID.randomUUID();
+        OrderOfferGroup group =
+                new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of());
+        group.closeForRematch();
+        getOrderOfferGroups().put(orderId, group);
+        when(matchingEngine.submit(any())).thenReturn(true);
+
+        // when
+        boolean result = matchingService.cancelOrderByBoormi(orderId);
+
+        // then
+        assertThat(result).isTrue();
+        verify(matchingEngine).submit(any(CancelOrderByBoormi.class));
+    }
+
+    @Test
+    void 이미_취소된_방을_다시_취소하면_큐에_제출되지_않고_false를_반환한다() {
+        // given (부르미가 이미 취소해 CLOSED, rematchRequired=false인 상태)
+        UUID orderId = UUID.randomUUID();
+        OrderOfferGroup group =
+                new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of());
+        group.cancel();
+        getOrderOfferGroups().put(orderId, group);
 
         // when
         boolean result = matchingService.cancelOrderByBoormi(orderId);

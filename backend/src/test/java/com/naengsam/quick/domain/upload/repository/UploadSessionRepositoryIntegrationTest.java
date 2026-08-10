@@ -58,7 +58,7 @@ class UploadSessionRepositoryIntegrationTest {
         entityManager.persist(Dreami.create(dreamiId, "id-card-key", "criminal-record-key"));
 
         Orders order = Orders.create(UUID.randomUUID(), boormiId, "서류봉투", ItemCd.DOCUMENT, null,
-                5_000L, 30, null, null, null, addresses());
+                5_000L, 30, null, null, null, addresses(), null);
         entityManager.persist(order);
 
         Delivery delivery = Delivery.create(order.getOrderId(), dreamiId, boormiId);

@@ -5,8 +5,11 @@ import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
+import com.naengsam.quick.domain.order.entity.OrderCd;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.domain.payment.service.WalletService;
+import com.naengsam.quick.domain.user.dto.ActiveRole;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
 import com.naengsam.quick.domain.user.dto.SignUpRequest;
 import com.naengsam.quick.domain.user.dto.UserDto;
@@ -52,9 +55,8 @@ public class UserService {
             throw new BusinessException(AuthErrorCode.PHONE_NOT_VERIFIED);
         }
 
-        // TODO: 외부 해싱 라이브러리 없이 우선 평문 저장. 후속으로 SHA-256(MessageDigest) 등 해싱 도입 필요.
-        Boormi boormi = Boormi.create(request.email(), request.password(), request.name(), phone,
-                request.birthdate());
+        Boormi boormi = Boormi.create(request.email(), PasswordHasher.hash(request.password()),
+                request.name(), phone, request.birthdate());
         boormiRepository.save(boormi);
         walletService.createWallet(boormi.getBoormiId());
 
@@ -70,8 +72,7 @@ public class UserService {
         Boormi boormi = boormiRepository.findByEmail(request.email())
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.LOGIN_FAILED));
 
-        // TODO: 외부 해싱 라이브러리 없이 우선 평문 비교. 후속으로 SHA-256(MessageDigest) 등 해싱 도입 필요.
-        if (!boormi.getPassword().equals(request.password())) {
+        if (!PasswordHasher.matches(request.password(), boormi.getPassword())) {
             throw new BusinessException(AuthErrorCode.LOGIN_FAILED);
         }
 
@@ -101,7 +102,14 @@ public class UserService {
                     .orElse(false);
         }
 
-        return UserDto.from(boormi, flag);
+        Orders activeDreamiOrder = orderRepository.findByDreamiIdAndOrderCd(boormiId, OrderCd.IN_PROGRESS)
+                .orElse(null);
+        if (activeDreamiOrder != null) {
+            return UserDto.from(boormi, flag, ActiveRole.DREAMI, activeDreamiOrder.getOrderId());
+        }
+
+        ActiveRole activeRole = orderRepository.countActiveOrders(boormiId) > 0 ? ActiveRole.BOORMI : null;
+        return UserDto.from(boormi, flag, activeRole, null);
     }
 
     public void changeRole(UUID boormiId) {

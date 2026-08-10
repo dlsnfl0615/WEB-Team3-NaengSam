@@ -61,6 +61,12 @@ public class Delivery {
     @Column(name = "received_dtm")
     private LocalDateTime receivedDtm;
 
+    @Column(name = "route_path", columnDefinition = "TEXT")
+    private String routePath; // 드리미 위치 → 픽업지 카카오 도보 경로 JSON([{latitude, longitude}, ...]) — 픽업 전 추적 지도 폴리라인용
+
+    @Column(name = "estimated_completion_dtm")
+    private LocalDateTime estimatedCompletionDtm; // 배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta로 산출한 고정 스냅샷)
+
     // 매칭이 확정된 주문의 배달을 시작한다. PK는 앱에서 생성(BINARY(16))하며 상태는 PICKUP_NORMAL로 시작한다.
     public static Delivery create(UUID orderId, UUID dreamiId, UUID boormiId) {
         Delivery delivery = new Delivery();
@@ -75,6 +81,12 @@ public class Delivery {
     public void updateLocation(BigDecimal latitude, BigDecimal longitude) {
         this.currentLatitude = latitude;
         this.currentLongitude = longitude;
+    }
+
+    // 드리미의 첫 위치가 잡힌 뒤 계산한 '드리미→픽업지' 경로와 배송완료예상시간을 한 번에 기록한다(최초 1회만 채운다).
+    public void applyPickupRoute(String routePath, LocalDateTime estimatedCompletionDtm) {
+        this.routePath = routePath;
+        this.estimatedCompletionDtm = estimatedCompletionDtm;
     }
 
     // 픽업 완료 → 배달중 전이. 픽업/배달 시작 시각을 기록한다.

@@ -28,6 +28,9 @@ services:
     # application.properties 의 ${DATABASE_URL} 등을 이 파일 값으로 주입
     env_file:
       - .env
+    environment:
+      TZ: Asia/Seoul
+      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Seoul"
     networks:
       - symboorm
 

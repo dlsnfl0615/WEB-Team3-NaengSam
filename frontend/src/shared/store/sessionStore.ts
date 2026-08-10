@@ -25,6 +25,8 @@ function toAuthUser(dto: UserDto): AuthUser {
     email: dto.email ?? "",
     // UserDto엔 역할 목록 대신 isDreami 플래그만 온다. 부르미는 항상 보유, 드리미는 등록 시 추가.
     roles: dto.isDreami ? ["부르미", "드리미"] : ["부르미"],
+    activeRole: dto.activeRole,
+    activeOrderId: dto.activeOrderId,
     // UserDto엔 평점이 없다. 평점 API 확정 전까지 0으로 둔다(마이페이지 표시용).
     rating: 0,
   };
