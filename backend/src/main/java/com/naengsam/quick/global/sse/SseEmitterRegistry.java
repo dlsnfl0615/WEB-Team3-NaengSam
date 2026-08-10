@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
@@ -16,22 +17,22 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  * <p>연결 수/이벤트 전송량은 Micrometer 로 노출한다(Grafana 관측용). 연결 종료 카운트는 {@link #remove}와
  * {@link #disconnectAll}에서만 세는데, 둘 다 emitter를 완료시키기 전에 맵에서 먼저 제거하므로 complete →
  * onCompletion 처럼 콜백이 연쇄로 불려도 이미 제거된 뒤라 한 번만 집계된다.
+ *
+ * <p>{@link #sendHeartbeats}는 프록시/브라우저가 말없이 끊어버린 유령 연결을 정리한다. 실패한 connection 하나만
+ * 제거하며, 같은 사용자의 다른 탭까지 끊지 않는다(그건 {@link #disconnectAll}의 역할).
  */
 @Slf4j
 @Component
 public class SseEmitterRegistry {
 
-    /**
-     * SSE 연결 타임아웃. TODO: heartbeat/재연결 정책 확정 후 조정
-     */
-    private static final long TIMEOUT_MS = 60 * 60 * 1000L;
-
     private final Map<UUID, Map<String, SseEmitter>> emitters = new ConcurrentHashMap<>();
 
     private final MeterRegistry meterRegistry;
+    private final SseProperties sseProperties;
 
-    public SseEmitterRegistry(MeterRegistry meterRegistry) {
+    public SseEmitterRegistry(MeterRegistry meterRegistry, SseProperties sseProperties) {
         this.meterRegistry = meterRegistry;
+        this.sseProperties = sseProperties;
         Gauge.builder("sse.connections.active", emitters,
                         map -> map.values().stream().mapToInt(Map::size).sum())
                 .description("현재 유지 중인 SSE 연결 수")
@@ -40,7 +41,7 @@ public class SseEmitterRegistry {
 
     public SseEmitter connect(UUID userId) {
         String connectionId = UUID.randomUUID().toString();
-        SseEmitter emitter = new SseEmitter(TIMEOUT_MS);
+        SseEmitter emitter = new SseEmitter(sseProperties.connectionTimeout().toMillis());
 
         // 마지막 연결 정리와 동시에 실행되어도 새 emitter가 분리된 내부 맵에 등록되지 않도록
         // 사용자 엔트리 생성과 emitter 등록을 하나의 compute 안에서 수행한다.
@@ -105,6 +106,27 @@ public class SseEmitterRegistry {
             emitter.complete();
         });
         log.debug("사용자 SSE 연결 전체 종료: userId={}, reason={}, count={}", userId, reason, connections.size());
+    }
+
+    /**
+     * 모든 연결에 heartbeat 주석을 보내 프록시/브라우저가 타임아웃으로 끊지 않게 하고, 이미 죽은 연결을 찾아 정리한다.
+     * 데이터 없는 SSE 주석(":heartbeat")이라 클라이언트의 EventSource에는 노출되지 않는다.
+     */
+    @Scheduled(fixedRateString = "#{sseProperties.heartbeatInterval().toMillis()}")
+    public void sendHeartbeats() {
+        emitters.forEach((userId, connections) ->
+                connections.forEach((connectionId, emitter) -> sendHeartbeat(userId, connectionId, emitter)));
+    }
+
+    private void sendHeartbeat(UUID userId, String connectionId, SseEmitter emitter) {
+        try {
+            emitter.send(SseEmitter.event().comment("heartbeat"));
+        } catch (Exception e) {
+            // 실패한 connection만 제거한다. 같은 사용자의 다른 탭까지 끊으면 안 되므로 disconnectAll을 쓰지 않는다.
+            log.debug("SSE heartbeat 실패, emitter 제거: userId={}, connectionId={}", userId, connectionId, e);
+            remove(userId, connectionId, emitter, "heartbeat_failed");
+            emitter.completeWithError(e);
+        }
     }
 
     private void remove(UUID userId, String connectionId, SseEmitter emitter, String reason) {
