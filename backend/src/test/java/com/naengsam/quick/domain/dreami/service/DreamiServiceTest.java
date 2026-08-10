@@ -13,21 +13,15 @@ import static org.mockito.Mockito.verify;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
-import com.naengsam.quick.domain.delivery.entity.Delivery;
-import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
-import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
-import com.naengsam.quick.domain.dreami.dto.DreamiDeliveryHistoryResponse;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.MonthlyRevenueDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
-import com.naengsam.quick.domain.dreami.entity.DreamiReview;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRepository;
-import com.naengsam.quick.domain.dreami.repository.DreamiReviewRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
@@ -35,12 +29,14 @@ import com.naengsam.quick.domain.matching.event.DreamiAcceptedEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
-import com.naengsam.quick.domain.order.dto.OrderCursor;
+import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.entity.Role;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
 import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
@@ -79,13 +75,10 @@ class DreamiServiceTest {
     private DreamiRequestDeniedDetailsRepository dreamiRequestDeniedDetailsRepository;
 
     @Mock
-    private DreamiReviewRepository dreamiReviewRepository;
-
-    @Mock
     private OrderRepository orderRepository;
 
     @Mock
-    private DeliveryRepository deliveryRepository;
+    private OrderService orderService;
 
     @Mock
     private NearbyOrderFinder nearbyOrderFinder;
@@ -389,101 +382,18 @@ class DreamiServiceTest {
         assertThat(result.thisMonthCount()).isEqualTo(0L);
     }
 
-    // ---------- getDeliveryHistory ----------
-
-    /**
-     * 커서 테스트용 주문. delivery_request_dtm/dreami_id 는 insertable=false 등의 이유로 setter가 없으므로 리플렉션으로 강제한다.
-     */
-    private static Orders dreamiOrderAt(UUID dreamiId, LocalDateTime dtm) {
-        GeoPoint point = new GeoPoint(new BigDecimal("37.0"), new BigDecimal("127.0"));
-        Orders order = Orders.create(UUID.randomUUID(), UUID.randomUUID(), point, point);
-        ReflectionTestUtils.setField(order, "dreamiId", dreamiId);
-        ReflectionTestUtils.setField(order, "deliveryRequestDtm", dtm);
-        return order;
-    }
+    // ---------- getMyOrders ----------
 
     @Test
-    void 활동내역조회_배달과_평점이_있으면_배치조회한_상태_완료시각_평점을_dto에_채운다() {
+    void 활동내역조회_role_DREAMI로_orderService에_위임한다() {
         UUID dreamiId = UUID.randomUUID();
-        Orders order = dreamiOrderAt(dreamiId, LocalDateTime.of(2026, 8, 3, 12, 0));
-        given(orderRepository.findFirstPageByDreami(any(), anyInt())).willReturn(List.of(order));
-        LocalDateTime endDtm = LocalDateTime.of(2026, 8, 3, 12, 30);
-        Delivery delivery = Delivery.create(order.getOrderId(), dreamiId, order.getBoormiId());
-        ReflectionTestUtils.setField(delivery, "deliveryCd", DeliveryCd.DELIVERED);
-        ReflectionTestUtils.setField(delivery, "deliveryEndDtm", endDtm);
-        given(deliveryRepository.findAllByOrderIdIn(List.of(order.getOrderId()))).willReturn(List.of(delivery));
-        DreamiReview review = DreamiReview.create(order.getOrderId(), 5, "좋아요");
-        given(dreamiReviewRepository.findAllByOrderIdIn(List.of(order.getOrderId()))).willReturn(List.of(review));
+        BoormiOrdersResponse expected = BoormiOrdersResponse.of(List.of(), null, false);
+        given(orderService.getOrders(dreamiId, Role.DREAMI, null, 20, OrderCd.COMPLETED)).willReturn(expected);
 
-        DreamiDeliveryHistoryResponse response = dreamiService.getDeliveryHistory(dreamiId, null, 20);
+        BoormiOrdersResponse result = dreamiService.getMyOrders(dreamiId, null, 20, OrderCd.COMPLETED);
 
-        assertThat(response.deliveries()).hasSize(1);
-        var dto = response.deliveries().getFirst();
-        assertThat(dto.orderId()).isEqualTo(order.getOrderId());
-        assertThat(dto.deliveryCd()).isEqualTo(DeliveryCd.DELIVERED);
-        assertThat(dto.deliveryEndDtm()).isEqualTo(endDtm);
-        assertThat(dto.rating()).isEqualTo(5);
-    }
-
-    @Test
-    void 활동내역조회_배달이나_평점이_없으면_해당_필드는_null이다() {
-        UUID dreamiId = UUID.randomUUID();
-        Orders order = dreamiOrderAt(dreamiId, LocalDateTime.of(2026, 8, 3, 12, 0));
-        given(orderRepository.findFirstPageByDreami(any(), anyInt())).willReturn(List.of(order));
-        given(deliveryRepository.findAllByOrderIdIn(any())).willReturn(List.of());
-        given(dreamiReviewRepository.findAllByOrderIdIn(any())).willReturn(List.of());
-
-        DreamiDeliveryHistoryResponse response = dreamiService.getDeliveryHistory(dreamiId, null, 20);
-
-        var dto = response.deliveries().getFirst();
-        assertThat(dto.deliveryCd()).isNull();
-        assertThat(dto.deliveryEndDtm()).isNull();
-        assertThat(dto.rating()).isNull();
-    }
-
-    @Test
-    void 활동내역조회_첫_페이지_size초과분이_있으면_hasNext가_true이고_nextCursor를_반환한다() {
-        UUID dreamiId = UUID.randomUUID();
-        Orders first = dreamiOrderAt(dreamiId, LocalDateTime.of(2026, 8, 3, 12, 0));
-        Orders second = dreamiOrderAt(dreamiId, LocalDateTime.of(2026, 8, 3, 11, 0));
-        Orders overflow = dreamiOrderAt(dreamiId, LocalDateTime.of(2026, 8, 3, 10, 0));
-        given(orderRepository.findFirstPageByDreami(any(), anyInt()))
-                .willReturn(List.of(first, second, overflow));
-        given(deliveryRepository.findAllByOrderIdIn(any())).willReturn(List.of());
-        given(dreamiReviewRepository.findAllByOrderIdIn(any())).willReturn(List.of());
-
-        DreamiDeliveryHistoryResponse response = dreamiService.getDeliveryHistory(dreamiId, null, 2);
-
-        assertThat(response.deliveries()).hasSize(2);
-        assertThat(response.hasNext()).isTrue();
-        assertThat(response.nextCursor())
-                .isEqualTo(new OrderCursor(second.getDeliveryRequestDtm(), second.getOrderId()).encode());
-        then(orderRepository).should().findFirstPageByDreami(dreamiId, 3);
-    }
-
-    @Test
-    void 활동내역조회_커서가_주어지면_디코딩된_dtm과_id로_afterCursor_쿼리를_호출한다() {
-        UUID dreamiId = UUID.randomUUID();
-        LocalDateTime cursorDtm = LocalDateTime.of(2026, 8, 3, 12, 0);
-        UUID cursorId = UUID.randomUUID();
-        String cursor = new OrderCursor(cursorDtm, cursorId).encode();
-        given(orderRepository.findPageByDreamiAfterCursor(any(), any(), any(), anyInt())).willReturn(List.of());
-        given(deliveryRepository.findAllByOrderIdIn(any())).willReturn(List.of());
-        given(dreamiReviewRepository.findAllByOrderIdIn(any())).willReturn(List.of());
-
-        dreamiService.getDeliveryHistory(dreamiId, cursor, 20);
-
-        then(orderRepository).should()
-                .findPageByDreamiAfterCursor(eq(dreamiId), eq(cursorDtm), eq(cursorId), anyInt());
-    }
-
-    @Test
-    void 활동내역조회_잘못된_커서면_INVALID_CURSOR_예외() {
-        UUID dreamiId = UUID.randomUUID();
-
-        Throwable thrown = catchThrowable(() -> dreamiService.getDeliveryHistory(dreamiId, "!!!not-base64!!!", 20));
-
-        assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.INVALID_CURSOR);
+        assertThat(result).isSameAs(expected);
+        then(orderService).should().getOrders(dreamiId, Role.DREAMI, null, 20, OrderCd.COMPLETED);
     }
 
     // ---------- acceptOffer ----------

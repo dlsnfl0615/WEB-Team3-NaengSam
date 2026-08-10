@@ -2,21 +2,15 @@ package com.naengsam.quick.domain.dreami.service;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
-import com.naengsam.quick.domain.delivery.entity.Delivery;
-import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
-import com.naengsam.quick.domain.dreami.dto.DreamiDeliveryHistoryDto;
-import com.naengsam.quick.domain.dreami.dto.DreamiDeliveryHistoryResponse;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.MonthlyRevenueDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
-import com.naengsam.quick.domain.dreami.entity.DreamiReview;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRepository;
-import com.naengsam.quick.domain.dreami.repository.DreamiReviewRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
@@ -24,12 +18,14 @@ import com.naengsam.quick.domain.matching.event.DreamiAcceptedEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
-import com.naengsam.quick.domain.order.dto.OrderCursor;
+import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.entity.Role;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
 import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
@@ -50,15 +46,11 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class DreamiService {
 
-    private static final int MIN_PAGE_SIZE = 1;
-    private static final int MAX_PAGE_SIZE = 100;
-
     private final DreamiRepository dreamiRepository;
     private final BoormiRepository boormiRepository;
     private final DreamiRequestDeniedDetailsRepository dreamiRequestDeniedDetailsRepository;
-    private final DreamiReviewRepository dreamiReviewRepository;
     private final OrderRepository orderRepository;
-    private final DeliveryRepository deliveryRepository;
+    private final OrderService orderService;
     private final NearbyOrderFinder nearbyOrderFinder;
     private final MatchingService matchingService;
     private final MoneyTxRepository moneyTxRepository;
@@ -218,6 +210,14 @@ public class DreamiService {
                 thisMonthCount, recentSixMonths);
     }
 
+    /**
+     * 드리미가 수행한(수행 중인) 배달을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하다.
+     */
+    @Transactional(readOnly = true)
+    public BoormiOrdersResponse getMyOrders(UUID dreamiId, String cursor, int size, OrderCd status) {
+        return orderService.getOrders(dreamiId, Role.DREAMI, cursor, size, status);
+    }
+
     private long amountOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {
         MonthlyMoneyAggregate aggregate = byMonth.get(month);
         return aggregate == null ? 0 : aggregate.totalAmount();
@@ -228,49 +228,4 @@ public class DreamiService {
         return aggregate == null ? 0 : aggregate.count();
     }
 
-    /**
-     * 드리미 활동 내역을 최신순 커서 페이지네이션으로 조회한다. 다음 페이지 존재 여부는 size+1 개를 조회해 판단하고, 초과분은 잘라낸 뒤 마지막 항목으로 다음 커서를 만든다.
-     * 배달 상태·완료 시각(Delivery)·평점(DreamiReview)은 이번 페이지 주문들의 orderId로 한 번에 배치 조회해 N+1 쿼리를 피한다.
-     */
-    @Transactional(readOnly = true)
-    public DreamiDeliveryHistoryResponse getDeliveryHistory(UUID dreamiId, String cursor, int size) {
-        // size가 MIN_PAGE_SIZE보다 작으면 size=MIN_PAGE_SIZE
-        // size가 MAX_PAGE_SIZE보다 크면 size=MAX_PAGE_SIZE
-        int pageSize = Math.clamp(size, MIN_PAGE_SIZE, MAX_PAGE_SIZE);
-
-        List<Orders> rows;
-        if (cursor == null) { // 첫번째 페이지면
-            rows = orderRepository.findFirstPageByDreami(dreamiId, pageSize + 1); // size보다 하나 더 요청해서 다음 읽을 게 있는지 확인
-        } else {
-            OrderCursor decoded = OrderCursor.decode(cursor);
-            rows = orderRepository.findPageByDreamiAfterCursor(
-                    dreamiId, decoded.dtm(), decoded.orderId(), pageSize + 1);
-        }
-
-        boolean hasNext = rows.size() > pageSize;
-        List<Orders> page = hasNext ? rows.subList(0, pageSize) : rows; // 아까 위에서 하나 더 요청했기 때문에 이거는 버려야 함
-
-        String nextCursor = null;
-        if (hasNext) {
-            Orders last = page.getLast();
-            nextCursor = new OrderCursor(last.getDeliveryRequestDtm(), last.getOrderId()).encode();
-        }
-
-        // 이번 페이지에 보여줄 주문들의 orderId만 추출
-        List<UUID> orderIds = page.stream().map(Orders::getOrderId).toList();
-
-        // 배치 조회를 통해 쿼리 하나로 20개 주문의 Delivery 객체 가져옴
-        Map<UUID, Delivery> deliveryByOrderId = deliveryRepository.findAllByOrderIdIn(orderIds).stream()
-                .collect(Collectors.toMap(Delivery::getOrderId, delivery -> delivery)); // key: orderId, value: delivery 객체
-        Map<UUID, DreamiReview> reviewByOrderId = dreamiReviewRepository.findAllByOrderIdIn(orderIds).stream()
-                .collect(Collectors.toMap(DreamiReview::getOrderId, review -> review));
-
-        // 주문 20개를 다시 순회하면서 dto 생성
-        List<DreamiDeliveryHistoryDto> deliveries = page.stream()
-                .map(order -> DreamiDeliveryHistoryDto.of(order, deliveryByOrderId.get(order.getOrderId()),
-                        reviewByOrderId.get(order.getOrderId())))
-                .toList();
-
-        return DreamiDeliveryHistoryResponse.of(deliveries, nextCursor, hasNext);
-    }
 }

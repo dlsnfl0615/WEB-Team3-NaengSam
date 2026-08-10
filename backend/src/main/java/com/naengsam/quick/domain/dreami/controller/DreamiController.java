@@ -1,7 +1,6 @@
 package com.naengsam.quick.domain.dreami.controller;
 
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
-import com.naengsam.quick.domain.dreami.dto.DreamiDeliveryHistoryResponse;
 import com.naengsam.quick.domain.dreami.dto.DreamiOnlineRequest;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
@@ -11,7 +10,9 @@ import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
@@ -107,14 +108,15 @@ public class DreamiController {
 
     @Operation(summary = "드리미 활동 내역 조회",
             description = "로그인한 드리미가 수행한(수행 중인) 배달을 최신순 커서 페이지네이션으로 조회한다. "
-                    + "cursor 는 이전 응답의 nextCursor 를 그대로 넘긴다.")
+                    + "status 로 단일 상태 필터링이 가능하며, cursor 는 이전 응답의 nextCursor 를 그대로 넘긴다.")
     @GetMapping("/deliveries")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"INVALID_CURSOR"})
-    public DreamiDeliveryHistoryResponse getDeliveryHistory(
+    public BoormiOrdersResponse getDreamiOrders(
             @LoginUser UUID dreamiId,
             @RequestParam(required = false) String cursor,
-            @RequestParam(defaultValue = "20") int size) {
-        return dreamiService.getDeliveryHistory(dreamiId, cursor, size);
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) OrderCd status) {
+        return dreamiService.getMyOrders(dreamiId, cursor, size, status);
     }
 }
