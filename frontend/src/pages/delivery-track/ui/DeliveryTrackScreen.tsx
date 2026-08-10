@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Button,
@@ -11,7 +11,11 @@ import {
   DeliveryRouteMap,
 } from "@/shared/ui";
 import { api, isApiError, DeliveryStatusResponseDtoStatus } from "@/shared/api";
-import type { DeliveryStatusResponseDto } from "@/shared/api";
+import type {
+  DeliveryStatusResponseDto,
+  DreamiLocationResponseDto,
+  RoutePointDto,
+} from "@/shared/api";
 import {
   recallDeliveryStage,
   rememberDeliveryStage,
@@ -19,8 +23,19 @@ import {
   useDeliveryDetailGate,
   useSse,
   useDreamiLocationBroadcast,
+  formatArrivalTime,
   type SseHandlers,
 } from "@/shared/lib";
+
+/** 좌표가 온전한 점만 골라 지도 폴리라인용 배열로 변환한다. */
+function onlyValidCoords(points: RoutePointDto[] | undefined) {
+  return points
+    ?.filter(
+      (p): p is { latitude: number; longitude: number } =>
+        p.latitude != null && p.longitude != null,
+    )
+    .map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
+}
 import { ROUTES } from "@/shared/config/routes";
 import {
   useActiveDelivery,
@@ -54,11 +69,30 @@ export function DeliveryTrackScreen() {
     block: blockDeliveryDetail,
   } = useDeliveryDetailGate(orderId, { enabled: isRealMode });
 
+  // 서버가 위치 전송 응답으로 내려준 '드리미→픽업지' 경로·배송완료예상시간을 담아둔다.
+  // 아직 경로가 없는 동안에만 includeRoute=true로 요청하고, 한 번 받으면 false가 돼 이후엔 좌표를 중복 수신하지 않는다.
+  const [livePickupRoute, setLivePickupRoute] = useState<RoutePointDto[]>();
+  const [liveCompletionTime, setLiveCompletionTime] = useState<string>();
+  const includeRoute = livePickupRoute === undefined;
+  const handleLocationResult = useCallback(
+    (result: DreamiLocationResponseDto | undefined) => {
+      if (!result) return;
+      // 이미 담아둔 값이 있으면 유지한다(같은 좌표 배열로 다시 세팅하면 폴리라인이 깜빡이므로 한 번만 반영).
+      const route = result.deliveryRoutePath;
+      if (route?.length) setLivePickupRoute((prev) => prev ?? route);
+      const completion = result.estimatedCompletionTime;
+      if (completion) setLiveCompletionTime((prev) => prev ?? completion);
+    },
+    [],
+  );
+
   // 실 모드(드리미)에서만 현재 GPS 위치를 5초 주기로 백엔드에 전송한다(픽업중·배송중 모두 커버).
-  // 반환된 최신 좌표는 이 화면 지도에도 표시한다.
+  // 반환된 최신 좌표는 이 화면 지도에도 표시하고, 전송 응답(경로·배송완료예상시간)은 위 콜백으로 받아 화면에 반영한다.
   // 이 position은 서버에서 반환하는게 아니라, 브라우저에서 측정한 GPS 값임
   const { position } = useDreamiLocationBroadcast(orderId, {
     enabled: isRealMode && detailReady,
+    includeRoute,
+    onResult: handleLocationResult,
   });
   const active = useActiveDelivery();
   const advance = useDeliveryStore((s) => s.advance);
@@ -81,13 +115,16 @@ export function DeliveryTrackScreen() {
         }
       : undefined;
   const destAddress = detail?.destinationAddressLine1;
-  // 백엔드가 내려준 카카오 추천 이동경로. 좌표가 온전한 점만 골라 지도 폴리라인에 넘긴다.
-  const routePath = detail?.routePath
-    ?.filter(
-      (p): p is { latitude: number; longitude: number } =>
-        p.latitude != null && p.longitude != null,
-    )
-    .map((p) => ({ latitude: p.latitude, longitude: p.longitude }));
+  // 지도 폴리라인용 경로. 리렌더(위치 갱신 등)마다 새 배열을 만들면 폴리라인이 다시 그려지므로 useMemo로 참조를 고정한다.
+  // 픽업 전에는 드리미→픽업지(Delivery, 위치 전송 응답이 오면 그 값 우선), 픽업 후에는 픽업지→도착지(Order) 경로를 쓴다.
+  const orderRoutePath = useMemo(
+    () => onlyValidCoords(detail?.routePath),
+    [detail?.routePath],
+  );
+  const deliveryRoutePath = useMemo(
+    () => onlyValidCoords(livePickupRoute ?? detail?.deliveryRoutePath),
+    [livePickupRoute, detail?.deliveryRoutePath],
+  );
 
   // 픽업 취소 확인 모달 상태
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -140,8 +177,12 @@ export function DeliveryTrackScreen() {
   const { title, action, cancelable } = TRACK_STAGES[stage];
 
   const destination = destAddress ?? active?.dropoff ?? "A동 102호";
-  const eta = active?.eta ?? "3분";
-  const distance = active?.distance ?? "450m";
+  // 픽업 전엔 드리미→픽업지, 픽업 후엔 픽업지→도착지 경로를 그린다(실 모드에서만; mock 모드는 경로 없음).
+  const route = isPickup ? deliveryRoutePath : orderRoutePath;
+  // 배송완료예상시간은 위치 전송 응답으로 받은 값을 우선 쓰고, 없으면 상세 조회 값으로 대체한다.
+  const arrivalTime = formatArrivalTime(
+    liveCompletionTime ?? detail?.estimatedCompletionTime,
+  );
 
   const onAction = async () => {
     if (!detailReady) return;
@@ -201,14 +242,14 @@ export function DeliveryTrackScreen() {
         <MapCard
           flat
           height={440}
-          overlay={<TrackOverlay eta={eta} distance={distance} />}
+          overlay={<TrackOverlay arrivalTime={arrivalTime} />}
         >
           <DeliveryRouteMap
             flat
             pickup={pickup}
             dropoff={dropoff}
             driver={position ?? undefined}
-            route={routePath}
+            route={route}
             height={440}
           />
         </MapCard>

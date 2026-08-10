@@ -1,6 +1,6 @@
 import { Card, IconChip } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
-import type { WalletTransaction } from "@/shared/mock/types";
+import type { WalletTransaction } from "@/shared/store/walletAdapter";
 
 export interface HistoryItemProps {
   history: WalletTransaction;

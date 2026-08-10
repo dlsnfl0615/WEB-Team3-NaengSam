@@ -46,8 +46,9 @@ public class MoneyTx {
     @Column(name = "updated_dtm")
     private LocalDateTime updatedDtm;
 
+    // 전환(EXCHANGE_OUT)은 주문과 무관한 거래라 근거가 될 주문이 없어 null 이다.
     @JdbcTypeCode(SqlTypes.BINARY)
-    @Column(name = "order_id", columnDefinition = "BINARY(16)", nullable = false)
+    @Column(name = "order_id", columnDefinition = "BINARY(16)")
     private UUID orderId;
 
     @JdbcTypeCode(SqlTypes.BINARY)
@@ -66,6 +67,15 @@ public class MoneyTx {
         moneyTx.amount = amount;
         moneyTx.orderId = orderId;
         moneyTx.createdDtm = LocalDateTime.now();
+        return moneyTx;
+    }
+
+    /**
+     * 확정 상태로 시작하는 머니 거래를 생성한다. 정산과 달리 전환(EXCHANGE_OUT)은 요청 시점에 잔액이 바로 빠지므로 PENDING 을 거치지 않는다.
+     */
+    public static MoneyTx createSettled(UUID walletId, MoneyTxTypeCd type, Long amount, UUID orderId) {
+        MoneyTx moneyTx = create(walletId, type, amount, orderId);
+        moneyTx.status = MoneyTxStatusCd.SETTLED;
         return moneyTx;
     }
 }

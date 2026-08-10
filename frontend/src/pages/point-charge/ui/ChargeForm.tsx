@@ -1,27 +1,44 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button, Card, RadioOption, TextField } from "@/shared/ui";
+import { isApiError } from "@/shared/api";
 import { useWalletStore } from "@/shared/store/walletStore";
 
 const QUICK_AMOUNTS = [1000, 5000, 10000];
+
+/** 백엔드 PointChargeRequest 제약(@Min/@Max)과 맞춘 충전 한도. */
+const MIN_AMOUNT = 1000;
+const MAX_AMOUNT = 1000000;
 
 /** 카드 결제로 포인트를 충전하는 본문. */
 export function ChargeForm() {
   const navigate = useNavigate();
   const currentPoints = useWalletStore((s) => s.points);
   const charge = useWalletStore((s) => s.charge);
+  const load = useWalletStore((s) => s.load);
   const [amount, setAmount] = useState(5000);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const add = (value: number) => setAmount((prev) => prev + value);
+  // 지갑 화면을 거치지 않고 들어와도 "현재 보유" 포인트를 보여주기 위해 한 번 조회한다.
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const add = (value: number) =>
+    setAmount((prev) => Math.min(prev + value, MAX_AMOUNT));
   const formatted = amount.toLocaleString();
+  const outOfRange = amount < MIN_AMOUNT || amount > MAX_AMOUNT;
 
   const onCharge = async () => {
     setSubmitting(true);
+    setError(null);
     try {
       await charge(amount);
       navigate(-1);
-    } finally {
+    } catch (e) {
+      // 충전에 실패하면 화면에 머물러 사유를 보여준다.
+      setError(isApiError(e) ? e.message : "충전에 실패했어요.");
       setSubmitting(false);
     }
   };
@@ -55,6 +72,11 @@ export function ChargeForm() {
             </Button>
           ))}
         </div>
+
+        <p className="text-2xs text-muted">
+          {MIN_AMOUNT.toLocaleString()}원 ~ {MAX_AMOUNT.toLocaleString()}원까지
+          충전할 수 있어요.
+        </p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -73,10 +95,12 @@ export function ChargeForm() {
         </div>
       </Card>
 
+      {error && <p className="text-sm text-status-danger">{error}</p>}
+
       <Button
         variant="navy"
         block
-        disabled={amount === 0 || submitting}
+        disabled={outOfRange || submitting}
         onClick={onCharge}
       >
         {submitting ? "결제 중…" : `${formatted}원 결제하고 충전`}

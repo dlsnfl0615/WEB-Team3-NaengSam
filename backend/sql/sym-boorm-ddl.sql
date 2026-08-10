@@ -143,7 +143,8 @@ CREATE TABLE `MONEY_TX` (
                             `created_dtm`  timestamp                               NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                             `updated_dtm`  timestamp                               NULL,
                             `type`         enum('SETTLEMENT', 'REVERSAL', 'CLAIM_ADJUSTMENT', 'EXCHANGE_OUT')  NOT NULL,
-                            `order_id`     binary(16)                              NOT NULL,
+                            -- 머니→포인트 전환(EXCHANGE_OUT)은 주문과 무관한 거래라 근거가 될 주문이 없다.
+                            `order_id`     binary(16)                              NULL,
                             `wallet_id`    binary(16)                              NOT NULL
 );
 
@@ -271,8 +272,13 @@ CREATE TABLE `DELIVERY` (
                             `picked_up_dtm`       timestamp   NULL,
                             `delivery_start_dtm`  timestamp   NULL,
                             `delivery_end_dtm`    timestamp   NULL,
-                            `received_dtm`        timestamp   NULL
+                            `received_dtm`        timestamp   NULL,
+                            `route_path`          text        NULL      COMMENT '드리미 위치→픽업지 카카오 도보 경로 좌표 JSON([{latitude, longitude}, ...])',
+                            `estimated_completion_dtm` timestamp NULL    COMMENT '배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta)'
 );
+-- 이미 배포된 DB에는 위 CREATE 대신 아래 ALTER 로 컬럼을 추가한다.
+-- ALTER TABLE `DELIVERY` ADD COLUMN `route_path` text NULL COMMENT '드리미 위치→픽업지 카카오 도보 경로 좌표 JSON([{latitude, longitude}, ...])';
+-- ALTER TABLE `DELIVERY` ADD COLUMN `estimated_completion_dtm` timestamp NULL COMMENT '배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta)';
 
 CREATE TABLE `DELIVERY_ACCIDENT` (
                                      `accident_id`       binary(16)   NOT NULL,

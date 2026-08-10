@@ -5,8 +5,11 @@ import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
+import com.naengsam.quick.domain.order.entity.OrderCd;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.domain.payment.service.WalletService;
+import com.naengsam.quick.domain.user.dto.ActiveRole;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
 import com.naengsam.quick.domain.user.dto.SignUpRequest;
 import com.naengsam.quick.domain.user.dto.UserDto;
@@ -99,7 +102,14 @@ public class UserService {
                     .orElse(false);
         }
 
-        return UserDto.from(boormi, flag);
+        Orders activeDreamiOrder = orderRepository.findByDreamiIdAndOrderCd(boormiId, OrderCd.IN_PROGRESS)
+                .orElse(null);
+        if (activeDreamiOrder != null) {
+            return UserDto.from(boormi, flag, ActiveRole.DREAMI, activeDreamiOrder.getOrderId());
+        }
+
+        ActiveRole activeRole = orderRepository.countActiveOrders(boormiId) > 0 ? ActiveRole.BOORMI : null;
+        return UserDto.from(boormi, flag, activeRole, null);
     }
 
     public void changeRole(UUID boormiId) {

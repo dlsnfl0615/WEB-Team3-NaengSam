@@ -29,6 +29,10 @@ export interface DeliveryDetailResponseDto {
   destinationAddressLine1?: string;
   /** 물건 이름 */
   itemName?: string;
-  /** 카카오 추천 도보 이동경로 좌표 목록(지도 폴리라인용). 경로 정보가 없으면 빈 배열 */
+  /** 픽업지→도착지 카카오 추천 도보 경로 좌표 목록(픽업 후 지도 폴리라인용). 경로 정보가 없으면 빈 배열 */
   routePath?: RoutePointDto[];
+  /** 드리미 위치→픽업지 카카오 추천 도보 경로 좌표 목록(픽업 전 지도 폴리라인용). 아직 계산 전이면 빈 배열 */
+  deliveryRoutePath?: RoutePointDto[];
+  /** 배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta). 아직 계산 전이면 null */
+  estimatedCompletionTime?: string;
 }

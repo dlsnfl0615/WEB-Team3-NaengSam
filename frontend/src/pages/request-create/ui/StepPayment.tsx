@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Button, Card } from "@/shared/ui";
 import type { ExpectedValueDto } from "@/shared/api";
+import { useWalletStore } from "@/shared/store/walletStore";
 import type { RequestForm } from "./types";
 
 export interface StepPaymentProps {
@@ -12,6 +14,13 @@ export interface StepPaymentProps {
 
 /** 스텝 4: 결제 — 결제 예정 금액·보유 포인트 요약. */
 export function StepPayment({ form, estimate, onCharge }: StepPaymentProps) {
+  const points = useWalletStore((s) => s.points);
+  const load = useWalletStore((s) => s.load);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
   const sizeLabel = form.itemSize === "S" ? "소형 (S)" : "중형 (M)";
   const fareLabel =
     estimate?.expectedValue != null
@@ -42,7 +51,9 @@ export function StepPayment({ form, estimate, onCharge }: StepPaymentProps) {
 
         <div className="flex flex-col gap-1">
           <p className="text-center text-xs text-track">보유 포인트</p>
-          <p className="text-xl font-bold text-white">12,400 P</p>
+          <p className="text-xl font-bold text-white">
+            {points.toLocaleString()} P
+          </p>
         </div>
 
         <Button variant="primary" block arrow onClick={onCharge}>

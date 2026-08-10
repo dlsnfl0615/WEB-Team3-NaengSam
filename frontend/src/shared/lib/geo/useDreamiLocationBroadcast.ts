@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/shared/api";
+import { api, type DreamiLocationResponseDto } from "@/shared/api";
 
 /** 드리미 위치 전송 주기(ms). 백엔드 권장 5~10초 중 5초. */
 export const LOCATION_BROADCAST_INTERVAL_MS = 5000;
@@ -9,6 +9,16 @@ export interface UseDreamiLocationBroadcastOptions {
   enabled?: boolean;
   /** 전송 주기(ms). 기본 LOCATION_BROADCAST_INTERVAL_MS. */
   intervalMs?: number;
+  /**
+   * true면 서버가 응답에 '드리미→픽업지' 경로·배송완료예상시간을 담아 준다. 아직 값이 없는 동안 true로 보내고,
+   * 한 번 받으면 false로 바꿔 좌표 배열을 매 전송마다 중복 수신하지 않게 한다. 기본 false.
+   */
+  includeRoute?: boolean;
+  /**
+   * 위치 전송이 성공할 때마다 서버 응답(드리미→픽업지 경로·배송완료예상시간)을 전달한다.
+   * includeRoute=true인 동안 이 콜백으로 값을 받아 화면을 갱신하면 별도 재조회가 필요 없다.
+   */
+  onResult?: (result: DreamiLocationResponseDto | undefined) => void;
 }
 
 export interface DreamiLocationBroadcastState {
@@ -25,8 +35,8 @@ export interface DreamiLocationBroadcastState {
  * - `enabled && orderId`일 때만 동작한다. 마운트 즉시 `watchPosition`으로 권한 프롬프트를
  *   띄우고 최신 좌표를 유지한다(`enableHighAccuracy`). 전송 tick은 stale closure를 피하려 ref를 읽고,
  *   화면 지도 표시용으로는 같은 좌표를 state(`position`)로도 노출한다.
- * - `intervalMs`마다 최신 좌표를 `POST .../dreami-location`으로 보낸다. 아직 fix가 없으면 그 tick은 건너뛰고,
- *   응답(`result`)은 사용하지 않는다(void 취급). 전송 실패는 조용히 로그만 남긴다.
+ * - 첫 fix는 즉시 `POST .../dreami-location`으로 보내고, 그 다음부터 `intervalMs`마다 최신 좌표를 보낸다.
+ *   응답(`result`)은 `onResult`로 전달하고, 전송 실패는 조용히 로그만 남긴다.
  * - unmount/`enabled=false`/`orderId` 변경 시 `clearWatch` + `clearInterval`로 정리한다.
  * - geolocation 미지원/거부 시 폴백 없이 로그만 남기고, 오류는 반환값(`error`)으로 노출한다.
  *
@@ -38,6 +48,13 @@ export function useDreamiLocationBroadcast(
 ): DreamiLocationBroadcastState {
   const { enabled = true, intervalMs = LOCATION_BROADCAST_INTERVAL_MS } =
     options;
+  // 전송 tick(interval)은 stale closure를 피하려 ref로 최신 콜백·플래그를 읽는다(useSse의 ref-최신화 패턴과 동일).
+  const onResultRef = useRef(options.onResult);
+  const includeRouteRef = useRef(options.includeRoute);
+  useEffect(() => {
+    onResultRef.current = options.onResult;
+    includeRouteRef.current = options.includeRoute;
+  });
   // 권한 거부 등 런타임 오류만 state로 둔다(async 콜백에서만 갱신). 미지원 여부는 렌더 중 파생값으로 계산.
   const [permissionError, setPermissionError] = useState<string | null>(null);
   // 화면 지도 표시용 최신 좌표(state). 전송 tick은 아래 ref를 읽는다.
@@ -66,6 +83,27 @@ export function useDreamiLocationBroadcast(
 
     lastFixRef.current = null;
 
+    let sentInitialFix = false;
+    let requestInFlight = false;
+    let timer: number | null = null;
+
+    const sendLocation = (fix: { latitude: number; longitude: number }) => {
+      if (requestInFlight) return;
+      requestInFlight = true;
+      api
+        .updateDreamiLocation(orderId, {
+          ...fix,
+          includeRoute: includeRouteRef.current ?? false,
+        })
+        .then((res) => onResultRef.current?.(res.result))
+        .catch((e) => {
+          console.warn("[dreami-location] 전송 실패:", e);
+        })
+        .finally(() => {
+          requestInFlight = false;
+        });
+    };
+
     // 마운트 즉시 watchPosition으로 권한 프롬프트를 강제하고 최신 좌표를 ref에 유지한다.
     const watchId = navigator.geolocation.watchPosition(
       (pos) => {
@@ -76,6 +114,16 @@ export function useDreamiLocationBroadcast(
         };
         lastFixRef.current = fix; // 최신 값 보관 (전송용)
         setPosition(fix); // 드리미가 사용할 position값 갱신
+
+        // 첫 GPS 좌표는 타이머를 기다리지 않고 즉시 보낸 뒤, 이 시점부터 주기 전송을 시작한다.
+        if (!sentInitialFix) {
+          sentInitialFix = true;
+          sendLocation(fix);
+          timer = window.setInterval(() => {
+            const latestFix = lastFixRef.current;
+            if (latestFix) sendLocation(latestFix);
+          }, intervalMs);
+        }
       },
       (err) => {
         setPermissionError(err.message || "위치 권한이 거부됐어요.");
@@ -84,18 +132,10 @@ export function useDreamiLocationBroadcast(
       { enableHighAccuracy: true },
     );
 
-    // 주기적으로 최신 좌표를 !!서버에!! 전송한다. 아직 fix가 없으면 그 tick은 건너뛴다.
-    const timer = window.setInterval(() => {
-      const fix = lastFixRef.current;
-      if (!fix) return;
-      api.updateDreamiLocation(orderId, fix).catch((e) => {
-        console.warn("[dreami-location] 전송 실패:", e);
-      });
-    }, intervalMs);
-
+    // 화면을 벗어나면 GPS 감시와 주기 전송을 함께 중단한다.
     return () => {
       navigator.geolocation.clearWatch(watchId);
-      clearInterval(timer);
+      if (timer !== null) clearInterval(timer);
     };
   }, [enabled, orderId, supported, intervalMs]);
 
