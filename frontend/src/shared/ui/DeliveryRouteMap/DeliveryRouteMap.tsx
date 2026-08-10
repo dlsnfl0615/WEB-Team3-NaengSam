@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { loadKakaoMaps } from "@/shared/lib";
 import { cn } from "@/shared/lib/cn";
-import { pinImage } from "./pinImage";
+import { pinImageSrc } from "./pinImage";
 
 /** 위·경도 좌표쌍. */
 export interface Coords {
@@ -27,6 +27,13 @@ export interface DeliveryRouteMapProps {
 }
 
 type Role = "pickup" | "dropoff" | "driver";
+type KakaoMap = ReturnType<typeof window.kakao.maps.Map>;
+type KakaoLatLng = ReturnType<typeof window.kakao.maps.LatLng>;
+
+interface DeliveryPinOverlay {
+  setMap(map: KakaoMap | null): void;
+  setPosition(position: KakaoLatLng): void;
+}
 
 /** 역할별 핀 색(theme.css 토큰 hex 재사용)·라벨 텍스트·라벨 배경(토큰 유틸). */
 const ROLE: Record<Role, { color: string; label: string; bg: string }> = {
@@ -35,53 +42,84 @@ const ROLE: Record<Role, { color: string; label: string; bg: string }> = {
   driver: { color: "#b26a00", label: "드리미", bg: "bg-status-warning" }, // status-warning
 };
 
-/** 핀 위에 뜨는 작은 역할 라벨 CustomOverlay를 만든다(핀 높이 40px 위로 띄움). */
-function makeLabel(
+/** 핀과 역할 라벨을 하나의 AbstractOverlay로 만든다. */
+function makePinOverlay(
   kakao: typeof window.kakao,
-  position: ReturnType<typeof window.kakao.maps.LatLng>,
+  map: KakaoMap,
+  position: KakaoLatLng,
   role: Role,
-  label: string, // 핀 위에 뜨는 라벨 문자열
-) {
-  const content = document.createElement("div");
-  content.className = cn(
+  label: string,
+): DeliveryPinOverlay {
+  const root = document.createElement("div");
+  root.className =
+    "pointer-events-none absolute flex flex-col items-center gap-0.5 whitespace-nowrap";
+  root.style.transform = "translate(-50%, -100%)";
+
+  const labelElement = document.createElement("div");
+  labelElement.className = cn(
     "rounded-pill px-1.5 py-0.5 text-2xs font-semibold text-white shadow-card",
     ROLE[role].bg,
   );
-  content.textContent = label;
-  content.style.transform = "translateY(-46px)"; // 핀(40px) 위로 라벨을 올린다
-  return new kakao.maps.CustomOverlay({
-    position,
-    content,
-    xAnchor: 0.5,
-    yAnchor: 0.5,
-  });
+  labelElement.textContent = label;
+
+  const pin = document.createElement("span");
+  pin.setAttribute("aria-hidden", "true");
+  pin.style.width = "30px";
+  pin.style.height = "40px";
+  pin.style.backgroundImage = `url("${pinImageSrc(ROLE[role].color)}")`;
+  pin.style.backgroundPosition = "center";
+  pin.style.backgroundRepeat = "no-repeat";
+  pin.style.backgroundSize = "contain";
+
+  root.append(labelElement, pin);
+
+  class PinOverlay extends kakao.maps.AbstractOverlay {
+    private position = position;
+
+    onAdd() {
+      this.getPanels().overlayLayer.appendChild(root);
+    }
+
+    draw() {
+      const point = this.getProjection().pointFromCoords(this.position);
+      root.style.left = `${point.x}px`;
+      root.style.top = `${point.y}px`;
+    }
+
+    onRemove() {
+      root.remove();
+    }
+
+    setMap(nextMap: KakaoMap | null) {
+      super.setMap(nextMap);
+    }
+
+    setPosition(nextPosition: KakaoLatLng) {
+      this.position = nextPosition;
+      if (this.getMap()) this.draw();
+    }
+  }
+
+  const overlay = new PinOverlay();
+  overlay.setMap(map);
+  return overlay;
 }
 
-/** 마커+라벨을 처음이면 생성하고, 이미 있으면 위치만 옮긴다. */
+/** 핀 오버레이를 처음이면 생성하고, 이미 있으면 위치만 옮긴다. */
 function upsertMarker(
   kakao: typeof window.kakao,
-  map: ReturnType<typeof window.kakao.maps.Map>,
-  store: { marker?: unknown; overlay?: unknown },
+  map: KakaoMap,
+  store: { overlay?: DeliveryPinOverlay },
   role: Role,
   coords: Coords,
   label: string,
 ) {
   const pos = new kakao.maps.LatLng(coords.latitude, coords.longitude);
-  if (store.marker) {
-    (store.marker as ReturnType<typeof kakao.maps.Marker>).setPosition(pos);
-    (store.overlay as ReturnType<typeof kakao.maps.CustomOverlay>)?.setPosition(
-      pos,
-    );
+  if (store.overlay) {
+    store.overlay.setPosition(pos);
     return;
   }
-  store.marker = new kakao.maps.Marker({
-    map,
-    position: pos,
-    image: pinImage(kakao, ROLE[role].color),
-  });
-  const overlay = makeLabel(kakao, pos, role, label);
-  overlay.setMap(map);
-  store.overlay = overlay;
+  store.overlay = makePinOverlay(kakao, map, pos, role, label);
 }
 
 /**
@@ -100,10 +138,12 @@ export function DeliveryRouteMap({
 }: DeliveryRouteMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const kakaoRef = useRef<typeof window.kakao | null>(null);
-  const mapRef = useRef<ReturnType<typeof window.kakao.maps.Map> | null>(null);
-  const storeRef = useRef<Record<Role, { marker?: unknown; overlay?: unknown }>>(
-    { pickup: {}, dropoff: {}, driver: {} },
-  );
+  const mapRef = useRef<KakaoMap | null>(null);
+  const storeRef = useRef<Record<Role, { overlay?: DeliveryPinOverlay }>>({
+    pickup: {},
+    dropoff: {},
+    driver: {},
+  });
   const routeLineRef = useRef<unknown>(null);
   const didFitRef = useRef(false);
   const [status, setStatus] = useState<"loading" | "ready" | "disabled">(
@@ -133,6 +173,9 @@ export function DeliveryRouteMap({
 
     return () => {
       cancelled = true;
+      Object.values(storeRef.current).forEach(({ overlay }) =>
+        overlay?.setMap(null),
+      );
       kakaoRef.current = null;
       mapRef.current = null;
       storeRef.current = { pickup: {}, dropoff: {}, driver: {} };
