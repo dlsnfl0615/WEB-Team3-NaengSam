@@ -43,5 +43,5 @@ export function useSse(handlers: SseHandlers, options: UseSseOptions = {}): SseS
     };
   }, [enabled, context]);
 
-  return { connected: context.connected };
+  return { connected: context.connected, status: context.status };
 }

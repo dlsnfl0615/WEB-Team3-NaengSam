@@ -7,6 +7,7 @@ import "./app/styles/App.css";
 import App from "./app/App";
 import { RoleProvider } from "./shared/lib/role/RoleProvider";
 import { SseProvider } from "./shared/lib/sse/SseProvider";
+import { SseStatusBanner } from "./shared/lib/sse/SseStatusBanner";
 import { setUnauthorizedHandler } from "./shared/api";
 import { useSessionStore } from "./shared/store/sessionStore";
 import { ROUTES } from "./shared/config/routes";
@@ -29,6 +30,7 @@ createRoot(document.getElementById("root")!).render(
     <RoleProvider>
       <SseProvider>
         <App />
+        <SseStatusBanner />
       </SseProvider>
     </RoleProvider>
   </StrictMode>,
