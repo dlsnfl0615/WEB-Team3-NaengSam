@@ -18,7 +18,7 @@ public interface UploadSessionRepository extends JpaRepository<UploadSession, UU
      *
      * @return 이번 호출로 전이시켰으면 1, 이미 CONSUMED거나 존재하지 않으면 0
      */
-    @Modifying(clearAutomatically = true)
+    @Modifying
     @Query("""
             UPDATE UploadSession s
             SET s.status = com.naengsam.quick.domain.upload.entity.UploadSessionCd.CONSUMED,

@@ -1,4 +1,9 @@
-import { Badge, Button } from "@/shared/ui";
+import {
+  Badge,
+  Button,
+  DeliveryRouteMap,
+  type Coords,
+} from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
 
 export interface CallCardProps {
@@ -7,9 +12,14 @@ export interface CallCardProps {
   price: string;
   /** 건물·장소 이름 */
   place: string;
-  /** 층 이동 경로(예: "24F → 12F") */
+  /** 출발지 → 도착지 경로 */
   route: string;
-  pickupDistance: string;
+  pickup?: Coords; // 출발지(픽업 위치) 위도 경도
+  dropoff?: Coords; // 도착지 위도 경도
+  currentLocation?: Coords; // 드리미 현재 위치
+  deliveryDistance: string;
+  /** 예상 배송 시간 */
+  eta: string;
   /** 목적지 거리. 값이 없으면 항목을 숨긴다. */
   dropoffDistance?: string;
   /** 물품 유형. 값이 없으면 항목을 숨긴다. */
@@ -27,7 +37,11 @@ export function CallCard({
   price,
   place,
   route,
-  pickupDistance,
+  pickup,
+  dropoff,
+  currentLocation,
+  deliveryDistance,
+  eta,
   dropoffDistance,
   itemType,
   onReject,
@@ -35,20 +49,34 @@ export function CallCard({
 }: CallCardProps) {
   return (
     <div className="flex flex-col gap-3 rounded-md border-2 border-status-success bg-surface p-4 shadow-card">
+      <p className="text-xl font-bold tracking-[-0.4px] text-navy-900">
+        {place}
+      </p>
+
+      <DeliveryRouteMap
+        pickup={pickup}
+        dropoff={dropoff}
+        driver={currentLocation}
+        driverLabel="내 위치"
+        height={280}
+      />
+
       <div className="flex items-start justify-between">
         <Badge tone="info">새로운 콜! {code}</Badge>
         <p className="text-xl font-bold text-teal-700">{price}</p>
       </div>
 
-      <div className="text-xl font-bold tracking-[-0.4px] text-navy-900">
-        <p>{place}</p>
-        <p>{route}</p>
-      </div>
+      <p className="text-base font-bold text-navy-900">{route}</p>
 
       <div className="h-px bg-track" />
 
       <div className="flex items-start">
-        <CallStat label="픽업 거리" value={pickupDistance} />
+        <CallStat label="배송 거리" value={deliveryDistance} />
+        <CallStat
+          label="예상 시간"
+          value={eta}
+          className="ml-auto text-right"
+        />
         {dropoffDistance && (
           <CallStat
             label="목적지 거리"

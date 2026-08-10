@@ -112,10 +112,10 @@ class DeliveryControllerTest {
     }
 
     @Test
-    void 픽업완료_사진이_없으면_400과_DELIVERY_002를_반환한다() throws Exception {
+    void 픽업완료_사진이_없으면_404와_FILE_005를_반환한다() throws Exception {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        doThrow(new BusinessException(DeliveryErrorCode.PICKUP_PHOTO_MISSING))
+        doThrow(new BusinessException(UploadErrorCode.FILE_NOT_FOUND))
                 .when(deliveryService).pickupFinishByDreami(eq(orderId), eq(dreamiId), any());
 
         mockMvc.perform(post("/api/v1/delivery/orders/{orderId}/pickup-finish", orderId)
@@ -124,9 +124,9 @@ class DeliveryControllerTest {
                         .content("""
                                 {"photoKey": "uploads/dreami/pickup.png"}
                                 """))
-                .andExpect(status().isBadRequest())
+                .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.isSuccess").value(false))
-                .andExpect(jsonPath("$.code").value("DELIVERY_002"));
+                .andExpect(jsonPath("$.code").value("FILE_005"));
     }
 
     @Test

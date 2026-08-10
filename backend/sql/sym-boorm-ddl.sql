@@ -51,6 +51,7 @@ CREATE TABLE `ORDERS` (
                           `delivery_amount`             bigint          NULL,
                           `order_cd`                    enum('MATCHING', 'PENDING_BOORMI_CONFIRMATION', 'IN_PROGRESS', 'WAITING_CONFIRMATION', 'COMPLETED', 'CANCELLED', 'CLAIM_REVIEW')  NOT NULL,
                           `delivery_eta`                int             NOT NULL  COMMENT '수정 불가능 (변동 사항은 변동 예상시간)',
+                          `delivery_distance`           bigint          NULL      COMMENT '출발지-도착지 예상 거리(m)',
                           `origin_latitude`             decimal(11, 8)  NULL,
                           `origin_longitude`            decimal(11, 8)  NULL,
                           `origin_alias`                varchar(50)     NULL,

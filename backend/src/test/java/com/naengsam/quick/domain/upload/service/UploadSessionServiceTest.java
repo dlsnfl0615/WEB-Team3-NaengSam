@@ -154,7 +154,7 @@ class UploadSessionServiceTest {
         given(uploadSessionRepository.findByS3Key("uploads/x/y-a.png")).willReturn(Optional.of(session));
 
         Throwable thrown = catchThrowable(() -> uploadSessionService.checkUpload(
-                UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, "uploads/x/y-a.png"));
+                UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, null, "uploads/x/y-a.png"));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(UploadErrorCode.KEY_OWNER_MISMATCH);
         verify(s3PresignService, never()).isFileUploaded(any());
@@ -168,7 +168,7 @@ class UploadSessionServiceTest {
         given(s3PresignService.isFileUploaded("uploads/x/y-a.png")).willReturn(false);
 
         Throwable thrown = catchThrowable(() -> uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD,
-                boormiId, "uploads/x/y-a.png"));
+                boormiId, null, "uploads/x/y-a.png"));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(UploadErrorCode.FILE_NOT_FOUND);
         verify(uploadSessionRepository, never()).markConsumedIfIssued(any());
@@ -182,7 +182,7 @@ class UploadSessionServiceTest {
         given(s3PresignService.isFileUploaded("uploads/x/y-a.png")).willReturn(true);
         given(uploadSessionRepository.markConsumedIfIssued("uploads/x/y-a.png")).willReturn(1);
 
-        boolean result = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
+        boolean result = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, null,
                 "uploads/x/y-a.png");
 
         assertThat(result).isTrue();
@@ -197,7 +197,7 @@ class UploadSessionServiceTest {
         given(s3PresignService.isFileUploaded("uploads/x/y-a.png")).willReturn(true);
         given(uploadSessionRepository.markConsumedIfIssued("uploads/x/y-a.png")).willReturn(0);
 
-        boolean result = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId,
+        boolean result = uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, null,
                 "uploads/x/y-a.png");
 
         assertThat(result).isFalse();
