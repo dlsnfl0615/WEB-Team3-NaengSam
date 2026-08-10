@@ -92,6 +92,6 @@ class MatchingOrderInputTest {
     }
 
     private OrderOfferGroup groupStartedAt(LocalDateTime matchingStartedAt) {
-        return new OrderOfferGroup(UUID.randomUUID(), UUID.randomUUID(), LOCATION, List.of(), matchingStartedAt);
+        return new OrderOfferGroup(UUID.randomUUID(), UUID.randomUUID(), LOCATION, null, List.of(), matchingStartedAt);
     }
 }

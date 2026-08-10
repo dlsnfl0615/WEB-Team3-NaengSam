@@ -57,6 +57,9 @@ public class Orders {
     @Column(name = "delivery_eta", nullable = false)
     private int deliveryEta;
 
+    @Column(name = "delivery_distance")
+    private Long deliveryDistance; // 출발지-도착지 예상 거리(m)
+
     @Column(name = "origin_latitude", precision = 11, scale = 8)
     private BigDecimal originLatitude;
     @Column(name = "origin_longitude", precision = 11, scale = 8)
@@ -93,8 +96,8 @@ public class Orders {
      * {@code delivery_request_dtm} 은 DB 기본값(CURRENT_TIMESTAMP)이 적용된다.
      */
     public static Orders create(UUID orderId, UUID boormiId, String itemName, ItemCd itemCd,
-                                String itemDetail, Long deliveryAmount, int deliveryEta, String deliveryRequest,
-                                String imageKey, Addresses addresses) {
+                                String itemDetail, Long deliveryAmount, int deliveryEta, Long deliveryDistance,
+                                String deliveryRequest, String imageKey, Addresses addresses) {
         Orders order = new Orders();
         order.orderId = orderId;
         order.boormiId = boormiId;
@@ -103,6 +106,7 @@ public class Orders {
         order.itemDetail = itemDetail;
         order.deliveryAmount = deliveryAmount;
         order.deliveryEta = deliveryEta;
+        order.deliveryDistance = deliveryDistance;
         order.deliveryRequest = deliveryRequest;
         order.imageKey = imageKey;
         order.orderCd = OrderCd.MATCHING;

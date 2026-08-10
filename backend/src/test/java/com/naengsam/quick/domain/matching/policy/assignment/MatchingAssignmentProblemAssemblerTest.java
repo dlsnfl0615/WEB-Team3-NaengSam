@@ -52,7 +52,7 @@ class MatchingAssignmentProblemAssemblerTest {
 
     private static OrderOfferGroup group(UUID orderId, OrderOfferGroupStatus status) {
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), ORDER_LOCATION, List.of(), EVALUATED_AT.minusHours(1));
+                orderId, UUID.randomUUID(), ORDER_LOCATION, null, List.of(), EVALUATED_AT.minusHours(1));
         switch (status) {
             case WAITING -> {
             }
@@ -152,7 +152,7 @@ class MatchingAssignmentProblemAssemblerTest {
                 EVALUATED_AT.minusMinutes(10)));
         when(matchingService.orderOfferGroups())
                 .thenReturn(List.of(new OrderOfferGroup(
-                        orderId, UUID.randomUUID(), ORDER_LOCATION, offers, EVALUATED_AT.minusHours(1))));
+                        orderId, UUID.randomUUID(), ORDER_LOCATION, null, offers, EVALUATED_AT.minusHours(1))));
         when(matchingService.waitingDreamis())
                 .thenReturn(List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING)));
 
@@ -182,7 +182,7 @@ class MatchingAssignmentProblemAssemblerTest {
         UUID orderId = UUID.randomUUID();
         when(matchingService.orderOfferGroups())
                 .thenReturn(List.of(new OrderOfferGroup(
-                        orderId, UUID.randomUUID(), ORDER_LOCATION, List.of(), EVALUATED_AT.plusMinutes(1))));
+                        orderId, UUID.randomUUID(), ORDER_LOCATION, null, List.of(), EVALUATED_AT.plusMinutes(1))));
         when(matchingService.waitingDreamis()).thenReturn(List.of());
 
         Throwable thrown = catchThrowable(() -> assembler.assemble());

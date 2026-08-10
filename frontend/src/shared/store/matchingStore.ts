@@ -18,12 +18,29 @@ interface Coords {
   longitude: number;
 }
 
-/** 드리미가 받은 제안(SSE `offer_popup`). */
-export interface PendingOffer {
+/** 백엔드 SSE `offer_popup` payload. */
+interface OfferPopupPayload {
   offerId: string;
   orderId: string;
-  /** 주변 콜 캐시에서 찾은 주문 정보(없으면 undefined — 금액·물품 미표시). */
-  call?: NearbyCallDto;
+  deliveryAmount: number | null;
+  itemName: string | null;
+  deliveryEta: number;
+  deliveryDistance: number | null;
+  originLatitude: number | null;
+  originLongitude: number | null;
+  originAlias: string | null;
+  originAddressLine1: string | null;
+  destinationLatitude: number | null;
+  destinationLongitude: number | null;
+  destinationAlias: string | null;
+  destinationAddressLine1: string | null;
+  imageKey: string | null;
+  ttlSeconds: number;
+}
+
+/** 드리미가 받은 제안. 픽업 거리만 주변 콜 캐시에서 보충한다. */
+export interface PendingOffer extends OfferPopupPayload {
+  distanceMeters?: number;
 }
 
 /** 부르미가 받은 드리미 수락 알림(SSE `dreami_info`) + 드리미 프로필. */
@@ -37,7 +54,9 @@ export interface IncomingDreami {
 interface MatchingState {
   /** 드리미 온라인(콜 수신 가능) 상태. */
   online: boolean;
-  /** 주변 콜 목록. 제안 팝업의 주문 정보 소스로도 쓴다. */
+  /** 온라인 전환 때 GPS로 취득한 드리미 현재 좌표. */
+  dreamiCoords: Coords | null;
+  /** 주변 콜 목록. 제안 팝업의 픽업 거리 보조 데이터로도 쓴다. */
   nearbyCalls: NearbyCallDto[];
   pendingOffer: PendingOffer | null;
   incomingDreami: IncomingDreami | null;
@@ -123,23 +142,21 @@ function toMessage(e: unknown, fallback: string): string {
  */
 export const useMatchingStore = create<MatchingState>((set, get) => ({
   online: false,
+  dreamiCoords: null,
   nearbyCalls: [],
   pendingOffer: null,
   incomingDreami: null,
   message: null,
   submitting: false,
 
-  // 드리미: 새 제안 도착. 주문 정보는 주변 콜 캐시에서 채운다.
+  // 드리미: 새 제안 도착. 표시 정보는 SSE payload를 쓰고 거리만 주변 콜 캐시에서 보충한다.
   receiveOfferPopup: (payload) => {
-    const { offerId, orderId } = payload as {
-      offerId: string;
-      orderId: string;
-    };
+    const offer = payload as OfferPopupPayload;
     set((s) => ({
       pendingOffer: {
-        offerId,
-        orderId,
-        call: s.nearbyCalls.find((c) => c.orderId === orderId),
+        ...offer,
+        distanceMeters: s.nearbyCalls.find((c) => c.orderId === offer.orderId)
+          ?.distanceMeters,
       },
       // 새 제안이 왔으면 지난 안내는 지운다(카드 뒤에 남아 나중에 다시 뜨는 것 방지).
       message: null,
@@ -192,7 +209,12 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     set({ message: message ?? "매칭 요청 처리에 실패했어요." });
   },
 
-  clearOffers: () => set({ pendingOffer: null, incomingDreami: null }),
+  clearOffers: () =>
+    set({
+      dreamiCoords: null,
+      pendingOffer: null,
+      incomingDreami: null,
+    }),
 
   startDreamiSession: async () => {
     // 이미 온라인이면 재등록하지 않는다(서버가 "이미 등록된 드리미입니다"로 응답한다).
@@ -202,10 +224,11 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     try {
       coords = await getCurrentCoords();
       await api.goOnline(coords);
-      set({ online: true, message: null });
+      set({ online: true, dreamiCoords: coords, message: null });
     } catch (e) {
       set({
         online: false,
+        dreamiCoords: null,
         message: toMessage(e, "온라인 전환에 실패했어요."),
       });
       return;
@@ -228,7 +251,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   goOffline: async () => {
     try {
       await api.goOffline();
-      set({ online: false, pendingOffer: null });
+      set({ online: false, dreamiCoords: null, pendingOffer: null });
     } catch (e) {
       set({ message: toMessage(e, "오프라인 전환에 실패했어요.") });
     }

@@ -95,7 +95,8 @@ public class MatchingPlanApplier {
 
         for (MatchOffer offer : newOffers) {
             offerTimeoutScheduler.scheduleDreamiOfferTimeout(offer.offerId(), offerTtl);
-            sseService.send(offer.dreamiId(), MatchingEventType.OFFER_POPUP, OfferPopupPayload.from(offer));
+            sseService.send(offer.dreamiId(), MatchingEventType.OFFER_POPUP,
+                    OfferPopupPayload.from(offer, group.orderSummary(), offerTtl));
         }
     }
 

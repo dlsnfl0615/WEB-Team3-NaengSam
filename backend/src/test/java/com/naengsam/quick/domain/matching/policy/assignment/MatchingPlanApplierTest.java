@@ -21,6 +21,7 @@ import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.service.OfferTimeoutScheduler;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.global.sse.SseService;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -206,7 +207,8 @@ class MatchingPlanApplierTest {
         List<MatchOffer> existingOffers = new ArrayList<>(List.of(new MatchOffer(
                 UUID.randomUUID(), orderId, existingDreamiId, MatchOfferStatus.OFFERED, EVALUATED_AT)));
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), LOCATION, List.of(), EVALUATED_AT.minusMinutes(10));
+                orderId, UUID.randomUUID(), LOCATION, mock(OrderSummaryDto.class), List.of(),
+                EVALUATED_AT.minusMinutes(10));
         group.addOffersAndOpen(existingOffers);
         orderOfferGroupsByOrderId.put(orderId, group);
         registerDreami(newDreamiId);
@@ -222,7 +224,8 @@ class MatchingPlanApplierTest {
 
     private OrderOfferGroup registerGroup(UUID orderId) {
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), LOCATION, List.of(), EVALUATED_AT.minusMinutes(10));
+                orderId, UUID.randomUUID(), LOCATION, mock(OrderSummaryDto.class), List.of(),
+                EVALUATED_AT.minusMinutes(10));
         orderOfferGroupsByOrderId.put(orderId, group);
         return group;
     }

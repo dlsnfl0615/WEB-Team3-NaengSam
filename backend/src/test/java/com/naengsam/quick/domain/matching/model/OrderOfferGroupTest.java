@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.Mockito.mock;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
@@ -40,7 +41,8 @@ class OrderOfferGroupTest {
     @Test
     void 매칭_시작_시각이_null이면_예외가_발생한다() {
         Throwable thrown = catchThrowable(
-                () -> new OrderOfferGroup(ORDER_ID, BOORMI_ID, mock(GeoPoint.class), List.of(), null));
+                () -> new OrderOfferGroup(
+                        ORDER_ID, BOORMI_ID, mock(GeoPoint.class), mock(OrderSummaryDto.class), List.of(), null));
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
     }
@@ -100,6 +102,7 @@ class OrderOfferGroupTest {
     }
 
     private OrderOfferGroup newGroup() {
-        return new OrderOfferGroup(ORDER_ID, BOORMI_ID, mock(GeoPoint.class), List.of(), MATCHING_STARTED_AT);
+        return new OrderOfferGroup(
+                ORDER_ID, BOORMI_ID, mock(GeoPoint.class), mock(OrderSummaryDto.class), List.of(), MATCHING_STARTED_AT);
     }
 }
