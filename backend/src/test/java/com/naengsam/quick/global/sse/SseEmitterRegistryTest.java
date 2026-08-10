@@ -12,6 +12,7 @@ import static org.mockito.Mockito.verify;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,7 @@ class SseEmitterRegistryTest {
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
-        registry = new SseEmitterRegistry(meterRegistry);
+        registry = new SseEmitterRegistry(meterRegistry, new SseProperties(Duration.ofSeconds(25), Duration.ofHours(1)));
     }
 
     @Test
@@ -375,6 +376,93 @@ class SseEmitterRegistryTest {
 
             verify(emitter).complete();
             assertThat(emitters()).doesNotContainKey(userId);
+        } finally {
+            allowSendToFinish.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void sendHeartbeats는_모든_connection에_heartbeat_주석을_보낸다() throws IOException {
+        UUID userId = UUID.randomUUID();
+        SseEmitter emitter1 = mock(SseEmitter.class);
+        SseEmitter emitter2 = mock(SseEmitter.class);
+        connectionsOf(userId).put("connection-1", emitter1);
+        connectionsOf(userId).put("connection-2", emitter2);
+
+        registry.sendHeartbeats();
+
+        verify(emitter1).send(any(SseEmitter.SseEventBuilder.class));
+        verify(emitter2).send(any(SseEmitter.SseEventBuilder.class));
+    }
+
+    @Test
+    void sendHeartbeats는_실패한_connection만_제거하고_나머지는_유지한다() throws IOException {
+        UUID userId = UUID.randomUUID();
+        SseEmitter failed = mock(SseEmitter.class);
+        SseEmitter alive = mock(SseEmitter.class);
+        willThrow(new IOException("죽은 클라이언트")).given(failed).send(any(SseEmitter.SseEventBuilder.class));
+        connectionsOf(userId).put("connection-1", failed);
+        connectionsOf(userId).put("connection-2", alive);
+
+        registry.sendHeartbeats();
+
+        verify(failed).completeWithError(any());
+        assertThat(connectionsOf(userId)).containsEntry("connection-2", alive)
+                .doesNotContainKey("connection-1");
+    }
+
+    @Test
+    void sendHeartbeats_실패시_같은_사용자의_다른_연결까지_끊지_않는다() throws IOException {
+        UUID userId = UUID.randomUUID();
+        SseEmitter failed = mock(SseEmitter.class);
+        SseEmitter alive = mock(SseEmitter.class);
+        willThrow(new IOException("죽은 클라이언트")).given(failed).send(any(SseEmitter.SseEventBuilder.class));
+        connectionsOf(userId).put("connection-1", failed);
+        connectionsOf(userId).put("connection-2", alive);
+
+        registry.sendHeartbeats();
+
+        verify(alive, never()).complete();
+        verify(alive, never()).completeWithError(any());
+    }
+
+    @Test
+    void sendHeartbeats_실패시_heartbeat_failed_사유로_closed_메트릭이_증가한다() throws IOException {
+        UUID userId = UUID.randomUUID();
+        SseEmitter emitter = mock(SseEmitter.class);
+        willThrow(new IOException("죽은 클라이언트")).given(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        connectionsOf(userId).put("connection-1", emitter);
+
+        registry.sendHeartbeats();
+
+        assertThat(counter("sse.connections.closed", "reason", "heartbeat_failed")).isEqualTo(1.0);
+    }
+
+    @Test
+    void heartbeat와_도메인_이벤트가_동시에_전송돼도_둘_다_안전하게_처리된다() throws Exception {
+        UUID userId = UUID.randomUUID();
+        SseEmitter emitter = mock(SseEmitter.class);
+        CountDownLatch bothStarted = new CountDownLatch(2);
+        CountDownLatch allowSendToFinish = new CountDownLatch(1);
+        doAnswer(invocation -> {
+            bothStarted.countDown();
+            allowSendToFinish.await(5, TimeUnit.SECONDS);
+            return null;
+        }).when(emitter).send(any(SseEmitter.SseEventBuilder.class));
+        connectionsOf(userId).put("connection-1", emitter);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+
+        try {
+            Future<?> domainSend = executor.submit(() -> registry.send(userId, "offer_popup", Map.of()));
+            Future<?> heartbeat = executor.submit(() -> registry.sendHeartbeats());
+            assertThat(bothStarted.await(5, TimeUnit.SECONDS)).isTrue();
+
+            allowSendToFinish.countDown();
+            domainSend.get(5, TimeUnit.SECONDS);
+            heartbeat.get(5, TimeUnit.SECONDS);
+
+            assertThat(connectionsOf(userId)).containsEntry("connection-1", emitter);
         } finally {
             allowSendToFinish.countDown();
             executor.shutdownNow();
