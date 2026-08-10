@@ -19,6 +19,7 @@ import {
   getUntrackableDeliveryNotice,
   useDeliveryDetailGate,
   useSse,
+  formatArrivalTime,
   type SseHandlers,
 } from "@/shared/lib";
 import { ROUTES } from "@/shared/config/routes";

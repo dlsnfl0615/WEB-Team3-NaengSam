@@ -1,5 +1,6 @@
 /** shared/lib 공개 API. */
 export { cn } from './cn'
+export { formatArrivalTime } from './formatArrivalTime'
 export { useSse, type SseHandlers, type SseState } from './sse/useSse'
 export { loadKakaoMaps, loadDaumPostcode, KAKAO_MAP_KEY } from './kakao'
 export {
