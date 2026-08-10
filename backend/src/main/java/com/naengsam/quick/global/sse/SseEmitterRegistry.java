@@ -129,7 +129,9 @@ public class SseEmitterRegistry {
      * 모든 연결에 heartbeat 주석을 보내 프록시/브라우저가 타임아웃으로 끊지 않게 하고, 이미 죽은 연결을 찾아 정리한다.
      * 데이터 없는 SSE 주석(":heartbeat")이라 클라이언트의 EventSource에는 노출되지 않는다.
      */
-    @Scheduled(fixedRateString = "#{sseProperties.heartbeatInterval().toMillis()}")
+    // 프로퍼티 플레이스홀더로 직접 주기를 읽는다. SpEL로 빈(sseProperties)을 이름으로 참조하면
+    // @EnableConfigurationProperties가 붙이는 실제 빈 이름(sse-<FQCN>)과 달라 부팅 시 해석에 실패한다.
+    @Scheduled(fixedRateString = "${sse.heartbeat-interval}")
     public void sendHeartbeats() {
         emitters.forEach((userId, connections) ->
                 connections.forEach((connectionId, emitter) -> sendHeartbeat(userId, connectionId, emitter)));
