@@ -162,6 +162,7 @@ export function useDeliveryDetailGate(
       canRetry,
     },
     retry,
+    refresh: requestDetail,
     block,
   };
 }

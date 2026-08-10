@@ -71,6 +71,7 @@ export function RealDeliveryTracking({
     loading: detailLoading,
     blockingModal,
     retry: retryDeliveryDetail,
+    refresh: refreshDeliveryDetail,
     block: blockDeliveryDetail,
   } = useDeliveryDetailGate(orderId, {
     onLoaded: (loadedDetail) => {
@@ -95,7 +96,7 @@ export function RealDeliveryTracking({
       : undefined;
   // 백엔드가 내려준 카카오 추천 이동경로. 좌표가 온전한 점만 고르고,
   // 위치 SSE로 리렌더돼도 같은 배열을 재사용해 폴리라인을 다시 만들지 않는다.
-  const routePath: Coords[] | undefined = useMemo(
+  const orderRoutePath: Coords[] | undefined = useMemo(
     () =>
       detail?.routePath
         ?.filter(
@@ -105,6 +106,22 @@ export function RealDeliveryTracking({
         .map((p) => ({ latitude: p.latitude, longitude: p.longitude })),
     [detail?.routePath],
   );
+  const deliveryRoutePath: Coords[] | undefined = useMemo(
+    () =>
+      detail?.deliveryRoutePath
+        ?.filter(
+          (p): p is { latitude: number; longitude: number } =>
+            p.latitude != null && p.longitude != null,
+        )
+        .map((p) => ({ latitude: p.latitude, longitude: p.longitude })),
+    [detail?.deliveryRoutePath],
+  );
+  // 픽업 전에는 드리미→픽업지(Delivery), 픽업 후에는 픽업지→도착지(Order) 경로를 그린다.
+  const isPickup =
+    status === DeliveryStatusResponseDtoStatus.PICKUP_NORMAL ||
+    status === DeliveryStatusResponseDtoStatus.PICKUP_DELAYED;
+  const routePath = isPickup ? deliveryRoutePath : orderRoutePath;
+  const arrivalTime = formatArrivalTime(detail?.estimatedCompletionTime);
   const [toast, setToast] = useState<{
     title: string;
     description?: string;
@@ -173,7 +190,14 @@ export function RealDeliveryTracking({
     // "delivery_location"은 백엔드에서 결정한 이름
     delivery_location: (data) => {
       const dto = forThisOrder(data);
-      if (dto?.currentLocation) setLocation(dto.currentLocation);
+      if (!dto) return;
+      if (dto.currentLocation) setLocation(dto.currentLocation);
+      // 첫 위치가 서버에 도달하면 '드리미→픽업지' 경로·배송완료예상시간이 계산된다.
+      // 아직 최초 조회에 안 담겼으면 이 시점에 상세를 조용히 다시 불러온다(채워지면 조건이 false가 돼 멈춘다).
+      const missingRoute =
+        !detail?.estimatedCompletionTime ||
+        (detail?.deliveryRoutePath?.length ?? 0) === 0;
+      if (missingRoute) refreshDeliveryDetail();
     },
     // "delivery_delivering" 이라는 단어는 백엔드에서 결정한 이름
     delivery_delivering: (data) => {
@@ -216,9 +240,6 @@ export function RealDeliveryTracking({
     location?.latitude != null && location?.longitude != null
       ? { latitude: location.latitude, longitude: location.longitude }
       : undefined;
-  const locationText = driver
-    ? `${driver.latitude.toFixed(5)}, ${driver.longitude.toFixed(5)}`
-    : "위치 대기 중";
 
   // 부르미가 배달 취소를 확정하면 백엔드에 취소를 요청하고 홈으로 돌아간다(드리미에게는 SSE로 통지됨).
   const confirmCancel = async () => {
@@ -268,8 +289,10 @@ export function RealDeliveryTracking({
           overlay={
             <div className="flex items-center gap-6 rounded-pill bg-navy-900 px-6 py-2.5 text-white">
               <div className="flex flex-col items-center">
-                <span className="text-2xs opacity-70">드리미 위치</span>
-                <span className="text-md font-bold">{locationText}</span>
+                <span className="text-2xs opacity-70">배송 완료 예상</span>
+                <span className="text-md font-bold">
+                  {arrivalTime ?? "계산 중…"}
+                </span>
               </div>
             </div>
           }

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/shared/api";
+import { api, type DreamiLocationResponseDto } from "@/shared/api";
 
 /** 드리미 위치 전송 주기(ms). 백엔드 권장 5~10초 중 5초. */
 export const LOCATION_BROADCAST_INTERVAL_MS = 5000;
@@ -9,6 +9,16 @@ export interface UseDreamiLocationBroadcastOptions {
   enabled?: boolean;
   /** 전송 주기(ms). 기본 LOCATION_BROADCAST_INTERVAL_MS. */
   intervalMs?: number;
+  /**
+   * true면 서버가 응답에 '드리미→픽업지' 경로·배송완료예상시간을 담아 준다. 아직 값이 없는 동안 true로 보내고,
+   * 한 번 받으면 false로 바꿔 좌표 배열을 매 전송마다 중복 수신하지 않게 한다. 기본 false.
+   */
+  includeRoute?: boolean;
+  /**
+   * 위치 전송이 성공할 때마다 서버 응답(드리미→픽업지 경로·배송완료예상시간)을 전달한다.
+   * includeRoute=true인 동안 이 콜백으로 값을 받아 화면을 갱신하면 별도 재조회가 필요 없다.
+   */
+  onResult?: (result: DreamiLocationResponseDto | undefined) => void;
 }
 
 export interface DreamiLocationBroadcastState {
@@ -38,6 +48,13 @@ export function useDreamiLocationBroadcast(
 ): DreamiLocationBroadcastState {
   const { enabled = true, intervalMs = LOCATION_BROADCAST_INTERVAL_MS } =
     options;
+  // 전송 tick(interval)은 stale closure를 피하려 ref로 최신 콜백·플래그를 읽는다(useSse의 ref-최신화 패턴과 동일).
+  const onResultRef = useRef(options.onResult);
+  const includeRouteRef = useRef(options.includeRoute);
+  useEffect(() => {
+    onResultRef.current = options.onResult;
+    includeRouteRef.current = options.includeRoute;
+  });
   // 권한 거부 등 런타임 오류만 state로 둔다(async 콜백에서만 갱신). 미지원 여부는 렌더 중 파생값으로 계산.
   const [permissionError, setPermissionError] = useState<string | null>(null);
   // 화면 지도 표시용 최신 좌표(state). 전송 tick은 아래 ref를 읽는다.
@@ -88,9 +105,15 @@ export function useDreamiLocationBroadcast(
     const timer = window.setInterval(() => {
       const fix = lastFixRef.current;
       if (!fix) return;
-      api.updateDreamiLocation(orderId, fix).catch((e) => {
-        console.warn("[dreami-location] 전송 실패:", e);
-      });
+      api
+        .updateDreamiLocation(orderId, {
+          ...fix,
+          includeRoute: includeRouteRef.current ?? false,
+        })
+        .then((res) => onResultRef.current?.(res.result))
+        .catch((e) => {
+          console.warn("[dreami-location] 전송 실패:", e);
+        });
     }, intervalMs);
 
     return () => {
