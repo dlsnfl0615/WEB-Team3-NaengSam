@@ -4,10 +4,13 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { UserDtoActiveRole } from './userDtoActiveRole';
 
 export interface UserDto {
   boormiId?: string;
   email?: string;
   name?: string;
   isDreami?: boolean;
+  activeRole?: UserDtoActiveRole;
+  activeOrderId?: string;
 }
