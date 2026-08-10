@@ -21,7 +21,8 @@ public enum DeliveryErrorCode implements BaseErrorCode {
     DELIVERY_NOT_FOUND(HttpStatus.NOT_FOUND, "DELIVERY_010", "존재하지 않는 배달 주문입니다."),
     DELIVERY_ALREADY_CANCELLED(HttpStatus.CONFLICT, "DELIVERY_012", "이미 취소된 건에 대한 요청입니다."),
     DELIVERY_ALREADY_COMPLETED(HttpStatus.CONFLICT, "DELIVERY_013", "이미 배달 완료된 주문입니다."),
-    PICKUP_NOT_COMPLETED(HttpStatus.CONFLICT, "DELIVERY_014", "픽업 완료 처리에 실패했습니다."),
+    DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP(
+            HttpStatus.CONFLICT, "DELIVERY_014", "픽업이 완료되지 않아 배달 완료 처리를 할 수 없습니다."),
     CANCELLATION_NOT_COMPLETED(HttpStatus.INTERNAL_SERVER_ERROR, "DELIVERY_015", "배달 취소에 실패했습니다."),
     BOORMI_IS_ACTIVATED_DREAMI(HttpStatus.FORBIDDEN, "DELIVERY_016", "처리할 수 없는 배달입니다."),
     DREAMI_NOT_ACTIVATED(HttpStatus.FORBIDDEN, "DELIVERY_017", "처리할 수 없는 배달입니다."),

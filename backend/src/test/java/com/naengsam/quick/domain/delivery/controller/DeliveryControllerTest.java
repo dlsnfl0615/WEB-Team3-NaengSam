@@ -79,7 +79,7 @@ class DeliveryControllerTest {
     void 픽업완료전_배달완료를_시도하면_409와_DELIVERY_014를_반환한다() throws Exception {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        doThrow(new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED))
+        doThrow(new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP))
                 .when(deliveryService).finishDelivery(eq(orderId), eq(dreamiId), any());
 
         mockMvc.perform(post("/api/v1/delivery/orders/{orderId}/finish", orderId)
@@ -91,7 +91,7 @@ class DeliveryControllerTest {
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.isSuccess").value(false))
                 .andExpect(jsonPath("$.code").value("DELIVERY_014"))
-                .andExpect(jsonPath("$.message").value("픽업 완료 처리에 실패했습니다."));
+                .andExpect(jsonPath("$.message").value("픽업이 완료되지 않아 배달 완료 처리를 할 수 없습니다."));
     }
 
     @Test
