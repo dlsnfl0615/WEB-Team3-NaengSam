@@ -4,10 +4,11 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { WalletDto } from './walletDto';
 
-export type Get200 = {
+export type ChargePoint200 = {
   isSuccess?: boolean;
   code?: string;
   message?: string;
-  result?: string;
+  result?: WalletDto;
 };

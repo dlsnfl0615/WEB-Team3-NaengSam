@@ -17,6 +17,7 @@ import com.naengsam.quick.domain.order.entity.Cancel;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.entity.Role;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.CancelRepository;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
@@ -71,26 +72,26 @@ class OrderServiceTest {
         Orders second = orderAt(boormiId, LocalDateTime.of(2026, 8, 3, 11, 0));
         Orders overflow = orderAt(boormiId, LocalDateTime.of(2026, 8, 3, 10, 0));
         // size=2 이므로 size+1=3 개 조회 → 3개 반환(초과분 존재)
-        given(orderRepository.findFirstPageByBoormi(any(), any(), anyInt()))
+        given(orderRepository.findFirstPageByRole(any(), any(), any(), anyInt()))
                 .willReturn(List.of(first, second, overflow));
 
-        BoormiOrdersResponse response = orderService.getBoormiOrders(boormiId, null, 2, null);
+        BoormiOrdersResponse response = orderService.getOrders(boormiId, Role.BOORMI, null, 2, null);
 
         assertThat(response.orders()).hasSize(2);
         assertThat(response.hasNext()).isTrue();
         assertThat(response.nextCursor())
                 .isEqualTo(new OrderCursor(second.getDeliveryRequestDtm(), second.getOrderId()).encode());
-        then(orderRepository).should().findFirstPageByBoormi(boormiId, null, 3);
+        then(orderRepository).should().findFirstPageByRole(boormiId, "BOORMI", null, 3);
     }
 
     @Test
     void 마지막_페이지면_hasNext가_false이고_nextCursor는_null이다() {
         UUID boormiId = UUID.randomUUID();
         Orders only = orderAt(boormiId, LocalDateTime.of(2026, 8, 3, 12, 0));
-        given(orderRepository.findFirstPageByBoormi(any(), any(), anyInt()))
+        given(orderRepository.findFirstPageByRole(any(), any(), any(), anyInt()))
                 .willReturn(List.of(only));
 
-        BoormiOrdersResponse response = orderService.getBoormiOrders(boormiId, null, 2, null);
+        BoormiOrdersResponse response = orderService.getOrders(boormiId, Role.BOORMI, null, 2, null);
 
         assertThat(response.orders()).hasSize(1);
         assertThat(response.hasNext()).isFalse();
@@ -98,25 +99,36 @@ class OrderServiceTest {
     }
 
     @Test
-    void status가_주어지면_해당_상태이름을_필터로_레포지토리에_전달한다() {
-        UUID boormiId = UUID.randomUUID();
-        given(orderRepository.findFirstPageByBoormi(any(), any(), anyInt()))
+    void role이_DREAMI이면_dreami_id_기준_role필터를_레포지토리에_전달한다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(orderRepository.findFirstPageByRole(any(), any(), any(), anyInt()))
                 .willReturn(List.of());
 
-        orderService.getBoormiOrders(boormiId, null, 20, OrderCd.MATCHING);
+        orderService.getOrders(dreamiId, Role.DREAMI, null, 20, null);
 
-        then(orderRepository).should().findFirstPageByBoormi(eq(boormiId), eq("MATCHING"), anyInt());
+        then(orderRepository).should().findFirstPageByRole(eq(dreamiId), eq("DREAMI"), isNull(), anyInt());
+    }
+
+    @Test
+    void status가_주어지면_해당_상태이름을_필터로_레포지토리에_전달한다() {
+        UUID boormiId = UUID.randomUUID();
+        given(orderRepository.findFirstPageByRole(any(), any(), any(), anyInt()))
+                .willReturn(List.of());
+
+        orderService.getOrders(boormiId, Role.BOORMI, null, 20, OrderCd.MATCHING);
+
+        then(orderRepository).should().findFirstPageByRole(eq(boormiId), eq("BOORMI"), eq("MATCHING"), anyInt());
     }
 
     @Test
     void status가_null이면_null필터를_레포지토리에_전달한다() {
         UUID boormiId = UUID.randomUUID();
-        given(orderRepository.findFirstPageByBoormi(any(), any(), anyInt()))
+        given(orderRepository.findFirstPageByRole(any(), any(), any(), anyInt()))
                 .willReturn(List.of());
 
-        orderService.getBoormiOrders(boormiId, null, 20, null);
+        orderService.getOrders(boormiId, Role.BOORMI, null, 20, null);
 
-        then(orderRepository).should().findFirstPageByBoormi(eq(boormiId), isNull(), anyInt());
+        then(orderRepository).should().findFirstPageByRole(eq(boormiId), eq("BOORMI"), isNull(), anyInt());
     }
 
     @Test
@@ -125,13 +137,13 @@ class OrderServiceTest {
         LocalDateTime cursorDtm = LocalDateTime.of(2026, 8, 3, 12, 0);
         UUID cursorId = UUID.randomUUID();
         String cursor = new OrderCursor(cursorDtm, cursorId).encode();
-        given(orderRepository.findPageByBoormiAfterCursor(any(), any(), any(), any(), anyInt()))
+        given(orderRepository.findPageByRoleAfterCursor(any(), any(), any(), any(), any(), anyInt()))
                 .willReturn(List.of());
 
-        orderService.getBoormiOrders(boormiId, cursor, 20, null);
+        orderService.getOrders(boormiId, Role.BOORMI, cursor, 20, null);
 
         then(orderRepository).should()
-                .findPageByBoormiAfterCursor(eq(boormiId), isNull(), eq(cursorDtm), eq(cursorId), anyInt());
+                .findPageByRoleAfterCursor(eq(boormiId), eq("BOORMI"), isNull(), eq(cursorDtm), eq(cursorId), anyInt());
     }
 
     @Test
@@ -139,7 +151,7 @@ class OrderServiceTest {
         UUID boormiId = UUID.randomUUID();
 
         Throwable thrown = catchThrowable(
-                () -> orderService.getBoormiOrders(boormiId, "!!!not-base64!!!", 20, null));
+                () -> orderService.getOrders(boormiId, Role.BOORMI, "!!!not-base64!!!", 20, null));
 
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.INVALID_CURSOR);

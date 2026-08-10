@@ -29,9 +29,9 @@ public class UploadSessionService {
      * @return 이번 호출로 처음 소비됐는지(재시도로 이미 소비된 요청이면 false)
      */
     @Transactional
-    public boolean checkUpload(UploadPurpose uploadPurpose, UUID boormiId, String key) {
+    public boolean checkUpload(UploadPurpose uploadPurpose, UUID boormiId, UUID resourceId,String key) {
         // 다른 사람에게 발급됐거나 다른 용도로 발급된 key를 그대로 제출하는 것을 막는다.
-        validateScope(uploadPurpose, boormiId, null, key);
+        validateScope(uploadPurpose, boormiId, resourceId, key);
 
         // 업로드가 완료되지 않은 상태라면
         if (!s3PresignService.isFileUploaded(key)) {

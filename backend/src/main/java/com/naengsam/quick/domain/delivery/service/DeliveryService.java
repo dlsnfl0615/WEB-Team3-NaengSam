@@ -1,8 +1,16 @@
 package com.naengsam.quick.domain.delivery.service;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
+import com.naengsam.quick.domain.address.service.KakaoDirectionsService;
+import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
+import com.naengsam.quick.domain.delivery.dto.DreamiLocationResponseDto;
+import com.naengsam.quick.domain.delivery.dto.RoutePointDto;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCertification;
@@ -18,7 +26,6 @@ import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
-import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
@@ -34,8 +41,10 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
-import java.util.function.Consumer;
 import java.util.function.Function;
 
 import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
@@ -64,11 +73,12 @@ public class DeliveryService {
     private final PickupCertificationRepository pickupCertificationRepository;
     private final DeliveryCertificationRepository deliveryCertificationRepository;
     private final SseService sseService;
-    private final S3PresignService s3PresignService;
     private final UploadSessionService uploadSessionService;
     private final UserService userService;
     private final OrderService orderService;
+    private final KakaoDirectionsService kakaoDirectionsService;
     private final ApplicationEventPublisher eventPublisher;
+    private final ObjectMapper objectMapper;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -102,17 +112,46 @@ public class DeliveryService {
             throw new BusinessException(AuthErrorCode.NOT_RESOURCE_OWNER);
         }
 
-        return DeliveryDetailResponseDto.from(delivery, order);
+        // 픽업 후 지도용 픽업지→도착지 경로(Orders)와 픽업 전 지도용 드리미→픽업지 경로(Delivery)를 함께 내려준다.
+        return DeliveryDetailResponseDto.from(delivery, order,
+                parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()));
+    }
+
+    // 주문에 저장된 추천 이동경로 JSON을 좌표 목록으로 복원한다. 값이 없거나 손상됐으면 빈 목록(지도는 핀만 표시).
+    private List<RoutePointDto> parseRoutePath(String routePathJson) {
+        if (routePathJson == null || routePathJson.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            return objectMapper.readValue(routePathJson, new TypeReference<List<RoutePointDto>>() {
+            });
+        } catch (JacksonException e) {
+            log.warn("주문 route_path 역직렬화 실패 — 경로 없이 응답한다", e);
+            return Collections.emptyList();
+        }
     }
 
     // ===== 공개 메서드 (동기 요청) — 주문 단위 락 안에서 상태 전이를 실행하고 결과를 돌려준다 =====
 
-    // 드리미 위치 정보를 전달 (이 메소드를 5~10초마다 드리미가 호출해야함). 위치만 갱신하고 응답은 ack(void)다.
+    // 드리미 위치 정보를 전달 (이 메소드를 5~10초마다 드리미가 호출해야함). 위치를 갱신하고,
+    // 첫 위치면 방금 계산·저장된 '드리미→픽업지' 경로와 배송완료예상시간을, 이후엔 이미 저장된 값을 그대로 응답에 담아 돌려준다.
+    // (프론트가 이 응답만으로 지도·배송완료예상시간을 갱신할 수 있어 별도 재조회가 필요 없다.)
     @Transactional
-    public void updateDreamiLocation(UUID orderId, DreamiLocationRequest location) {
-        transition(orderId, delivery -> {
-            doUpdateDreamiLocation(delivery, location);
-        });
+    public DreamiLocationResponseDto updateDreamiLocation(UUID orderId, DreamiLocationRequest location) {
+        Delivery delivery = deliveryRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+
+        doUpdateDreamiLocation(delivery, location);
+
+        // 경로(좌표 배열)는 매 5초마다 중복 전송하지 않도록, 클라이언트가 요청에서 명시적으로 요청할 때만(includeRoute) 실어 보낸다.
+        // 아직 경로가 없는 드리미는 true로 계속 요청하다가, 한 번 받으면 false로 바꿔 이후엔 위치만 보낸다.
+        // 하위호환: includeRoute가 없으면(null) 예전처럼 경로를 담아 보낸다.
+        boolean includeRoute =
+                location == null || location.includeRoute() == null || location.includeRoute();
+
+        return new DreamiLocationResponseDto(
+                includeRoute ? parseRoutePath(delivery.getRoutePath()) : null,
+                includeRoute ? delivery.getEstimatedCompletionDtm() : null);
     }
 
     // 픽업 완료 (드리미가 업로드한 픽업 인증 사진 key를 함께 받아 검증한다)
@@ -166,19 +205,10 @@ public class DeliveryService {
         return DeliveryStatusResponseDto.from(delivery, message);
     }
 
-    // 상태 스냅샷 DTO가 필요 없는 전이(위치 갱신 등)용. 주문 단위 락은 위와 동일하게 잡고, 응답 DTO는 만들지 않는다
-    // (컨트롤러가 void를 반환하면 CommonResponse가 result=null 성공 봉투로 감싼다).
-    private void transition(UUID orderId, Consumer<Delivery> logic) {
-        Delivery delivery = deliveryRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
-
-        logic.accept(delivery);
-    }
-
     // ===== 실제 상태 전이 로직 (주문 락 안에서 실행) =====
 
-    // 위치만 갱신하고 부르미에게 SSE로 전달한다. 취소/완료 상태에 대한 예외는 드리미 폴링을 멈추게 하는 신호로 남긴다
-    // (취소 알림 자체는 취소 시점에 이미 드리미에게 SSE로 push된다).
+    // 위치를 갱신하고 부르미에게 SSE로 전달한다. 첫 위치면 '드리미→픽업지' 경로·배송완료예상시간을 1회 계산해 저장한다.
+    // 취소/완료 상태에 대한 예외는 드리미 폴링을 멈추게 하는 신호로 남긴다(취소 알림 자체는 취소 시점에 이미 드리미에게 SSE로 push된다).
     private void doUpdateDreamiLocation(Delivery delivery, DreamiLocationRequest location) {
 
         // 이미 완료되거나 취소된 주문이면 위치를 더 이상 갱신하지 않음
@@ -203,7 +233,37 @@ public class DeliveryService {
         BigDecimal latitude = location.latitude().setScale(LOCATION_SCALE, RoundingMode.HALF_UP);
         BigDecimal longitude = location.longitude().setScale(LOCATION_SCALE, RoundingMode.HALF_UP);
         delivery.updateLocation(latitude, longitude); // 위치정보_수정()
+        maybeComputePickupRoute(delivery, latitude, longitude); // 첫 위치 전송 때 '드리미→픽업지' 경로·배송완료예상시간 1회 계산
         alarmBoormiLocationBySSE(delivery); // 부르미에게_새로운_위치정보_전달_SSE사용()
+    }
+
+    // 드리미의 첫 위치가 들어온 픽업 단계에서 '드리미→픽업지' 카카오 도보 경로와 배송완료예상시간을 1회만 계산해 저장한다.
+    // routePath가 이미 있거나 픽업 단계가 아니면 아무것도 하지 않는다. 카카오 실패는 위치 갱신을 막지 않고 다음 위치 전송 때 재시도한다.
+    private void maybeComputePickupRoute(Delivery delivery, BigDecimal latitude, BigDecimal longitude) {
+        if (delivery.getRoutePath() != null) {
+            return;
+        }
+        DeliveryCd deliveryCd = delivery.getDeliveryCd();
+        if (deliveryCd != PICKUP_NORMAL && deliveryCd != PICKUP_DELAYED) {
+            return;
+        }
+        try {
+            Orders order = orderService.getOrder(delivery.getOrderId());
+            GeoPoint dreami = new GeoPoint(latitude, longitude);
+            GeoPoint pickup = new GeoPoint(order.getOriginLatitude(), order.getOriginLongitude());
+
+            KakaoDirectionsResponseDto.Route route = kakaoDirectionsService.getRoute(dreami, pickup);
+            String routePathJson = objectMapper.writeValueAsString(RoutePointDto.from(route));
+
+            // 드리미→픽업지 소요(분, BoormiService와 동일 공식) + 주문의 픽업지→도착지 delivery_eta(분)를 현재 시각에 더한다.
+            int pickupEtaMinutes = (int) Math.ceil(route.properties().totalTime() / 60.0);
+            LocalDateTime estimatedCompletion =
+                    LocalDateTime.now().plusMinutes((long) pickupEtaMinutes + order.getDeliveryEta());
+
+            delivery.applyPickupRoute(routePathJson, estimatedCompletion);
+        } catch (BusinessException | JacksonException e) {
+            log.warn("드리미→픽업지 경로·배송완료예상시간 계산 실패 — 다음 위치 전송 때 재시도", e);
+        }
     }
 
     private String doPickupFinishByDreami(Delivery delivery, UUID dreamiId, String photoKey) {
@@ -237,9 +297,9 @@ public class DeliveryService {
         if (!isValid) return "픽업 취소 실패";
 
 
-        // 사진이_없는경우
-        if (!hasPickupPhoto(delivery.getOrderId(), dreamiId, photoKey))
-            throw new BusinessException(DeliveryErrorCode.PICKUP_PHOTO_MISSING);
+        // 본인이, 이 주문에 대해, 픽업 인증사진 용도로 발급받은 key인지 확인하고, 업로드 안 됐으면 FILE_NOT_FOUND
+        uploadSessionService.checkUpload(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, delivery.getOrderId(),
+                photoKey);
 
         delivery.markDelivering(); // 배달중_정상
         // 비대면 픽업 인증 행 저장 (submittedDtm은 markDelivering이 기록한 pickedUpDtm 재사용)
@@ -355,7 +415,8 @@ public class DeliveryService {
         boolean isValid = switch (deliveryCd) {
             case DELIVERING -> true;
             // 픽업 중에 배달 완료 요청이 온 경우 (픽업하자마자 바로 완료 요청하지 않는 이상 드묾)
-            case PICKUP_NORMAL, PICKUP_DELAYED -> throw new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED);
+            case PICKUP_NORMAL, PICKUP_DELAYED ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP);
             case PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN ->
                     throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
             case DELIVERED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
@@ -370,9 +431,9 @@ public class DeliveryService {
 
         if (!isValid) return "배달 완료 실패";
 
-        if (!hasDeliveryPhoto(delivery.getOrderId(), dreamiId, photoKey)) { // 사진이없을때
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_PHOTO_MISSING);
-        }
+        // 본인이, 이 주문에 대해, 배달완료 인증사진 용도로 발급받은 key인지 확인하고, 업로드 안 됐으면 FILE_NOT_FOUND
+        uploadSessionService.checkUpload(UploadPurpose.DELIVERY_CERTIFICATION_IMAGE, dreamiId, delivery.getOrderId(),
+                photoKey);
 
         delivery.markDelivered(); // 배달_완료
         orderService.complete(delivery.getOrderId()); // 주문도 완료 상태로 전이
@@ -442,18 +503,4 @@ public class DeliveryService {
         sseService.send(event.userId(), event.eventType(), event.payload());
     }
 
-    // ===== 사진 확인 (upload 도메인 연동) =====
-    // 드리미가 자기 세션으로 발급받아 업로드한 key인지(소유권) 확인한 뒤, 그 파일이 S3에 실제 존재하는지 검사한다.
-
-    private boolean hasPickupPhoto(UUID orderId, UUID dreamiId, String photoKey) {
-        // 본인이, 이 주문에 대해, 픽업 인증사진 용도로 발급받은 key가 아니면 KEY_OWNER_MISMATCH
-        uploadSessionService.validateScope(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, orderId, photoKey);
-        return s3PresignService.isFileUploaded(photoKey);
-    }
-
-    private boolean hasDeliveryPhoto(UUID orderId, UUID dreamiId, String photoKey) {
-        // 본인이, 이 주문에 대해, 배달완료 인증사진 용도로 발급받은 key가 아니면 KEY_OWNER_MISMATCH
-        uploadSessionService.validateScope(UploadPurpose.DELIVERY_CERTIFICATION_IMAGE, dreamiId, orderId, photoKey);
-        return s3PresignService.isFileUploaded(photoKey);
-    }
 }

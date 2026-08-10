@@ -42,8 +42,17 @@ export function RequestCreateScreen() {
   const [estimate, setEstimate] = useState<ExpectedValueDto | null>(null);
   const [estimating, setEstimating] = useState(false);
 
-  const update = (patch: Partial<RequestForm>) =>
+  const update = (patch: Partial<RequestForm>) => {
+    setError(null);
+    if (
+      patch.pickup !== undefined ||
+      patch.dropoff !== undefined ||
+      patch.itemType !== undefined
+    ) {
+      setEstimate(null);
+    }
     setForm((prev) => ({ ...prev, ...patch }));
+  };
 
   const next = () => setStep((s) => Math.min(4, s + 1));
   const prev = () => setStep((s) => Math.max(1, s - 1));
@@ -64,9 +73,21 @@ export function RequestCreateScreen() {
           destinationAddressLine1: form.dropoff.trim(),
           itemCd: itemTypeToCd(form.itemType),
         });
-        if (!cancelled) setEstimate(result ?? null);
-      } catch {
-        if (!cancelled) setEstimate(null);
+        if (!cancelled) {
+          setEstimate(result ?? null);
+          setError(
+            result ? null : "예상 배송 요금을 확인하지 못했어요.",
+          );
+        }
+      } catch (e) {
+        if (!cancelled) {
+          setEstimate(null);
+          setError(
+            isApiError(e)
+              ? e.message
+              : "예상 배송 요금을 계산하지 못했어요. 다시 시도해주세요.",
+          );
+        }
       } finally {
         if (!cancelled) setEstimating(false);
       }
@@ -77,22 +98,28 @@ export function RequestCreateScreen() {
     };
   }, [form.pickup, form.dropoff, form.itemType]);
 
-  // 스텝별 필수값 검증(스텝2 유형·크기는 기본 선택값 존재).
+  // 스텝별 필수값과 견적 조회 성공 여부를 검증한다.
+  const hasValidEstimate = estimate !== null && !estimating;
   const canProceed =
     step === 1
-      ? !!form.pickup.trim() && !!form.dropoff.trim()
-      : step === 3
-        ? !!form.itemName.trim()
-        : true;
+      ? !!form.pickup.trim() && !!form.dropoff.trim() && hasValidEstimate
+      : step === 2
+        ? hasValidEstimate
+        : step === 3
+          ? !!form.itemName.trim()
+          : true;
 
   const submit = async () => {
     setSubmitting(true);
     setError(null);
     try {
-      await createOrder(toOrderRequest(form));
-      // 등록한 콜은 홈 "진행 중인 부름"에 노출된다.
-      // (매칭 팝업/진행 화면은 드리미·mock 영역으로 이번 범위 밖)
-      navigate(ROUTES.home, { replace: true });
+      const orderId = await createOrder(toOrderRequest(form));
+      if (!orderId) {
+        setError("등록한 부름 정보를 확인하지 못했어요. 다시 시도해주세요.");
+        return;
+      }
+      // 생성된 부름을 식별할 수 있도록 주문 ID와 함께 드리미 대기 화면으로 이동한다.
+      navigate(`${ROUTES.matching}?orderId=${orderId}`, { replace: true });
     } catch (e) {
       setError(
         isApiError(e) ? e.message : "콜 등록에 실패했어요. 다시 시도해주세요.",

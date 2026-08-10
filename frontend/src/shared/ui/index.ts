@@ -71,6 +71,12 @@ export type {
   Coords,
 } from "./DeliveryRouteMap/DeliveryRouteMap";
 
+export { NearbyCallsMap } from "./NearbyCallsMap/NearbyCallsMap";
+export type {
+  NearbyCallsMapProps,
+  NearbyCall,
+} from "./NearbyCallsMap/NearbyCallsMap";
+
 export { BarChart } from "./BarChart/BarChart";
 export type { BarChartProps, BarDatum } from "./BarChart/BarChart";
 
@@ -79,6 +85,9 @@ export type { BottomSheetProps } from "./BottomSheet/BottomSheet";
 
 export { Modal } from "./Modal/Modal";
 export type { ModalProps } from "./Modal/Modal";
+
+export { BlockingLoadErrorModal } from "./BlockingLoadErrorModal/BlockingLoadErrorModal";
+export type { BlockingLoadErrorModalProps } from "./BlockingLoadErrorModal/BlockingLoadErrorModal";
 
 export { DestinationPicker } from "./DestinationPicker/DestinationPicker";
 export type { DestinationPickerProps } from "./DestinationPicker/DestinationPicker";
