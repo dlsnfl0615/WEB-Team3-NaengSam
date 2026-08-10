@@ -8,6 +8,7 @@ import static org.mockito.Mockito.when;
 import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
@@ -28,6 +29,7 @@ import com.naengsam.quick.global.sse.SseService;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -214,5 +216,181 @@ class MatchingMicroBatchIntegrationTest {
 
         OrderOfferGroup group = matchingService.findOrderOfferGroup(orderId).orElseThrow();
         assertThat(group.offers()).hasSize(2);
+    }
+
+    // ────────────────────────────── 회수된 드리미가 배치 디스패처를 통해 다른 대기 주문에 재배정되는지 검증 ──────────────────────────────
+
+    @Test
+    void 핵심_시나리오_드리미가_거절한_주문에서_풀려나면_다음_배치에서_다른_대기_주문에_배정된다() {
+        MatchingService matchingService = newMatchingService(3);
+        UUID orderIdA = UUID.randomUUID();
+        UUID orderIdB = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+
+        matchingService.applyRegisterDreami(dreamiId, location);
+        matchingService.applyStartMatching(orderMock(orderIdA));
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        MatchOffer offerA = matchingService.findOrderOfferGroup(orderIdA).orElseThrow().offers().getFirst();
+        assertThat(offerA.dreamiId()).isEqualTo(dreamiId);
+
+        matchingService.applyStartMatching(orderMock(orderIdB)); // B는 아직 배치를 못 받아 WAITING
+
+        // when (D가 A를 거절 -> MATCHING으로 복귀, 다음 배치에서 B와 함께 평가된다)
+        matchingService.applyRejectByDreami(offerA.offerId());
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        // then (같은 드리미 재제안 금지 정책 때문에 D는 A로는 못 돌아가지만 B에는 배정된다
+        // — A에 대한 이전 거절 이력이 B 후보 평가에는 영향을 주지 않는다)
+        OrderOfferGroup groupA = matchingService.findOrderOfferGroup(orderIdA).orElseThrow();
+        OrderOfferGroup groupB = matchingService.findOrderOfferGroup(orderIdB).orElseThrow();
+
+        assertThat(groupA.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
+        assertThat(groupA.offers()).noneMatch(offer -> offer.status() == MatchOfferStatus.OFFERED);
+
+        assertThat(groupB.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+        assertThat(groupB.offers()).hasSize(1);
+        assertThat(groupB.offers().getFirst().dreamiId()).isEqualTo(dreamiId);
+        assertThat(groupB.offers().getFirst().status()).isEqualTo(MatchOfferStatus.OFFERED);
+    }
+
+    @Test
+    void A의_다른_오퍼가_살아있어도_거절한_드리미는_B로_이동한다() {
+        MatchingService matchingService = newMatchingService(3);
+        UUID orderIdA = UUID.randomUUID();
+        UUID orderIdB = UUID.randomUUID();
+        UUID dreamiId1 = UUID.randomUUID();
+        UUID dreamiId2 = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+
+        matchingService.applyRegisterDreami(dreamiId1, location);
+        matchingService.applyRegisterDreami(dreamiId2, location);
+        matchingService.applyStartMatching(orderMock(orderIdA));
+        matchingService.applyRunMatchingAssignmentCycle(); // A는 두 드리미 모두에게 오퍼
+
+        OrderOfferGroup groupABefore = matchingService.findOrderOfferGroup(orderIdA).orElseThrow();
+        assertThat(groupABefore.offers()).hasSize(2);
+        MatchOffer offerToReject = groupABefore.offers().stream()
+                .filter(offer -> offer.dreamiId().equals(dreamiId1))
+                .findFirst().orElseThrow();
+
+        matchingService.applyStartMatching(orderMock(orderIdB));
+
+        // when (dreamiId1만 거절 -> dreamiId2의 오퍼는 여전히 살아있어 A는 OPEN을 유지한다)
+        matchingService.applyRejectByDreami(offerToReject.offerId());
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        // then (A가 OPEN을 유지해도 거절한 dreamiId1은 B로 이동한다)
+        OrderOfferGroup groupA = matchingService.findOrderOfferGroup(orderIdA).orElseThrow();
+        OrderOfferGroup groupB = matchingService.findOrderOfferGroup(orderIdB).orElseThrow();
+
+        assertThat(groupA.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+        assertThat(groupA.offers())
+                .filteredOn(offer -> offer.dreamiId().equals(dreamiId2))
+                .extracting(MatchOffer::status)
+                .containsExactly(MatchOfferStatus.OFFERED);
+
+        assertThat(groupB.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+        assertThat(groupB.offers()).hasSize(1);
+        assertThat(groupB.offers().getFirst().dreamiId()).isEqualTo(dreamiId1);
+    }
+
+    @Test
+    void 선착순_마감으로_회수된_드리미가_다른_대기_주문에_배정된다() {
+        MatchingService matchingService = newMatchingService(2);
+        UUID orderIdA = UUID.randomUUID();
+        UUID orderIdB = UUID.randomUUID();
+        UUID dreamiId1 = UUID.randomUUID();
+        UUID dreamiId2 = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+
+        matchingService.applyRegisterDreami(dreamiId1, location);
+        matchingService.applyRegisterDreami(dreamiId2, location);
+        matchingService.applyStartMatching(orderMock(orderIdA));
+        matchingService.applyRunMatchingAssignmentCycle(); // maxConcurrentOffers=2 -> 둘 다 오퍼
+
+        OrderOfferGroup groupABefore = matchingService.findOrderOfferGroup(orderIdA).orElseThrow();
+        assertThat(groupABefore.offers()).hasSize(2);
+        MatchOffer acceptedOffer = groupABefore.offers().getFirst();
+        UUID loserDreamiId = groupABefore.offers().get(1).dreamiId();
+
+        matchingService.applyStartMatching(orderMock(orderIdB));
+
+        // when (한 명이 수락 -> 나머지 한 명은 WITHDRAWN되어 회수된다)
+        matchingService.applyAcceptByDreami(acceptedOffer.offerId());
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        // then (회수된 드리미가 B에 배정된다)
+        OrderOfferGroup groupB = matchingService.findOrderOfferGroup(orderIdB).orElseThrow();
+        assertThat(groupB.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+        assertThat(groupB.offers()).hasSize(1);
+        assertThat(groupB.offers().getFirst().dreamiId()).isEqualTo(loserDreamiId);
+    }
+
+    @Test
+    void 주문_취소로_반환된_드리미가_다른_대기_주문에_배정된다() {
+        MatchingService matchingService = newMatchingService(3);
+        UUID orderIdA = UUID.randomUUID();
+        UUID orderIdB = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+
+        matchingService.applyRegisterDreami(dreamiId, location);
+        matchingService.applyStartMatching(orderMock(orderIdA));
+        matchingService.applyRunMatchingAssignmentCycle();
+        assertThat(matchingService.findOrderOfferGroup(orderIdA).orElseThrow().offers()).hasSize(1);
+
+        matchingService.applyStartMatching(orderMock(orderIdB));
+
+        // when (A가 취소되어 드리미가 반환된다)
+        matchingService.applyCancelOrderByBoormi(orderIdA);
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        // then
+        OrderOfferGroup groupA = matchingService.findOrderOfferGroup(orderIdA).orElseThrow();
+        OrderOfferGroup groupB = matchingService.findOrderOfferGroup(orderIdB).orElseThrow();
+
+        assertThat(groupA.status()).isEqualTo(OrderOfferGroupStatus.CANCELLED);
+        assertThat(groupB.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+        assertThat(groupB.offers()).hasSize(1);
+        assertThat(groupB.offers().getFirst().dreamiId()).isEqualTo(dreamiId);
+    }
+
+    @Test
+    void 여러_상태_변경이_하나의_배치로_병합되어_반영된다() {
+        MatchingService matchingService = newMatchingService(1);
+        UUID orderIdA = UUID.randomUUID();
+        UUID orderIdB = UUID.randomUUID();
+        UUID orderIdC = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+
+        matchingService.applyRegisterDreami(dreamiId, location);
+        matchingService.applyStartMatching(orderMock(orderIdA));
+        matchingService.applyRunMatchingAssignmentCycle(); // A-dreami 오퍼
+
+        MatchOffer offerA = matchingService.findOrderOfferGroup(orderIdA).orElseThrow().offers().getFirst();
+
+        // when (거절과 두 개의 새 주문 시작을 모두 같은 배치 실행 전에 쌓아둔다)
+        matchingService.applyRejectByDreami(offerA.offerId());
+        matchingService.applyStartMatching(orderMock(orderIdB));
+        matchingService.applyStartMatching(orderMock(orderIdC));
+
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        // then (한 번의 배치 실행으로 세 주문 모두 함께 평가된다: A는 같은 드리미에게 재제안되지 않아 WAITING을 유지하고,
+        // B/C 중 드리미를 받은 쪽만 OPEN이 된다)
+        OrderOfferGroup groupA = matchingService.findOrderOfferGroup(orderIdA).orElseThrow();
+        OrderOfferGroup groupB = matchingService.findOrderOfferGroup(orderIdB).orElseThrow();
+        OrderOfferGroup groupC = matchingService.findOrderOfferGroup(orderIdC).orElseThrow();
+
+        assertThat(groupA.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
+        assertThat(groupA.offers()).noneMatch(offer -> offer.status() == MatchOfferStatus.OFFERED);
+
+        long openCount = Stream.of(groupB, groupC)
+                .filter(group -> group.status() == OrderOfferGroupStatus.OPEN)
+                .count();
+        assertThat(openCount).isEqualTo(1);
     }
 }
