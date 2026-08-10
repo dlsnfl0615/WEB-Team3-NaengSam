@@ -29,6 +29,8 @@ export function DriverPanel() {
   const [current, setCurrent] = useState<BoormiOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [todayRevenue, setTodayRevenue] = useState(0);
+  const [todayCompletedCount, setTodayCompletedCount] = useState(0);
   const goOffline = useMatchingStore((s) => s.goOffline);
   const matchingMessage = useMatchingStore((s) => s.message);
   const [endingSession, setEndingSession] = useState(false);
@@ -75,6 +77,22 @@ export function DriverPanel() {
       .finally(() => {
         if (alive) setLoading(false);
       });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // 오늘의 수익 · 완료 건수(오늘 하루 스코프). 보조 지표라 실패해도 화면을 막지 않고 0으로 둔다.
+  useEffect(() => {
+    let alive = true;
+    api
+      .getTodayStats()
+      .then(({ result }) => {
+        if (!alive) return;
+        setTodayRevenue(result?.todayRevenue ?? 0);
+        setTodayCompletedCount(result?.todayCompletedCount ?? 0);
+      })
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -143,8 +161,12 @@ export function DriverPanel() {
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="오늘의 수익" value="₩0" variant="accent" />
-        <StatCard label="완료 건수" value="0건" />
+        <StatCard
+          label="오늘의 수익"
+          value={`₩${todayRevenue.toLocaleString()}`}
+          variant="accent"
+        />
+        <StatCard label="완료 건수" value={`${todayCompletedCount}건`} />
       </div>
     </>
   );
