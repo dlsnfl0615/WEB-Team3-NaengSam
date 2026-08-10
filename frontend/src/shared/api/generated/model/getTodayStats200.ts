@@ -4,10 +4,11 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { DreamiTodayStatsDto } from './dreamiTodayStatsDto';
 
-export type Get200 = {
+export type GetTodayStats200 = {
   isSuccess?: boolean;
   code?: string;
   message?: string;
-  result?: string;
+  result?: DreamiTodayStatsDto;
 };

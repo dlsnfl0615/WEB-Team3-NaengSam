@@ -2,8 +2,10 @@ package com.naengsam.quick.domain.dreami.service;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
+import com.naengsam.quick.domain.dreami.dto.DreamiTodayStatsDto;
 import com.naengsam.quick.domain.dreami.dto.MonthlyRevenueDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
@@ -18,16 +20,21 @@ import com.naengsam.quick.domain.matching.event.DreamiAcceptedEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
+import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.entity.Role;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
 import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
 import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
 import com.naengsam.quick.global.exception.BusinessException;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Map;
@@ -47,6 +54,8 @@ public class DreamiService {
     private final BoormiRepository boormiRepository;
     private final DreamiRequestDeniedDetailsRepository dreamiRequestDeniedDetailsRepository;
     private final OrderRepository orderRepository;
+    private final DeliveryRepository deliveryRepository;
+    private final OrderService orderService;
     private final NearbyOrderFinder nearbyOrderFinder;
     private final MatchingService matchingService;
     private final MoneyTxRepository moneyTxRepository;
@@ -206,6 +215,14 @@ public class DreamiService {
                 thisMonthCount, recentSixMonths);
     }
 
+    /**
+     * 드리미가 수행한(수행 중인) 배달을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하다.
+     */
+    @Transactional(readOnly = true)
+    public BoormiOrdersResponse getMyOrders(UUID dreamiId, String cursor, int size, OrderCd status) {
+        return orderService.getOrders(dreamiId, Role.DREAMI, cursor, size, status);
+    }
+
     private long amountOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {
         MonthlyMoneyAggregate aggregate = byMonth.get(month);
         return aggregate == null ? 0 : aggregate.totalAmount();
@@ -214,5 +231,28 @@ public class DreamiService {
     private long countOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {
         MonthlyMoneyAggregate aggregate = byMonth.get(month);
         return aggregate == null ? 0 : aggregate.count();
+    }
+
+    /**
+     * 홈 화면의 "오늘의 수익"/"완료 건수" — 오늘 하루 스코프로 집계한다. 오늘의 수익은 정산(SETTLEMENT) 중 이미
+     * 확정(SETTLED)된 금액만 센다. 완료 건수는 오늘 배달 완료(markDelivered) 처리된 건수다.
+     */
+    @Transactional(readOnly = true)
+    public DreamiTodayStatsDto getTodayStats(UUID dreamiId) {
+        LocalDate today = LocalDate.now();
+        LocalDateTime start = today.atStartOfDay();
+        LocalDateTime end = today.plusDays(1).atStartOfDay();
+
+        // WALLET 은 boormi_id 로 소유자를 식별하며, dreamiId 는 boormiId 와 동일한 값이다.
+        long todayRevenue = moneyTxRepository
+                .aggregateByBoormiIdAndTypeBetween(
+                        dreamiId, MoneyTxTypeCd.SETTLEMENT, MoneyTxStatusCd.SETTLED, start, end)
+                .stream()
+                .mapToLong(MonthlyMoneyAggregate::totalAmount)
+                .sum();
+
+        long todayCompletedCount = deliveryRepository.countDeliveredBetween(dreamiId, start, end);
+
+        return DreamiTodayStatsDto.of(todayRevenue, todayCompletedCount);
     }
 }

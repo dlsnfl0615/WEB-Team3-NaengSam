@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.delivery.service;
 
+import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
@@ -19,7 +20,6 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
-import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.dto.UserDto;
 import com.naengsam.quick.domain.user.service.UserService;
@@ -58,7 +58,6 @@ class DeliveryServiceTest {
     private PickupCertificationRepository pickupCertificationRepository;
     private DeliveryCertificationRepository deliveryCertificationRepository;
     private SseService sseService;
-    private S3PresignService s3PresignService;
     private UploadSessionService uploadSessionService;
     private UserService userService;
     private OrderService orderService;
@@ -74,18 +73,17 @@ class DeliveryServiceTest {
         pickupCertificationRepository = mock(PickupCertificationRepository.class);
         deliveryCertificationRepository = mock(DeliveryCertificationRepository.class);
         sseService = mock(SseService.class);
-        s3PresignService = mock(S3PresignService.class);
         uploadSessionService = mock(UploadSessionService.class);
         userService = mock(UserService.class);
         orderService = mock(OrderService.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
-                deliveryCertificationRepository, sseService, s3PresignService, uploadSessionService,
-                userService, orderService, eventPublisher);
-        // 기본값: 미등록 주문은 빈 Optional, 사진은 존재. 스코프 검증(validateScope)은 void라 기본 no-op(통과).
+                deliveryCertificationRepository, sseService, uploadSessionService,
+                userService, orderService, eventPublisher, new ObjectMapper());
+        // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
-        given(s3PresignService.isFileUploaded(any())).willReturn(true);
+        given(uploadSessionService.checkUpload(any(), any(), any(), any())).willReturn(true);
     }
 
     // ===== 픽스처 =====
@@ -231,6 +229,41 @@ class DeliveryServiceTest {
 
         assertThat(result.orderId()).isEqualTo(orderId);
         verify(deliveryRepository, never()).findByOrderId(any()); // 비관적 락(FOR UPDATE)은 readOnly 트랜잭션에서 못 씀
+    }
+
+    @Test
+    void 배달상세조회시_주문의_route_path_JSON을_좌표목록으로_복원한다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, UUID.randomUUID(), boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(order.getRoutePath())
+                .willReturn("[{\"latitude\":37.5,\"longitude\":127.0},{\"latitude\":37.6,\"longitude\":127.1}]");
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        DeliveryDetailResponseDto result = deliveryService.getDeliveryDetail(orderId, boormiId);
+
+        assertThat(result.routePath()).hasSize(2);
+        assertThat(result.routePath().getFirst().latitude()).isEqualTo(37.5);
+        assertThat(result.routePath().getFirst().longitude()).isEqualTo(127.0);
+    }
+
+    @Test
+    void 배달상세조회시_route_path가_없으면_빈_경로를_반환한다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, UUID.randomUUID(), boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(order.getRoutePath()).willReturn(null);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        DeliveryDetailResponseDto result = deliveryService.getDeliveryDetail(orderId, boormiId);
+
+        assertThat(result.routePath()).isEmpty();
     }
 
     @Test
@@ -532,24 +565,30 @@ class DeliveryServiceTest {
     // ===== 사진 인증 =====
 
     @Test
-    void 픽업완료_사진이_업로드안됐으면_PICKUP_PHOTO_MISSING_예외() {
+    void 픽업완료_사진이_업로드안됐으면_FILE_NOT_FOUND_예외() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
-        given(s3PresignService.isFileUploaded(PHOTO_KEY)).willReturn(false);
+        UUID dreamiId = registeredDeliveries.get(orderId).getDreamiId();
+        willThrow(new BusinessException(UploadErrorCode.FILE_NOT_FOUND))
+                .given(uploadSessionService)
+                .checkUpload(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, orderId, PHOTO_KEY);
 
         Throwable thrown = catchThrowable(() -> pickupFinish(orderId));
 
-        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.PICKUP_PHOTO_MISSING);
+        assertThat(errorCodeOf(thrown)).isEqualTo(UploadErrorCode.FILE_NOT_FOUND);
         assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
     }
 
     @Test
-    void 배달완료_사진이_업로드안됐으면_DELIVERY_COMPLETION_PHOTO_MISSING_예외() {
+    void 배달완료_사진이_업로드안됐으면_FILE_NOT_FOUND_예외() {
         UUID orderId = registerDelivery(DELIVERING);
-        given(s3PresignService.isFileUploaded(PHOTO_KEY)).willReturn(false);
+        UUID dreamiId = registeredDeliveries.get(orderId).getDreamiId();
+        willThrow(new BusinessException(UploadErrorCode.FILE_NOT_FOUND))
+                .given(uploadSessionService)
+                .checkUpload(UploadPurpose.DELIVERY_CERTIFICATION_IMAGE, dreamiId, orderId, PHOTO_KEY);
 
         Throwable thrown = catchThrowable(() -> finish(orderId));
 
-        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_COMPLETION_PHOTO_MISSING);
+        assertThat(errorCodeOf(thrown)).isEqualTo(UploadErrorCode.FILE_NOT_FOUND);
         assertThat(statusOf(orderId)).isEqualTo(DELIVERING);
     }
 
@@ -559,7 +598,7 @@ class DeliveryServiceTest {
         UUID dreamiId = registeredDeliveries.get(orderId).getDreamiId();
         willThrow(new BusinessException(UploadErrorCode.KEY_OWNER_MISMATCH))
                 .given(uploadSessionService)
-                .validateScope(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, orderId, PHOTO_KEY);
+                .checkUpload(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, orderId, PHOTO_KEY);
 
         Throwable thrown = catchThrowable(
                 () -> deliveryService.pickupFinishByDreami(orderId, dreamiId, PHOTO_KEY));
@@ -698,12 +737,12 @@ class DeliveryServiceTest {
     }
 
     @Test
-    void 배달완료_픽업전이면_PICKUP_NOT_COMPLETED_예외() {
+    void 배달완료_픽업전이면_DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP_예외() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
 
         Throwable thrown = catchThrowable(() -> finish(orderId));
 
-        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.PICKUP_NOT_COMPLETED);
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP);
         assertThat(statusOf(orderId)).isEqualTo(DeliveryCd.PICKUP_NORMAL);
     }
 
@@ -772,7 +811,10 @@ class DeliveryServiceTest {
     @Test
     void 픽업완료_사진이없으면_PickupCertification을_저장하지_않는다() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
-        given(s3PresignService.isFileUploaded(PHOTO_KEY)).willReturn(false);
+        UUID dreamiId = registeredDeliveries.get(orderId).getDreamiId();
+        willThrow(new BusinessException(UploadErrorCode.FILE_NOT_FOUND))
+                .given(uploadSessionService)
+                .checkUpload(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, orderId, PHOTO_KEY);
 
         catchThrowable(() -> pickupFinish(orderId));
 
@@ -791,7 +833,10 @@ class DeliveryServiceTest {
     @Test
     void 배달완료_사진이없으면_DeliveryCertification을_저장하지_않는다() {
         UUID orderId = registerDelivery(DELIVERING);
-        given(s3PresignService.isFileUploaded(PHOTO_KEY)).willReturn(false);
+        UUID dreamiId = registeredDeliveries.get(orderId).getDreamiId();
+        willThrow(new BusinessException(UploadErrorCode.FILE_NOT_FOUND))
+                .given(uploadSessionService)
+                .checkUpload(UploadPurpose.DELIVERY_CERTIFICATION_IMAGE, dreamiId, orderId, PHOTO_KEY);
 
         catchThrowable(() -> finish(orderId));
 

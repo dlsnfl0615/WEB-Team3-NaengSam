@@ -68,7 +68,7 @@ public class DeliveryTestController {
         UUID orderId = UUID.randomUUID();
 
         Orders order = Orders.create(orderId, boormiId, "테스트 물품", ItemCd.DOCUMENT,
-                null, 5000L, 30, "테스트 배달 요청", null, dummyAddresses());
+                null, 5000L, 30, null, "테스트 배달 요청", null, dummyAddresses(), null);
         order.assignDreamiTest(dreamiId);
         orderService.createOrders(order);
 

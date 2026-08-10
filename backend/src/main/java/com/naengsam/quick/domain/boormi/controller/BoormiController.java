@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.boormi.controller;
 
+import com.naengsam.quick.domain.address.exception.AddressErrorCode;
 import com.naengsam.quick.domain.boormi.dto.*;
 import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
@@ -32,6 +33,9 @@ public class BoormiController {
     @PostMapping("/expected-value")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"EXTERNAL_SERVICE_ERROR", "EXTERNAL_SERVICE_TIMEOUT"})
+    @ApiErrorCodes(enumClass = AddressErrorCode.class,
+            codes = {"SAME_POINT", "START_LINK_NOT_FOUND", "END_LINK_NOT_FOUND", "TOO_MANY_SEARCH_LINK", "TOO_FAR_AWAY",
+                    "ROUTE_RESULT_NOT_FOUND"})
     public ExpectedValueDto expectedValue(@Valid @RequestBody ExpectedValueRequest request) {
         return boormiService.expectedValue(request);
     }
@@ -41,6 +45,9 @@ public class BoormiController {
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = GeneralErrorCode.class,
             codes = {"EXTERNAL_SERVICE_ERROR", "EXTERNAL_SERVICE_TIMEOUT", "CONFLICT"})
+    @ApiErrorCodes(enumClass = AddressErrorCode.class,
+            codes = {"SAME_POINT", "START_LINK_NOT_FOUND", "END_LINK_NOT_FOUND", "TOO_MANY_SEARCH_LINK", "TOO_FAR_AWAY",
+                    "ROUTE_RESULT_NOT_FOUND"})
     @ApiErrorCodes(enumClass = OrderErrorCode.class,
             codes = {"SAME_ORIGIN_DESTINATION", "TOO_MANY_ACTIVE_ORDERS"})
     public UUID subscribeOrder(@LoginUser UUID boormiId, @Valid @RequestBody OrderRequest orderRequest) {
@@ -51,7 +58,7 @@ public class BoormiController {
     @GetMapping("/calls")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"INVALID_CURSOR"})
-    public BoormiOrdersResponse getMyOrders(
+    public BoormiOrdersResponse getBoormiOrders(
             @LoginUser UUID boormiId,
             @RequestParam(required = false) String cursor,
             @RequestParam(defaultValue = "20") int size,

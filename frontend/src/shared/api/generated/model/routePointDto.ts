@@ -5,6 +5,9 @@
  * OpenAPI spec version: v0
  */
 
-export type PutParams = {
-key: string;
-};
+export interface RoutePointDto {
+  /** 위도 */
+  latitude?: number;
+  /** 경도 */
+  longitude?: number;
+}
