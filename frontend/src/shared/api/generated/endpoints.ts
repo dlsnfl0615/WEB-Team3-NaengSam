@@ -56,6 +56,7 @@ import type {
   Signup200,
   Subscribe200,
   SubscribeOrder200,
+  UpdateDreamiLocation200,
   VerifyCodeRequest,
   WaitingDreamis200,
   WaitingOrders200
@@ -292,8 +293,8 @@ const finishDelivery = (
 const updateDreamiLocation = (
     orderId: string,
     dreamiLocationRequest?: DreamiLocationRequest,
- options?: SecondParameter<typeof customInstance<void>>,) => {
-      return customInstance<void>(
+ options?: SecondParameter<typeof customInstance<UpdateDreamiLocation200>>,) => {
+      return customInstance<UpdateDreamiLocation200>(
       {url: `/api/v1/delivery/orders/${orderId}/dreami-location`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
       data: dreamiLocationRequest

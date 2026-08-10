@@ -37,7 +37,7 @@ interface DeliveryPinOverlay {
 
 /** 역할별 핀 색(theme.css 토큰 hex 재사용)·라벨 텍스트·라벨 배경(토큰 유틸). */
 const ROLE: Record<Role, { color: string; label: string; bg: string }> = {
-  pickup: { color: "#0d1b3d", label: "출발지", bg: "bg-navy-900" }, // navy-900
+  pickup: { color: "#0d1b3d", label: "픽업 장소", bg: "bg-navy-900" }, // navy-900
   dropoff: { color: "#00b7a7", label: "도착지", bg: "bg-teal-500" }, // teal-500
   driver: { color: "#b26a00", label: "드리미", bg: "bg-status-warning" }, // status-warning
 };
