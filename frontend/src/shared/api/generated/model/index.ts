@@ -78,6 +78,7 @@ export * from './pickupFinishByDreami200';
 export * from './presignedUrlResponseDto';
 export * from './registerDreami200';
 export * from './rejectDreamiRequest';
+export * from './routePointDto';
 export * from './saveAddress200';
 export * from './seed200';
 export * from './seedParams';

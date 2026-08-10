@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.delivery.service;
 
+import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
@@ -78,7 +79,7 @@ class DeliveryServiceTest {
         eventPublisher = mock(ApplicationEventPublisher.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, sseService, uploadSessionService,
-                userService, orderService, eventPublisher);
+                userService, orderService, eventPublisher, new ObjectMapper());
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
@@ -228,6 +229,41 @@ class DeliveryServiceTest {
 
         assertThat(result.orderId()).isEqualTo(orderId);
         verify(deliveryRepository, never()).findByOrderId(any()); // 비관적 락(FOR UPDATE)은 readOnly 트랜잭션에서 못 씀
+    }
+
+    @Test
+    void 배달상세조회시_주문의_route_path_JSON을_좌표목록으로_복원한다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, UUID.randomUUID(), boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(order.getRoutePath())
+                .willReturn("[{\"latitude\":37.5,\"longitude\":127.0},{\"latitude\":37.6,\"longitude\":127.1}]");
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        DeliveryDetailResponseDto result = deliveryService.getDeliveryDetail(orderId, boormiId);
+
+        assertThat(result.routePath()).hasSize(2);
+        assertThat(result.routePath().getFirst().latitude()).isEqualTo(37.5);
+        assertThat(result.routePath().getFirst().longitude()).isEqualTo(127.0);
+    }
+
+    @Test
+    void 배달상세조회시_route_path가_없으면_빈_경로를_반환한다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, UUID.randomUUID(), boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(order.getRoutePath()).willReturn(null);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        DeliveryDetailResponseDto result = deliveryService.getDeliveryDetail(orderId, boormiId);
+
+        assertThat(result.routePath()).isEmpty();
     }
 
     @Test
