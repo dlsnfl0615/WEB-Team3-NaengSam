@@ -23,6 +23,7 @@ import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.entity.Role;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.domain.order.service.OrderService;
@@ -189,7 +190,7 @@ public class BoormiService {
      */
     @Transactional(readOnly = true)
     public BoormiOrdersResponse getMyOrders(UUID boormiId, String cursor, int size, OrderCd status) {
-        return orderService.getBoormiOrders(boormiId, cursor, size, status);
+        return orderService.getOrders(boormiId, Role.BOORMI, cursor, size, status);
     }
 
     /**

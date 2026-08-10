@@ -51,7 +51,7 @@ public class BoormiController {
     @GetMapping("/calls")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"INVALID_CURSOR"})
-    public BoormiOrdersResponse getMyOrders(
+    public BoormiOrdersResponse getBoormiOrders(
             @LoginUser UUID boormiId,
             @RequestParam(required = false) String cursor,
             @RequestParam(defaultValue = "20") int size,
