@@ -301,7 +301,7 @@ public class MatchingService {
 
         GeoPoint boormiLocation = new GeoPoint(order.getOriginLatitude(), order.getOriginLongitude());
         OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), boormiLocation,
-                new ArrayList<>());
+                new ArrayList<>(), LocalDateTime.now(clock));
         orderOfferGroupsByOrderId.put(order.getOrderId(), group);
         attemptOfferRound(group);
     }
