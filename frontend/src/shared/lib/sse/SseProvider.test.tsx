@@ -2,6 +2,7 @@ import { act, StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { useSessionStore } from "@/shared/store/sessionStore";
+import { useMatchingStore } from "@/shared/store/matchingStore";
 import { SseProvider } from "./SseProvider";
 import { useSse } from "./useSse";
 import type { SseHandlers } from "./SseContext";
@@ -47,6 +48,12 @@ beforeEach(() => {
   FakeEventSource.instances = [];
   vi.stubGlobal("EventSource", FakeEventSource);
   useSessionStore.setState({ isAuthenticated: true, hydrated: true, user: null });
+  // 매칭 polling은 별도로 검증하므로 여기서는 호출 여부만 스파이한다(실제 api 조회를 막는다).
+  useMatchingStore.setState({
+    startMatchingPolling: vi.fn(),
+    stopMatchingPolling: vi.fn(),
+    syncCurrentMatching: vi.fn().mockResolvedValue(undefined),
+  });
 });
 
 afterEach(() => {
@@ -130,5 +137,36 @@ describe("SseProvider", () => {
 
     const openInstances = FakeEventSource.instances.filter((instance) => !instance.closed);
     expect(openInstances).toHaveLength(1);
+  });
+
+  it("연결 장애(onerror)가 나면 매칭 상태 polling을 시작한다", () => {
+    render(
+      <SseProvider>
+        <Consumer handlers={{ event_a: vi.fn() }} />
+      </SseProvider>,
+    );
+    const source = FakeEventSource.instances[0];
+
+    act(() => {
+      source.onerror?.();
+    });
+
+    expect(useMatchingStore.getState().startMatchingPolling).toHaveBeenCalled();
+  });
+
+  it("연결(재연결)이 서면 polling을 멈추고 즉시 상태를 동기화한다", () => {
+    render(
+      <SseProvider>
+        <Consumer handlers={{ event_a: vi.fn() }} />
+      </SseProvider>,
+    );
+    const source = FakeEventSource.instances[0];
+
+    act(() => {
+      source.dispatch("connected", {});
+    });
+
+    expect(useMatchingStore.getState().stopMatchingPolling).toHaveBeenCalled();
+    expect(useMatchingStore.getState().syncCurrentMatching).toHaveBeenCalled();
   });
 });

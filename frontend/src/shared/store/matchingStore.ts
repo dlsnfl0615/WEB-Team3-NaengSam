@@ -2,8 +2,10 @@ import { create } from "zustand";
 import {
   api,
   isApiError,
+  type CurrentMatchingStatusDto,
   type DreamiProfileDto,
   type NearbyCallDto,
+  type PendingOfferDto,
 } from "@/shared/api";
 
 /** 주변 콜 조회 반경(m)·최대 건수(백엔드 상한 10). */
@@ -11,6 +13,8 @@ const NEARBY_RADIUS_M = 3000;
 const NEARBY_COUNT = 10;
 /** 위치 취득 제한시간(ms). 넘기면 실패로 보고 사용자에게 재시도를 시킨다. */
 const GEOLOCATION_TIMEOUT_MS = 10_000;
+/** SSE 장애 중 매칭 상태를 되찾기 위한 polling 주기(ms). */
+export const MATCHING_POLL_INTERVAL_MS = 3_000;
 
 /** 위치 API마다 필드명이 달라서(위치등록 latitude/longitude, 주변콜 lat/lng) 내부 표준형을 둔다. */
 interface Coords {
@@ -87,6 +91,15 @@ interface MatchingState {
   confirmDreami: () => Promise<string | null>;
   rejectDreami: () => Promise<void>;
   clearMessage: () => void;
+  /**
+   * 현재 매칭 상태를 서버에서 즉시 조회해 팝업 상태를 맞춘다. SSE로 놓친 이벤트를 복구하는 용도.
+   * 응답의 pendingOffer/incomingDreami가 null이면 남아 있던 팝업을 제거한다.
+   */
+  syncCurrentMatching: () => Promise<void>;
+  /** SSE 장애 중 상태를 되찾기 위한 polling 시작(즉시 1회 동기화 + 주기 반복). 이미 돌고 있으면 무시. */
+  startMatchingPolling: () => void;
+  /** polling 중단 + timer 제거. */
+  stopMatchingPolling: () => void;
 }
 
 /** 위치 취득 실패 사유별 안내. 사용자가 다음 행동을 고를 수 있게 구분한다. */
@@ -129,6 +142,54 @@ function toMessage(e: unknown, fallback: string): string {
   if (isApiError(e)) return e.message;
   return e instanceof Error ? e.message : fallback;
 }
+
+/** nullable 숫자를 store 표준형(number | null)으로 정규화한다. */
+function num(v: number | undefined): number | null {
+  return v ?? null;
+}
+
+/** nullable 문자열을 store 표준형(string | null)으로 정규화한다. */
+function str(v: string | undefined): string | null {
+  return v ?? null;
+}
+
+/**
+ * 스냅샷의 PendingOfferDto(offerId + OrderSummaryDto) → store의 PendingOffer로 매핑한다.
+ * ttlSeconds는 스냅샷에 없으므로 0으로 둔다(팝업은 ttl로 카운트다운·자동만료를 하지 않는다).
+ */
+function pendingOfferFromSnapshot(
+  dto: PendingOfferDto,
+  nearbyCalls: NearbyCallDto[],
+): PendingOffer {
+  const summary = dto.orderSummary ?? {};
+  const orderId = summary.orderId ?? "";
+  return {
+    offerId: dto.offerId ?? "",
+    orderId,
+    deliveryAmount: num(summary.deliveryAmount),
+    itemName: str(summary.itemName),
+    deliveryEta: summary.deliveryEta ?? 0,
+    deliveryDistance: num(summary.deliveryDistance),
+    originLatitude: num(summary.originLatitude),
+    originLongitude: num(summary.originLongitude),
+    originAlias: str(summary.originAlias),
+    originAddressLine1: str(summary.originAddressLine1),
+    destinationLatitude: num(summary.destinationLatitude),
+    destinationLongitude: num(summary.destinationLongitude),
+    destinationAlias: str(summary.destinationAlias),
+    destinationAddressLine1: str(summary.destinationAddressLine1),
+    imageKey: str(summary.imageKey),
+    ttlSeconds: 0,
+    distanceMeters: nearbyCalls.find((c) => c.orderId === orderId)?.distanceMeters,
+  };
+}
+
+/**
+ * SSE 장애 중 상태를 되찾는 polling 자원. 렌더와 무관하므로 store 상태가 아니라 모듈 스코프로 둔다.
+ * `pollTimer`: setInterval 핸들(중복 시작 방지). `syncing`: in-flight 동기화 요청(중복 요청 방지).
+ */
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let syncing = false;
 
 /**
  * 실 매칭 상태 전역 스토어. 수락·거절·최종 확정을 실제 매칭 API로 처리한다.
@@ -319,4 +380,58 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   },
 
   clearMessage: () => set({ message: null }),
+
+  syncCurrentMatching: async () => {
+    // 이미 조회가 진행 중이면 중복 요청하지 않는다(3초 poll이 느린 응답 위로 쌓이지 않게).
+    if (syncing) return;
+    syncing = true;
+    let data: CurrentMatchingStatusDto;
+    try {
+      ({ result: data = {} } = await api.getCurrentStatus());
+    } catch {
+      // 조회 실패는 다음 poll에서 다시 시도한다(팝업 상태는 건드리지 않는다).
+      return;
+    } finally {
+      syncing = false;
+    }
+
+    // 수락·거절 요청이 진행 중이면 사용자의 조작과 충돌하지 않도록 스냅샷을 덮어쓰지 않는다.
+    if (get().submitting) return;
+
+    // 드리미: 응답 대기 중인 제안. offerId가 바뀔 때만 갱신하고, 없으면 남은 팝업을 제거한다.
+    const pending = data.pendingOffer;
+    if (pending?.offerId && pending.orderSummary) {
+      if (get().pendingOffer?.offerId !== pending.offerId) {
+        set({ pendingOffer: pendingOfferFromSnapshot(pending, get().nearbyCalls), message: null });
+      }
+    } else if (get().pendingOffer) {
+      set({ pendingOffer: null });
+    }
+
+    // 부르미: 확인 대기 중인 드리미 수락. offerId가 바뀔 때만 receiveDreamiInfo로 재사용(프로필까지 보충).
+    const incoming = data.incomingDreami;
+    if (incoming?.offerId) {
+      if (get().incomingDreami?.offerId !== incoming.offerId) {
+        get().receiveDreamiInfo(incoming);
+      }
+    } else if (get().incomingDreami) {
+      set({ incomingDreami: null });
+    }
+  },
+
+  startMatchingPolling: () => {
+    if (pollTimer) return;
+    // 장애를 감지한 즉시 한 번 맞추고, 이후 주기적으로 되찾는다.
+    void get().syncCurrentMatching();
+    pollTimer = setInterval(() => {
+      void get().syncCurrentMatching();
+    }, MATCHING_POLL_INTERVAL_MS);
+  },
+
+  stopMatchingPolling: () => {
+    if (pollTimer) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  },
 }));

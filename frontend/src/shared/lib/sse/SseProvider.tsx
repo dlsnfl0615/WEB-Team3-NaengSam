@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSessionStore } from "@/shared/store/sessionStore";
+import { useMatchingStore } from "@/shared/store/matchingStore";
 import { SseContext, type SseContextValue } from "./SseContext";
 
 export interface SseProviderProps {
@@ -73,8 +74,18 @@ export function SseProvider({ children }: SseProviderProps) {
     sourceRef.current = source;
     attachedNamesRef.current = new Set();
 
-    source.addEventListener("connected", () => setConnected(true));
-    source.onerror = () => setConnected(false);
+    source.addEventListener("connected", () => {
+      setConnected(true);
+      // 연결(재연결 포함)이 서면 빠른 polling을 멈추고, 그동안 놓친 상태를 즉시 한 번 맞춘다.
+      const matching = useMatchingStore.getState();
+      matching.stopMatchingPolling();
+      void matching.syncCurrentMatching();
+    });
+    source.onerror = () => {
+      setConnected(false);
+      // 연결이 끊기면 매칭 상태를 놓치지 않도록 즉시 조회 + 3초 polling으로 복구한다.
+      useMatchingStore.getState().startMatchingPolling();
+    };
 
     // 연결이 만들어지기 전에 이미 subscribe된 이벤트 이름들도 새 연결에 걸어준다.
     handlersByEventRef.current.forEach((_handlers, eventName) => attachListener(source, eventName));
@@ -84,6 +95,8 @@ export function SseProvider({ children }: SseProviderProps) {
       sourceRef.current = null;
       attachedNamesRef.current = new Set();
       setConnected(false);
+      // 로그아웃·언마운트 시 남아 있는 polling timer를 반드시 제거한다.
+      useMatchingStore.getState().stopMatchingPolling();
     };
   }, [isAuthenticated, attachListener]);
 
