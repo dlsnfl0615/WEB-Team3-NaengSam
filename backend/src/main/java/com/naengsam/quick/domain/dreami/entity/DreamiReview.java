@@ -41,4 +41,14 @@ public class DreamiReview {
     @JdbcTypeCode(SqlTypes.BINARY)
     @Column(name = "order_id", columnDefinition = "BINARY(16)", nullable = false)
     private UUID orderId;
+
+    public static DreamiReview create(UUID orderId, int score, String content) {
+        DreamiReview review = new DreamiReview();
+        review.reviewId = UUID.randomUUID();
+        review.orderId = orderId;
+        review.score = score;
+        review.content = content;
+        review.createdDtm = LocalDateTime.now();
+        return review;
+    }
 }

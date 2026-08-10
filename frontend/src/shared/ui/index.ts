@@ -71,6 +71,12 @@ export type {
   Coords,
 } from "./DeliveryRouteMap/DeliveryRouteMap";
 
+export { NearbyCallsMap } from "./NearbyCallsMap/NearbyCallsMap";
+export type {
+  NearbyCallsMapProps,
+  NearbyCall,
+} from "./NearbyCallsMap/NearbyCallsMap";
+
 export { BarChart } from "./BarChart/BarChart";
 export type { BarChartProps, BarDatum } from "./BarChart/BarChart";
 

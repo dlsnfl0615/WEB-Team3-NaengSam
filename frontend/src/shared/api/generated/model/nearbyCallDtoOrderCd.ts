@@ -5,10 +5,10 @@
  * OpenAPI spec version: v0
  */
 
-export type GetMyOrdersStatus = typeof GetMyOrdersStatus[keyof typeof GetMyOrdersStatus];
+export type NearbyCallDtoOrderCd = typeof NearbyCallDtoOrderCd[keyof typeof NearbyCallDtoOrderCd];
 
 
-export const GetMyOrdersStatus = {
+export const NearbyCallDtoOrderCd = {
   MATCHING: 'MATCHING',
   PENDING_BOORMI_CONFIRMATION: 'PENDING_BOORMI_CONFIRMATION',
   IN_PROGRESS: 'IN_PROGRESS',

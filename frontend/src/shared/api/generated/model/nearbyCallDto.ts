@@ -5,12 +5,21 @@
  * OpenAPI spec version: v0
  */
 import type { GeoPoint } from './geoPoint';
+import type { NearbyCallDtoItemCd } from './nearbyCallDtoItemCd';
+import type { NearbyCallDtoOrderCd } from './nearbyCallDtoOrderCd';
 
 export interface NearbyCallDto {
   orderId?: string;
   location?: GeoPoint;
   distanceMeters?: number;
   itemName?: string;
+  itemCd?: NearbyCallDtoItemCd;
+  orderCd?: NearbyCallDtoOrderCd;
   expectedRevenue?: number;
   expectedEtaMinutes?: number;
+  pickupEtaMinutes?: number;
+  originAddressLine1?: string;
+  originAddressLine2?: string;
+  destinationAddressLine1?: string;
+  destinationAddressLine2?: string;
 }

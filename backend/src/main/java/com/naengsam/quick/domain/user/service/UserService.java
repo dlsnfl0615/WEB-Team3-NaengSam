@@ -55,9 +55,8 @@ public class UserService {
             throw new BusinessException(AuthErrorCode.PHONE_NOT_VERIFIED);
         }
 
-        // TODO: 외부 해싱 라이브러리 없이 우선 평문 저장. 후속으로 SHA-256(MessageDigest) 등 해싱 도입 필요.
-        Boormi boormi = Boormi.create(request.email(), request.password(), request.name(), phone,
-                request.birthdate());
+        Boormi boormi = Boormi.create(request.email(), PasswordHasher.hash(request.password()),
+                request.name(), phone, request.birthdate());
         boormiRepository.save(boormi);
         walletService.createWallet(boormi.getBoormiId());
 
@@ -73,8 +72,7 @@ public class UserService {
         Boormi boormi = boormiRepository.findByEmail(request.email())
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.LOGIN_FAILED));
 
-        // TODO: 외부 해싱 라이브러리 없이 우선 평문 비교. 후속으로 SHA-256(MessageDigest) 등 해싱 도입 필요.
-        if (!boormi.getPassword().equals(request.password())) {
+        if (!PasswordHasher.matches(request.password(), boormi.getPassword())) {
             throw new BusinessException(AuthErrorCode.LOGIN_FAILED);
         }
 

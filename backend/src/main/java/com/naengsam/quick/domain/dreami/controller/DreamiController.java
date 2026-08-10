@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.dreami.controller;
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiOnlineRequest;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
+import com.naengsam.quick.domain.dreami.dto.DreamiTodayStatsDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.service.DreamiService;
@@ -10,7 +11,9 @@ import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
@@ -26,6 +29,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -101,5 +105,27 @@ public class DreamiController {
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     public DreamiDashboardDto getDashboard(@LoginUser UUID dreamiId) {
         return dreamiService.getDashboard(dreamiId);
+    }
+
+    @Operation(summary = "드리미 오늘 통계 조회",
+            description = "홈 화면에 보여줄 오늘 하루 스코프의 수익·완료 건수를 조회한다.")
+    @GetMapping("/dashboard/today")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    public DreamiTodayStatsDto getTodayStats(@LoginUser UUID dreamiId) {
+        return dreamiService.getTodayStats(dreamiId);
+    }
+
+    @Operation(summary = "드리미 활동 내역 조회",
+            description = "로그인한 드리미가 수행한(수행 중인) 배달을 최신순 커서 페이지네이션으로 조회한다. "
+                    + "status 로 단일 상태 필터링이 가능하며, cursor 는 이전 응답의 nextCursor 를 그대로 넘긴다.")
+    @GetMapping("/deliveries")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"INVALID_CURSOR"})
+    public BoormiOrdersResponse getDreamiOrders(
+            @LoginUser UUID dreamiId,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(required = false) OrderCd status) {
+        return dreamiService.getMyOrders(dreamiId, cursor, size, status);
     }
 }
