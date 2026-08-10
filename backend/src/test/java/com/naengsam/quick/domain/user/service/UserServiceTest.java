@@ -13,8 +13,11 @@ import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
+import com.naengsam.quick.domain.order.entity.OrderCd;
+import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.domain.payment.service.WalletService;
+import com.naengsam.quick.domain.user.dto.ActiveRole;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
 import com.naengsam.quick.domain.user.dto.SignUpRequest;
 import com.naengsam.quick.domain.user.dto.UserDto;
@@ -263,6 +266,54 @@ class UserServiceTest {
 
         assertThat(result.isDreami()).isFalse();
         verify(dreamiRepository, never()).findById(any());
+    }
+
+    @Test
+    void 내정보_드리미로_진행중인_주문이_있으면_활성역할과_주문을_반환한다() {
+        Boormi boormi = activeBoormi();
+        UUID id = boormi.getBoormiId();
+        UUID orderId = UUID.randomUUID();
+        Orders order = org.mockito.Mockito.mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
+        given(orderRepository.findByDreamiIdAndOrderCd(id, OrderCd.IN_PROGRESS))
+                .willReturn(Optional.of(order));
+
+        UserDto result = userService.getUserInfo(id);
+
+        assertThat(result.activeRole()).isEqualTo(ActiveRole.DREAMI);
+        assertThat(result.activeOrderId()).isEqualTo(orderId);
+        verify(orderRepository, never()).countActiveOrders(any());
+    }
+
+    @Test
+    void 내정보_부르미로_활성주문이_있으면_부르미_활성역할을_반환한다() {
+        Boormi boormi = activeBoormi();
+        UUID id = boormi.getBoormiId();
+        given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
+        given(orderRepository.findByDreamiIdAndOrderCd(id, OrderCd.IN_PROGRESS))
+                .willReturn(Optional.empty());
+        given(orderRepository.countActiveOrders(id)).willReturn(1L);
+
+        UserDto result = userService.getUserInfo(id);
+
+        assertThat(result.activeRole()).isEqualTo(ActiveRole.BOORMI);
+        assertThat(result.activeOrderId()).isNull();
+    }
+
+    @Test
+    void 내정보_활성주문이_없으면_활성역할과_주문이_null이다() {
+        Boormi boormi = activeBoormi();
+        UUID id = boormi.getBoormiId();
+        given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
+        given(orderRepository.findByDreamiIdAndOrderCd(id, OrderCd.IN_PROGRESS))
+                .willReturn(Optional.empty());
+        given(orderRepository.countActiveOrders(id)).willReturn(0L);
+
+        UserDto result = userService.getUserInfo(id);
+
+        assertThat(result.activeRole()).isNull();
+        assertThat(result.activeOrderId()).isNull();
     }
 
     @Test
