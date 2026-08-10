@@ -24,7 +24,7 @@ interface BoormiOrderState {
 }
 
 /**
- * 부르미 주문(콜) 전역 스토어. getMyOrders 커서 페이지네이션 결과를 담고
+ * 부르미 주문(콜) 전역 스토어. getBoormiOrders 커서 페이지네이션 결과를 담고
  * 홈("진행 중인 부름")·활동 화면이 함께 구독한다.
  *
  * 필터링은 클라이언트에서 orderCd를 그룹핑(전체/진행중/완료/취소)하므로
@@ -42,7 +42,7 @@ export const useBoormiOrderStore = create<BoormiOrderState>((set, get) => ({
   load: async () => {
     set({ loading: true, error: null });
     try {
-      const { result } = await api.getMyOrders({ size: PAGE_SIZE });
+      const { result } = await api.getBoormiOrders({ size: PAGE_SIZE });
       set({
         orders: (result?.orders ?? []).map(toBoormiOrder),
         nextCursor: result?.nextCursor,
@@ -62,7 +62,7 @@ export const useBoormiOrderStore = create<BoormiOrderState>((set, get) => ({
     if (!hasNext || !nextCursor || loadingMore) return;
     set({ loadingMore: true, error: null });
     try {
-      const { result } = await api.getMyOrders({
+      const { result } = await api.getBoormiOrders({
         cursor: nextCursor,
         size: PAGE_SIZE,
       });

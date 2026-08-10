@@ -22,7 +22,6 @@ import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
-import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
@@ -70,7 +69,6 @@ public class DeliveryService {
     private final PickupCertificationRepository pickupCertificationRepository;
     private final DeliveryCertificationRepository deliveryCertificationRepository;
     private final SseService sseService;
-    private final S3PresignService s3PresignService;
     private final UploadSessionService uploadSessionService;
     private final UserService userService;
     private final OrderService orderService;
@@ -258,9 +256,9 @@ public class DeliveryService {
         if (!isValid) return "픽업 취소 실패";
 
 
-        // 사진이_없는경우
-        if (!hasPickupPhoto(delivery.getOrderId(), dreamiId, photoKey))
-            throw new BusinessException(DeliveryErrorCode.PICKUP_PHOTO_MISSING);
+        // 본인이, 이 주문에 대해, 픽업 인증사진 용도로 발급받은 key인지 확인하고, 업로드 안 됐으면 FILE_NOT_FOUND
+        uploadSessionService.checkUpload(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, delivery.getOrderId(),
+                photoKey);
 
         delivery.markDelivering(); // 배달중_정상
         // 비대면 픽업 인증 행 저장 (submittedDtm은 markDelivering이 기록한 pickedUpDtm 재사용)
@@ -392,9 +390,9 @@ public class DeliveryService {
 
         if (!isValid) return "배달 완료 실패";
 
-        if (!hasDeliveryPhoto(delivery.getOrderId(), dreamiId, photoKey)) { // 사진이없을때
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_PHOTO_MISSING);
-        }
+        // 본인이, 이 주문에 대해, 배달완료 인증사진 용도로 발급받은 key인지 확인하고, 업로드 안 됐으면 FILE_NOT_FOUND
+        uploadSessionService.checkUpload(UploadPurpose.DELIVERY_CERTIFICATION_IMAGE, dreamiId, delivery.getOrderId(),
+                photoKey);
 
         delivery.markDelivered(); // 배달_완료
         orderService.complete(delivery.getOrderId()); // 주문도 완료 상태로 전이
@@ -464,18 +462,4 @@ public class DeliveryService {
         sseService.send(event.userId(), event.eventType(), event.payload());
     }
 
-    // ===== 사진 확인 (upload 도메인 연동) =====
-    // 드리미가 자기 세션으로 발급받아 업로드한 key인지(소유권) 확인한 뒤, 그 파일이 S3에 실제 존재하는지 검사한다.
-
-    private boolean hasPickupPhoto(UUID orderId, UUID dreamiId, String photoKey) {
-        // 본인이, 이 주문에 대해, 픽업 인증사진 용도로 발급받은 key가 아니면 KEY_OWNER_MISMATCH
-        uploadSessionService.validateScope(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, orderId, photoKey);
-        return s3PresignService.isFileUploaded(photoKey);
-    }
-
-    private boolean hasDeliveryPhoto(UUID orderId, UUID dreamiId, String photoKey) {
-        // 본인이, 이 주문에 대해, 배달완료 인증사진 용도로 발급받은 key가 아니면 KEY_OWNER_MISMATCH
-        uploadSessionService.validateScope(UploadPurpose.DELIVERY_CERTIFICATION_IMAGE, dreamiId, orderId, photoKey);
-        return s3PresignService.isFileUploaded(photoKey);
-    }
 }

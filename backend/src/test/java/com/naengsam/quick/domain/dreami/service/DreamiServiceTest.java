@@ -4,8 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -27,11 +29,14 @@ import com.naengsam.quick.domain.matching.event.DreamiAcceptedEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
+import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.entity.Role;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
 import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
@@ -40,6 +45,7 @@ import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
@@ -70,6 +76,9 @@ class DreamiServiceTest {
 
     @Mock
     private OrderRepository orderRepository;
+
+    @Mock
+    private OrderService orderService;
 
     @Mock
     private NearbyOrderFinder nearbyOrderFinder;
@@ -371,6 +380,20 @@ class DreamiServiceTest {
 
         assertThat(result.monthOverMonthGrowthPercent()).isEqualTo(0L);
         assertThat(result.thisMonthCount()).isEqualTo(0L);
+    }
+
+    // ---------- getMyOrders ----------
+
+    @Test
+    void 활동내역조회_role_DREAMI로_orderService에_위임한다() {
+        UUID dreamiId = UUID.randomUUID();
+        BoormiOrdersResponse expected = BoormiOrdersResponse.of(List.of(), null, false);
+        given(orderService.getOrders(dreamiId, Role.DREAMI, null, 20, OrderCd.COMPLETED)).willReturn(expected);
+
+        BoormiOrdersResponse result = dreamiService.getMyOrders(dreamiId, null, 20, OrderCd.COMPLETED);
+
+        assertThat(result).isSameAs(expected);
+        then(orderService).should().getOrders(dreamiId, Role.DREAMI, null, 20, OrderCd.COMPLETED);
     }
 
     // ---------- acceptOffer ----------

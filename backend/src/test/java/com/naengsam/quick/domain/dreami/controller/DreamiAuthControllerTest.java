@@ -61,7 +61,7 @@ class DreamiAuthControllerTest {
                                 """.formatted(idCardKey, criminalRecordKey)))
                 .andExpect(status().isConflict());
 
-        verify(uploadSessionService, never()).checkUpload(any(), any(), any());
+        verify(uploadSessionService, never()).checkUpload(any(), any(), any(), any());
         verify(dreamiService, never()).saveVerificationFileKeys(any(), any(), any());
     }
 
@@ -70,9 +70,9 @@ class DreamiAuthControllerTest {
         UUID boormiId = UUID.randomUUID();
         String idCardKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
         String criminalRecordKey = "uploads/DREAMI_CRIMINAL_RECORD/bbb-criminal.png";
-        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, idCardKey))
+        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, null, idCardKey))
                 .thenReturn(true);
-        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, criminalRecordKey))
+        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, null, criminalRecordKey))
                 .thenReturn(true);
 
         mockMvc.perform(post("/api/v1/dreami/verification")
@@ -91,7 +91,7 @@ class DreamiAuthControllerTest {
         UUID boormiId = UUID.randomUUID();
         String stolenKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
         doThrow(new BusinessException(UploadErrorCode.KEY_OWNER_MISMATCH))
-                .when(uploadSessionService).checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, stolenKey);
+                .when(uploadSessionService).checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, null, stolenKey);
 
         mockMvc.perform(post("/api/v1/dreami/verification")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId)
@@ -110,7 +110,7 @@ class DreamiAuthControllerTest {
         String idCardKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
         String criminalRecordKey = "uploads/DREAMI_CRIMINAL_RECORD/bbb-criminal.png";
         doThrow(new BusinessException(UploadErrorCode.FILE_NOT_FOUND))
-                .when(uploadSessionService).checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, idCardKey);
+                .when(uploadSessionService).checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, null, idCardKey);
 
         mockMvc.perform(post("/api/v1/dreami/verification")
                         .sessionAttr(SessionConst.LOGIN_USER, boormiId)
@@ -128,9 +128,9 @@ class DreamiAuthControllerTest {
         UUID boormiId = UUID.randomUUID();
         String idCardKey = "uploads/DREAMI_ID_CARD/aaa-idcard.png";
         String criminalRecordKey = "uploads/DREAMI_CRIMINAL_RECORD/bbb-criminal.png";
-        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, idCardKey))
+        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_ID_CARD, boormiId, null, idCardKey))
                 .thenReturn(false);
-        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, criminalRecordKey))
+        when(uploadSessionService.checkUpload(UploadPurpose.DREAMI_CRIMINAL_RECORD, boormiId, null, criminalRecordKey))
                 .thenReturn(false);
 
         mockMvc.perform(post("/api/v1/dreami/verification")

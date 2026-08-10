@@ -16,7 +16,6 @@ class DeliveryErrorCodeTest {
                 .extracting(DeliveryErrorCode::getCode, DeliveryErrorCode::getStatus)
                 .containsExactly(
                         tuple("DELIVERY_001", HttpStatus.FORBIDDEN),
-                        tuple("DELIVERY_002", HttpStatus.BAD_REQUEST),
                         tuple("DELIVERY_003", HttpStatus.BAD_REQUEST),
                         tuple("DELIVERY_004", HttpStatus.FORBIDDEN),
                         tuple("DELIVERY_005", HttpStatus.FORBIDDEN),
@@ -25,7 +24,6 @@ class DeliveryErrorCodeTest {
                         tuple("DELIVERY_008", HttpStatus.CONFLICT),
                         tuple("DELIVERY_009", HttpStatus.CONFLICT),
                         tuple("DELIVERY_010", HttpStatus.NOT_FOUND),
-                        tuple("DELIVERY_011", HttpStatus.BAD_REQUEST),
                         tuple("DELIVERY_012", HttpStatus.CONFLICT),
                         tuple("DELIVERY_013", HttpStatus.CONFLICT),
                         tuple("DELIVERY_014", HttpStatus.CONFLICT),
