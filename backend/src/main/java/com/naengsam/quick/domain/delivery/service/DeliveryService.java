@@ -3,6 +3,9 @@ package com.naengsam.quick.domain.delivery.service;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
+import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
+import com.naengsam.quick.domain.address.service.KakaoDirectionsService;
+import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
@@ -38,6 +41,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
@@ -74,6 +78,7 @@ public class DeliveryService {
     private final UploadSessionService uploadSessionService;
     private final UserService userService;
     private final OrderService orderService;
+    private final KakaoDirectionsService kakaoDirectionsService;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
 
@@ -224,7 +229,37 @@ public class DeliveryService {
         BigDecimal latitude = location.latitude().setScale(LOCATION_SCALE, RoundingMode.HALF_UP);
         BigDecimal longitude = location.longitude().setScale(LOCATION_SCALE, RoundingMode.HALF_UP);
         delivery.updateLocation(latitude, longitude); // 위치정보_수정()
+        maybeComputePickupRoute(delivery, latitude, longitude); // 첫 위치 전송 때 '드리미→픽업지' 경로·배송완료예상시간 1회 계산
         alarmBoormiLocationBySSE(delivery); // 부르미에게_새로운_위치정보_전달_SSE사용()
+    }
+
+    // 드리미의 첫 위치가 들어온 픽업 단계에서 '드리미→픽업지' 카카오 도보 경로와 배송완료예상시간을 1회만 계산해 저장한다.
+    // routePath가 이미 있거나 픽업 단계가 아니면 아무것도 하지 않는다. 카카오 실패는 위치 갱신을 막지 않고 다음 위치 전송 때 재시도한다.
+    private void maybeComputePickupRoute(Delivery delivery, BigDecimal latitude, BigDecimal longitude) {
+        if (delivery.getRoutePath() != null) {
+            return;
+        }
+        DeliveryCd deliveryCd = delivery.getDeliveryCd();
+        if (deliveryCd != PICKUP_NORMAL && deliveryCd != PICKUP_DELAYED) {
+            return;
+        }
+        try {
+            Orders order = orderService.getOrder(delivery.getOrderId());
+            GeoPoint dreami = new GeoPoint(latitude, longitude);
+            GeoPoint pickup = new GeoPoint(order.getOriginLatitude(), order.getOriginLongitude());
+
+            KakaoDirectionsResponseDto.Route route = kakaoDirectionsService.getRoute(dreami, pickup);
+            String routePathJson = objectMapper.writeValueAsString(RoutePointDto.from(route));
+
+            // 드리미→픽업지 소요(분, BoormiService와 동일 공식) + 주문의 픽업지→도착지 delivery_eta(분)를 현재 시각에 더한다.
+            int pickupEtaMinutes = (int) Math.ceil(route.properties().totalTime() / 60.0);
+            LocalDateTime estimatedCompletion =
+                    LocalDateTime.now().plusMinutes((long) pickupEtaMinutes + order.getDeliveryEta());
+
+            delivery.applyPickupRoute(routePathJson, estimatedCompletion);
+        } catch (BusinessException | JacksonException e) {
+            log.warn("드리미→픽업지 경로·배송완료예상시간 계산 실패 — 다음 위치 전송 때 재시도", e);
+        }
     }
 
     private String doPickupFinishByDreami(Delivery delivery, UUID dreamiId, String photoKey) {

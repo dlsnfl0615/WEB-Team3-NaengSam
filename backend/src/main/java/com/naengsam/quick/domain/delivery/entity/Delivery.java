@@ -83,6 +83,12 @@ public class Delivery {
         this.currentLongitude = longitude;
     }
 
+    // 드리미의 첫 위치가 잡힌 뒤 계산한 '드리미→픽업지' 경로와 배송완료예상시간을 한 번에 기록한다(최초 1회만 채운다).
+    public void applyPickupRoute(String routePath, LocalDateTime estimatedCompletionDtm) {
+        this.routePath = routePath;
+        this.estimatedCompletionDtm = estimatedCompletionDtm;
+    }
+
     // 픽업 완료 → 배달중 전이. 픽업/배달 시작 시각을 기록한다.
     public void markDelivering() {
         this.deliveryCd = DeliveryCd.DELIVERING;
