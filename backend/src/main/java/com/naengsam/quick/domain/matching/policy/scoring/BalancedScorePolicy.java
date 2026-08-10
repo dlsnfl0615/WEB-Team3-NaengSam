@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.matching.service.scoring;
+package com.naengsam.quick.domain.matching.policy.scoring;
 
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 import java.time.Duration;
@@ -18,7 +18,7 @@ public class BalancedScorePolicy implements MatchingScorePolicy {
     private final Duration targetDreamiWait;
 
     public BalancedScorePolicy(BalancedScoreWeights weights, long maxMatchingDistance,
-            Duration targetOrderWait, Duration targetDreamiWait) {
+                               Duration targetOrderWait, Duration targetDreamiWait) {
         if (weights == null) {
             throw new IllegalArgumentException("weights는 null일 수 없습니다.");
         }

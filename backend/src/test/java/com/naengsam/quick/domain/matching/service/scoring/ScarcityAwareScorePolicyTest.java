@@ -4,7 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.policy.scoring.DistanceOnlyScorePolicy;
+import com.naengsam.quick.domain.matching.policy.scoring.ScarcityAwareScorePolicy;
+import com.naengsam.quick.domain.matching.policy.scoring.ScarcityScoreWeights;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -76,6 +80,6 @@ class ScarcityAwareScorePolicyTest {
     private MatchingCandidate candidate(long distanceMeters, int orderCandidateCount, int dreamiCandidateCount) {
         return new MatchingCandidate(
                 UUID.randomUUID(), UUID.randomUUID(), distanceMeters,
-                Duration.ZERO, Duration.ZERO, orderCandidateCount, dreamiCandidateCount);
+                Duration.ZERO, Duration.ZERO, orderCandidateCount, dreamiCandidateCount, Optional.empty());
     }
 }
