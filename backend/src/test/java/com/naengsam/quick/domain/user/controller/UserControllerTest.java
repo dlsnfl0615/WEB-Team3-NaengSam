@@ -148,6 +148,48 @@ class UserControllerTest {
     }
 
     @Test
+    void 로그아웃하면_해당_사용자의_모든_emitter를_종료한다() {
+        UUID userId = UUID.randomUUID();
+        given(userService.login(any())).willReturn(userId);
+        MockHttpServletRequest loginRequest = new MockHttpServletRequest();
+        controller.login(loginRequest(), loginRequest);
+
+        controller.logout(loginRequest);
+
+        verify(sseEmitterRegistry).disconnectAll(userId, SseCloseReason.LOGOUT);
+    }
+
+    @Test
+    void 로그아웃하면_세션이_무효화된다() {
+        UUID userId = UUID.randomUUID();
+        given(userService.login(any())).willReturn(userId);
+        MockHttpServletRequest loginRequest = new MockHttpServletRequest();
+        controller.login(loginRequest(), loginRequest);
+        LoginSession session = LoginSession.current(loginRequest).orElseThrow();
+
+        controller.logout(loginRequest);
+
+        assertThat(isStillValid(session)).isFalse();
+    }
+
+    @Test
+    void 로그아웃해도_다른_사용자의_세션과_SSE는_영향받지_않는다() {
+        UUID userA = UUID.randomUUID();
+        UUID userB = UUID.randomUUID();
+        given(userService.login(any())).willReturn(userA, userB);
+        MockHttpServletRequest requestA = new MockHttpServletRequest();
+        controller.login(loginRequest(), requestA);
+        MockHttpServletRequest requestB = new MockHttpServletRequest();
+        controller.login(loginRequest(), requestB);
+        LoginSession sessionB = LoginSession.current(requestB).orElseThrow();
+
+        controller.logout(requestA);
+
+        assertThat(isStillValid(sessionB)).isTrue();
+        verify(sseEmitterRegistry, never()).disconnectAll(eq(userB), any());
+    }
+
+    @Test
     void 이전_세션으로_들어온_요청은_401이_된다() {
         UUID userId = UUID.randomUUID();
         given(userService.login(any())).willReturn(userId);
