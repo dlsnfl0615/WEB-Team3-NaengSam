@@ -8,6 +8,7 @@ export {
   type UseDreamiLocationBroadcastOptions,
   type DreamiLocationBroadcastState,
 } from './geo/useDreamiLocationBroadcast'
+export { useCurrentAddress, type CurrentAddressState } from './geo/useCurrentAddress'
 export { rememberDeliveryStage, recallDeliveryStage } from './deliveryStageMemo'
 export {
   getUntrackableDeliveryNotice,
