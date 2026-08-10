@@ -62,9 +62,10 @@ public class DeliveryController {
             description = "드리미가 픽업을 완료하면 배달중 상태로 전이한다. 업로드한 픽업 인증 사진의 key를 함께 보낸다.")
     @PostMapping("/orders/{orderId}/pickup-finish")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
-            codes = {"NOT_ASSIGNED_DREAMI", "PICKUP_PHOTO_MISSING", "STEP_ALREADY_VERIFIED", "DELIVERY_NOT_FOUND",
+            codes = {"NOT_ASSIGNED_DREAMI", "STEP_ALREADY_VERIFIED", "DELIVERY_NOT_FOUND",
                     "DELIVERY_ALREADY_CANCELLED", "DELIVERY_ALREADY_COMPLETED"})
-    @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"KEY_OWNER_MISMATCH", "STORAGE_UPLOAD_FAILED"})
+    @ApiErrorCodes(enumClass = UploadErrorCode.class,
+            codes = {"FILE_NOT_FOUND", "KEY_OWNER_MISMATCH", "STORAGE_UPLOAD_FAILED"})
     public DeliveryStatusResponseDto pickupFinishByDreami(
             @PathVariable UUID orderId, @LoginUser UUID dreamiId,
             @Valid @RequestBody DeliveryPhotoRequest request) {
@@ -106,7 +107,7 @@ public class DeliveryController {
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
             codes = {"NOT_ASSIGNED_DREAMI", "DELIVERY_NOT_FOUND", "DELIVERY_COMPLETION_PHOTO_MISSING",
                     "DELIVERY_ALREADY_CANCELLED", "DELIVERY_ALREADY_COMPLETED",
-                    "DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP"})
+                    "DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP","FILE_NOT_FOUND"})
     @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"KEY_OWNER_MISMATCH", "STORAGE_UPLOAD_FAILED"})
     public DeliveryStatusResponseDto finishDelivery(
             @PathVariable UUID orderId, @LoginUser UUID dreamiId,

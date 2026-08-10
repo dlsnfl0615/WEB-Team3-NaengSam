@@ -10,12 +10,13 @@ import {
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useRoleSwitch } from "@/shared/lib/role/useRoleSwitch";
-import { useDeliveryStore, useRoleLocked } from "@/shared/store/deliveryStore";
+import { useRoleLocked } from "@/shared/store/deliveryStore";
 import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
+import { useDreamiOrderStore } from "@/shared/store/dreamiOrderStore";
 import { ActivityItem } from "./ActivityItem";
 import { FilterChips } from "./FilterChips";
 import {
-  toActivityRecords,
+  toActivityRecordFromDreamiOrder,
   toActivityRecordFromOrder,
   type ActivityFilter,
   type ActivityRecord,
@@ -23,7 +24,7 @@ import {
 
 /**
  * 활동 내역 리스트 화면(Figma node 191:266, 191:1118).
- * 부르미 탭은 실제 부르미 API(getMyOrders), 드리미 탭은 mock을 사용한다.
+ * 부르미 탭은 부르미 API(getBoormiOrders), 드리미 탭은 드리미 API(getDreamiOrders)를 사용한다.
  */
 export function ActivityScreen() {
   const navigate = useNavigate();
@@ -33,8 +34,14 @@ export function ActivityScreen() {
   const roleLocked = useRoleLocked();
   const isDriver = role === "드리미";
 
-  // 드리미(mock) 소스
-  const deliveries = useDeliveryStore((s) => s.deliveries);
+  // 드리미(실제 API) 소스
+  const deliveries = useDreamiOrderStore((s) => s.deliveries);
+  const dreamiLoading = useDreamiOrderStore((s) => s.loading);
+  const dreamiLoadingMore = useDreamiOrderStore((s) => s.loadingMore);
+  const dreamiError = useDreamiOrderStore((s) => s.error);
+  const dreamiHasNext = useDreamiOrderStore((s) => s.hasNext);
+  const loadDreami = useDreamiOrderStore((s) => s.load);
+  const loadMoreDreami = useDreamiOrderStore((s) => s.loadMore);
 
   // 부르미(실제 API) 소스
   const orders = useBoormiOrderStore((s) => s.orders);
@@ -45,29 +52,36 @@ export function ActivityScreen() {
   const load = useBoormiOrderStore((s) => s.load);
   const loadMore = useBoormiOrderStore((s) => s.loadMore);
 
-  // 부르미 탭 진입 시 콜 목록 조회.
+  // 역할 탭 진입 시 각자의 목록 조회.
   useEffect(() => {
-    if (!isDriver) load();
-  }, [isDriver, load]);
+    if (isDriver) loadDreami();
+    else load();
+  }, [isDriver, load, loadDreami]);
 
   const records: ActivityRecord[] = useMemo(
     () =>
       isDriver
-        ? toActivityRecords(deliveries, role)
+        ? deliveries.map(toActivityRecordFromDreamiOrder)
         : orders.map(toActivityRecordFromOrder),
-    [isDriver, deliveries, orders, role],
+    [isDriver, deliveries, orders],
   );
 
   const visible =
     filter === "전체" ? records : records.filter((r) => r.filter === filter);
 
-  /** 진행 중인 건은 실시간 상세로, 끝난 드리미 건은 드림 상세로 보냅니다. */
-  const detailPath = (record: ActivityRecord) => {
+  /**
+   * 진행 중인 건은 실시간 상세로 보낸다(드리미는 실 추적 페이지, 부르미는 mock 상세).
+   * 드리미의 완료/취소 건은 페이지 연결하지 않는다(null 반환).
+   */
+  const detailPath = (record: ActivityRecord): string | null => {
+    if (isDriver) {
+      return record.filter === "진행중"
+        ? `${ROUTES.deliveryTrack}?orderId=${record.id}`
+        : null;
+    }
     if (record.filter === "진행중")
       return `${ROUTES.activityDetail}?status=진행중&id=${record.id}`;
-    return isDriver
-      ? `${ROUTES.activityDetailDriver}?id=${record.id}`
-      : `${ROUTES.activityDetail}?status=완료&id=${record.id}`;
+    return `${ROUTES.activityDetail}?status=완료&id=${record.id}`;
   };
 
   return (
@@ -92,7 +106,13 @@ export function ActivityScreen() {
           {isDriver ? "수행한 배달" : "요청한 배달"} · 총 {records.length}건
         </p>
 
-        {!isDriver && loading && records.length === 0 ? (
+        {isDriver && dreamiLoading && records.length === 0 ? (
+          <p className="py-10 text-center text-sm text-muted">불러오는 중…</p>
+        ) : isDriver && dreamiError ? (
+          <p className="py-10 text-center text-sm text-status-danger">
+            {dreamiError}
+          </p>
+        ) : !isDriver && loading && records.length === 0 ? (
           <p className="py-10 text-center text-sm text-muted">불러오는 중…</p>
         ) : !isDriver && boormiError ? (
           <p className="py-10 text-center text-sm text-status-danger">
@@ -100,19 +120,33 @@ export function ActivityScreen() {
           </p>
         ) : visible.length > 0 ? (
           <div className="flex flex-col gap-3">
-            {visible.map((record) => (
-              <ActivityItem
-                key={record.id}
-                record={record}
-                earned={isDriver}
-                onClick={() => navigate(detailPath(record))}
-              />
-            ))}
+            {visible.map((record) => {
+              const path = detailPath(record);
+              return (
+                <ActivityItem
+                  key={record.id}
+                  record={record}
+                  earned={isDriver}
+                  onClick={path ? () => navigate(path) : undefined}
+                />
+              );
+            })}
           </div>
         ) : (
           <p className="py-10 text-center text-sm text-muted">
             해당하는 내역이 없어요.
           </p>
+        )}
+
+        {isDriver && dreamiHasNext && (
+          <Button
+            variant="outline"
+            block
+            disabled={dreamiLoadingMore}
+            onClick={() => loadMoreDreami()}
+          >
+            {dreamiLoadingMore ? "불러오는 중…" : "더 보기"}
+          </Button>
         )}
 
         {!isDriver && hasNext && (
