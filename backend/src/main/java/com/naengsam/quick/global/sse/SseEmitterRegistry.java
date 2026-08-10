@@ -39,20 +39,37 @@ public class SseEmitterRegistry {
                 .register(meterRegistry);
     }
 
+    /**
+     * 사용자의 새 SSE 연결을 등록하고 emitter를 돌려준다. 사용자당 연결 수가
+     * {@link SseProperties#maxConnectionsPerUser()} 상한에 도달했으면 새 연결을 등록하지 않고 {@code null}을 반환한다
+     * (기존 연결은 그대로 유지). 컨트롤러는 이 {@code null}을 204로 변환해 native EventSource의 자동 재연결을 멈춘다.
+     */
     public SseEmitter connect(UUID userId) {
         String connectionId = UUID.randomUUID().toString();
         SseEmitter emitter = new SseEmitter(sseProperties.connectionTimeout().toMillis());
 
-        // 마지막 연결 정리와 동시에 실행되어도 새 emitter가 분리된 내부 맵에 등록되지 않도록
-        // 사용자 엔트리 생성과 emitter 등록을 하나의 compute 안에서 수행한다.
+        // 마지막 연결 정리와 동시에 실행되어도 새 emitter가 분리된 내부 맵에 등록되지 않도록,
+        // 그리고 동시 요청에서도 상한을 정확히 지키도록 한도 검사와 등록을 하나의 compute 안에서 원자적으로 수행한다.
+        boolean[] registered = {false};
         emitters.compute(userId, (id, connections) -> {
             Map<String, SseEmitter> current = connections;
             if (current == null) {
                 current = new ConcurrentHashMap<>();
             }
+            if (current.size() >= sseProperties.maxConnectionsPerUser()) {
+                // 한도 초과: 새 연결을 등록하지 않는다. 기존 연결이 있으면 그대로 두고, 빈 엔트리는 남기지 않는다.
+                return current.isEmpty() ? null : current;
+            }
             current.put(connectionId, emitter);
+            registered[0] = true;
             return current;
         });
+
+        if (!registered[0]) {
+            meterRegistry.counter("sse.connections.rejected").increment();
+            log.debug("SSE 연결 한도 초과로 거부: userId={}, limit={}", userId, sseProperties.maxConnectionsPerUser());
+            return null;
+        }
         meterRegistry.counter("sse.connections.opened").increment();
 
         emitter.onCompletion(() -> remove(userId, connectionId, emitter, "completion"));

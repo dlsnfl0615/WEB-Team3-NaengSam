@@ -33,13 +33,16 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  */
 class SseEmitterRegistryTest {
 
+    private static final int MAX_CONNECTIONS_PER_USER = 5;
+
     private MeterRegistry meterRegistry;
     private SseEmitterRegistry registry;
 
     @BeforeEach
     void setUp() {
         meterRegistry = new SimpleMeterRegistry();
-        registry = new SseEmitterRegistry(meterRegistry, new SseProperties(Duration.ofSeconds(25), Duration.ofHours(1)));
+        registry = new SseEmitterRegistry(meterRegistry,
+                new SseProperties(Duration.ofSeconds(25), Duration.ofHours(1), MAX_CONNECTIONS_PER_USER));
     }
 
     @Test
@@ -201,7 +204,75 @@ class SseEmitterRegistryTest {
     }
 
     @Test
-    void 여러_스레드에서_동시에_연결해도_emitter가_유실되지_않는다() throws Exception {
+    void 상한까지는_연결에_성공하고_상한을_넘는_연결은_null로_거부한다() {
+        UUID userId = UUID.randomUUID();
+
+        for (int i = 0; i < MAX_CONNECTIONS_PER_USER; i++) {
+            assertThat(registry.connect(userId)).isNotNull();
+        }
+        SseEmitter overLimit = registry.connect(userId);
+
+        assertThat(overLimit).isNull();
+        assertThat(connectionsOf(userId)).hasSize(MAX_CONNECTIONS_PER_USER);
+    }
+
+    @Test
+    void 한_사용자가_상한에_도달해도_다른_사용자는_독립적으로_상한까지_연결된다() {
+        UUID first = UUID.randomUUID();
+        UUID second = UUID.randomUUID();
+
+        for (int i = 0; i < MAX_CONNECTIONS_PER_USER; i++) {
+            registry.connect(first);
+        }
+        assertThat(registry.connect(first)).isNull();
+
+        for (int i = 0; i < MAX_CONNECTIONS_PER_USER; i++) {
+            assertThat(registry.connect(second)).isNotNull();
+        }
+        assertThat(connectionsOf(first)).hasSize(MAX_CONNECTIONS_PER_USER);
+        assertThat(connectionsOf(second)).hasSize(MAX_CONNECTIONS_PER_USER);
+    }
+
+    @Test
+    void 거부된_연결은_opened와_active에서_제외되고_rejected만_증가한다() {
+        UUID userId = UUID.randomUUID();
+
+        for (int i = 0; i < MAX_CONNECTIONS_PER_USER; i++) {
+            registry.connect(userId);
+        }
+        registry.connect(userId);
+        registry.connect(userId);
+
+        assertThat(counter("sse.connections.opened")).isEqualTo(MAX_CONNECTIONS_PER_USER);
+        assertThat(meterRegistry.get("sse.connections.active").gauge().value()).isEqualTo(MAX_CONNECTIONS_PER_USER);
+        assertThat(counter("sse.connections.rejected")).isEqualTo(2.0);
+    }
+
+    @Test
+    void 상한_도달후_기존_연결이_종료되면_빈_자리로_새_연결에_성공한다() {
+        UUID userId = UUID.randomUUID();
+        List<SseEmitter> connected = new ArrayList<>();
+        for (int i = 0; i < MAX_CONNECTIONS_PER_USER; i++) {
+            connected.add(registry.connect(userId));
+        }
+        assertThat(registry.connect(userId)).isNull();
+
+        // 기존 연결 하나가 정상 종료(onCompletion)되어 자리가 빈 상황을 재현한다.
+        String freedConnectionId = connectionsOf(userId).entrySet().stream()
+                .filter(e -> e.getValue() == connected.get(0))
+                .map(Map.Entry::getKey)
+                .findFirst()
+                .orElseThrow();
+        ReflectionTestUtils.invokeMethod(
+                registry, "remove", userId, freedConnectionId, connected.get(0), "completion");
+
+        assertThat(connectionsOf(userId)).hasSize(MAX_CONNECTIONS_PER_USER - 1);
+        assertThat(registry.connect(userId)).isNotNull();
+        assertThat(connectionsOf(userId)).hasSize(MAX_CONNECTIONS_PER_USER);
+    }
+
+    @Test
+    void 여러_스레드에서_동시에_연결해도_정확히_상한개만_등록된다() throws Exception {
         UUID userId = UUID.randomUUID();
         int connectionCount = 100;
         CountDownLatch start = new CountDownLatch(1);
@@ -217,15 +288,18 @@ class SseEmitterRegistryTest {
             }
             start.countDown();
 
-            List<SseEmitter> connected = new ArrayList<>();
+            long accepted = 0;
             for (Future<SseEmitter> future : futures) {
-                connected.add(future.get(5, TimeUnit.SECONDS));
+                if (future.get(5, TimeUnit.SECONDS) != null) {
+                    accepted++;
+                }
             }
 
-            assertThat(connectionsOf(userId)).hasSize(connectionCount);
-            assertThat(connectionsOf(userId).values()).containsExactlyInAnyOrderElementsOf(connected);
-            assertThat(counter("sse.connections.opened")).isEqualTo(connectionCount);
-            assertThat(meterRegistry.get("sse.connections.active").gauge().value()).isEqualTo(connectionCount);
+            assertThat(accepted).isEqualTo(MAX_CONNECTIONS_PER_USER);
+            assertThat(connectionsOf(userId)).hasSize(MAX_CONNECTIONS_PER_USER);
+            assertThat(counter("sse.connections.opened")).isEqualTo(MAX_CONNECTIONS_PER_USER);
+            assertThat(counter("sse.connections.rejected")).isEqualTo(connectionCount - MAX_CONNECTIONS_PER_USER);
+            assertThat(meterRegistry.get("sse.connections.active").gauge().value()).isEqualTo(MAX_CONNECTIONS_PER_USER);
         } finally {
             start.countDown();
             executor.shutdownNow();
