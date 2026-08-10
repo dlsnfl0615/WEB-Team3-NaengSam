@@ -2,7 +2,7 @@ import {useEffect} from "react";
 import {useLocation, useNavigate} from "react-router-dom";
 import {ROUTES} from "@/shared/config/routes";
 import {type SseHandlers, useSse} from "@/shared/lib";
-import {Toast} from "@/shared/ui";
+import {Toast, type Coords} from "@/shared/ui";
 import type {DeliveryStatusResponseDto} from "@/shared/api";
 import {useMatchingStore} from "@/shared/store/matchingStore";
 import {useSessionStore} from "@/shared/store/sessionStore";
@@ -11,7 +11,7 @@ import {CallCard} from "./CallCard";
 import {OfferCard} from "./OfferCard";
 
 /** 거리(m) → 표시 라벨. */
-function formatDistance(meters?: number): string {
+function formatDistance(meters?: number | null): string {
     if (meters == null) return "-";
     return meters >= 1000
         ? `${(meters / 1000).toFixed(1)}km`
@@ -21,6 +21,24 @@ function formatDistance(meters?: number): string {
 /** 주문 식별자 → 콜 번호 라벨. */
 function formatCode(orderId: string): string {
     return `#${orderId.slice(0, 8)}`;
+}
+
+/** 장소 별칭을 우선하고, 없으면 기본주소를 표시한다. */
+function formatPlace(
+    alias: string | null,
+    address: string | null,
+    fallback: string,
+): string {
+    return alias?.trim() || address?.trim() || fallback;
+}
+
+/** nullable 위·경도를 지도 컴포넌트 좌표로 변환한다. */
+function toCoords(
+    latitude: number | null,
+    longitude: number | null,
+): Coords | undefined {
+    if (latitude == null || longitude == null) return undefined;
+    return {latitude, longitude};
 }
 
 /**
@@ -34,6 +52,7 @@ export function MatchingPopup() {
     const {pathname} = useLocation();
     const isAuthenticated = useSessionStore((s) => s.isAuthenticated);
     const pendingOffer = useMatchingStore((s) => s.pendingOffer);
+    const dreamiCoords = useMatchingStore((s) => s.dreamiCoords);
     const incomingDreami = useMatchingStore((s) => s.incomingDreami);
     const submitting = useMatchingStore((s) => s.submitting);
     const acceptOffer = useMatchingStore((s) => s.acceptOffer);
@@ -123,17 +142,31 @@ export function MatchingPopup() {
                     <CallCard
                         code={formatCode(call.orderId)}
                         price={
-                            call.call?.expectedRevenue != null
-                                ? `₩${call.call.expectedRevenue.toLocaleString()}`
+                            call.deliveryAmount != null
+                                ? `₩${call.deliveryAmount.toLocaleString()}`
                                 : "금액 확인 중"
                         }
-                        place={call.call?.itemName ?? "물품 배송"}
-                        route={
-                            call.call?.expectedEtaMinutes != null
-                                ? `예상 ${call.call.expectedEtaMinutes}분`
-                                : ""
-                        }
-                        pickupDistance={formatDistance(call.call?.distanceMeters)}
+                        place={call.itemName ?? "물품 배송"}
+                        route={`${formatPlace(
+                            call.originAlias,
+                            call.originAddressLine1,
+                            "출발지",
+                        )} → ${formatPlace(
+                            call.destinationAlias,
+                            call.destinationAddressLine1,
+                            "도착지",
+                        )}`}
+                        pickup={toCoords(
+                            call.originLatitude,
+                            call.originLongitude,
+                        )}
+                        dropoff={toCoords(
+                            call.destinationLatitude,
+                            call.destinationLongitude,
+                        )}
+                        currentLocation={dreamiCoords ?? undefined}
+                        deliveryDistance={formatDistance(call.deliveryDistance)}
+                        eta={`${call.deliveryEta}분`}
                         onReject={rejectOffer}
                         onAccept={onAcceptCall}
                     />

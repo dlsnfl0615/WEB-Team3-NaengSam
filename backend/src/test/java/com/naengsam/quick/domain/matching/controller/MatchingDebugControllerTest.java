@@ -236,7 +236,7 @@ class MatchingDebugControllerTest {
                 offerId, orderId, dreamiId, MatchOfferStatus.OFFERED);
         OrderOfferGroup group =
                 new OrderOfferGroup(orderId, UUID.randomUUID(),
-                        new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)), List.of(offer));
+                        new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)), null, List.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
 
         mockMvc.perform(get("/api/v1/debug/matching/orders/{orderId}/group", orderId))
