@@ -311,7 +311,8 @@ public class MatchingService {
 
     void applyRunMatchingAssignmentCycle() {
         matchingBatchDispatcher.reset();
-        MatchingAssignmentProblem problem = matchingAssignmentProblemAssembler.assemble();
+        MatchingAssignmentProblem problem = matchingAssignmentProblemAssembler.assemble(
+                orderOfferGroups(), waitingDreamis());
         MatchingPlan plan = matchingAssignmentPolicy.createPlan(problem);
         matchingPlanApplier.apply(problem, plan, LocalDateTime.now(clock),
                 orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);

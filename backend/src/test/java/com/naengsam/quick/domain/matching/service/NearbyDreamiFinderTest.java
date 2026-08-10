@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 
-import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyDreamiDto;
 import com.naengsam.quick.domain.matching.dto.NearbyDreamiRequest;
@@ -29,7 +28,7 @@ class NearbyDreamiFinderTest {
     @Mock
     private MatchingService matchingService;
     @Mock
-    private BoormiService boormiService;
+    private GeoDistanceCalculator geoDistanceCalculator;
     @InjectMocks
     private NearbyDreamiFinder nearbyDreamiFinder;
 
@@ -47,7 +46,7 @@ class NearbyDreamiFinderTest {
         UUID inRange = UUID.randomUUID();
         UUID outOfRange = UUID.randomUUID();
         given(matchingService.waitingDreamis()).willReturn(List.of(waitingDreami(inRange), waitingDreami(outOfRange)));
-        given(boormiService.distanceMeters(any(), any()))
+        given(geoDistanceCalculator.distanceMeters(any(), any()))
                 .willReturn(500.0)
                 .willReturn(1500.0);
 
@@ -61,7 +60,7 @@ class NearbyDreamiFinderTest {
         UUID far = UUID.randomUUID();
         UUID near = UUID.randomUUID();
         given(matchingService.waitingDreamis()).willReturn(List.of(waitingDreami(far), waitingDreami(near)));
-        given(boormiService.distanceMeters(any(), any()))
+        given(geoDistanceCalculator.distanceMeters(any(), any()))
                 .willReturn(800.0)
                 .willReturn(200.0);
 
@@ -76,7 +75,7 @@ class NearbyDreamiFinderTest {
                 .mapToObj(i -> waitingDreami(UUID.randomUUID()))
                 .toList();
         given(matchingService.waitingDreamis()).willReturn(dreamis);
-        given(boormiService.distanceMeters(any(), any())).willReturn(100.0);
+        given(geoDistanceCalculator.distanceMeters(any(), any())).willReturn(100.0);
 
         List<NearbyDreamiDto> result = nearbyDreamiFinder.find(request());
 

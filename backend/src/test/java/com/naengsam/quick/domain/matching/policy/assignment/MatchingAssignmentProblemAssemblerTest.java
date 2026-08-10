@@ -6,7 +6,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
@@ -21,7 +20,7 @@ import com.naengsam.quick.domain.matching.policy.config.EligibilityPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
-import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
@@ -45,10 +44,9 @@ class MatchingAssignmentProblemAssemblerTest {
     private static final Clock CLOCK =
             Clock.fixed(EVALUATED_AT.toInstant(ZoneOffset.UTC), ZoneOffset.UTC);
     private static final double DISTANCE_METERS = 500.0;
-
-    private MatchingService matchingService;
-    private BoormiService boormiService;
     private MatchingAssignmentProblemAssembler assembler;
+    private List<OrderOfferGroup> orderOfferGroups;
+    private List<WaitingDreami> waitingDreamis;
 
     private static OrderOfferGroup group(UUID orderId, OrderOfferGroupStatus status) {
         OrderOfferGroup group = new OrderOfferGroup(
@@ -87,27 +85,31 @@ class MatchingAssignmentProblemAssemblerTest {
 
     @BeforeEach
     void setUp() {
-        matchingService = mock(MatchingService.class);
-        boormiService = mock(BoormiService.class);
-        when(boormiService.distanceMeters(any(), any())).thenReturn(DISTANCE_METERS);
+        GeoDistanceCalculator geoDistanceCalculator = mock(GeoDistanceCalculator.class);
+        when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(DISTANCE_METERS);
 
         MatchingPolicyProperties properties = matchingPolicyProperties();
         MatchingAssignmentProblemFactory factory = new MatchingAssignmentProblemFactory(new LegacyOfferPolicy());
-        assembler = new MatchingAssignmentProblemAssembler(matchingService, boormiService, factory, properties, CLOCK);
+        assembler = new MatchingAssignmentProblemAssembler(geoDistanceCalculator, factory, properties, CLOCK);
+        orderOfferGroups = List.of();
+        waitingDreamis = List.of();
+    }
+
+    private MatchingAssignmentProblem assemble() {
+        return assembler.assemble(orderOfferGroups, waitingDreamis);
     }
 
     @Test
     void WAITING_주문만_MatchingOrderInput으로_변환되고_나머지_상태는_제외된다() {
         UUID waitingOrderId = UUID.randomUUID();
-        when(matchingService.orderOfferGroups()).thenReturn(List.of(
+        orderOfferGroups = List.of(
                 group(waitingOrderId, OrderOfferGroupStatus.WAITING),
                 group(UUID.randomUUID(), OrderOfferGroupStatus.OPEN),
                 group(UUID.randomUUID(), OrderOfferGroupStatus.MATCHED),
                 group(UUID.randomUUID(), OrderOfferGroupStatus.CANCELLED)
-        ));
-        when(matchingService.waitingDreamis()).thenReturn(List.of());
+        );
 
-        MatchingAssignmentProblem problem = assembler.assemble();
+        MatchingAssignmentProblem problem = assemble();
 
         assertThat(problem.orders()).extracting(MatchingOrderInput::orderId).containsExactly(waitingOrderId);
     }
@@ -115,13 +117,12 @@ class MatchingAssignmentProblemAssemblerTest {
     @Test
     void MATCHING_드리미만_MatchingDreamiInput으로_변환되고_PROPOSED는_제외된다() {
         UUID matchingDreamiId = UUID.randomUUID();
-        when(matchingService.orderOfferGroups()).thenReturn(List.of());
-        when(matchingService.waitingDreamis()).thenReturn(List.of(
+        waitingDreamis = List.of(
                 dreami(matchingDreamiId, WaitingDreamiStatus.MATCHING),
                 dreami(UUID.randomUUID(), WaitingDreamiStatus.PROPOSED)
-        ));
+        );
 
-        MatchingAssignmentProblem problem = assembler.assemble();
+        MatchingAssignmentProblem problem = assemble();
 
         assertThat(problem.dreamis()).extracting(MatchingDreamiInput::dreamiId).containsExactly(matchingDreamiId);
     }
@@ -130,12 +131,10 @@ class MatchingAssignmentProblemAssemblerTest {
     void 주문과_드리미_사이의_거리를_계산해서_후보에_담는다() {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        when(matchingService.orderOfferGroups())
-                .thenReturn(List.of(group(orderId, OrderOfferGroupStatus.WAITING)));
-        when(matchingService.waitingDreamis())
-                .thenReturn(List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING)));
+        orderOfferGroups = List.of(group(orderId, OrderOfferGroupStatus.WAITING));
+        waitingDreamis = List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING));
 
-        MatchingAssignmentProblem problem = assembler.assemble();
+        MatchingAssignmentProblem problem = assemble();
 
         assertThat(problem.candidates()).hasSize(1);
         assertThat(problem.candidates().get(0).distanceMeters()).isEqualTo(DISTANCE_METERS);
@@ -150,13 +149,11 @@ class MatchingAssignmentProblemAssemblerTest {
                 EVALUATED_AT.minusMinutes(30)));
         offers.add(new MatchOffer(UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.BOORMI_EXPIRED,
                 EVALUATED_AT.minusMinutes(10)));
-        when(matchingService.orderOfferGroups())
-                .thenReturn(List.of(new OrderOfferGroup(
-                        orderId, UUID.randomUUID(), ORDER_LOCATION, null, offers, EVALUATED_AT.minusHours(1))));
-        when(matchingService.waitingDreamis())
-                .thenReturn(List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING)));
+        orderOfferGroups = List.of(new OrderOfferGroup(
+                orderId, UUID.randomUUID(), ORDER_LOCATION, null, offers, EVALUATED_AT.minusHours(1)));
+        waitingDreamis = List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING));
 
-        MatchingAssignmentProblem problem = assembler.assemble();
+        MatchingAssignmentProblem problem = assemble();
 
         PreviousOfferInteraction interaction = problem.candidates().get(0).previousInteraction().orElseThrow();
         assertThat(interaction.outcome()).isEqualTo(PreviousOfferOutcome.BOORMI_EXPIRED);
@@ -167,12 +164,10 @@ class MatchingAssignmentProblemAssemblerTest {
     void 이전_오퍼_이력이_없으면_Optional_empty이다() {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        when(matchingService.orderOfferGroups())
-                .thenReturn(List.of(group(orderId, OrderOfferGroupStatus.WAITING)));
-        when(matchingService.waitingDreamis())
-                .thenReturn(List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING)));
+        orderOfferGroups = List.of(group(orderId, OrderOfferGroupStatus.WAITING));
+        waitingDreamis = List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING));
 
-        MatchingAssignmentProblem problem = assembler.assemble();
+        MatchingAssignmentProblem problem = assemble();
 
         assertThat(problem.candidates().get(0).previousInteraction()).isEmpty();
     }
@@ -180,22 +175,17 @@ class MatchingAssignmentProblemAssemblerTest {
     @Test
     void 대기_시작_시각이_평가_시각보다_미래면_예외가_발생한다() {
         UUID orderId = UUID.randomUUID();
-        when(matchingService.orderOfferGroups())
-                .thenReturn(List.of(new OrderOfferGroup(
-                        orderId, UUID.randomUUID(), ORDER_LOCATION, null, List.of(), EVALUATED_AT.plusMinutes(1))));
-        when(matchingService.waitingDreamis()).thenReturn(List.of());
+        orderOfferGroups = List.of(new OrderOfferGroup(
+                orderId, UUID.randomUUID(), ORDER_LOCATION, null, List.of(), EVALUATED_AT.plusMinutes(1)));
 
-        Throwable thrown = catchThrowable(() -> assembler.assemble());
+        Throwable thrown = catchThrowable(this::assemble);
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
     void 주문이나_드리미가_없어도_허용된다() {
-        when(matchingService.orderOfferGroups()).thenReturn(List.of());
-        when(matchingService.waitingDreamis()).thenReturn(List.of());
-
-        MatchingAssignmentProblem problem = assembler.assemble();
+        MatchingAssignmentProblem problem = assemble();
 
         assertThat(problem.orders()).isEmpty();
         assertThat(problem.dreamis()).isEmpty();
@@ -206,12 +196,10 @@ class MatchingAssignmentProblemAssemblerTest {
     void 생성한_입력을_MatchingAssignmentProblemFactory에_전달해_결과를_만든다() {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        when(matchingService.orderOfferGroups())
-                .thenReturn(List.of(group(orderId, OrderOfferGroupStatus.WAITING)));
-        when(matchingService.waitingDreamis())
-                .thenReturn(List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING)));
+        orderOfferGroups = List.of(group(orderId, OrderOfferGroupStatus.WAITING));
+        waitingDreamis = List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING));
 
-        MatchingAssignmentProblem problem = assembler.assemble();
+        MatchingAssignmentProblem problem = assemble();
 
         assertThat(problem.evaluatedAt()).isEqualTo(EVALUATED_AT);
         assertThat(problem.orders()).extracting(MatchingOrderInput::orderId).containsExactly(orderId);

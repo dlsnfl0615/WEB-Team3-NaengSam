@@ -5,7 +5,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
-import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
@@ -31,7 +30,6 @@ import java.time.Duration;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
-import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * 최초 매칭 시작(applyStartMatching)이 즉시 오퍼를 만들지 않고 배치 매칭 사이클(applyRunMatchingAssignmentCycle)로 위임되는 흐름을, 실제
@@ -43,35 +41,6 @@ class MatchingMicroBatchIntegrationTest {
 
     private static final Duration OFFER_TTL = Duration.ofSeconds(30);
 
-    private MatchingService newMatchingService(int maxConcurrentOffers) {
-        MatchingEngine matchingEngine = mock(MatchingEngine.class);
-        SseService sseService = mock(SseService.class);
-        MatchingActionScheduler matchingActionScheduler = mock(MatchingActionScheduler.class);
-        MatchingBatchDispatcher matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
-        DeliveryService deliveryService = mock(DeliveryService.class);
-        Clock clock = Clock.systemDefaultZone();
-
-        BoormiService boormiService = mock(BoormiService.class);
-        when(boormiService.distanceMeters(any(), any())).thenReturn(500.0);
-
-        MatchingPolicyProperties properties = matchingPolicyProperties(maxConcurrentOffers);
-        MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
-        MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
-                new MatchingPlanValidator(new LegacyOfferPolicy()), matchingActionScheduler, sseService, OFFER_TTL);
-
-        MatchingService matchingService = new MatchingService(
-                matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService, clock,
-                mock(MatchingAssignmentProblemAssembler.class), // 순환 의존성 때문에 자리표시자로 생성 후 아래서 실제 객체로 교체
-                assignmentPolicy, matchingPlanApplier, properties);
-
-        MatchingAssignmentProblemAssembler realAssembler = new MatchingAssignmentProblemAssembler(
-                matchingService, boormiService, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
-                properties, clock);
-        ReflectionTestUtils.setField(matchingService, "matchingAssignmentProblemAssembler", realAssembler);
-
-        return matchingService;
-    }
-
     private static MatchingPolicyProperties matchingPolicyProperties(int maxConcurrentOffers) {
         return new MatchingPolicyProperties(
                 Duration.ofMillis(200),
@@ -79,7 +48,8 @@ class MatchingMicroBatchIntegrationTest {
                 AssignmentPolicyType.LEGACY_ORDER_FIRST,
                 ScoringPolicyType.ORDER_WAIT,
                 EligibilityPolicyType.LEGACY,
-                new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10), Duration.ofMinutes(3)),
+                new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10),
+                        Duration.ofMinutes(3)),
                 new MatchingPolicyProperties.BalancedWeights(
                         1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
     }
@@ -88,6 +58,31 @@ class MatchingMicroBatchIntegrationTest {
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
         return order;
+    }
+
+    private MatchingService newMatchingService(int maxConcurrentOffers) {
+        MatchingEngine matchingEngine = mock(MatchingEngine.class);
+        SseService sseService = mock(SseService.class);
+        MatchingActionScheduler matchingActionScheduler = mock(MatchingActionScheduler.class);
+        MatchingBatchDispatcher matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
+        DeliveryService deliveryService = mock(DeliveryService.class);
+        Clock clock = Clock.systemDefaultZone();
+
+        GeoDistanceCalculator geoDistanceCalculator = mock(GeoDistanceCalculator.class);
+        when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(500.0);
+
+        MatchingPolicyProperties properties = matchingPolicyProperties(maxConcurrentOffers);
+        MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+        MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
+                new MatchingPlanValidator(new LegacyOfferPolicy()), matchingActionScheduler, sseService, OFFER_TTL);
+
+        MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
+                geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
+                properties, clock);
+
+        return new MatchingService(
+                matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService, clock,
+                assembler, assignmentPolicy, matchingPlanApplier, properties);
     }
 
     @Test

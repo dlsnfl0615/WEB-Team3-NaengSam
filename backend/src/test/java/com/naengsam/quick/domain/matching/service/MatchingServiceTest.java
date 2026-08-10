@@ -1336,7 +1336,7 @@ class MatchingServiceTest {
         // given
         MatchingAssignmentProblem problem = new MatchingAssignmentProblem(LocalDateTime.now(), List.of(), List.of(), List.of());
         MatchingPlan plan = new MatchingPlan(List.of());
-        when(matchingAssignmentProblemAssembler.assemble()).thenReturn(problem);
+        when(matchingAssignmentProblemAssembler.assemble(any(), any())).thenReturn(problem);
         when(matchingAssignmentPolicy.createPlan(problem)).thenReturn(plan);
 
         // when
@@ -1362,7 +1362,7 @@ class MatchingServiceTest {
         // given
         MatchingAssignmentProblem problem = new MatchingAssignmentProblem(LocalDateTime.now(), List.of(), List.of(), List.of());
         MatchingPlan plan = new MatchingPlan(List.of());
-        when(matchingAssignmentProblemAssembler.assemble()).thenReturn(problem);
+        when(matchingAssignmentProblemAssembler.assemble(any(), any())).thenReturn(problem);
         when(matchingAssignmentPolicy.createPlan(problem)).thenReturn(plan);
 
         // when
