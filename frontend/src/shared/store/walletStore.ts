@@ -1,99 +1,71 @@
 import { create } from "zustand";
-import { nextId } from "@/shared/mock/client";
-import { charge as chargeApi, convert as convertApi } from "@/shared/mock/walletService";
-import { SEED_WALLET } from "@/shared/mock/seed";
-import type { Delivery, WalletTransaction } from "@/shared/mock/types";
+import {
+  api,
+  isApiError,
+  PointChargeRequestPaymentCd,
+  type WalletDto,
+} from "@/shared/api";
+import { toWalletTransaction, type WalletTransaction } from "./walletAdapter";
 
 interface WalletState {
   points: number;
   money: number;
   transactions: WalletTransaction[];
+  loading: boolean;
+  error: string | null;
+  /** 잔액·최근 내역 조회. */
+  load: () => Promise<void>;
   /** 카드 결제로 포인트 충전. */
   charge: (amount: number) => Promise<void>;
   /** 머니 → 포인트 전환(1:1). */
-  convert: (amount: number) => Promise<void>;
-  /** 배달 완료 정산 반영(드리미=머니 수익, 부르미=포인트 결제). */
-  settleDelivery: (delivery: Delivery) => void;
+  exchange: (amount: number) => Promise<void>;
 }
 
-const NOW_LABEL = "방금";
-
-/** 지갑 잔액/내역을 화면 간 공유하는 전역 스토어. */
-export const useWalletStore = create<WalletState>((set) => ({
-  points: SEED_WALLET.points,
-  money: SEED_WALLET.money,
-  transactions: SEED_WALLET.transactions,
-  charge: async (amount) => {
-    await chargeApi({ amount });
-    set((s) => ({
-      points: s.points + amount,
-      transactions: [
-        {
-          id: nextId("w"),
-          icon: "point",
-          title: "포인트 충전",
-          detail: `${NOW_LABEL} · 카드결제`,
-          amount,
-          unit: "P",
-          incoming: true,
-        },
-        ...s.transactions,
-      ],
-    }));
-  },
-  convert: async (amount) => {
-    await convertApi({ amount });
-    set((s) => ({
-      money: Math.max(0, s.money - amount),
-      points: s.points + amount,
-      transactions: [
-        {
-          id: nextId("w"),
-          icon: "transfer",
-          title: "머니 → 포인트 전환",
-          detail: NOW_LABEL,
-          amount,
-          unit: "P",
-          incoming: true,
-        },
-        ...s.transactions,
-      ],
-    }));
-  },
-  settleDelivery: (delivery) => {
-    set((s) => {
-      if (delivery.myRole === "드리미") {
-        return {
-          money: s.money + delivery.price,
-          transactions: [
-            {
-              id: nextId("w"),
-              icon: delivery.icon,
-              title: `${delivery.title} 수익`,
-              detail: NOW_LABEL,
-              amount: delivery.price,
-              unit: "₩",
-              incoming: true,
-            },
-            ...s.transactions,
-          ],
-        };
-      }
-      return {
-        points: Math.max(0, s.points - delivery.price),
-        transactions: [
-          {
-            id: nextId("w"),
-            icon: delivery.icon,
-            title: `${delivery.title} 결제`,
-            detail: NOW_LABEL,
-            amount: -delivery.price,
-            unit: "P",
-            incoming: false,
-          },
-          ...s.transactions,
-        ],
-      };
+/**
+ * 지갑 잔액/내역 전역 스토어. 잔액의 진실은 서버가 가지므로 충전·전환도 낙관적 갱신 없이
+ * 응답으로 돌아온 지갑 한 벌로 상태를 통째로 교체한다.
+ */
+export const useWalletStore = create<WalletState>((set) => {
+  const applyWallet = (wallet?: WalletDto) =>
+    set({
+      points: wallet?.pointAmount ?? 0,
+      money: wallet?.moneyAmount ?? 0,
+      transactions: (wallet?.recentTransactions ?? []).map(toWalletTransaction),
+      loading: false,
+      error: null,
     });
-  },
-}));
+
+  return {
+    points: 0,
+    money: 0,
+    transactions: [],
+    loading: false,
+    error: null,
+
+    load: async () => {
+      set({ loading: true, error: null });
+      try {
+        const { result } = await api.getWallet();
+        applyWallet(result);
+      } catch (e) {
+        set({
+          loading: false,
+          error: isApiError(e) ? e.message : "지갑을 불러오지 못했어요.",
+        });
+      }
+    },
+
+    charge: async (amount) => {
+      const { result } = await api.chargePoint({
+        amount,
+        paymentCd: PointChargeRequestPaymentCd.CARD,
+      });
+      applyWallet(result);
+    },
+
+    exchange: async (amount) => {
+      const { result } = await api.exchangeMoneyToPoint({ amount });
+      applyWallet(result);
+    },
+  };
+});

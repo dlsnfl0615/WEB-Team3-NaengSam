@@ -1,4 +1,4 @@
-import type { AuthUser, Delivery, Wallet } from "./types";
+import type { AuthUser, Delivery } from "./types";
 
 /**
  * 인메모리 "서버 DB" 초기값. 새로고침 시 초기화된다(퍼시스트 없음).
@@ -116,38 +116,3 @@ export const SEED_DELIVERIES: Delivery[] = [
     note: "받음",
   },
 ];
-
-/** 지갑 시드(포인트 잔액·머니 잔액·최근 내역). */
-export const SEED_WALLET: Wallet = {
-  points: 12400,
-  money: 58500,
-  transactions: [
-    {
-      id: "w1",
-      icon: "point",
-      title: "포인트 충전",
-      detail: "7/22 · 카드결제",
-      amount: 10000,
-      unit: "P",
-      incoming: true,
-    },
-    {
-      id: "w2",
-      icon: "document",
-      title: "서류 배송 결제",
-      detail: "7/21",
-      amount: -2000,
-      unit: "P",
-      incoming: false,
-    },
-    {
-      id: "w3",
-      icon: "transfer",
-      title: "머니 → 포인트 전환",
-      detail: "7/20",
-      amount: 5000,
-      unit: "P",
-      incoming: true,
-    },
-  ],
-};
