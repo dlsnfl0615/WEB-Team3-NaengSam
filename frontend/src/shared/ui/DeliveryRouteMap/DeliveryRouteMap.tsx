@@ -16,6 +16,10 @@ export interface DeliveryRouteMapProps {
   dropoff?: Coords;
   /** 드리미(배달원) 현재 좌표. 바뀔 때마다 핀이 이동한다. */
   driver?: Coords;
+  /** 드리미 핀 라벨. 기본값은 "드리미". (내 위치 등으로 사용될 수 있음)*/
+  driverLabel?: string;
+  /** 추천 이동경로 좌표 목록. 있으면 폴리라인으로 그린다(첫 로드부터 표시). */
+  route?: Coords[];
   /** 지도 높이(px). 기본 340. */
   height?: number;
   /** 모서리 반경·테두리 제거(풀블리드 지도용, MapCard `flat`과 함께). */
@@ -36,13 +40,14 @@ function makeLabel(
   kakao: typeof window.kakao,
   position: ReturnType<typeof window.kakao.maps.LatLng>,
   role: Role,
+  label: string, // 핀 위에 뜨는 라벨 문자열
 ) {
   const content = document.createElement("div");
   content.className = cn(
     "rounded-pill px-1.5 py-0.5 text-2xs font-semibold text-white shadow-card",
     ROLE[role].bg,
   );
-  content.textContent = ROLE[role].label;
+  content.textContent = label;
   content.style.transform = "translateY(-46px)"; // 핀(40px) 위로 라벨을 올린다
   return new kakao.maps.CustomOverlay({
     position,
@@ -59,6 +64,7 @@ function upsertMarker(
   store: { marker?: unknown; overlay?: unknown },
   role: Role,
   coords: Coords,
+  label: string,
 ) {
   const pos = new kakao.maps.LatLng(coords.latitude, coords.longitude);
   if (store.marker) {
@@ -73,7 +79,7 @@ function upsertMarker(
     position: pos,
     image: pinImage(kakao, ROLE[role].color),
   });
-  const overlay = makeLabel(kakao, pos, role);
+  const overlay = makeLabel(kakao, pos, role, label);
   overlay.setMap(map);
   store.overlay = overlay;
 }
@@ -87,6 +93,8 @@ export function DeliveryRouteMap({
   pickup,
   dropoff,
   driver,
+  driverLabel = "드리미", // 기본 값은 "드리미"
+  route,
   height = 340,
   flat = false,
 }: DeliveryRouteMapProps) {
@@ -96,6 +104,7 @@ export function DeliveryRouteMap({
   const storeRef = useRef<Record<Role, { marker?: unknown; overlay?: unknown }>>(
     { pickup: {}, dropoff: {}, driver: {} },
   );
+  const routeLineRef = useRef<unknown>(null);
   const didFitRef = useRef(false);
   const [status, setStatus] = useState<"loading" | "ready" | "disabled">(
     "loading",
@@ -127,6 +136,7 @@ export function DeliveryRouteMap({
       kakaoRef.current = null;
       mapRef.current = null;
       storeRef.current = { pickup: {}, dropoff: {}, driver: {} };
+      routeLineRef.current = null;
       didFitRef.current = false;
     };
   }, []);
@@ -142,16 +152,41 @@ export function DeliveryRouteMap({
       ["driver", driver],
     ];
     entries.forEach(([role, coords]) => {
-      if (coords) upsertMarker(kakao, map, storeRef.current[role], role, coords);
+      if (coords) {
+        const label = role === "driver" ? driverLabel : ROLE[role].label;
+        upsertMarker(kakao, map, storeRef.current[role], role, coords, label);
+      }
     });
-  }, [status, pickup, dropoff, driver]);
+  }, [status, pickup, dropoff, driver, driverLabel]);
 
-  // 존재하는 핀들로 최초 1회만 뷰포트를 맞춘다(이후 드리미 이동 시 강제 recenter 안 함 → 튐 방지).
+  // 추천 이동경로를 폴리라인으로 그린다(좌표가 바뀌면 다시 그림). 핀처럼 ref에 보관해 중복 생성을 막는다.
+  useEffect(() => {
+    const kakao = kakaoRef.current;
+    const map = mapRef.current;
+    if (status !== "ready" || !kakao || !map) return;
+    if (routeLineRef.current) {
+      (routeLineRef.current as ReturnType<typeof kakao.maps.Polyline>).setMap(
+        null,
+      );
+      routeLineRef.current = null;
+    }
+    if (!route || route.length < 2) return;
+    routeLineRef.current = new kakao.maps.Polyline({
+      map,
+      path: route.map((c) => new kakao.maps.LatLng(c.latitude, c.longitude)),
+      strokeWeight: 5,
+      strokeColor: "#00b7a7", // teal-500
+      strokeOpacity: 0.9,
+      strokeStyle: "solid",
+    });
+  }, [status, route]);
+
+  // 존재하는 핀들·경로로 최초 1회만 뷰포트를 맞춘다(이후 드리미 이동 시 강제 recenter 안 함 → 튐 방지).
   useEffect(() => {
     const kakao = kakaoRef.current;
     const map = mapRef.current;
     if (status !== "ready" || !kakao || !map || didFitRef.current) return;
-    const present = [pickup, dropoff, driver].filter(
+    const present = [pickup, dropoff, driver, ...(route ?? [])].filter(
       (c): c is Coords => c != null,
     );
     if (present.length === 0) return;
@@ -167,13 +202,13 @@ export function DeliveryRouteMap({
       map.setBounds(bounds);
     }
     didFitRef.current = true;
-  }, [status, pickup, dropoff, driver]);
+  }, [status, pickup, dropoff, driver, route]);
 
   if (status === "disabled") {
     const present: [string, Coords][] = [
       ["출발지", pickup],
       ["도착지", dropoff],
-      ["드리미", driver],
+      [driverLabel, driver],
     ].filter((e): e is [string, Coords] => e[1] != null);
     return (
       <div

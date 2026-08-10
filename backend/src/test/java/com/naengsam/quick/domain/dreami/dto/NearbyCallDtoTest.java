@@ -22,13 +22,13 @@ class NearbyCallDtoTest {
         GeoPoint location = new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0));
 
         Orders order = Orders.create(orderId, UUID.randomUUID(), "서류봉투", ItemCd.DOCUMENT,
-                "봉투 A4 사이즈", 5_000L, 12, "문 앞에 놔주세요", null,
+                "봉투 A4 사이즈", 5_000L, 12, null, "문 앞에 놔주세요", null,
                 Addresses.builder()
                         .originAddressLine1("서울 성북구 동소문로 1")
                         .originAddressLine2("농협 삼선교지점")
                         .destinationAddressLine1("서울 종로구 대학로 136")
                         .destinationAddressLine2("2층")
-                        .build());
+                        .build(), null);
 
         // 도보 약 4km/h(66.67m/min) 가정 → 900m는 13.5분, ceil로 14분.
         double distanceMeters = 900.0;
@@ -58,8 +58,8 @@ class NearbyCallDtoTest {
         GeoPoint location = new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0));
 
         Orders order = Orders.create(orderId, UUID.randomUUID(), "서류봉투", ItemCd.DOCUMENT,
-                "봉투 A4 사이즈", 5_000L, 12, "문 앞에 놔주세요", null,
-                Addresses.builder().build());
+                "봉투 A4 사이즈", 5_000L, 12, null, "문 앞에 놔주세요", null,
+                Addresses.builder().build(), null);
         order.markPendingBoormiConfirmation();
 
         NearbyOrderDto nearby = NearbyOrderDto.from(new WaitingOrder(orderId, location), 500.0);

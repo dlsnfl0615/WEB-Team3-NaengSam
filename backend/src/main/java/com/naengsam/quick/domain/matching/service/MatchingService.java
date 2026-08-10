@@ -20,6 +20,7 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.model.WaitingOrder;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
@@ -305,7 +306,7 @@ public class MatchingService {
 
         GeoPoint boormiLocation = new GeoPoint(order.getOriginLatitude(), order.getOriginLongitude());
         OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), boormiLocation,
-                new ArrayList<>());
+                OrderSummaryDto.from(order), new ArrayList<>());
         orderOfferGroupsByOrderId.put(order.getOrderId(), group);
         attemptOfferRound(group);
     }
@@ -349,7 +350,8 @@ public class MatchingService {
 
         // 제안받은 드리미 각각에게 제안 팝업을 띄운다.
         for (MatchOffer offer : newOffers) {
-            sseService.send(offer.dreamiId(), MatchingEventType.OFFER_POPUP, OfferPopupPayload.from(offer));
+            sseService.send(offer.dreamiId(), MatchingEventType.OFFER_POPUP,
+                    OfferPopupPayload.from(offer, group.orderSummary(), OFFER_TTL));
         }
     }
 

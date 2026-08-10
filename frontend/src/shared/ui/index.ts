@@ -86,6 +86,9 @@ export type { BottomSheetProps } from "./BottomSheet/BottomSheet";
 export { Modal } from "./Modal/Modal";
 export type { ModalProps } from "./Modal/Modal";
 
+export { BlockingLoadErrorModal } from "./BlockingLoadErrorModal/BlockingLoadErrorModal";
+export type { BlockingLoadErrorModalProps } from "./BlockingLoadErrorModal/BlockingLoadErrorModal";
+
 export { DestinationPicker } from "./DestinationPicker/DestinationPicker";
 export type { DestinationPickerProps } from "./DestinationPicker/DestinationPicker";
 

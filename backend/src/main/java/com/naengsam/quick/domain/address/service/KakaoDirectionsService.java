@@ -43,9 +43,9 @@ public class KakaoDirectionsService {
     }
 
     /**
-     * 출발지/도착지 좌표로 도보 경로를 조회해 총 거리(m)와 소요시간(s)이 담긴 요약을 반환한다.
+     * 출발지/도착지 좌표로 도보 경로를 조회해 요약(총 거리·소요시간)과 실제 이동경로 좌표가 담긴 Route 를 반환한다.
      */
-    public KakaoDirectionsResponseDto.Properties getRoute(GeoPoint origin, GeoPoint destination) {
+    public KakaoDirectionsResponseDto.Route getRoute(GeoPoint origin, GeoPoint destination) {
 
         URI uri = UriComponentsBuilder.fromUriString("https://dapi.kakao.com/v2/routing/walk")
                 .queryParam("start_x", origin.longitude())
@@ -74,6 +74,6 @@ public class KakaoDirectionsService {
                 || response.route().properties() == null) {
             throw new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
         }
-        return response.route().properties();
+        return response.route();
     }
 }

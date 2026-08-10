@@ -1,8 +1,12 @@
 package com.naengsam.quick.domain.delivery.service;
 
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
+import com.naengsam.quick.domain.delivery.dto.RoutePointDto;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCertification;
@@ -18,7 +22,6 @@ import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
-import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
@@ -34,6 +37,8 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.Collections;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.function.Function;
@@ -64,11 +69,11 @@ public class DeliveryService {
     private final PickupCertificationRepository pickupCertificationRepository;
     private final DeliveryCertificationRepository deliveryCertificationRepository;
     private final SseService sseService;
-    private final S3PresignService s3PresignService;
     private final UploadSessionService uploadSessionService;
     private final UserService userService;
     private final OrderService orderService;
     private final ApplicationEventPublisher eventPublisher;
+    private final ObjectMapper objectMapper;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -102,7 +107,21 @@ public class DeliveryService {
             throw new BusinessException(AuthErrorCode.NOT_RESOURCE_OWNER);
         }
 
-        return DeliveryDetailResponseDto.from(delivery, order);
+        return DeliveryDetailResponseDto.from(delivery, order, parseRoutePath(order.getRoutePath()));
+    }
+
+    // 주문에 저장된 추천 이동경로 JSON을 좌표 목록으로 복원한다. 값이 없거나 손상됐으면 빈 목록(지도는 핀만 표시).
+    private List<RoutePointDto> parseRoutePath(String routePathJson) {
+        if (routePathJson == null || routePathJson.isBlank()) {
+            return Collections.emptyList();
+        }
+        try {
+            return objectMapper.readValue(routePathJson, new TypeReference<List<RoutePointDto>>() {
+            });
+        } catch (JacksonException e) {
+            log.warn("주문 route_path 역직렬화 실패 — 경로 없이 응답한다", e);
+            return Collections.emptyList();
+        }
     }
 
     // ===== 공개 메서드 (동기 요청) — 주문 단위 락 안에서 상태 전이를 실행하고 결과를 돌려준다 =====
@@ -237,9 +256,9 @@ public class DeliveryService {
         if (!isValid) return "픽업 취소 실패";
 
 
-        // 사진이_없는경우
-        if (!hasPickupPhoto(delivery.getOrderId(), dreamiId, photoKey))
-            throw new BusinessException(DeliveryErrorCode.PICKUP_PHOTO_MISSING);
+        // 본인이, 이 주문에 대해, 픽업 인증사진 용도로 발급받은 key인지 확인하고, 업로드 안 됐으면 FILE_NOT_FOUND
+        uploadSessionService.checkUpload(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, delivery.getOrderId(),
+                photoKey);
 
         delivery.markDelivering(); // 배달중_정상
         // 비대면 픽업 인증 행 저장 (submittedDtm은 markDelivering이 기록한 pickedUpDtm 재사용)
@@ -355,7 +374,8 @@ public class DeliveryService {
         boolean isValid = switch (deliveryCd) {
             case DELIVERING -> true;
             // 픽업 중에 배달 완료 요청이 온 경우 (픽업하자마자 바로 완료 요청하지 않는 이상 드묾)
-            case PICKUP_NORMAL, PICKUP_DELAYED -> throw new BusinessException(DeliveryErrorCode.PICKUP_NOT_COMPLETED);
+            case PICKUP_NORMAL, PICKUP_DELAYED ->
+                    throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_NOT_ALLOWED_BEFORE_PICKUP);
             case PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN ->
                     throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_CANCELLED);
             case DELIVERED -> throw new BusinessException(DeliveryErrorCode.DELIVERY_ALREADY_COMPLETED);
@@ -370,9 +390,9 @@ public class DeliveryService {
 
         if (!isValid) return "배달 완료 실패";
 
-        if (!hasDeliveryPhoto(delivery.getOrderId(), dreamiId, photoKey)) { // 사진이없을때
-            throw new BusinessException(DeliveryErrorCode.DELIVERY_COMPLETION_PHOTO_MISSING);
-        }
+        // 본인이, 이 주문에 대해, 배달완료 인증사진 용도로 발급받은 key인지 확인하고, 업로드 안 됐으면 FILE_NOT_FOUND
+        uploadSessionService.checkUpload(UploadPurpose.DELIVERY_CERTIFICATION_IMAGE, dreamiId, delivery.getOrderId(),
+                photoKey);
 
         delivery.markDelivered(); // 배달_완료
         orderService.complete(delivery.getOrderId()); // 주문도 완료 상태로 전이
@@ -442,18 +462,4 @@ public class DeliveryService {
         sseService.send(event.userId(), event.eventType(), event.payload());
     }
 
-    // ===== 사진 확인 (upload 도메인 연동) =====
-    // 드리미가 자기 세션으로 발급받아 업로드한 key인지(소유권) 확인한 뒤, 그 파일이 S3에 실제 존재하는지 검사한다.
-
-    private boolean hasPickupPhoto(UUID orderId, UUID dreamiId, String photoKey) {
-        // 본인이, 이 주문에 대해, 픽업 인증사진 용도로 발급받은 key가 아니면 KEY_OWNER_MISMATCH
-        uploadSessionService.validateScope(UploadPurpose.PICKUP_CERTIFICATION_IMAGE, dreamiId, orderId, photoKey);
-        return s3PresignService.isFileUploaded(photoKey);
-    }
-
-    private boolean hasDeliveryPhoto(UUID orderId, UUID dreamiId, String photoKey) {
-        // 본인이, 이 주문에 대해, 배달완료 인증사진 용도로 발급받은 key가 아니면 KEY_OWNER_MISMATCH
-        uploadSessionService.validateScope(UploadPurpose.DELIVERY_CERTIFICATION_IMAGE, dreamiId, orderId, photoKey);
-        return s3PresignService.isFileUploaded(photoKey);
-    }
 }

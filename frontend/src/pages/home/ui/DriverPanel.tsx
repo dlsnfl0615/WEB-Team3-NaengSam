@@ -10,6 +10,7 @@ import {
 } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { api, isApiError } from "@/shared/api";
+import { useCurrentAddress } from "@/shared/lib";
 import {
   ORDER_PROGRESS,
   toBoormiOrder,
@@ -19,6 +20,8 @@ import {
 /** 홈 화면의 드리미(배송인) 본문. 현재 수행 중인 배달을 실제 API로 조회한다. */
 export function DriverPanel() {
   const navigate = useNavigate();
+  const { address: currentAddress, error: currentAddressError } =
+    useCurrentAddress();
   const [current, setCurrent] = useState<BoormiOrder | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +51,9 @@ export function DriverPanel() {
 
   return (
     <>
-      <LocationBar location="Office Hub: Zone A" status="4층 대기" />
+      <LocationBar
+        location={currentAddress ?? currentAddressError ?? "위치 확인 중…"}
+      />
 
       <Card variant="hero" className="flex flex-col gap-3">
         <p className="text-xl font-bold tracking-[-0.4px]">드리미 시작하기</p>

@@ -14,8 +14,13 @@ export interface OrderSummaryDto {
   orderCd?: OrderSummaryDtoOrderCd;
   deliveryAmount?: number;
   deliveryEta?: number;
+  deliveryDistance?: number;
+  originLatitude?: number;
+  originLongitude?: number;
   originAlias?: string;
   originAddressLine1?: string;
+  destinationLatitude?: number;
+  destinationLongitude?: number;
   destinationAlias?: string;
   destinationAddressLine1?: string;
   imageKey?: string;

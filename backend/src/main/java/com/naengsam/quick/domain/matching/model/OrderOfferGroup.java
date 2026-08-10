@@ -5,6 +5,7 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 
 /**
  * 한 주문에 대해 동시에 뿌린 제안 묶음("방"). 방 자체의 상태(OPEN/MATCHED/CLOSED)와 재매칭 필요 여부를 여기서 관리한다.
@@ -13,15 +14,19 @@ public final class OrderOfferGroup {
     private final UUID orderId;
     private final UUID boormiId;
     private final GeoPoint location;
+    // 오퍼 팝업에 실어 보낼 주문 표시용 스냅샷(매칭 시작 시점 값). 엔진 스레드에서 DB 접근 없이 payload를 만들기 위해 보관한다.
+    private final OrderSummaryDto orderSummary;
     private final List<MatchOffer> offers;
     // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
     private volatile OrderOfferGroupStatus status;
     private volatile boolean rematchRequired;
 
-    public OrderOfferGroup(UUID orderId, UUID boormiId, GeoPoint location, List<MatchOffer> offers) {
+    public OrderOfferGroup(UUID orderId, UUID boormiId, GeoPoint location, OrderSummaryDto orderSummary,
+            List<MatchOffer> offers) {
         this.orderId = orderId;
         this.boormiId = boormiId;
         this.location = location;
+        this.orderSummary = orderSummary;
         // 라운드마다 엔진 스레드가 append하는 동시에 다른 스레드가 offers()로 읽으므로,
         // ArrayList가 아닌 CopyOnWriteArrayList로 보관해 순회/복사 중 경합을 피한다.
         this.offers = new CopyOnWriteArrayList<>(offers);
@@ -39,6 +44,10 @@ public final class OrderOfferGroup {
 
     public GeoPoint location() {
         return location;
+    }
+
+    public OrderSummaryDto orderSummary() {
+        return orderSummary;
     }
 
     public List<MatchOffer> offers() {

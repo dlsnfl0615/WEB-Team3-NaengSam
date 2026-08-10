@@ -13,12 +13,29 @@ const NEARBY_COUNT = 10;
 /** 위치 취득 제한시간(ms). 넘기면 실패로 보고 사용자에게 재시도를 시킨다. */
 const GEOLOCATION_TIMEOUT_MS = 10_000;
 
-/** 드리미가 받은 제안(SSE `offer_popup`). */
-export interface PendingOffer {
+/** 백엔드 SSE `offer_popup` payload. */
+interface OfferPopupPayload {
   offerId: string;
   orderId: string;
-  /** 주변 콜 캐시에서 찾은 주문 정보(없으면 undefined — 금액·물품 미표시). */
-  call?: NearbyCallDto;
+  deliveryAmount: number | null;
+  itemName: string | null;
+  deliveryEta: number;
+  deliveryDistance: number | null;
+  originLatitude: number | null;
+  originLongitude: number | null;
+  originAlias: string | null;
+  originAddressLine1: string | null;
+  destinationLatitude: number | null;
+  destinationLongitude: number | null;
+  destinationAlias: string | null;
+  destinationAddressLine1: string | null;
+  imageKey: string | null;
+  ttlSeconds: number;
+}
+
+/** 드리미가 받은 제안. 픽업 거리만 주변 콜 캐시에서 보충한다. */
+export interface PendingOffer extends OfferPopupPayload {
+  distanceMeters?: number;
 }
 
 /** 부르미가 받은 드리미 수락 알림(SSE `dreami_info`) + 드리미 프로필. */
@@ -34,7 +51,7 @@ interface MatchingState {
   online: boolean;
   /** 드리미 진입 시 구한 좌표(주변 콜 조회·온라인 전환에 재사용 — GPS 중복 조회 방지). */
   myLocation: Coords | null;
-  /** 주변 콜 목록. 제안 팝업의 주문 정보 소스로도 쓴다. */
+  /** 주변 콜 목록. 제안 팝업의 픽업 거리 보조 데이터로도 쓴다. */
   nearbyCalls: NearbyCallDto[];
   /** 주변 콜 조회 실패 사유(온라인 전환 메시지와는 별개 관심사). */
   nearbyCallsError: string | null;
@@ -132,17 +149,14 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   message: null,
   submitting: false,
 
-  // 드리미: 새 제안 도착. 주문 정보는 주변 콜 캐시에서 채운다.
+  // 드리미: 새 제안 도착. 표시 정보는 SSE payload를 쓰고 거리만 주변 콜 캐시에서 보충한다.
   receiveOfferPopup: (payload) => {
-    const { offerId, orderId } = payload as {
-      offerId: string;
-      orderId: string;
-    };
+    const offer = payload as OfferPopupPayload;
     set((s) => ({
       pendingOffer: {
-        offerId,
-        orderId,
-        call: s.nearbyCalls.find((c) => c.orderId === orderId),
+        ...offer,
+        distanceMeters: s.nearbyCalls.find((c) => c.orderId === offer.orderId)
+          ?.distanceMeters,
       },
       // 새 제안이 왔으면 지난 안내는 지운다(카드 뒤에 남아 나중에 다시 뜨는 것 방지).
       message: null,
@@ -195,7 +209,11 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     set({ message: message ?? "매칭 요청 처리에 실패했어요." });
   },
 
-  clearOffers: () => set({ pendingOffer: null, incomingDreami: null }),
+  clearOffers: () =>
+    set({
+      pendingOffer: null,
+      incomingDreami: null,
+    }),
 
   // 온라인 여부와 무관하게 화면 진입 시(및 폴링 시) 항상 실행한다. myLocation이 이미 있으면 재사용한다.
   loadNearbyCalls: async () => {

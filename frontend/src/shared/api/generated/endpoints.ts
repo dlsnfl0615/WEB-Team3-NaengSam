@@ -25,11 +25,13 @@ import type {
   FindNearbyOrders200,
   FinishDelivery200,
   GeoPoint,
+  GetBoormiOrders200,
+  GetBoormiOrdersParams,
   GetCoordinates200,
   GetDashboard200,
   GetDeliveryDetail200,
-  GetMyOrders200,
-  GetMyOrdersParams,
+  GetDreamiOrders200,
+  GetDreamiOrdersParams,
   GetOrderOfferGroup200,
   GetPresignedUrl200,
   GetPresignedUrlParams,
@@ -524,10 +526,10 @@ const expectedValue = (
  * 로그인한 부르미가 신청한 주문을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하며, cursor 는 이전 응답의 nextCursor 를 그대로 넘긴다.
  * @summary 내 주문 목록 조회
  */
-const getMyOrders = (
-    params?: GetMyOrdersParams,
- options?: SecondParameter<typeof customInstance<GetMyOrders200>>,) => {
-      return customInstance<GetMyOrders200>(
+const getBoormiOrders = (
+    params?: GetBoormiOrdersParams,
+ options?: SecondParameter<typeof customInstance<GetBoormiOrders200>>,) => {
+      return customInstance<GetBoormiOrders200>(
       {url: `/api/v1/boormi/calls`, method: 'GET',
         params
     },
@@ -691,6 +693,20 @@ const getProfile = (
     }
 
 /**
+ * 로그인한 드리미가 수행한(수행 중인) 배달을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하며, cursor 는 이전 응답의 nextCursor 를 그대로 넘긴다.
+ * @summary 드리미 활동 내역 조회
+ */
+const getDreamiOrders = (
+    params?: GetDreamiOrdersParams,
+ options?: SecondParameter<typeof customInstance<GetDreamiOrders200>>,) => {
+      return customInstance<GetDreamiOrders200>(
+      {url: `/api/v1/dreami/deliveries`, method: 'GET',
+        params
+    },
+      options);
+    }
+
+/**
  * 드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다. 진행 중인 배달이 없으면 result가 null이다.
  * @summary 현재 수행 중인 배달 카드 조회
  */
@@ -791,7 +807,7 @@ const unsubscribeOrder = (
       options);
     }
 
-return {sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getMyOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,changeRole,me,getPresignedUrl,subscribe,getProfile,findCurrentDeliveryCard,getDashboard,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
+return {sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,changeRole,me,getPresignedUrl,subscribe,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
 export type SendVerificationCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['sendVerificationCode']>>>
 export type VerifyCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['verifyCode']>>>
 export type SignupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['signup']>>>
@@ -825,7 +841,7 @@ export type WaitingDreamisResult = NonNullable<Awaited<ReturnType<ReturnType<typ
 export type RegisterDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['registerDreami']>>>
 export type FindNearbyDreamisResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findNearbyDreamis']>>>
 export type ExpectedValueResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['expectedValue']>>>
-export type GetMyOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getMyOrders']>>>
+export type GetBoormiOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiOrders']>>>
 export type SubscribeOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['subscribeOrder']>>>
 export type RejectDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['rejectDreami']>>>
 export type ConfirmDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['confirmDreami']>>>
@@ -837,6 +853,7 @@ export type MeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenA
 export type GetPresignedUrlResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getPresignedUrl']>>>
 export type SubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['subscribe']>>>
 export type GetProfileResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getProfile']>>>
+export type GetDreamiOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrders']>>>
 export type FindCurrentDeliveryCardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findCurrentDeliveryCard']>>>
 export type GetDashboardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDashboard']>>>
 export type DevSubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['devSubscribe']>>>
