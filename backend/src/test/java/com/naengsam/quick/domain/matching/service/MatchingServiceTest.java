@@ -242,6 +242,25 @@ class MatchingServiceTest {
     }
 
     @Test
+    void WAITING_상태인_방이_있어도_다시_매칭을_시작할_수_없다() {
+        // given (대기 중인 드리미가 없어 오퍼 없이 WAITING으로 생성된 그룹)
+        UUID orderId = UUID.randomUUID();
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+
+        matchingService.applyStartMatching(order);
+        OrderOfferGroup originalGroup = getOrderOfferGroups().get(orderId);
+        assertThat(originalGroup.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
+
+        // when
+        boolean started = matchingService.startMatching(order);
+
+        // then
+        assertThat(started).isFalse();
+        assertThat(getOrderOfferGroups().get(orderId)).isSameAs(originalGroup);
+    }
+
+    @Test
     void 대기중인_드리미가_없으면_Offer_없이_그룹이_생성되고_재매칭_대상이_된다() {
         // given
         UUID orderId = UUID.randomUUID();
@@ -256,7 +275,7 @@ class MatchingServiceTest {
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
 
         assertThat(group.offers()).isEmpty();
-        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         assertThat(group.rematchRequired()).isTrue();
     }
 
@@ -403,7 +422,7 @@ class MatchingServiceTest {
         // then
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
 
-        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         assertThat(group.rematchRequired()).isTrue();
     }
 
@@ -467,7 +486,7 @@ class MatchingServiceTest {
         // then
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
 
-        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         assertThat(group.rematchRequired()).isTrue();
     }
 
@@ -492,7 +511,7 @@ class MatchingServiceTest {
         // then
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
         assertThat(group.offers()).hasSize(1);
-        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         assertThat(group.rematchRequired()).isTrue();
         assertThat(getDreamiMap().get(dreamiId).status())
                 .isEqualTo(WaitingDreamiStatus.MATCHING);
@@ -691,7 +710,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 주문_취소로_CLOSED된_그룹은_스케줄된_재매칭_스캔으로_다시_열리지_않는다() {
+    void 주문_취소로_CANCELLED된_그룹은_스케줄된_재매칭_스캔으로_다시_열리지_않는다() {
         // given
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
@@ -704,7 +723,7 @@ class MatchingServiceTest {
         matchingService.applyCancelOrderByBoormi(orderId);
 
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
-        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CANCELLED);
         assertThat(group.rematchRequired()).isFalse();
         int offersBeforeScan = group.offers().size();
 
@@ -712,7 +731,7 @@ class MatchingServiceTest {
         matchingService.applyRematchWaitingGroups();
 
         // then (rematchRequired가 false이므로 취소된 그룹은 스캔 대상에서 제외되어야 한다)
-        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CANCELLED);
         assertThat(group.offers()).hasSize(offersBeforeScan);
     }
 
@@ -827,7 +846,7 @@ class MatchingServiceTest {
             matchingService.applyRejectByDreami(offer.offerId());
         }
         assertThat(getOrderOfferGroups().get(orderId).status())
-                .isEqualTo(OrderOfferGroupStatus.CLOSED);
+                .isEqualTo(OrderOfferGroupStatus.WAITING);
 
         UUID newDreamiId = UUID.randomUUID();
 
@@ -905,7 +924,7 @@ class MatchingServiceTest {
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
 
         // then
-        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         assertThat(group.rematchRequired()).isTrue();
         assertThat(group.offers())
                 .noneMatch(offer -> offer.status() == MatchOfferStatus.OFFERED);
@@ -925,17 +944,34 @@ class MatchingServiceTest {
     }
 
     @Test
-    void OPEN이_아닌_그룹을_취소해도_상태가_그대로_보존된다() {
+    void 배치_대기중인_WAITING_그룹도_취소할_수_있다() {
+        // given (아직 오퍼가 나가지 않은, micro-batch 대기 중인 그룹)
+        UUID orderId = UUID.randomUUID();
+        OrderOfferGroup group =
+                new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(), LocalDateTime.now());
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
+        getOrderOfferGroups().put(orderId, group);
+
+        // when
+        matchingService.applyCancelOrderByBoormi(orderId);
+
+        // then
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CANCELLED);
+        assertThat(group.rematchRequired()).isFalse();
+    }
+
+    @Test
+    void MATCHED_그룹을_취소해도_상태가_그대로_보존된다() {
         // given
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
 
         MatchOffer offer = new MatchOffer(
                 UUID.randomUUID(), orderId, dreamiId,
-                MatchOfferStatus.OFFERED, LocalDateTime.now());
+                MatchOfferStatus.MATCHED, LocalDateTime.now());
         OrderOfferGroup group =
                 new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), List.of(offer), LocalDateTime.now());
-        group.closeForRematch();
+        group.confirmMatch();
         getOrderOfferGroups().put(orderId, group);
         getDreamiMap().put(dreamiId, new WaitingDreami(
                 dreamiId, mock(GeoPoint.class),
@@ -945,9 +981,8 @@ class MatchingServiceTest {
         matchingService.applyCancelOrderByBoormi(orderId);
 
         // then (기존 상태가 그대로 보존되어야 한다)
-        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
-        assertThat(group.rematchRequired()).isTrue();
-        assertThat(offer.status()).isEqualTo(MatchOfferStatus.OFFERED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.MATCHED);
+        assertThat(offer.status()).isEqualTo(MatchOfferStatus.MATCHED);
         assertThat(getDreamiMap().get(dreamiId).status())
                 .isEqualTo(WaitingDreamiStatus.MATCHING);
     }
@@ -987,7 +1022,7 @@ class MatchingServiceTest {
         assertThat(List.of(dreamiIdA, dreamiIdB, dreamiIdC))
                 .allMatch(dreamiId -> getDreamiMap().get(dreamiId).status()
                         == WaitingDreamiStatus.MATCHING);
-        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CANCELLED);
         assertThat(group.rematchRequired()).isFalse();
     }
 
@@ -1027,7 +1062,7 @@ class MatchingServiceTest {
         assertThat(List.of(dreamiIdA, dreamiIdB, dreamiIdC))
                 .allMatch(dreamiId -> getDreamiMap().get(dreamiId).status()
                         == WaitingDreamiStatus.MATCHING);
-        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CANCELLED);
         assertThat(group.rematchRequired()).isFalse();
     }
 
@@ -1085,7 +1120,7 @@ class MatchingServiceTest {
         assertThat(offer.status()).isEqualTo(MatchOfferStatus.WITHDRAWN);
         assertThat(getDreamiMap().get(dreamiId).status())
                 .isEqualTo(WaitingDreamiStatus.MATCHING);
-        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CLOSED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CANCELLED);
         assertThat(group.rematchRequired()).isFalse();
     }
 
@@ -1241,12 +1276,13 @@ class MatchingServiceTest {
 
     @Test
     void 재매칭_대상_그룹이_없으면_스케줄된_재매칭_실행시_아무일도_일어나지_않는다() {
-        // given
+        // given (이미 오퍼가 나가 OPEN 상태인 그룹 - WAITING이 아니므로 재매칭 대상이 아니다)
         UUID orderId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
 
         OrderOfferGroup group =
                 new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), List.of(), LocalDateTime.now());
+        group.addOffersAndOpen(List.of());
         getOrderOfferGroups().put(orderId, group);
 
         // when

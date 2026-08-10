@@ -276,7 +276,7 @@
     function statusClass(status) {
         if (status === "MATCHED") return "info";
         if (status?.includes("REJECTED") || status?.includes("EXPIRED")) return "danger";
-        if (status === "CLOSED" || status === "WITHDRAWN") return "";
+        if (status === "WAITING" || status === "CANCELLED" || status === "WITHDRAWN") return "";
         return "warning";
     }
 

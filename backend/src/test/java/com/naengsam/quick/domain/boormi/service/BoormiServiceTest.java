@@ -268,7 +268,7 @@ BoormiServiceTest {
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(kakaoDirectionsService.getRoute(any(), any()))
                 .willReturn(new KakaoDirectionsResponseDto.Properties(5000, 900));
-        given(matchingService.isOpenGroupExists(any())).willReturn(true);
+        given(matchingService.isActiveGroupExists(any())).willReturn(true);
 
         Throwable thrown = catchThrowable(() -> boormiService.subscribeOrder(orderRequest(), boormiId));
 
