@@ -1375,6 +1375,71 @@ class MatchingServiceTest {
         assertThat(matchingService.isBoormiOfferOwner(UUID.randomUUID(), UUID.randomUUID())).isFalse();
     }
 
+    @Test
+    void OFFERED_상태인_제안이_있으면_findPendingOfferForDreami가_해당_제안을_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(offerId, UUID.randomUUID(), dreamiId, MatchOfferStatus.OFFERED);
+        getOffersById().put(offerId, offer);
+
+        assertThat(matchingService.findPendingOfferForDreami(dreamiId)).contains(offer);
+    }
+
+    @Test
+    void 종료된_제안만_있으면_findPendingOfferForDreami는_비어있다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(offerId, UUID.randomUUID(), dreamiId, MatchOfferStatus.DREAMI_REJECTED);
+        getOffersById().put(offerId, offer);
+
+        assertThat(matchingService.findPendingOfferForDreami(dreamiId)).isEmpty();
+    }
+
+    @Test
+    void 다른_드리미의_제안은_findPendingOfferForDreami에_잡히지_않는다() {
+        UUID offerId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(offerId, UUID.randomUUID(), UUID.randomUUID(), MatchOfferStatus.OFFERED);
+        getOffersById().put(offerId, offer);
+
+        assertThat(matchingService.findPendingOfferForDreami(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void PENDING_BOORMI_CONFIRMATION_제안이_있으면_findIncomingDreamiOffer가_해당_제안을_반환한다() {
+        UUID orderId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(
+                UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+        getOrderOfferGroups().put(orderId,
+                new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer)));
+
+        assertThat(matchingService.findIncomingDreamiOffer(boormiId)).contains(offer);
+    }
+
+    @Test
+    void 확인_대기중인_제안이_없으면_findIncomingDreamiOffer는_비어있다() {
+        UUID orderId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(
+                UUID.randomUUID(), orderId, UUID.randomUUID(), MatchOfferStatus.OFFERED);
+        getOrderOfferGroups().put(orderId,
+                new OrderOfferGroup(orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer)));
+
+        assertThat(matchingService.findIncomingDreamiOffer(boormiId)).isEmpty();
+    }
+
+    @Test
+    void 다른_부르미의_주문은_findIncomingDreamiOffer에_잡히지_않는다() {
+        UUID orderId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(
+                UUID.randomUUID(), orderId, UUID.randomUUID(), MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+        getOrderOfferGroups().put(orderId,
+                new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer)));
+
+        assertThat(matchingService.findIncomingDreamiOffer(UUID.randomUUID())).isEmpty();
+    }
+
     @SuppressWarnings("unchecked")
     private Map<UUID, MatchOffer> getOffersById() {
         return (Map<UUID, MatchOffer>)
