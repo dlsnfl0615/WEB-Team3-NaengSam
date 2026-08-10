@@ -29,7 +29,6 @@ import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
-import jakarta.annotation.PostConstruct;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -90,6 +89,7 @@ public class MatchingService {
     private final MatchingEngine matchingEngine;
     private final SseService sseService;
     private final MatchingActionScheduler matchingActionScheduler;
+    private final MatchingBatchDispatcher matchingBatchDispatcher;
     private final DeliveryService deliveryService;
     private final Clock clock;
     private final MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
@@ -307,17 +307,8 @@ public class MatchingService {
         return matchingEngine.submit(new RunMatchingAssignmentCycle(this));
     }
 
-    /**
-     * 서비스 기동 시 batch window(matching.batch-window)마다 배치 매칭 사이클을 반복 실행하도록 예약한다. 반복 예약은 {@link MatchingActionScheduler}가
-     * 담당하므로, 이 메서드는 최초 등록만 하고 실제 반복/복구 로직에는 관여하지 않는다.
-     */
-    @PostConstruct
-    void scheduleMatchingAssignmentCycle() {
-        matchingActionScheduler.scheduleRepeating(new RunMatchingAssignmentCycle(this),
-                matchingPolicyProperties.batchWindow());
-    }
-
     void applyRunMatchingAssignmentCycle() {
+        matchingBatchDispatcher.reset();
         MatchingAssignmentProblem problem = matchingAssignmentProblemAssembler.assemble();
         MatchingPlan plan = matchingAssignmentPolicy.createPlan(problem);
         matchingPlanApplier.apply(problem, plan, LocalDateTime.now(clock),
@@ -349,7 +340,7 @@ public class MatchingService {
         OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), boormiLocation,
                 OrderSummaryDto.from(order), new ArrayList<>(), LocalDateTime.now(clock));
         orderOfferGroupsByOrderId.put(order.getOrderId(), group);
-        attemptOfferRound(group);
+        matchingBatchDispatcher.markDirty();
     }
 
     /**
