@@ -1,6 +1,7 @@
 package com.naengsam.quick.domain.matching.policy.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 
 import com.naengsam.quick.domain.matching.policy.assignment.LegacyOrderFirstAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.ScoreBasedGreedyAssignmentPolicy;
@@ -8,10 +9,13 @@ import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
+import com.naengsam.quick.domain.matching.service.OfferTimeoutScheduler;
+import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
@@ -155,5 +159,15 @@ class MatchingPolicyConfigurationTest {
     @Configuration
     @EnableConfigurationProperties(MatchingPolicyProperties.class)
     static class PropertiesConfig {
+
+        @Bean
+        OfferTimeoutScheduler offerTimeoutScheduler() {
+            return mock(OfferTimeoutScheduler.class);
+        }
+
+        @Bean
+        SseService sseService() {
+            return mock(SseService.class);
+        }
     }
 }

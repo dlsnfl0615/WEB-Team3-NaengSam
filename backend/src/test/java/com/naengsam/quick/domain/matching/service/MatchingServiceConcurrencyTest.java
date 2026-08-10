@@ -12,6 +12,9 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Clock;
@@ -47,7 +50,9 @@ class MatchingServiceConcurrencyTest {
         matchingEngine = new MatchingEngine();
         matchingEngine.start();
         matchingService = new MatchingService(matchingEngine, mock(SseService.class), mock(OfferTimeoutScheduler.class),
-                mock(DeliveryService.class), Clock.systemDefaultZone());
+                mock(DeliveryService.class), Clock.systemDefaultZone(),
+                mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),
+                mock(MatchingPlanApplier.class));
         requestThreads = Executors.newFixedThreadPool(16);
     }
 

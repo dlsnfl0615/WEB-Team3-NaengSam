@@ -20,6 +20,11 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.model.WaitingOrder;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblem;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlan;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
@@ -85,6 +90,9 @@ public class MatchingService {
     private final OfferTimeoutScheduler offerTimeoutScheduler;
     private final DeliveryService deliveryService;
     private final Clock clock;
+    private final MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
+    private final MatchingAssignmentPolicy matchingAssignmentPolicy;
+    private final MatchingPlanApplier matchingPlanApplier;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -285,6 +293,23 @@ public class MatchingService {
 
     void applyRematchWaitingGroups() {
         retryRematchWaitingGroups();
+    }
+
+    /**
+     * 정책 기반 배치 매칭 한 회차(스냅샷 조립 → 배정안 산출 → 검증 → 적용)를 큐에 제출한다. 네 단계 전부가 엔진 스레드에서 하나의 액션으로 실행되므로, 조립 시점의 스냅샷과 적용 시점의 실제
+     * dreamiMap/방 상태 사이에 다른 액션이 끼어들 수 없다.
+     *
+     * @return 배치 매칭 액션이 큐에 제출되었으면 true
+     */
+    public boolean runMatchingAssignmentCycle() {
+        return matchingEngine.submit(new RunMatchingAssignmentCycle(this));
+    }
+
+    void applyRunMatchingAssignmentCycle() {
+        MatchingAssignmentProblem problem = matchingAssignmentProblemAssembler.assemble();
+        MatchingPlan plan = matchingAssignmentPolicy.createPlan(problem);
+        matchingPlanApplier.apply(problem, plan, LocalDateTime.now(clock),
+                orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
     }
 
     /**

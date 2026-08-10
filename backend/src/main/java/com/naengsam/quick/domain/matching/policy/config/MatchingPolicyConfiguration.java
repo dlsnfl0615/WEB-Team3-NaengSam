@@ -3,6 +3,8 @@ package com.naengsam.quick.domain.matching.policy.config;
 import com.naengsam.quick.domain.matching.policy.assignment.LegacyOrderFirstAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemFactory;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanValidator;
 import com.naengsam.quick.domain.matching.policy.assignment.ScoreBasedGreedyAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibilityPolicy;
@@ -11,6 +13,9 @@ import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import com.naengsam.quick.domain.matching.policy.scoring.MatchingScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
+import com.naengsam.quick.domain.matching.service.OfferTimeoutScheduler;
+import com.naengsam.quick.global.sse.SseService;
+import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -21,6 +26,11 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 @RequiredArgsConstructor
 public class MatchingPolicyConfiguration {
+
+    /**
+     * 드리미 응답 제한시간. {@link com.naengsam.quick.domain.matching.service.MatchingService#OFFER_TTL}과 동일한 값.
+     */
+    private static final Duration OFFER_TTL = Duration.ofSeconds(30);
 
     private final MatchingPolicyProperties properties;
 
@@ -64,5 +74,18 @@ public class MatchingPolicyConfiguration {
     public MatchingAssignmentProblemFactory matchingAssignmentProblemFactory(
             MatchingEligibilityPolicy matchingEligibilityPolicy) {
         return new MatchingAssignmentProblemFactory(matchingEligibilityPolicy);
+    }
+
+    @Bean
+    public MatchingPlanValidator matchingPlanValidator(MatchingEligibilityPolicy matchingEligibilityPolicy) {
+        return new MatchingPlanValidator(matchingEligibilityPolicy);
+    }
+
+    @Bean
+    public MatchingPlanApplier matchingPlanApplier(
+            MatchingPlanValidator matchingPlanValidator,
+            OfferTimeoutScheduler offerTimeoutScheduler,
+            SseService sseService) {
+        return new MatchingPlanApplier(matchingPlanValidator, offerTimeoutScheduler, sseService, OFFER_TTL);
     }
 }

@@ -25,6 +25,9 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
@@ -61,7 +64,9 @@ class MatchingServiceTest {
         offerTimeoutScheduler = mock(OfferTimeoutScheduler.class);
         deliveryService = mock(DeliveryService.class);
         matchingService = new MatchingService(
-                matchingEngine, sseService, offerTimeoutScheduler, deliveryService, Clock.systemDefaultZone());
+                matchingEngine, sseService, offerTimeoutScheduler, deliveryService, Clock.systemDefaultZone(),
+                mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),
+                mock(MatchingPlanApplier.class));
     }
 
     @Test
