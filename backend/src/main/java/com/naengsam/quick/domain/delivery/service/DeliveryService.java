@@ -114,7 +114,9 @@ public class DeliveryService {
             throw new BusinessException(AuthErrorCode.NOT_RESOURCE_OWNER);
         }
 
-        return DeliveryDetailResponseDto.from(delivery, order, parseRoutePath(order.getRoutePath()));
+        // 픽업 후 지도용 픽업지→도착지 경로(Orders)와 픽업 전 지도용 드리미→픽업지 경로(Delivery)를 함께 내려준다.
+        return DeliveryDetailResponseDto.from(delivery, order,
+                parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()));
     }
 
     // 주문에 저장된 추천 이동경로 JSON을 좌표 목록으로 복원한다. 값이 없거나 손상됐으면 빈 목록(지도는 핀만 표시).
