@@ -17,7 +17,8 @@ const INITIAL_FORM: RequestForm = {
   pickupDetail: "",
   dropoff: "",
   dropoffDetail: "",
-  pickupMeeting: "대면",
+  // 전달 방식은 비대면 고정(대면 미지원) — 선택 UI는 AddressSheet에서 숨김 처리.
+  pickupMeeting: "비대면",
   dropoffMeeting: "비대면",
   itemType: "서류",
   itemSize: "S",
@@ -131,7 +132,7 @@ export function RequestCreateScreen() {
 
   return (
     <ScreenShell>
-      <TopBar title="부름 등록" onBack={back} />
+      <TopBar title="부름 등록" onBack={back} actions={["profile"]} />
 
       <div className="pt-4">
         <RequestStepper current={step} />

@@ -86,4 +86,11 @@ public class Boormi {
         boormi.isDreamiActivate = false;
         return boormi;
     }
+
+    /**
+     * 관리자가 인증 신청을 승인한다.
+     */
+    public void approve() {
+        this.isDreamiActivate = true;
+    }
 }
