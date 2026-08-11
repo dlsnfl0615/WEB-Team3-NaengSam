@@ -172,6 +172,28 @@ describe("matchingStore polling 복구", () => {
     expect(incomingDreami?.acceptedAt).toBe("2026-08-11T10:00:00");
     expect(incomingDreami?.expiresAt).toBe("2026-08-11T10:00:30");
   });
+
+  it("receiveDreamiInfo는 pickupEtaMinutes를 incomingDreami에 반영한다", async () => {
+    useMatchingStore.getState().receiveDreamiInfo({
+      offerId: "offer-3",
+      orderId: "order-3",
+      dreamiId: "dreami-2",
+      pickupEtaMinutes: 12,
+    });
+
+    expect(useMatchingStore.getState().incomingDreami?.pickupEtaMinutes).toBe(12);
+  });
+
+  it("receiveDreamiInfo는 pickupEtaMinutes가 없으면 null/undefined를 그대로 둔다(픽업 시간 미확인)", async () => {
+    useMatchingStore.getState().receiveDreamiInfo({
+      offerId: "offer-4",
+      orderId: "order-4",
+      dreamiId: "dreami-3",
+      pickupEtaMinutes: null,
+    });
+
+    expect(useMatchingStore.getState().incomingDreami?.pickupEtaMinutes).toBeNull();
+  });
 });
 
 describe("matchingStore 카운트다운 만료(로컬)", () => {

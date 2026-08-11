@@ -4,12 +4,10 @@ export interface OfferCardProps {
   /** 카드 상단 안내 문구(예: "새 드리미 요청 도착!") */
   heading: string;
   name: string;
+  /** 드리미 평점(getProfile 응답의 dreamiAvgScore). */
   rating: number;
-  /** 건수 라벨. 부르미가 볼 땐 "배송", 드리미가 볼 땐 "요청" */
-  countLabel: string;
-  count: number;
-  /** 픽업 지점까지 남은 거리 */
-  distance: string;
+  /** 픽업 예상 소요 시간(분). 아직 확인되지 않았으면 null. */
+  pickupEtaMinutes: number | null;
   /** 확정 응답 카운트다운(부르미가 드리미를 확정하는 시간). */
   countdown: { remainingSeconds: number; progressPercent: number };
   onReject: () => void;
@@ -24,9 +22,7 @@ export function OfferCard({
   heading,
   name,
   rating,
-  countLabel,
-  count,
-  distance,
+  pickupEtaMinutes,
   countdown,
   onReject,
   onAccept,
@@ -42,14 +38,16 @@ export function OfferCard({
             <p className="text-base font-bold text-navy-900">{name}</p>
             <p className="flex items-center gap-1 text-2xs text-muted">
               <Icon name="star" size={12} />
-              {rating} · {countLabel} {count}건
+              {rating}
             </p>
           </div>
         </div>
 
         <div className="flex flex-col items-end">
           <p className="text-2xs text-muted">픽업까지</p>
-          <p className="text-base font-bold text-navy-900">{distance}</p>
+          <p className="text-base font-bold text-navy-900">
+            {pickupEtaMinutes == null ? "픽업 시간 확인 중" : `약 ${pickupEtaMinutes}분`}
+          </p>
         </div>
       </div>
 

@@ -19,7 +19,7 @@ export interface CallCardProps {
   dropoff?: Coords; // 도착지 위도 경도
   currentLocation?: Coords; // 드리미 현재 위치
   deliveryDistance: string;
-  /** 예상 배송 시간 */
+  /** 픽업 후 배송에 걸리는 예상 시간 */
   eta: string;
   /** 목적지 거리. 값이 없으면 항목을 숨긴다. */
   dropoffDistance?: string;
@@ -76,7 +76,7 @@ export function CallCard({
       <div className="flex items-start">
         <CallStat label="배송 거리" value={deliveryDistance} />
         <CallStat
-          label="예상 시간"
+          label="픽업 후 배송"
           value={eta}
           className="ml-auto text-right"
         />

@@ -50,6 +50,8 @@ export interface IncomingDreami {
   offerId: string;
   orderId: string;
   dreamiId: string;
+  /** 드리미 픽업 예상 소요 시간(분). 직선거리 기반 추정이며 위치를 모르면 null. */
+  pickupEtaMinutes?: number | null;
   /** 드리미가 수락한 시각. 응답 마감(expiresAt)과 함께 카운트다운 계산에 쓴다. */
   acceptedAt?: string;
   /** 부르미 확인 응답 마감 절대 시각. */
@@ -257,15 +259,16 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
 
   // 부르미: 드리미가 수락 → 프로필을 붙여 확정 카드를 띄운다.
   receiveDreamiInfo: (payload) => {
-    const { offerId, orderId, dreamiId, acceptedAt, expiresAt } = payload as {
+    const { offerId, orderId, dreamiId, pickupEtaMinutes, acceptedAt, expiresAt } = payload as {
       offerId: string;
       orderId: string;
       dreamiId: string;
+      pickupEtaMinutes?: number | null;
       acceptedAt?: string;
       expiresAt?: string;
     };
     set({
-      incomingDreami: { offerId, orderId, dreamiId, acceptedAt, expiresAt },
+      incomingDreami: { offerId, orderId, dreamiId, pickupEtaMinutes, acceptedAt, expiresAt },
       message: null,
     });
     api

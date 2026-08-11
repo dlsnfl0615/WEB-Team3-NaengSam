@@ -195,9 +195,7 @@ export function MatchingPopup() {
                                     : "드리미 정보 확인 중"
                             }
                             rating={offer.profile?.dreamiAvgScore ?? 0}
-                            countLabel="거절"
-                            count={offer.profile?.rejectCount ?? 0}
-                            distance="-"
+                            pickupEtaMinutes={offer.pickupEtaMinutes ?? null}
                             countdown={offerCountdown}
                             onReject={rejectDreami}
                             onAccept={onAcceptOffer}
