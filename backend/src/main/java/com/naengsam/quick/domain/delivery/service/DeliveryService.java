@@ -79,6 +79,7 @@ public class DeliveryService {
     private final DirectionsService directionsService;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final DreamiOfflineDetector dreamiOfflineDetector;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -113,8 +114,12 @@ public class DeliveryService {
         }
 
         // 픽업 후 지도용 픽업지→도착지 경로(Orders)와 픽업 전 지도용 드리미→픽업지 경로(Delivery)를 함께 내려준다.
+        // 드리미 연결 상태도 함께 담는다 — 화면을 다시 열었을 때 SSE 이벤트를 기다리지 않고 즉시 복원하기 위함이며,
+        // 부르미가 끊긴 동안 유실된 오프라인 통보를 되찾는 경로이기도 하다.
         return DeliveryDetailResponseDto.from(delivery, order,
-                parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()));
+                parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()),
+                dreamiOfflineDetector.isOffline(delivery),
+                dreamiOfflineDetector.secondsSinceLastLocationOrNull(delivery));
     }
 
     // 주문에 저장된 추천 이동경로 JSON을 좌표 목록으로 복원한다. 값이 없거나 손상됐으면 빈 목록(지도는 핀만 표시).
