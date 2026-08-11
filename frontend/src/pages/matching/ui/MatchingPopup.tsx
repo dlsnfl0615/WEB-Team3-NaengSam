@@ -87,6 +87,9 @@ export function MatchingPopup() {
         offer_error: useMatchingStore.getState().receiveOfferError,
         delivery_started_dreami: (payload) => {
             const {orderId} = payload as DeliveryStatusResponseDto;
+            // BE가 이 시점에 드리미를 매칭 후보·대기열에서 이미 제거했으므로, FE도 온라인 상태를 맞춘다.
+            // 드리미가 의도적으로 오프라인 전환한 게 아니므로 goOffline API는 호출하지 않고 로컬 상태만 갱신한다.
+            useMatchingStore.setState({online: false, pendingOffer: null});
             navigate(`${ROUTES.deliveryTrack}?orderId=${orderId}`, {replace: true});
         },
         delivery_started_boormi: (payload) => {
