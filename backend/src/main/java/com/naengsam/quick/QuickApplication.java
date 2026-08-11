@@ -1,5 +1,6 @@
 package com.naengsam.quick;
 
+import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.upload.service.UploadProperties;
 import com.naengsam.quick.domain.user.service.VerificationProperties;
 import com.naengsam.quick.domain.user.sms.SolapiProperties;
@@ -10,7 +11,9 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 
 @SpringBootApplication
 @EnableScheduling
-@EnableConfigurationProperties({SolapiProperties.class, VerificationProperties.class, UploadProperties.class})
+@EnableConfigurationProperties({
+        SolapiProperties.class, VerificationProperties.class, UploadProperties.class, MatchingPolicyProperties.class
+})
 public class QuickApplication {
 
     public static void main(String[] args) {
