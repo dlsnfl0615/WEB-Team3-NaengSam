@@ -33,7 +33,6 @@ export interface CallCardProps {
  * 금액·경로·거리·물품 유형을 보여주고 콜을 수락하거나 거절합니다.
  */
 export function CallCard({
-  code,
   price,
   place,
   route,
@@ -62,7 +61,7 @@ export function CallCard({
       />
 
       <div className="flex items-start justify-between">
-        <Badge tone="info">새로운 콜! {code}</Badge>
+        <Badge tone="info">새로운 콜!</Badge>
         <p className="text-xl font-bold text-teal-700">{price}</p>
       </div>
 

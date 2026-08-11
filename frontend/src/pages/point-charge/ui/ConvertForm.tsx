@@ -41,11 +41,9 @@ export function ConvertForm() {
   return (
     <>
       <h1 className="text-xl font-bold tracking-[-0.4px] text-navy-900">
-        머니를 포인트로
-        <br />
-        전환할까요?
+        머니를 포인트로 전환할까요?
       </h1>
-      <span className="h-[9px] w-3/4 rounded-[5px] bg-track" />
+      {/*<span className="h-[9px] w-3/4 rounded-[5px] bg-track" />*/}
 
       <Card className="flex flex-col gap-3">
         <div className="flex items-center justify-between">

@@ -208,7 +208,8 @@ export function DeliveryTrackScreen() {
       await advance();
     } else {
       await complete();
-      navigate(ROUTES.deliveryComplete, { replace: true });
+      // 드리미가 전달 완료 → 부르미를 평가하는 리뷰 화면으로.
+      navigate(`${ROUTES.deliveryComplete}?reviewee=boormi`, { replace: true });
     }
   };
 
@@ -234,6 +235,24 @@ export function DeliveryTrackScreen() {
       setConfirmOpen(false);
       navigate(ROUTES.home, { replace: true });
     } catch (e) {
+      // 취소를 누르는 사이 SSE를 놓쳐 이미 종료된 건이면, 인라인 메시지 대신 종료 상태 전용 흐름으로 보낸다.
+      if (isApiError(e) && e.code === "DELIVERY_013") {
+        // 이미 배달 완료 → 리뷰(드리미가 부르미를 평가) 페이지로.
+        setConfirmOpen(false);
+        navigate(`${ROUTES.deliveryComplete}?reviewee=boormi`, {
+          replace: true,
+        });
+        return;
+      }
+      if (isApiError(e) && e.code === "DELIVERY_012") {
+        // 이미 취소됨 → 취소 안내 차단 모달(나가기 시 홈).
+        setConfirmOpen(false);
+        blockDeliveryDetail({
+          title: "이미 취소된 배달이에요",
+          message: "취소된 배달은 더 이상 추적할 수 없어요.",
+        });
+        return;
+      }
       setCancelError(
         isApiError(e)
           ? e.message

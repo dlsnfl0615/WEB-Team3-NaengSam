@@ -38,3 +38,13 @@ export const PUBLIC_ROUTES: string[] = [
   ROUTES.login,
   ROUTES.signup,
 ];
+
+/**
+ * 게스트 전용 페이지. 이미 로그인된 사용자가 접근하면 홈(/home)으로 보냅니다.
+ * (PUBLIC_ROUTES의 부분집합이어야 합니다 — 로그인 없이 접근 가능한 공개 페이지 중 일부)
+ */
+export const GUEST_ONLY_ROUTES: string[] = [
+  ROUTES.onboarding,
+  ROUTES.login,
+  ROUTES.signup,
+];
