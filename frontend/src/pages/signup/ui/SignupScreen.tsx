@@ -15,7 +15,7 @@ import {
 
 /**
  * 회원가입 화면(Figma node 21:62).
- * 이름/생년월일/전화번호(인증)/이메일/비밀번호 입력 + 약관 동의.
+ * 이름/생년월일/전화번호(인증)/이메일/비밀번호·재확인 입력 + 약관 동의.
  */
 export function SignupScreen() {
   const navigate = useNavigate()
@@ -27,6 +27,7 @@ export function SignupScreen() {
     code: '',
     email: '',
     password: '',
+    passwordConfirm: '',
   })
   const [agreed, setAgreed] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -54,6 +55,11 @@ export function SignupScreen() {
       isPassword(form.password),
       VALIDATION_MESSAGE.password,
     ),
+    passwordConfirm: errorOf(
+      form.passwordConfirm,
+      form.passwordConfirm === form.password,
+      '비밀번호가 일치하지 않아요',
+    ),
   }
 
   const allValid =
@@ -63,6 +69,7 @@ export function SignupScreen() {
     isCode(form.code) &&
     isEmail(form.email) &&
     isPassword(form.password) &&
+    form.passwordConfirm === form.password &&
     phoneVerified
 
   /** 인증번호 발송. */
@@ -130,10 +137,18 @@ export function SignupScreen() {
           />
           <TextField
             label="생년월일"
-            placeholder="2000.1.1"
+            inputMode="numeric"
+            placeholder="2000.01.01"
             maxLength={10}
             value={form.birth}
-            onChange={(e) => set('birth')(e.target.value)}
+            onChange={(e) => {
+              const digits = e.target.value.replace(/\D/g, '').slice(0, 8)
+              const formatted = digits
+                .replace(/^(\d{4})(\d)/, '$1.$2')
+                .replace(/^(\d{4}\.\d{2})(\d)/, '$1.$2')
+
+              set('birth')(formatted)
+            }}
             error={errors.birth}
           />
 
@@ -204,6 +219,15 @@ export function SignupScreen() {
             value={form.password}
             onChange={(e) => set('password')(e.target.value)}
             error={errors.password}
+          />
+          <TextField
+            label="비밀번호 재확인"
+            type="password"
+            placeholder="비밀번호를 다시 입력해 주세요"
+            maxLength={20}
+            value={form.passwordConfirm}
+            onChange={(e) => set('passwordConfirm')(e.target.value)}
+            error={errors.passwordConfirm}
           />
         </div>
 
