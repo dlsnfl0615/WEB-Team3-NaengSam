@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.matching.model;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -8,7 +9,9 @@ import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 
 /**
- * 한 주문에 대해 동시에 뿌린 제안 묶음("방"). 방 자체의 상태(OPEN/MATCHED/CLOSED)와 재매칭 필요 여부를 여기서 관리한다.
+ * 한 주문에 대해 동시에 뿌린 제안 묶음("방"). 방 자체의 상태(WAITING/OPEN/MATCHED/CANCELLED)를 여기서 관리한다.
+ * WAITING은 micro-batch 다음 라운드를 기다리는 중(최초 매칭 시작 직후 또는 현재 라운드가 소진된 뒤)이고, OPEN은 오퍼가
+ * 나가 응답을 기다리는 중이다. WAITING/OPEN 모두 아직 진행 중인("활성") 주문으로 취급한다({@link #isActive()}).
  */
 public final class OrderOfferGroup {
     private final UUID orderId;
@@ -17,12 +20,18 @@ public final class OrderOfferGroup {
     // 오퍼 팝업에 실어 보낼 주문 표시용 스냅샷(매칭 시작 시점 값). 엔진 스레드에서 DB 접근 없이 payload를 만들기 위해 보관한다.
     private final OrderSummaryDto orderSummary;
     private final List<MatchOffer> offers;
+    // 최초 매칭 시작 시각. 재매칭(closeForRematch → addOffersAndOpen)이 반복돼도 이 값은 바뀌지 않는다 —
+    // orderWaitingTime은 "최초 매칭 요청 이후의 전체 시간"으로 정의되므로 raw candidate 생성 시점마다 다시
+    // 초기화하면 안 된다.
+    private final LocalDateTime matchingStartedAt;
     // 엔진 스레드(단일 기록자)가 쓰고 호출 스레드(다중 판독자)가 동기화 없이 읽으므로 volatile로 가시성을 보장한다.
     private volatile OrderOfferGroupStatus status;
-    private volatile boolean rematchRequired;
 
     public OrderOfferGroup(UUID orderId, UUID boormiId, GeoPoint location, OrderSummaryDto orderSummary,
-            List<MatchOffer> offers) {
+            List<MatchOffer> offers, LocalDateTime matchingStartedAt) {
+        if (matchingStartedAt == null) {
+            throw new IllegalArgumentException("matchingStartedAt은 null일 수 없습니다: orderId=" + orderId);
+        }
         this.orderId = orderId;
         this.boormiId = boormiId;
         this.location = location;
@@ -30,8 +39,8 @@ public final class OrderOfferGroup {
         // 라운드마다 엔진 스레드가 append하는 동시에 다른 스레드가 offers()로 읽으므로,
         // ArrayList가 아닌 CopyOnWriteArrayList로 보관해 순회/복사 중 경합을 피한다.
         this.offers = new CopyOnWriteArrayList<>(offers);
-        this.status = OrderOfferGroupStatus.OPEN;
-        this.rematchRequired = false;
+        this.matchingStartedAt = matchingStartedAt;
+        this.status = OrderOfferGroupStatus.WAITING;
     }
 
     public UUID orderId() {
@@ -46,6 +55,10 @@ public final class OrderOfferGroup {
         return location;
     }
 
+    public LocalDateTime matchingStartedAt() {
+        return matchingStartedAt;
+    }
+
     public OrderSummaryDto orderSummary() {
         return orderSummary;
     }
@@ -58,8 +71,19 @@ public final class OrderOfferGroup {
         return status;
     }
 
+    /**
+     * WAITING/OPEN 모두 아직 진행 중인 주문이다. 취소 가능 여부, 중복 매칭 시작 방지 등에 함께 쓰인다.
+     */
+    public boolean isActive() {
+        return status == OrderOfferGroupStatus.WAITING || status == OrderOfferGroupStatus.OPEN;
+    }
+
+    /**
+     * 재매칭이 필요한지 여부. status가 WAITING이라는 것과 동치이므로 별도 필드로 관리하지 않고 계산한다.
+     * (기존 API 호환을 위해 메서드는 유지)
+     */
     public boolean rematchRequired() {
-        return rematchRequired;
+        return status == OrderOfferGroupStatus.WAITING;
     }
 
     /**
@@ -68,26 +92,26 @@ public final class OrderOfferGroup {
     public void addOffersAndOpen(List<MatchOffer> newOffers) {
         this.offers.addAll(newOffers);
         this.status = OrderOfferGroupStatus.OPEN;
-        this.rematchRequired = false;
-    }
-
-    public void closeForRematch() {
-        this.status = OrderOfferGroupStatus.CLOSED;
-        this.rematchRequired = true;
     }
 
     /**
-     * 부르미가 직접 주문을 취소한 경우. 재매칭 대상이 아니므로 rematchRequired는 세우지 않는다.
+     * 현재 라운드의 살아 있는 오퍼가 모두 종료되어 다음 batch를 기다리는 상태로 되돌린다.
      */
-    public void cancel() {
-        this.status = OrderOfferGroupStatus.CLOSED;
-        this.rematchRequired = false;
+    public void closeForRematch() {
+        this.status = OrderOfferGroupStatus.WAITING;
     }
 
-    private void requireStatus(OrderOfferGroupStatus expected) {
-        if (this.status != expected) {
-            throw new IllegalStateException(
-                    "잘못된 상태 전이입니다: orderId=" + orderId + ", 현재상태=" + status + ", 기대상태=" + expected);
-        }
+    /**
+     * 부르미가 직접 주문을 취소한 경우. WAITING/OPEN 둘 다에서 취소할 수 있다.
+     */
+    public void cancel() {
+        this.status = OrderOfferGroupStatus.CANCELLED;
+    }
+
+    /**
+     * 드리미+부르미가 모두 수락해 매칭이 확정된 경우.
+     */
+    public void confirmMatch() {
+        this.status = OrderOfferGroupStatus.MATCHED;
     }
 }

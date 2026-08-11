@@ -2,7 +2,7 @@ package com.naengsam.quick.domain.delivery.service;
 
 import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
-import com.naengsam.quick.domain.address.service.KakaoDirectionsService;
+import com.naengsam.quick.domain.address.service.DirectionsService;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
@@ -66,7 +66,7 @@ class DeliveryServiceTest {
     private UploadSessionService uploadSessionService;
     private UserService userService;
     private OrderService orderService;
-    private KakaoDirectionsService kakaoDirectionsService;
+    private DirectionsService directionsService;
     private ApplicationEventPublisher eventPublisher;
     private DeliveryService deliveryService;
 
@@ -82,11 +82,11 @@ class DeliveryServiceTest {
         uploadSessionService = mock(UploadSessionService.class);
         userService = mock(UserService.class);
         orderService = mock(OrderService.class);
-        kakaoDirectionsService = mock(KakaoDirectionsService.class);
+        directionsService = mock(DirectionsService.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, sseService, uploadSessionService,
-                userService, orderService, kakaoDirectionsService, eventPublisher, new ObjectMapper());
+                userService, orderService, directionsService, eventPublisher, new ObjectMapper());
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
@@ -96,7 +96,7 @@ class DeliveryServiceTest {
         Orders defaultOrder = orderWithPickup("37.40000000", "127.00000000", 20);
         given(orderService.getOrder(any())).willReturn(defaultOrder);
         KakaoDirectionsResponseDto.Route defaultRoute = routeWith(60);
-        given(kakaoDirectionsService.getRoute(any(), any())).willReturn(defaultRoute);
+        given(directionsService.getRoute(any(), any())).willReturn(defaultRoute);
     }
 
     // 픽업지 좌표와 delivery_eta(분)를 가진 주문 목. '드리미→픽업지' 경로/배송완료예상시간 계산 경로에서 쓴다.
@@ -338,7 +338,7 @@ class DeliveryServiceTest {
         UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
         Orders order = orderWithPickup("37.50000000", "127.05000000", 20);
         given(orderService.getOrder(orderId)).willReturn(order);
-        given(kakaoDirectionsService.getRoute(any(), any())).willReturn(routeWith(300)); // 300초 = 5분
+        given(directionsService.getRoute(any(), any())).willReturn(routeWith(300)); // 300초 = 5분
 
         LocalDateTime before = LocalDateTime.now();
         DreamiLocationResponseDto response =
@@ -350,7 +350,7 @@ class DeliveryServiceTest {
         // 드리미→픽업지 5분 + 주문 delivery_eta 20분 = 25분 뒤(계산 시각의 now 기준)
         assertThat(saved.getEstimatedCompletionDtm())
                 .isBetween(before.plusMinutes(25), after.plusMinutes(25));
-        verify(kakaoDirectionsService).getRoute(any(), any());
+        verify(directionsService).getRoute(any(), any());
 
         // 응답에도 방금 계산된 경로·배송완료예상시간이 담겨 나간다(프론트가 재조회 없이 바로 반영).
         assertThat(response.deliveryRoutePath()).hasSize(2);
@@ -369,7 +369,7 @@ class DeliveryServiceTest {
                 deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
 
         // 이미 저장돼 있으므로 카카오를 다시 호출하지 않고, 요청이 경로를 원했으므로(기본값) 저장된 경로를 그대로 돌려준다.
-        verify(kakaoDirectionsService, never()).getRoute(any(), any());
+        verify(directionsService, never()).getRoute(any(), any());
         assertThat(response.deliveryRoutePath()).hasSize(1);
     }
 
@@ -388,7 +388,7 @@ class DeliveryServiceTest {
         // 클라이언트가 경로를 원치 않으면(이미 받음) 좌표 배열을 중복 전송하지 않는다.
         assertThat(response.deliveryRoutePath()).isNull();
         assertThat(response.estimatedCompletionTime()).isNull();
-        verify(kakaoDirectionsService, never()).getRoute(any(), any());
+        verify(directionsService, never()).getRoute(any(), any());
     }
 
     @Test
@@ -399,7 +399,7 @@ class DeliveryServiceTest {
 
         deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
 
-        verify(kakaoDirectionsService, never()).getRoute(any(), any());
+        verify(directionsService, never()).getRoute(any(), any());
         assertThat(registeredDeliveries.get(orderId).getRoutePath()).isNull();
     }
 
@@ -410,7 +410,7 @@ class DeliveryServiceTest {
         UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
         Orders order = orderWithPickup("37.50000000", "127.05000000", 20);
         given(orderService.getOrder(orderId)).willReturn(order);
-        given(kakaoDirectionsService.getRoute(any(), any()))
+        given(directionsService.getRoute(any(), any()))
                 .willThrow(new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_TIMEOUT));
 
         deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));

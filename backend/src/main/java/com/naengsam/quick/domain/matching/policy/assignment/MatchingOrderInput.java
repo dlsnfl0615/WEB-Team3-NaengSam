@@ -1,7 +1,9 @@
 package com.naengsam.quick.domain.matching.policy.assignment;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
@@ -23,5 +25,14 @@ public record MatchingOrderInput(UUID orderId, GeoPoint location, Duration waiti
         if (maxConcurrentOffers < 1) {
             throw new IllegalArgumentException("maxConcurrentOffers는 1 이상이어야 합니다: " + maxConcurrentOffers);
         }
+    }
+
+    /**
+     * {@link OrderOfferGroup}의 매칭 시작 시각을 기준으로 orderWaitingTime을 계산해 스냅샷을 만든다.
+     * matchingStartedAt이 evaluatedAt보다 미래면 waitingTime이 음수가 되어 생성이 거부된다.
+     */
+    public static MatchingOrderInput from(OrderOfferGroup group, LocalDateTime evaluatedAt, int maxConcurrentOffers) {
+        Duration orderWaitingTime = Duration.between(group.matchingStartedAt(), evaluatedAt);
+        return new MatchingOrderInput(group.orderId(), group.location(), orderWaitingTime, maxConcurrentOffers);
     }
 }

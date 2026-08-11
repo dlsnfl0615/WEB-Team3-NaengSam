@@ -4,7 +4,7 @@ import com.naengsam.quick.domain.address.dto.Addresses;
 import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.service.CoordinatesService;
-import com.naengsam.quick.domain.address.service.KakaoDirectionsService;
+import com.naengsam.quick.domain.address.service.DirectionsService;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
@@ -19,6 +19,7 @@ import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
 import com.naengsam.quick.domain.matching.event.OrderCancelledByBoormiEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
+import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
@@ -41,6 +42,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Service
@@ -54,10 +57,9 @@ public class BoormiService {
     private static final int OVER_RATE = 160;       // 초과 구간 100m당 요금(원)
     private static final int MAX_ACTIVE_ORDERS = 5; // 동시 진행 가능한 요청 수(정책값)
     private static final int TOO_CLOSE_DISTANCE = 50;   // 출발지-도착지 최소 직선거리(m)
-    private static final int EARTH_RADIUS = 6_371_000;  // 지구 반지름(m)
 
     private final CoordinatesService coordinatesService;
-    private final KakaoDirectionsService kakaoDirectionsService;
+    private final DirectionsService directionsService;
     private final PaymentService paymentService;
     private final MatchingService matchingService;
     private final OrderService orderService;
@@ -65,6 +67,7 @@ public class BoormiService {
     private final MatchingRepository matchingRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final GeoDistanceCalculator geoDistanceCalculator;
 
     /**
      * 부르미의 주문 요청을 접수한다. 출발지/도착지 도로명주소를 좌표로 변환해 주문(ORDERS)을 생성·저장한 뒤 결제를 시작하고 매칭 큐에 등록한다.
@@ -82,7 +85,7 @@ public class BoormiService {
 
         // 요금·예상시간은 클라이언트 전송값을 신뢰하지 않고 견적과 동일한 로직으로 서버가 재계산한다.
         // 같은 카카오 응답에서 추천 이동경로 좌표도 함께 받아 주문에 저장한다(추적 지도 폴리라인용).
-        KakaoDirectionsResponseDto.Route route = kakaoDirectionsService.getRoute(originCoordinate, destinationCoordinate);
+        KakaoDirectionsResponseDto.Route route = directionsService.getRoute(originCoordinate, destinationCoordinate);
         Charge charge = calculatePrice(route, orderRequest.itemCd());
         String routePath = toRoutePathJson(route);
 
@@ -106,7 +109,7 @@ public class BoormiService {
 
         orderService.createOrders(orders);
         paymentService.payWithPoint(boormiId, orderId, charge.amount());
-        if (matchingService.isOpenGroupExists(orderId)) {
+        if (matchingService.isActiveGroupExists(orderId)) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);
         }
         // 엔진은 매칭 시작 즉시 드리미에게 오퍼 팝업을 보내므로, 주문이 커밋된 뒤에 제출해야 드리미가 그 주문을 조회할 수 있다.
@@ -212,7 +215,7 @@ public class BoormiService {
 
         requireDifferentLocation(origin, destination);
 
-        KakaoDirectionsResponseDto.Route route = kakaoDirectionsService.getRoute(origin, destination);
+        KakaoDirectionsResponseDto.Route route = directionsService.getRoute(origin, destination);
         Charge charge = calculatePrice(route, request.itemCd());
 
         return new ExpectedValueDto(charge.amount(), charge.eta(), charge.distance());
@@ -254,22 +257,9 @@ public class BoormiService {
      * 조회·주문 접수 모두 카카오 도보 API 호출 전에 이 가드를 통과해야 한다 — 같은 좌표면 카카오가 경로를 반환하지 못해 EXTERNAL_SERVICE_ERROR 로 실패하기 때문이다.
      */
     private void requireDifferentLocation(GeoPoint origin, GeoPoint destination) {
-        if (distanceMeters(origin, destination) < TOO_CLOSE_DISTANCE) {
+        if (geoDistanceCalculator.distanceMeters(origin, destination) < TOO_CLOSE_DISTANCE) {
             throw new BusinessException(OrderErrorCode.SAME_ORIGIN_DESTINATION);
         }
-    }
-
-    /**
-     * 두 좌표 사이의 하버사인 직선거리(m)를 계산한다.
-     */
-    public double distanceMeters(GeoPoint a, GeoPoint b) {
-        double lat1 = Math.toRadians(a.latitude().doubleValue());
-        double lat2 = Math.toRadians(b.latitude().doubleValue());
-        double dLat = lat2 - lat1;
-        double dLon = Math.toRadians(b.longitude().doubleValue() - a.longitude().doubleValue());
-        double h = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        return 2 * EARTH_RADIUS * Math.asin(Math.sqrt(h));
     }
 
     private GeoPoint toGeoPoint(String roadAddress) {

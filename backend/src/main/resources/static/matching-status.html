@@ -155,6 +155,7 @@
         button:hover { filter: brightness(1.1); }
         button:disabled { cursor: not-allowed; opacity: 0.5; }
         button.secondary { background: #2a2f3a; color: var(--text); }
+        button.small { padding: 4px 8px; font-size: 11px; }
         table { width: 100%; border-collapse: collapse; font-size: 12px; }
         th, td {
             padding: 7px 8px;
@@ -248,8 +249,8 @@
     let refreshing = false;
     let trackedOrderId = "";
 
-    async function apiFetch(path) {
-        const response = await fetch(path, { credentials: "same-origin" });
+    async function apiFetch(path, options = {}) {
+        const response = await fetch(path, { credentials: "same-origin", ...options });
         let body = null;
         try { body = await response.json(); } catch (ignored) {}
         if (!response.ok) {
@@ -276,7 +277,7 @@
     function statusClass(status) {
         if (status === "MATCHED") return "info";
         if (status?.includes("REJECTED") || status?.includes("EXPIRED")) return "danger";
-        if (status === "CLOSED" || status === "WITHDRAWN") return "";
+        if (status === "WAITING" || status === "CANCELLED" || status === "WITHDRAWN" || status === "MATCHING") return "";
         return "warning";
     }
 
@@ -288,6 +289,12 @@
     function formatLocation(location) {
         if (location?.latitude == null || location?.longitude == null) return "위치 없음";
         return `${Number(location.latitude).toFixed(5)}, ${Number(location.longitude).toFixed(5)}`;
+    }
+
+    function formatUpdatedAt(value) {
+        if (!value) return "-";
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleTimeString("ko-KR");
     }
 
     function offerTable(offers = []) {
@@ -335,12 +342,25 @@
                 <article class="dreami-card">
                     <div style="min-width:0">
                         <div class="mono ellipsis" title="${escapeHtml(dreami.dreamiId)}">${escapeHtml(dreami.dreamiId ?? "dreamiId 없음")}</div>
-                        <div class="dreami-location">${escapeHtml(formatLocation(dreami.location))}</div>
+                        <div class="dreami-location">${escapeHtml(formatLocation(dreami.location))} · ${escapeHtml(formatUpdatedAt(dreami.updatedAt))}</div>
                     </div>
-                    ${statusTag(dreami.status)}
+                    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0">
+                        ${statusTag(dreami.status)}
+                        <button class="secondary small" type="button" onclick="removeDreami('${dreami.dreamiId}')">회수</button>
+                    </div>
                 </article>
             `).join("")
             : '<div class="empty">등록된 대기 드리미가 없습니다.</div>';
+    }
+
+    async function removeDreami(dreamiId) {
+        if (!window.confirm(`드리미 ${shortId(dreamiId)}를 회수할까요?`)) return;
+        try {
+            await apiFetch(`${DEBUG_API}/dreamis/${encodeURIComponent(dreamiId)}`, { method: "DELETE" });
+            await refreshDashboard(true);
+        } catch (error) {
+            showError(`드리미 회수 실패: ${error.message}`);
+        }
     }
 
     function showError(message) {

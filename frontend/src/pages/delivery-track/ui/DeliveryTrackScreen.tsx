@@ -22,6 +22,7 @@ import {
   getUntrackableDeliveryNotice,
   useDeliveryDetailGate,
   useSse,
+  useSseReconnectSync,
   useDreamiLocationBroadcast,
   formatArrivalTime,
   type SseHandlers,
@@ -66,6 +67,7 @@ export function DeliveryTrackScreen() {
     loading: detailLoading,
     blockingModal,
     retry: retryDeliveryDetail,
+    refresh: refreshDeliveryDetail,
     block: blockDeliveryDetail,
   } = useDeliveryDetailGate(orderId, { enabled: isRealMode });
 
@@ -149,7 +151,14 @@ export function DeliveryTrackScreen() {
   };
 
   // 실 모드에서만 드리미 세션으로 SSE를 구독한다(mock 모드는 구독하지 않음).
-  useSse(sseHandlers, { enabled: isRealMode && detailReady });
+  const { status: sseStatus } = useSse(sseHandlers, {
+    enabled: isRealMode && detailReady,
+  });
+
+  // 위치 전송 폴링과 별개로, SSE 재연결 시 스냅샷을 다시 맞춰 놓친 취소 등을 복구한다.
+  useSseReconnectSync(sseStatus, refreshDeliveryDetail, {
+    enabled: isRealMode && detailReady,
+  });
 
   // 배송중으로 넘어온 순간을 기록해 둔다. 홈 카드로 다시 들어오면 `?status=` 가 없어
   // 픽업중으로 되돌아가므로, 그때 이 스냅샷으로 단계를 복원한다.
