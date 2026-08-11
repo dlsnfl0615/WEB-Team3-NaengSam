@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 
-import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
@@ -27,7 +26,7 @@ class NearbyOrderFinderTest {
     @Mock
     private MatchingService matchingService;
     @Mock
-    private BoormiService boormiService;
+    private GeoDistanceCalculator geoDistanceCalculator;
     @InjectMocks
     private NearbyOrderFinder nearbyOrderFinder;
 
@@ -44,7 +43,7 @@ class NearbyOrderFinderTest {
         UUID inRange = UUID.randomUUID();
         UUID outOfRange = UUID.randomUUID();
         given(matchingService.waitingOrders()).willReturn(List.of(waitingOrder(inRange), waitingOrder(outOfRange)));
-        given(boormiService.distanceMeters(any(), any()))
+        given(geoDistanceCalculator.distanceMeters(any(), any()))
                 .willReturn(500.0)
                 .willReturn(1500.0);
 
@@ -58,7 +57,7 @@ class NearbyOrderFinderTest {
         UUID far = UUID.randomUUID();
         UUID near = UUID.randomUUID();
         given(matchingService.waitingOrders()).willReturn(List.of(waitingOrder(far), waitingOrder(near)));
-        given(boormiService.distanceMeters(any(), any()))
+        given(geoDistanceCalculator.distanceMeters(any(), any()))
                 .willReturn(800.0)
                 .willReturn(200.0);
 
@@ -73,7 +72,7 @@ class NearbyOrderFinderTest {
                 .mapToObj(i -> waitingOrder(UUID.randomUUID()))
                 .toList();
         given(matchingService.waitingOrders()).willReturn(orders);
-        given(boormiService.distanceMeters(any(), any())).willReturn(100.0);
+        given(geoDistanceCalculator.distanceMeters(any(), any())).willReturn(100.0);
 
         List<NearbyOrderDto> result = nearbyOrderFinder.find(request());
 

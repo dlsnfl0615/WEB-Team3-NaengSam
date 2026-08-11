@@ -83,6 +83,10 @@ export function useDeliveryDetailGate(
         const closedNotice = getUntrackableDeliveryNotice(result.status);
         if (closedNotice) {
           if (result.status) rememberDeliveryStage(orderId, result.status);
+          // 이미 ready였던 화면에서 조용한 refresh(재연결 복구 등)로 취소/완료를 발견하면
+          // ready를 내려 차단 모달(blockingModal.open = attempted && !ready)이 열리도록 한다.
+          setDetail(null);
+          setReadyOrderId(null);
           setAttemptedOrderId(orderId);
           setTitle(closedNotice.title);
           setMessage(closedNotice.message);

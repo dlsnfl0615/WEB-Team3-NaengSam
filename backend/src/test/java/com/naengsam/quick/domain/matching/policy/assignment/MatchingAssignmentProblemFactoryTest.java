@@ -91,6 +91,79 @@ class MatchingAssignmentProblemFactoryTest {
         assertThat(plan.proposals().get(0).dreamiId()).isEqualTo(eligibleDreamiId);
     }
 
+    @Test
+    void 부적격_후보는_주문의_후보_수에서_제외된다() {
+        UUID orderId = UUID.randomUUID();
+        UUID rejectedDreamiId = UUID.randomUUID();
+        UUID eligibleDreamiId = UUID.randomUUID();
+        List<MatchingCandidate> rawCandidates = List.of(
+                candidateWithInteraction(orderId, rejectedDreamiId, PreviousOfferOutcome.DREAMI_REJECTED),
+                candidateWithoutInteraction(orderId, eligibleDreamiId)
+        );
+
+        MatchingAssignmentProblem problem = factory.create(
+                EVALUATED_AT,
+                List.of(orderInput(orderId)),
+                List.of(dreamiInput(rejectedDreamiId), dreamiInput(eligibleDreamiId)),
+                rawCandidates
+        );
+
+        assertThat(problem.candidates()).hasSize(1);
+        assertThat(problem.candidates().get(0).orderCandidateCount()).isEqualTo(1);
+    }
+
+    @Test
+    void 부적격_후보는_드리미가_선택_가능한_주문_수에서_제외된다() {
+        UUID rejectedOrderId = UUID.randomUUID();
+        UUID eligibleOrderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        List<MatchingCandidate> rawCandidates = List.of(
+                candidateWithInteraction(rejectedOrderId, dreamiId, PreviousOfferOutcome.DREAMI_REJECTED),
+                candidateWithoutInteraction(eligibleOrderId, dreamiId)
+        );
+
+        MatchingAssignmentProblem problem = factory.create(
+                EVALUATED_AT,
+                List.of(orderInput(rejectedOrderId), orderInput(eligibleOrderId)),
+                List.of(dreamiInput(dreamiId)),
+                rawCandidates
+        );
+
+        assertThat(problem.candidates()).hasSize(1);
+        assertThat(problem.candidates().get(0).dreamiCandidateCount()).isEqualTo(1);
+    }
+
+    @Test
+    void 후보_수는_적격_후보만_반영해_재계산된다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiA = UUID.randomUUID();
+        UUID dreamiB = UUID.randomUUID();
+        UUID dreamiC = UUID.randomUUID();
+        List<MatchingCandidate> rawCandidates = List.of(
+                candidateWithoutInteraction(orderId, dreamiA),
+                candidateWithoutInteraction(orderId, dreamiB),
+                candidateWithInteraction(orderId, dreamiC, PreviousOfferOutcome.DREAMI_REJECTED)
+        );
+
+        MatchingAssignmentProblem problem = factory.create(
+                EVALUATED_AT,
+                List.of(orderInput(orderId)),
+                List.of(dreamiInput(dreamiA), dreamiInput(dreamiB), dreamiInput(dreamiC)),
+                rawCandidates
+        );
+
+        assertThat(problem.candidates()).hasSize(2);
+        assertThat(problem.candidates())
+                .allSatisfy(candidate -> assertThat(candidate.orderCandidateCount()).isEqualTo(2));
+    }
+
+    @Test
+    void 빈_후보_목록이면_빈_problem이_생성된다() {
+        MatchingAssignmentProblem problem = factory.create(EVALUATED_AT, List.of(), List.of(), List.of());
+
+        assertThat(problem.candidates()).isEmpty();
+    }
+
     private MatchingOrderInput orderInput(UUID orderId) {
         return new MatchingOrderInput(orderId, LOCATION, Duration.ZERO, 1);
     }

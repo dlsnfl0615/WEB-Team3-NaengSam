@@ -57,6 +57,13 @@ public class LoginSession {
     }
 
     /**
+     * {@link ActiveSessionRegistry}가 사용자당 단일 세션을 식별/치환하는 데만 쓴다. 로그에는 남기지 않는다.
+     */
+    public String getSessionId() {
+        return session.getId();
+    }
+
+    /**
      * 세션을 무효화한다(로그아웃).
      */
     public void invalidate() {
