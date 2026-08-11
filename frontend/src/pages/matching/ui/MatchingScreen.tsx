@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
+  BlockingLoadErrorModal,
   Button,
   Card,
   Icon,
@@ -88,6 +89,7 @@ export function MatchingScreen() {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
+  const [locationBlocked, setLocationBlocked] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const toastTimer = useRef<number | null>(null);
 
@@ -103,13 +105,24 @@ export function MatchingScreen() {
   // 드리미: 화면에 머무는 동안 주변 콜을 계속 갱신한다(시작하기 여부와 무관).
   // 오퍼 팝업 자체는 전역 `MatchingPopup`이 받으므로, 여기서는 지도용 목록만 폴링한다.
   useEffect(() => {
-    if (!isDriver) return;
-    void loadNearbyCalls();
+    if (!isDriver || locationBlocked) return;
+    let active = true;
+    const loadCalls = async () => {
+      const result = await loadNearbyCalls();
+      if (active && result === "location-unavailable") {
+        setLocationBlocked(true);
+      }
+    };
+
+    void loadCalls();
     const timer = window.setInterval(() => {
-      void loadNearbyCalls();
+      void loadCalls();
     }, NEARBY_POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [isDriver, loadNearbyCalls]);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [isDriver, loadNearbyCalls, locationBlocked]);
 
   const callsForMap: NearbyCall[] = nearbyCalls.flatMap((call) => {
     if (
@@ -346,6 +359,17 @@ export function MatchingScreen() {
           </div>
         </Card>
       </Modal>
+
+      <BlockingLoadErrorModal
+        open={locationBlocked}
+        title="위치 권한이 필요해요"
+        message={nearbyCallsError ?? "현재 위치를 사용할 수 없어요."}
+        guidance="드리미 매칭에는 GPS 위치 권한이 필요해요. 홈에서 권한을 허용한 뒤 다시 시작해 주세요."
+        retrying={false}
+        canRetry={false}
+        onRetry={() => undefined}
+        onExit={() => navigate(ROUTES.home, { replace: true })}
+      />
     </ScreenShell>
   );
 }
