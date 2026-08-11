@@ -75,7 +75,7 @@ export function DriverPanel() {
 
       <Card variant="hero" className="flex flex-col gap-3">
         <p className="text-xl font-bold tracking-[-0.4px]">드리미 시작하기</p>
-        <div className="h-[9px] w-3/4 rounded-[5px] bg-navy-700" />
+        {/*<div className="h-[9px] w-3/4 rounded-[5px] bg-navy-700" />*/}
         <Button variant="primary" arrow block onClick={() => navigate(ROUTES.matching)}>
           드리미 시작하기
         </Button>
