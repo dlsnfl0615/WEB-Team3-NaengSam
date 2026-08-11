@@ -30,6 +30,7 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPr
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlan;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
+import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
@@ -57,24 +58,29 @@ class MatchingServiceTest {
     private MatchingService matchingService;
     private MatchingEngine matchingEngine;
     private SseService sseService;
-    private OfferTimeoutScheduler offerTimeoutScheduler;
+    private MatchingActionScheduler matchingActionScheduler;
+    private MatchingBatchDispatcher matchingBatchDispatcher;
     private DeliveryService deliveryService;
     private MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
     private MatchingAssignmentPolicy matchingAssignmentPolicy;
     private MatchingPlanApplier matchingPlanApplier;
+    private MatchingPolicyProperties matchingPolicyProperties;
 
     @BeforeEach
     void setUp() {
         matchingEngine = mock(MatchingEngine.class);
         sseService = mock(SseService.class);
-        offerTimeoutScheduler = mock(OfferTimeoutScheduler.class);
+        matchingActionScheduler = mock(MatchingActionScheduler.class);
+        matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         deliveryService = mock(DeliveryService.class);
         matchingAssignmentProblemAssembler = mock(MatchingAssignmentProblemAssembler.class);
         matchingAssignmentPolicy = mock(MatchingAssignmentPolicy.class);
         matchingPlanApplier = mock(MatchingPlanApplier.class);
+        matchingPolicyProperties = mock(MatchingPolicyProperties.class);
         matchingService = new MatchingService(
-                matchingEngine, sseService, offerTimeoutScheduler, deliveryService, Clock.systemDefaultZone(),
-                matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier);
+                matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
+                Clock.systemDefaultZone(),
+                matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties);
     }
 
     @Test
@@ -97,8 +103,9 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(dreamiId3, location);
         matchingService.applyRegisterDreami(dreamiId4, location);
 
-        // when
+        // when (매칭 시작은 이제 오퍼를 즉시 만들지 않고 dirty만 표시하므로, 배치 사이클 대신 재매칭 스캔으로 첫 오퍼 라운드를 재현한다)
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         // then
         Map<UUID, OrderOfferGroup> orderOfferGroups =
@@ -145,6 +152,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
 
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         List<MatchOffer> offers =
                 getOrderOfferGroups().get(orderId).offers();
@@ -198,6 +206,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -226,6 +235,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
         MatchOffer offer = group.offers().getFirst();
@@ -314,8 +324,9 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
 
-        // when
+        // when (매칭 시작 직후에는 dirty만 표시되고, 재매칭 스캔이 실제 오퍼 라운드를 만든다)
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         // then
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -346,6 +357,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderA);
+        matchingService.applyRematchWaitingGroups();
 
         // 원래라면 PROPOSED 상태라 다음 매칭 후보에서 제외되지만, 드리미 상태 제한이 아직 없다는 것을 보여주기 위해
         // 공개 API(markMatching)로 다시 MATCHING 상태로 되돌린다.
@@ -354,6 +366,7 @@ class MatchingServiceTest {
 
         // when
         matchingService.applyStartMatching(orderB);
+        matchingService.applyRematchWaitingGroups();
 
         // then
         List<MatchOffer> offersA = getOrderOfferGroups().get(orderIdA).offers();
@@ -376,6 +389,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
 
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer acceptedOffer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -406,6 +420,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -433,6 +448,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -462,6 +478,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(dreamiId1, location);
         matchingService.applyRegisterDreami(dreamiId2, location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         List<MatchOffer> offers = getOrderOfferGroups().get(orderId).offers();
         MatchOffer acceptedOffer = offers.getFirst();
@@ -497,6 +514,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
 
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         List<MatchOffer> offers =
                 getOrderOfferGroups().get(orderId).offers();
@@ -524,6 +542,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -552,6 +571,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId1, location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer firstOffer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -584,6 +604,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -611,6 +632,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -647,6 +669,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -669,6 +692,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -693,6 +717,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -717,6 +742,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
         matchingService.applyAcceptByDreami(offer.offerId());
@@ -743,6 +769,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
         matchingService.applyCancelOrderByBoormi(orderId);
 
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -775,8 +802,9 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(dreamiId3, location);
         matchingService.applyRegisterDreami(dreamiId4, location);
 
-        // when
+        // when (매칭 시작 후 재매칭 스캔이 첫 오퍼 라운드를 만든다)
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         // then
         ArgumentCaptor<UUID> target = ArgumentCaptor.forClass(UUID.class);
@@ -798,6 +826,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
 
@@ -819,6 +848,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
         List<MatchOffer> offers =
                 getOrderOfferGroups().get(orderId).offers();
         MatchOffer accepted = offers.getFirst();
@@ -841,6 +871,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
         matchingService.applyAcceptByDreami(offer.offerId());
@@ -864,6 +895,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         for (MatchOffer offer : getOrderOfferGroups().get(orderId).offers()) {
             matchingService.applyRejectByDreami(offer.offerId());
@@ -900,6 +932,7 @@ class MatchingServiceTest {
             matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         }
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         List<UUID> firstRoundDreamis = getOrderOfferGroups().get(orderId).offers().stream()
                 .map(MatchOffer::dreamiId)
@@ -933,6 +966,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         MatchOffer firstOffer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -1315,6 +1349,39 @@ class MatchingServiceTest {
     }
 
     @Test
+    void 배치_매칭_사이클_액션은_실행_전에_디스패처의_dirty_상태를_초기화한다() {
+        // given
+        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(LocalDateTime.now(), List.of(), List.of(), List.of());
+        MatchingPlan plan = new MatchingPlan(List.of());
+        when(matchingAssignmentProblemAssembler.assemble()).thenReturn(problem);
+        when(matchingAssignmentPolicy.createPlan(problem)).thenReturn(plan);
+
+        // when
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        // then (다음 dirty 이벤트가 새 window를 열 수 있도록 reset이 호출돼야 한다)
+        verify(matchingBatchDispatcher).reset();
+    }
+
+    @Test
+    void 매칭을_시작하면_즉시_오퍼를_만들지_않고_배치_디스패처에_dirty를_표시한다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+
+        // when
+        matchingService.applyStartMatching(order);
+
+        // then
+        OrderOfferGroup group = getOrderOfferGroups().get(orderId);
+        assertThat(group.offers()).isEmpty();
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
+        verify(matchingBatchDispatcher).markDirty();
+        verify(sseService, never()).send(any(), eq(MatchingEventType.OFFER_POPUP), any());
+    }
+
+    @Test
     void 재매칭_대상_그룹이_있으면_스케줄된_재매칭_실행시_대기중인_드리미에게_오퍼가_간다() {
         // given
         UUID orderId = UUID.randomUUID();
@@ -1364,8 +1431,9 @@ class MatchingServiceTest {
         when(order.getDestinationAddressLine1()).thenReturn("서울시 성동구");
         when(order.getImageKey()).thenReturn("img-key");
 
-        // when
+        // when (매칭 시작 후 재매칭 스캔이 첫 오퍼 라운드를 만든다)
         matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
 
         // then
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
