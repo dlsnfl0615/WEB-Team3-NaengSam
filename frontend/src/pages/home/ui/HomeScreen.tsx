@@ -78,7 +78,6 @@ export function HomeScreen() {
           쉼,부름
         </h1>
         <div className="flex items-center gap-3">
-          <Icon name="bell" size={20} className="text-navy-900" />
           <button
             type="button"
             aria-label="마이페이지"

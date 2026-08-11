@@ -131,7 +131,7 @@ export function RequestCreateScreen() {
 
   return (
     <ScreenShell>
-      <TopBar title="부름 등록" onBack={back} />
+      <TopBar title="부름 등록" onBack={back} actions={["profile"]} />
 
       <div className="pt-4">
         <RequestStepper current={step} />
