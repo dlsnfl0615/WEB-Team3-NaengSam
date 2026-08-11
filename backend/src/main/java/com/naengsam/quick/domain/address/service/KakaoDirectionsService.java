@@ -10,6 +10,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.ResourceAccessException;
@@ -18,11 +19,13 @@ import org.springframework.web.client.RestClientException;
 import org.springframework.web.util.UriComponentsBuilder;
 
 /**
- * 카카오맵 도보 길찾기 API로 출발지→도착지의 실제 보행 거리(m)와 소요시간(s)을 구한다.
+ * 카카오맵 도보 길찾기 API로 출발지→도착지의 실제 보행 거리(m)와 소요시간(s)을 구한다. {@code kakao.enabled} 가 없거나 true 일 때 활성화된다(KAKAO_REST_API_KEY
+ * 필요).
  */
 @Slf4j
 @Service
-public class KakaoDirectionsService {
+@ConditionalOnProperty(name = "kakao.enabled", havingValue = "true", matchIfMissing = true)
+public class KakaoDirectionsService implements DirectionsService {
 
     private static final String restApiKey = System.getenv("KAKAO_REST_API_KEY");
     private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
@@ -47,6 +50,7 @@ public class KakaoDirectionsService {
     /**
      * 출발지/도착지 좌표로 도보 경로를 조회해 요약(총 거리·소요시간)과 실제 이동경로 좌표가 담긴 Route 를 반환한다.
      */
+    @Override
     public KakaoDirectionsResponseDto.Route getRoute(GeoPoint origin, GeoPoint destination) {
 
         URI uri = UriComponentsBuilder.fromUriString("https://dapi.kakao.com/v2/routing/walk")
