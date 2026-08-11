@@ -463,7 +463,7 @@ public class MatchingService {
                 matchingActionScheduler.scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
                 sseService.send(group.boormiId(), MatchingEventType.DREAMI_INFO,
-                        DreamiInfoPayload.from(offer, pickupEtaMinutesForOffer(offer)));
+                        DreamiInfoPayload.from(offer, pickupEtaMinutesForOffer(offer), BOORMI_OFFER_TTL));
             } else if (offer.status() == MatchOfferStatus.OFFERED) {
                 // 아직 응답 대기중(OFFERED)인 오퍼만 회수한다.
                 // 이미 거절/만료됐거나 다른 방으로 넘어간 드리미의 상태는 건드리지 않는다.
@@ -662,6 +662,13 @@ public class MatchingService {
      */
     public Duration offerTtl() {
         return OFFER_TTL;
+    }
+
+    /**
+     * 부르미 확인 대기 오퍼의 TTL. 컨트롤러가 {@code DreamiInfoPayload}의 expiresAt을 복원할 때 팝업 발송 시와 같은 값을 쓰기 위해 노출한다.
+     */
+    public Duration boormiOfferTtl() {
+        return BOORMI_OFFER_TTL;
     }
 
     /**

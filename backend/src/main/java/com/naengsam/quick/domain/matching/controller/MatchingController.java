@@ -35,7 +35,8 @@ public class MatchingController {
                         .map(group -> PendingOfferDto.from(offer, group, matchingService.offerTtl())))
                 .orElse(null);
         DreamiInfoPayload incomingDreami = matchingService.findIncomingDreamiOffer(userId)
-                .map(offer -> DreamiInfoPayload.from(offer, matchingService.pickupEtaMinutesForOffer(offer)))
+                .map(offer -> DreamiInfoPayload.from(offer, matchingService.pickupEtaMinutesForOffer(offer),
+                        matchingService.boormiOfferTtl()))
                 .orElse(null);
         return new CurrentMatchingStatusDto(pendingOffer, incomingDreami);
     }
