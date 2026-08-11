@@ -14,6 +14,7 @@ export { loadKakaoMaps, loadDaumPostcode, KAKAO_MAP_KEY } from './kakao'
 export {
   useDreamiLocationBroadcast,
   LOCATION_BROADCAST_INTERVAL_MS,
+  STALE_FIX_MS,
   type UseDreamiLocationBroadcastOptions,
   type DreamiLocationBroadcastState,
 } from './geo/useDreamiLocationBroadcast'

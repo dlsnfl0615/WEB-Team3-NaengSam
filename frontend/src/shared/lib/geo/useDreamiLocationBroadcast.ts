@@ -4,6 +4,16 @@ import { api, type DreamiLocationResponseDto } from "@/shared/api";
 /** 드리미 위치 전송 주기(ms). 백엔드 권장 5~10초 중 5초. */
 export const LOCATION_BROADCAST_INTERVAL_MS = 5000;
 
+/**
+ * 이 시간(ms)보다 오래된 좌표는 더 이상 전송하지 않는다.
+ *
+ * 새 fix가 끊긴 뒤에도 마지막 좌표를 계속 보내면, 서버는 위치가 정상 수신되는 것으로 보고
+ * 부르미에게는 "실시간인데 움직이지 않는 마커"가 남는다. 오래된 좌표를 보내지 않으면 서버의
+ * 무소식 감지가 작동해 부르미가 안내를 받는다. GPS 권한 철회 시 에러 콜백이 뜨지 않는 브라우저나
+ * 지하·터널처럼 신호만 끊기는 경우까지, 에러 이벤트에 의존하지 않고 덮는다.
+ */
+export const STALE_FIX_MS = 15000; // 예를 들어 15초보다 오래된 좌표는 서버로 안보냄
+
 export interface UseDreamiLocationBroadcastOptions {
   /** false면 전송하지 않는다(예: 모의 모드). 기본 true. */
   enabled?: boolean;
@@ -67,6 +77,8 @@ export function useDreamiLocationBroadcast(
   const lastFixRef = useRef<{ latitude: number; longitude: number } | null>(
     null,
   );
+  // 그 fix가 도착한 시각. 오래된 좌표를 실시간인 것처럼 계속 보내지 않기 위해 함께 기록한다.
+  const lastFixAtRef = useRef(0);
 
   const active = enabled && !!orderId;
   const supported =
@@ -82,6 +94,7 @@ export function useDreamiLocationBroadcast(
     }
 
     lastFixRef.current = null;
+    lastFixAtRef.current = 0;
 
     let sentInitialFix = false;
     let requestInFlight = false;
@@ -113,6 +126,7 @@ export function useDreamiLocationBroadcast(
           longitude: pos.coords.longitude,
         };
         lastFixRef.current = fix; // 최신 값 보관 (전송용)
+        lastFixAtRef.current = Date.now();
         setPosition(fix); // 드리미가 사용할 position값 갱신
 
         // 첫 GPS 좌표는 타이머를 기다리지 않고 즉시 보낸 뒤, 이 시점부터 주기 전송을 시작한다.
@@ -121,13 +135,22 @@ export function useDreamiLocationBroadcast(
           sendLocation(fix);
           timer = window.setInterval(() => {
             const latestFix = lastFixRef.current;
-            if (latestFix) sendLocation(latestFix);
+            // 새 fix가 끊긴 뒤 마지막 좌표를 계속 보내면 서버가 정상 수신으로 오해한다 → 오래된 좌표는 보내지 않는다.
+            if (!latestFix) return;
+            if (Date.now() - lastFixAtRef.current > STALE_FIX_MS) return;
+            sendLocation(latestFix);
           }, intervalMs);
         }
       },
       (err) => {
         setPermissionError(err.message || "위치 권한이 거부됐어요.");
         console.warn("[dreami-location] watchPosition 오류:", err.message);
+        // 권한 거부는 영구적이므로 위 stale 가드(최대 15초)를 기다리지 않고 즉시 전송을 끊는다.
+        // clearInterval은 하지 않는다 — tick이 no-op이 되고, 권한이 다시 허용되면 성공 콜백이
+        // lastFixRef를 채워 전송이 자연히 재개된다.
+        if (err.code === err.PERMISSION_DENIED) {
+          lastFixRef.current = null;
+        }
       },
       { enableHighAccuracy: true },
     );
