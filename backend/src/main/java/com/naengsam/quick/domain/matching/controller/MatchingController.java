@@ -32,7 +32,7 @@ public class MatchingController {
     public CurrentMatchingStatusDto getCurrentStatus(@LoginUser UUID userId) {
         PendingOfferDto pendingOffer = matchingService.findPendingOfferForDreami(userId)
                 .flatMap(offer -> matchingService.findOrderOfferGroup(offer.orderId())
-                        .map(group -> PendingOfferDto.from(offer, group)))
+                        .map(group -> PendingOfferDto.from(offer, group, matchingService.offerTtl())))
                 .orElse(null);
         DreamiInfoPayload incomingDreami = matchingService.findIncomingDreamiOffer(userId)
                 .map(DreamiInfoPayload::from)

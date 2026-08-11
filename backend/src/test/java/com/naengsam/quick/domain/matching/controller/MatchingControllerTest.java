@@ -17,6 +17,7 @@ import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.global.session.LoginUserArgumentResolver;
 import com.naengsam.quick.global.session.SessionConst;
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -74,10 +75,12 @@ class MatchingControllerTest {
         when(matchingService.findPendingOfferForDreami(userId)).thenReturn(Optional.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
         when(matchingService.findIncomingDreamiOffer(userId)).thenReturn(Optional.empty());
+        when(matchingService.offerTtl()).thenReturn(Duration.ofSeconds(30));
 
         mockMvc.perform(get("/api/v1/matching/current").sessionAttr(SessionConst.LOGIN_USER, userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.pendingOffer.offerId").value(offerId.toString()))
+                .andExpect(jsonPath("$.pendingOffer.expiresAt").exists())
                 .andExpect(jsonPath("$.incomingDreami").doesNotExist());
     }
 

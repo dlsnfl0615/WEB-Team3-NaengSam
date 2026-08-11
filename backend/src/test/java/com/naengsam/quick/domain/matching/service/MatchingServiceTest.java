@@ -1464,7 +1464,8 @@ class MatchingServiceTest {
         assertThat(payload.destinationAlias()).isEqualTo("회사");
         assertThat(payload.destinationAddressLine1()).isEqualTo("서울시 성동구");
         assertThat(payload.imageKey()).isEqualTo("img-key");
-        assertThat(payload.ttlSeconds()).isEqualTo(30L);
+        assertThat(payload.offeredAt()).isNotNull();
+        assertThat(payload.expiresAt()).isEqualTo(payload.offeredAt().plusSeconds(30));
     }
 
     @Test
