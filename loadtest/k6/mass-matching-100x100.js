@@ -27,6 +27,12 @@ import { Trend, Rate, Counter } from "k6/metrics";
 // 실행 예:
 //   k6 run -e BOORMI_COUNT=3 -e DREAMI_COUNT=3 loadtest/k6/mass-matching-100x100.js   # 로직 검증용 소규모
 //   k6 run -e BOORMI_COUNT=100 -e DREAMI_COUNT=100 loadtest/k6/mass-matching-100x100.js
+//
+// 주의 — 재실행 전 DB 리셋 필요: 이 스크립트는 부르미 확정까지 안 가므로(수락 단계까지만) 만든 주문이
+// MATCHING 또는 PENDING_BOORMI_CONFIRMATION 상태로 그대로 남는다. 재실행하면 (1) 부르미는
+// MAX_ACTIVE_ORDERS(=5) 캡에 걸려 ORDER_009로 콜 등록이 거부되고 (2) 수락까지 갔던 드리미는
+// ALREADY_HAS_ACTIVE_ORDER로 온라인 등록 자체가 실패한다. 다시 돌리기 전에
+// backend/sql/test-seed-accounts.sql을 재실행해 데이터를 리셋할 것.
 const BASE_URL = __ENV.BASE_URL || "http://localhost:8080";
 const PASSWORD = __ENV.TEST_PASSWORD || "string";
 const BOORMI_COUNT = Number(__ENV.BOORMI_COUNT || 100);
@@ -43,6 +49,9 @@ const CENTER_LNG = Number(__ENV.CENTER_LNG || 127.0276);
 const SPREAD_RADIUS_M = Number(__ENV.SPREAD_RADIUS_M || 2000);
 
 export const options = {
+  // 100:100 규모에서 setup()이 로그인 200회(+/me 100회) — 총 300번의 순차 HTTP 호출을 하므로
+  // 기본 60초로는 부족할 수 있다. 로그인은 PBKDF2 210,000회 반복이라 서버 쪽도 느리다.
+  setupTimeout: "5m",
   scenarios: {
     massMatching: {
       executor: "shared-iterations",
@@ -206,7 +215,8 @@ export default function (data) {
 
   const accepted = orders.filter((o) => o.accepted).length;
   check(null, {
-    [`${MATCH_TIMEOUT_S}초 내 전부 드리미 수락 완료`]: () => accepted === orders.length,
+    "콜 등록이 최소 1건 이상 성공함": () => orders.length > 0,
+    [`${MATCH_TIMEOUT_S}초 내 전부 드리미 수락 완료`]: () => orders.length > 0 && accepted === orders.length,
   });
-  console.log(`${accepted}/${orders.length}건 ${MATCH_TIMEOUT_S}초 내 드리미 수락 완료`);
+  console.log(`${accepted}/${orders.length}건 ${MATCH_TIMEOUT_S}초 내 드리미 수락 완료 (콜 등록 시도 ${boormis.length}건)`);
 }
