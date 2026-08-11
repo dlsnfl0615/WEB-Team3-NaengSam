@@ -19,6 +19,7 @@ import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
 import com.naengsam.quick.domain.matching.event.OrderCancelledByBoormiEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
+import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
@@ -31,8 +32,6 @@ import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.UUID;
@@ -41,6 +40,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 @Slf4j
 @Service
@@ -54,7 +55,6 @@ public class BoormiService {
     private static final int OVER_RATE = 160;       // 초과 구간 100m당 요금(원)
     private static final int MAX_ACTIVE_ORDERS = 5; // 동시 진행 가능한 요청 수(정책값)
     private static final int TOO_CLOSE_DISTANCE = 50;   // 출발지-도착지 최소 직선거리(m)
-    private static final int EARTH_RADIUS = 6_371_000;  // 지구 반지름(m)
 
     private final CoordinatesService coordinatesService;
     private final KakaoDirectionsService kakaoDirectionsService;
@@ -65,6 +65,7 @@ public class BoormiService {
     private final MatchingRepository matchingRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final GeoDistanceCalculator geoDistanceCalculator;
 
     /**
      * 부르미의 주문 요청을 접수한다. 출발지/도착지 도로명주소를 좌표로 변환해 주문(ORDERS)을 생성·저장한 뒤 결제를 시작하고 매칭 큐에 등록한다.
@@ -82,7 +83,8 @@ public class BoormiService {
 
         // 요금·예상시간은 클라이언트 전송값을 신뢰하지 않고 견적과 동일한 로직으로 서버가 재계산한다.
         // 같은 카카오 응답에서 추천 이동경로 좌표도 함께 받아 주문에 저장한다(추적 지도 폴리라인용).
-        KakaoDirectionsResponseDto.Route route = kakaoDirectionsService.getRoute(originCoordinate, destinationCoordinate);
+        KakaoDirectionsResponseDto.Route route = kakaoDirectionsService.getRoute(originCoordinate,
+                destinationCoordinate);
         Charge charge = calculatePrice(route, orderRequest.itemCd());
         String routePath = toRoutePathJson(route);
 
@@ -168,7 +170,7 @@ public class BoormiService {
         // IN_PROGRESS 전이를 볼 수 있다. 커밋 후 처리는 MatchingService 의 리스너가 담당한다.
         eventPublisher.publishEvent(new BoormiConfirmedEvent(offerId));
     }
-    
+
     /**
      * 부르미가 확정 대기 중인 드리미를 거절한다. 확정 대기(PENDING_BOORMI_CONFIRMATION) 상태의 자기 주문만 거절할 수 있으며, DB 주문을 다시 MATCHING 으로 되돌린 뒤
      * 매칭엔진에 부르미 거절을 제출한다. 거절당한 드리미 알림과 재오퍼는 매칭엔진이 담당한다.
@@ -254,22 +256,9 @@ public class BoormiService {
      * 조회·주문 접수 모두 카카오 도보 API 호출 전에 이 가드를 통과해야 한다 — 같은 좌표면 카카오가 경로를 반환하지 못해 EXTERNAL_SERVICE_ERROR 로 실패하기 때문이다.
      */
     private void requireDifferentLocation(GeoPoint origin, GeoPoint destination) {
-        if (distanceMeters(origin, destination) < TOO_CLOSE_DISTANCE) {
+        if (geoDistanceCalculator.distanceMeters(origin, destination) < TOO_CLOSE_DISTANCE) {
             throw new BusinessException(OrderErrorCode.SAME_ORIGIN_DESTINATION);
         }
-    }
-
-    /**
-     * 두 좌표 사이의 하버사인 직선거리(m)를 계산한다.
-     */
-    public double distanceMeters(GeoPoint a, GeoPoint b) {
-        double lat1 = Math.toRadians(a.latitude().doubleValue());
-        double lat2 = Math.toRadians(b.latitude().doubleValue());
-        double dLat = lat2 - lat1;
-        double dLon = Math.toRadians(b.longitude().doubleValue() - a.longitude().doubleValue());
-        double h = Math.sin(dLat / 2) * Math.sin(dLat / 2)
-                + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-        return 2 * EARTH_RADIUS * Math.asin(Math.sqrt(h));
     }
 
     private GeoPoint toGeoPoint(String roadAddress) {
