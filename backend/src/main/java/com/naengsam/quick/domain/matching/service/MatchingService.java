@@ -96,6 +96,7 @@ public class MatchingService {
     private final MatchingAssignmentPolicy matchingAssignmentPolicy;
     private final MatchingPlanApplier matchingPlanApplier;
     private final MatchingPolicyProperties matchingPolicyProperties;
+    private final GeoDistanceCalculator geoDistanceCalculator;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -461,7 +462,8 @@ public class MatchingService {
                 offer.acceptByDreami(now);
                 matchingActionScheduler.scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
-                sseService.send(group.boormiId(), MatchingEventType.DREAMI_INFO, DreamiInfoPayload.from(offer));
+                sseService.send(group.boormiId(), MatchingEventType.DREAMI_INFO,
+                        DreamiInfoPayload.from(offer, pickupEtaMinutesForOffer(offer)));
             } else if (offer.status() == MatchOfferStatus.OFFERED) {
                 // 아직 응답 대기중(OFFERED)인 오퍼만 회수한다.
                 // 이미 거절/만료됐거나 다른 방으로 넘어간 드리미의 상태는 건드리지 않는다.
@@ -671,6 +673,24 @@ public class MatchingService {
                 .flatMap(group -> group.offers().stream())
                 .filter(offer -> offer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION)
                 .findFirst();
+    }
+
+    /**
+     * 오퍼의 드리미-픽업지 간 직선거리를 도보 속도로 환산한 예상 픽업 시간(분). 실시간 경로가 아닌 추정치이며, 방/드리미 위치를
+     * 알 수 없으면(이미 정리되었거나 위치 정보가 없으면) null을 반환한다.
+     */
+    public Integer pickupEtaMinutesForOffer(MatchOffer offer) {
+        OrderOfferGroup group = orderOfferGroupsByOrderId.get(offer.orderId());
+        WaitingDreami dreami = dreamiMap.get(offer.dreamiId());
+        if (group == null || dreami == null || !hasCoordinates(group.location()) || !hasCoordinates(dreami.location())) {
+            return null;
+        }
+        double distanceMeters = geoDistanceCalculator.distanceMeters(group.location(), dreami.location());
+        return PickupEtaCalculator.minutesFromDistance(distanceMeters);
+    }
+
+    private boolean hasCoordinates(GeoPoint point) {
+        return point != null && point.latitude() != null && point.longitude() != null;
     }
 
     /**

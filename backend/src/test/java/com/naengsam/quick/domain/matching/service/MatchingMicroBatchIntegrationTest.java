@@ -82,7 +82,7 @@ class MatchingMicroBatchIntegrationTest {
 
         return new MatchingService(
                 matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService, clock,
-                assembler, assignmentPolicy, matchingPlanApplier, properties);
+                assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator);
     }
 
     @Test

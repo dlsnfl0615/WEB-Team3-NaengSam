@@ -94,12 +94,14 @@ class MatchingControllerTest {
                 offerId, orderId, dreamiId, MatchOfferStatus.PENDING_BOORMI_CONFIRMATION, LocalDateTime.now());
         when(matchingService.findPendingOfferForDreami(userId)).thenReturn(Optional.empty());
         when(matchingService.findIncomingDreamiOffer(userId)).thenReturn(Optional.of(offer));
+        when(matchingService.pickupEtaMinutesForOffer(offer)).thenReturn(14);
 
         mockMvc.perform(get("/api/v1/matching/current").sessionAttr(SessionConst.LOGIN_USER, userId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.pendingOffer").doesNotExist())
                 .andExpect(jsonPath("$.incomingDreami.offerId").value(offerId.toString()))
-                .andExpect(jsonPath("$.incomingDreami.dreamiId").value(dreamiId.toString()));
+                .andExpect(jsonPath("$.incomingDreami.dreamiId").value(dreamiId.toString()))
+                .andExpect(jsonPath("$.incomingDreami.pickupEtaMinutes").value(14));
     }
 
     @Test

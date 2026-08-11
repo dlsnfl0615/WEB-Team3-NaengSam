@@ -16,6 +16,7 @@ import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
 import com.naengsam.quick.domain.matching.event.BoormiRejectedDreamiEvent;
 import com.naengsam.quick.domain.matching.event.DreamiAcceptedEvent;
+import com.naengsam.quick.domain.matching.event.DreamiInfoPayload;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
@@ -66,6 +67,7 @@ class MatchingServiceTest {
     private MatchingAssignmentPolicy matchingAssignmentPolicy;
     private MatchingPlanApplier matchingPlanApplier;
     private MatchingPolicyProperties matchingPolicyProperties;
+    private GeoDistanceCalculator geoDistanceCalculator;
 
     @BeforeEach
     void setUp() {
@@ -78,10 +80,12 @@ class MatchingServiceTest {
         matchingAssignmentPolicy = mock(MatchingAssignmentPolicy.class);
         matchingPlanApplier = mock(MatchingPlanApplier.class);
         matchingPolicyProperties = mock(MatchingPolicyProperties.class);
+        geoDistanceCalculator = new GeoDistanceCalculator();
         matchingService = new MatchingService(
                 matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
                 Clock.systemDefaultZone(),
-                matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties);
+                matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
+                geoDistanceCalculator);
     }
 
     @Test
@@ -840,6 +844,58 @@ class MatchingServiceTest {
 
         // then
         verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), any());
+    }
+
+    @Test
+    void 드리미_수락시_DREAMI_INFO_payload에_직선거리_기반_픽업_예상시간이_담긴다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        GeoPoint dreamiLocation = new GeoPoint(BigDecimal.valueOf(37.5013), BigDecimal.valueOf(127.0));
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+        when(order.getBoormiId()).thenReturn(boormiId);
+        when(order.getOriginLatitude()).thenReturn(BigDecimal.valueOf(37.5));
+        when(order.getOriginLongitude()).thenReturn(BigDecimal.valueOf(127.0));
+
+        matchingService.applyRegisterDreami(UUID.randomUUID(), dreamiLocation);
+        matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
+        MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
+
+        // when
+        matchingService.applyAcceptByDreami(offer.offerId());
+
+        // then
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
+        DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
+        assertThat(payload.pickupEtaMinutes()).isNotNull().isPositive();
+    }
+
+    @Test
+    void 드리미_위치정보가_없으면_DREAMI_INFO_payload의_픽업_예상시간은_null이다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        GeoPoint dreamiLocation = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+        when(order.getBoormiId()).thenReturn(boormiId);
+
+        matchingService.applyRegisterDreami(UUID.randomUUID(), dreamiLocation);
+        matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
+        MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
+
+        // when
+        matchingService.applyAcceptByDreami(offer.offerId());
+
+        // then
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
+        DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
+        assertThat(payload.pickupEtaMinutes()).isNull();
     }
 
     @Test
