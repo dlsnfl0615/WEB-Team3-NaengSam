@@ -1,4 +1,4 @@
-import { Button, Icon, IconChip } from "@/shared/ui";
+import { Button, Icon, IconChip, OfferCountdownBar } from "@/shared/ui";
 
 export interface OfferCardProps {
   /** 카드 상단 안내 문구(예: "새 드리미 요청 도착!") */
@@ -10,6 +10,8 @@ export interface OfferCardProps {
   count: number;
   /** 픽업 지점까지 남은 거리 */
   distance: string;
+  /** 확정 응답 카운트다운(부르미가 드리미를 확정하는 시간). */
+  countdown: { remainingSeconds: number; progressPercent: number };
   onReject: () => void;
   onAccept: () => void;
 }
@@ -25,6 +27,7 @@ export function OfferCard({
   countLabel,
   count,
   distance,
+  countdown,
   onReject,
   onAccept,
 }: OfferCardProps) {
@@ -50,11 +53,21 @@ export function OfferCard({
         </div>
       </div>
 
+      <OfferCountdownBar
+        remainingSeconds={countdown.remainingSeconds}
+        progressPercent={countdown.progressPercent}
+      />
+
       <div className="flex gap-2">
         <Button variant="outline" block onClick={onReject}>
           거절
         </Button>
-        <Button variant="navy" block onClick={onAccept}>
+        <Button
+          variant="navy"
+          block
+          onClick={onAccept}
+          disabled={countdown.remainingSeconds <= 0}
+        >
           수락하기
         </Button>
       </div>

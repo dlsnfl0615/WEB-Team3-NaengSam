@@ -2,6 +2,7 @@ import {
   Badge,
   Button,
   DeliveryRouteMap,
+  OfferCountdownBar,
   type Coords,
 } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
@@ -24,6 +25,8 @@ export interface CallCardProps {
   dropoffDistance?: string;
   /** 물품 유형. 값이 없으면 항목을 숨긴다. */
   itemType?: string;
+  /** 콜 수락 응답 카운트다운(드리미가 콜을 선택하는 시간). */
+  countdown: { remainingSeconds: number; progressPercent: number };
   onReject: () => void;
   onAccept: () => void;
 }
@@ -43,6 +46,7 @@ export function CallCard({
   eta,
   dropoffDistance,
   itemType,
+  countdown,
   onReject,
   onAccept,
 }: CallCardProps) {
@@ -92,6 +96,11 @@ export function CallCard({
         )}
       </div>
 
+      <OfferCountdownBar
+        remainingSeconds={countdown.remainingSeconds}
+        progressPercent={countdown.progressPercent}
+      />
+
       <div className="flex gap-2">
         <Button
           variant="outline"
@@ -100,7 +109,12 @@ export function CallCard({
         >
           거절
         </Button>
-        <Button variant="navy" className="flex-1" onClick={onAccept}>
+        <Button
+          variant="navy"
+          className="flex-1"
+          onClick={onAccept}
+          disabled={countdown.remainingSeconds <= 0}
+        >
           콜 수락
         </Button>
       </div>
