@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>드리미 인증 검수</title>
+    <style>
+        :root {
+            --bg: #0f1115;
+            --panel: #181b22;
+            --border: #2a2f3a;
+            --text: #e6e8ec;
+            --muted: #9aa3b2;
+            --accent: #4f8cff;
+            --green: #34d399;
+            --red: #f87171;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+            line-height: 1.5;
+        }
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(15, 17, 21, 0.94);
+            backdrop-filter: blur(8px);
+        }
+        h1 { margin: 0; font-size: 18px; }
+        main { padding: 20px 24px 40px; max-width: 960px; margin: 0 auto; }
+        .muted { color: var(--muted); font-size: 12px; }
+        .mono { font-family: "SF Mono", Menlo, Consolas, monospace; }
+        .empty { padding: 40px 4px; text-align: center; color: var(--muted); }
+        .error-box {
+            display: none;
+            margin-bottom: 16px;
+            padding: 10px 12px;
+            border: 1px solid rgba(248, 113, 113, 0.45);
+            border-radius: 8px;
+            background: rgba(248, 113, 113, 0.08);
+            color: var(--red);
+            font-size: 12px;
+        }
+        .cards { display: flex; flex-direction: column; gap: 14px; }
+        .card {
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--panel);
+            padding: 16px;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            gap: 10px;
+            margin-bottom: 12px;
+        }
+        .photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+        figure { margin: 0; }
+        figcaption { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+        .photo-frame {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #0b0d11;
+            overflow: hidden;
+            aspect-ratio: 4 / 3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .photo-frame img { width: 100%; height: 100%; object-fit: contain; }
+        .photo-frame a { color: var(--accent); font-size: 12px; }
+        .actions { display: flex; gap: 8px; align-items: center; }
+        input[type="text"] {
+            flex: 1;
+            min-width: 0;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            outline: none;
+            background: #0f1115;
+            color: var(--text);
+            font: 12px "SF Mono", Menlo, Consolas, monospace;
+        }
+        input[type="text"]:focus { border-color: var(--accent); }
+        button {
+            padding: 8px 14px;
+            border: 0;
+            border-radius: 6px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        button:disabled { cursor: not-allowed; opacity: 0.5; }
+        button.approve { background: var(--green); color: #0f1115; }
+        button.reject { background: var(--red); color: #0f1115; }
+        button.secondary { background: #2a2f3a; color: var(--text); }
+    </style>
+</head>
+<body>
+<header>
+    <div>
+        <h1>드리미 인증 검수</h1>
+        <div id="updatedAt" class="muted">조회 대기 중</div>
+    </div>
+    <button class="secondary" type="button" onclick="loadPending()">새로고침</button>
+</header>
+
+<main>
+    <div id="errorBox" class="error-box"></div>
+    <div id="cards" class="cards"><div class="empty">조회 중…</div></div>
+</main>
+
+<script>
+    const API = "/api/v1/debug/dreami-review";
+    const DEFAULT_REJECT_REASON = "관리자 검수 결과 반려";
+
+    async function apiFetch(path, options) {
+        const response = await fetch(path, {
+            credentials: "same-origin",
+            headers: options?.body ? { "Content-Type": "application/json" } : undefined,
+            ...options,
+        });
+        let body = null;
+        try { body = await response.json(); } catch (ignored) {}
+        if (!response.ok || body?.isSuccess === false) {
+            throw new Error(body?.message ?? `${response.status} ${response.statusText}`);
+        }
+        return body?.result;
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"']/g, character => ({
+            "&": "&amp;",
+            "<": "&lt;",
+            ">": "&gt;",
+            '"': "&quot;",
+            "'": "&#39;",
+        })[character]);
+    }
+
+    function showError(message) {
+        const errorBox = document.getElementById("errorBox");
+        errorBox.textContent = message ?? "";
+        errorBox.style.display = message ? "block" : "none";
+    }
+
+    function photoFigure(label, url) {
+        return `
+            <figure>
+                <figcaption>${escapeHtml(label)}</figcaption>
+                <div class="photo-frame">
+                    ${url ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(label)}" loading="lazy"/>`
+                          : '<span class="muted">사진 없음</span>'}
+                </div>
+            </figure>
+        `;
+    }
+
+    function reviewCard(review) {
+        return `
+            <article class="card" id="card-${review.dreamiId}">
+                <div class="card-header">
+                    <span class="mono">${escapeHtml(review.dreamiId)}</span>
+                    <span class="muted">신청일 ${escapeHtml(review.requestDtm ?? "-")}</span>
+                </div>
+                <div class="photos">
+                    ${photoFigure("신분증", review.idCardImageUrl)}
+                    ${photoFigure("범죄경력회보서", review.criminalRecordImageUrl)}
+                </div>
+                <div class="actions">
+                    <input type="text" id="reason-${review.dreamiId}" placeholder="반려 사유 (비우면 기본 문구)"/>
+                    <button class="approve" type="button" onclick="approve('${review.dreamiId}')">승인</button>
+                    <button class="reject" type="button" onclick="reject('${review.dreamiId}')">반려</button>
+                </div>
+            </article>
+        `;
+    }
+
+    function renderCards(reviews) {
+        document.getElementById("cards").innerHTML = reviews.length
+            ? reviews.map(reviewCard).join("")
+            : '<div class="empty">검수 대기 중인 신청이 없습니다.</div>';
+    }
+
+    async function loadPending() {
+        try {
+            const reviews = await apiFetch(`${API}/pending`);
+            renderCards(reviews ?? []);
+            document.getElementById("updatedAt").textContent =
+                `${new Date().toLocaleTimeString("ko-KR")} 기준`;
+            showError("");
+        } catch (error) {
+            document.getElementById("cards").innerHTML = "";
+            showError(`목록을 불러오지 못했습니다: ${error.message}`);
+        }
+    }
+
+    async function setCardBusy(dreamiId, busy) {
+        const card = document.getElementById(`card-${dreamiId}`);
+        card?.querySelectorAll("button").forEach(button => { button.disabled = busy; });
+    }
+
+    async function approve(dreamiId) {
+        await setCardBusy(dreamiId, true);
+        try {
+            await apiFetch(`${API}/${dreamiId}/approve`, { method: "POST" });
+            await loadPending();
+        } catch (error) {
+            showError(`승인 처리에 실패했습니다: ${error.message}`);
+            await setCardBusy(dreamiId, false);
+        }
+    }
+
+    async function reject(dreamiId) {
+        const input = document.getElementById(`reason-${dreamiId}`);
+        const reason = input?.value.trim() || DEFAULT_REJECT_REASON;
+        await setCardBusy(dreamiId, true);
+        try {
+            await apiFetch(`${API}/${dreamiId}/reject`, {
+                method: "POST",
+                body: JSON.stringify({ reason }),
+            });
+            await loadPending();
+        } catch (error) {
+            showError(`반려 처리에 실패했습니다: ${error.message}`);
+            await setCardBusy(dreamiId, false);
+        }
+    }
+
+    void loadPending();
+</script>
+</body>
+</html>
