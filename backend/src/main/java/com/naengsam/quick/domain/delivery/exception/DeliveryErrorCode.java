@@ -16,7 +16,7 @@ public enum DeliveryErrorCode implements BaseErrorCode {
     RECEIPT_CONFIRMATION_TIMEOUT(
             HttpStatus.CONFLICT, "DELIVERY_007", "확인 시간이 지나 자동으로 완료 처리되었어요."),
     CANCELLATION_RESTRICTED_DURING_DELIVERY(
-            HttpStatus.CONFLICT, "DELIVERY_008", "지금 취소하면 패널티가 부과될 수 있어요."),
+            HttpStatus.CONFLICT, "DELIVERY_008", "배달 중에는 취소할 수 없어요."),
     DAMAGE_REPORT_IN_PROGRESS(HttpStatus.CONFLICT, "DELIVERY_009", "처리 중인 건이라 진행할 수 없어요."),
     DELIVERY_NOT_FOUND(HttpStatus.NOT_FOUND, "DELIVERY_010", "존재하지 않는 배달 주문입니다."),
     DELIVERY_ALREADY_CANCELLED(HttpStatus.CONFLICT, "DELIVERY_012", "이미 취소된 건에 대한 요청입니다."),

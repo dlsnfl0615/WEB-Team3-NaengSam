@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Button, Card, Icon, IconChip, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useActiveDelivery } from "@/shared/store/deliveryStore";
@@ -11,10 +11,16 @@ import { StarRating } from "./StarRating";
  */
 export function DeliveryCompleteScreen() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [rating, setRating] = useState(0);
   const active = useActiveDelivery();
 
+  // 평가 대상: 기본은 드리미(부르미가 드리미를 평가), `?reviewee=boormi`면 드리미가 부르미를 평가.
+  const reviewsBoormi = searchParams.get("reviewee") === "boormi";
   const driverName = active?.driverName ?? "핀";
+  const reviewPrompt = reviewsBoormi
+    ? "부르미님은 어떠셨나요?"
+    : `드리미 '${driverName}'님은 어떠셨나요?`;
   const sizeLabel = active?.itemSize === "M" ? "중형(M)" : "소형(S)";
   const summary = [
     {
@@ -68,7 +74,7 @@ export function DeliveryCompleteScreen() {
 
         <Card className="flex flex-col gap-3">
           <p className="text-center text-md font-bold text-navy-900">
-            드리미 '{driverName}'님은 어떠셨나요?
+            {reviewPrompt}
           </p>
           <StarRating value={rating} onChange={setRating} />
           <Button variant="navy" block>

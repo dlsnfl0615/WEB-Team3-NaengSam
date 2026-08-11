@@ -71,7 +71,11 @@ export function DeliveryProofScreen() {
         <Button
           variant="navy"
           block
-          onClick={() => navigate(ROUTES.deliveryComplete, { replace: true })}
+          onClick={() =>
+            navigate(`${ROUTES.deliveryComplete}?reviewee=boormi`, {
+              replace: true,
+            })
+          }
         >
           {isPhoto ? "사진 첨부 · 배송 종료" : "서명 완료 · 배송 종료"}
         </Button>
@@ -109,7 +113,8 @@ const PROOF_CONFIG: Record<
     purpose: "DELIVERY_CERTIFICATION_IMAGE",
     endpoint: (orderId) => `/api/v1/delivery/orders/${orderId}/finish`,
     button: "전달 완료 · 사진 첨부",
-    next: () => ROUTES.deliveryComplete,
+    // 드리미가 전달 완료 → 부르미를 평가하는 리뷰 화면으로.
+    next: () => `${ROUTES.deliveryComplete}?reviewee=boormi`,
   },
 };
 
