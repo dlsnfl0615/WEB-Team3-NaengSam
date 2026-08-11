@@ -504,4 +504,68 @@ class DreamiServiceTest {
         verify(matchingService).rejectByDreami(offerId);
         verify(orderRepository, never()).findById(any());
     }
+
+    // ---------- approveReview ----------
+
+    @Test
+    void 승인_정상이면_드리미와_부르미_둘_다_승인_상태로_바뀐다() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        Boormi boormi = activeBoormi();
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.of(dreami));
+        given(boormiRepository.findById(dreamiId)).willReturn(Optional.of(boormi));
+
+        dreamiService.approveReview(dreamiId);
+
+        assertThat(dreami.getRequestCd()).isEqualTo(DreamiCd.APPROVED);
+        assertThat(boormi.isDreamiActivate()).isTrue();
+    }
+
+    @Test
+    void 승인_드리미가_없으면_NOT_FOUND_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.approveReview(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+    }
+
+    @Test
+    void 승인_부르미가_없으면_NOT_FOUND_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.of(dreami));
+        given(boormiRepository.findById(dreamiId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.approveReview(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+    }
+
+    // ---------- rejectReview ----------
+
+    @Test
+    void 반려_정상이면_드리미_상태를_반려로_바꾸고_반려이력을_저장하며_부르미는_건드리지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.of(dreami));
+
+        dreamiService.rejectReview(dreamiId, "사진이 흐릿함");
+
+        assertThat(dreami.getRequestCd()).isEqualTo(DreamiCd.REJECTED);
+        verify(dreamiRequestDeniedDetailsRepository).save(any());
+        verify(boormiRepository, never()).findById(any());
+    }
+
+    @Test
+    void 반려_드리미가_없으면_NOT_FOUND_예외이고_반려이력을_저장하지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.rejectReview(dreamiId, "사유"));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+        verify(dreamiRequestDeniedDetailsRepository, never()).save(any());
+    }
 }
