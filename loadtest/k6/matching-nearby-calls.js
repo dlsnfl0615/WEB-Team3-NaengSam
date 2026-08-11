@@ -7,7 +7,7 @@ import { Trend } from "k6/metrics";
 //   k6 run -e VUS=50 -e DURATION=2m -e BASE_URL=http://localhost:8080 loadtest/k6/matching-nearby-calls.js
 const BASE_URL = __ENV.BASE_URL || "http://localhost:8080";
 const EMAIL = __ENV.TEST_EMAIL || "dreami1@test.test";
-const PASSWORD = __ENV.TEST_PASSWORD || "test1234!";
+const PASSWORD = __ENV.TEST_PASSWORD || "string";
 
 // 시드 데이터(backend/sql/test-seed-accounts.sql)의 주문 좌표(강남역 인근)에 맞춤 — 필요하면 -e LAT= -e LNG= 로 덮어쓴다.
 const LAT = Number(__ENV.LAT || 37.4979);
