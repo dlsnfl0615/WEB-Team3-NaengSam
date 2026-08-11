@@ -280,6 +280,10 @@ public class DreamiService {
         Dreami dreami = dreamiRepository.findByDreamiId(dreamiId)
                 .orElseThrow(() -> new BusinessException(DreamiErrorCode.NOT_FOUND));
         dreami.approve();
+
+        Boormi boormi = boormiRepository.findById(dreamiId)
+                .orElseThrow(() -> new BusinessException(DreamiErrorCode.NOT_FOUND));
+        boormi.approve();
     }
 
     /**
