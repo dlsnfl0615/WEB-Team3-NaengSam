@@ -28,14 +28,17 @@ import type {
   FindNearbyOrders200,
   FinishDelivery200,
   GeoPoint,
+  Get200,
   GetBoormiOrders200,
   GetBoormiOrdersParams,
   GetCoordinates200,
+  GetCurrentStatus200,
   GetDashboard200,
   GetDeliveryDetail200,
   GetDreamiOrders200,
   GetDreamiOrdersParams,
   GetOrderOfferGroup200,
+  GetParams,
   GetPresignedUrl200,
   GetPresignedUrlParams,
   GetProfile200,
@@ -51,6 +54,7 @@ import type {
   OrderRequest,
   PickupFinishByDreami200,
   PointChargeRequest,
+  PutParams,
   RegisterDreami200,
   RejectDreamiRequest,
   SaveAddress200,
@@ -60,6 +64,7 @@ import type {
   SignUpRequest,
   Signup200,
   Subscribe200,
+  Subscribe204,
   SubscribeOrder200,
   UpdateDreamiLocation200,
   VerifyCodeRequest,
@@ -74,6 +79,29 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
   export const getOpenAPIDefinition = () => {
+const get = (
+    params: GetParams,
+ options?: SecondParameter<typeof customInstance<Get200>>,) => {
+      return customInstance<Get200>(
+      {url: `/api/v1/upload/dev-storage`, method: 'GET',
+        params
+    },
+      options);
+    }
+
+const put = (
+    putBody: string,
+    params: PutParams,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/upload/dev-storage`, method: 'PUT',
+      headers: {'Content-Type': 'application/json', },
+      data: putBody,
+        params
+    },
+      options);
+    }
+
 /**
  * 결제 금액만큼 포인트를 적립한다(1원 = 1P). PG 연동 전이라 결제는 항상 성공한 것으로 보고 즉시 적립한다.
  * @summary 포인트 충전
@@ -717,14 +745,27 @@ const getPresignedUrl = (
     }
 
 /**
- * 로그인 사용자로 SSE 연결을 맺는다. 최초 connected 이벤트 후, 각 도메인의 이벤트가 이름별로 전달된다.
+ * 로그인 사용자로 SSE 연결을 맺는다. 최초 connected 이벤트 후, 각 도메인의 이벤트가 이름별로 전달된다. 사용자당 동시 연결 상한을 넘으면 204로 거부한다.
  * @summary 실시간 이벤트 SSE 구독
  */
 const subscribe = (
 
- options?: SecondParameter<typeof customInstance<Subscribe200>>,) => {
-      return customInstance<Subscribe200>(
+ options?: SecondParameter<typeof customInstance<Subscribe200 | Subscribe204>>,) => {
+      return customInstance<Subscribe200 | Subscribe204>(
       {url: `/api/v1/sse/subscribe`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 드리미로서 응답 대기 중인 제안(pendingOffer)과, 부르미로서 확인 대기 중인 드리미 수락 정보(incomingDreami)를 반환한다. 진행 중인 것이 없으면 해당 필드는 null이다.
+ * @summary 현재 매칭 상태 조회
+ */
+const getCurrentStatus = (
+
+ options?: SecondParameter<typeof customInstance<GetCurrentStatus200>>,) => {
+      return customInstance<GetCurrentStatus200>(
+      {url: `/api/v1/matching/current`, method: 'GET'
     },
       options);
     }
@@ -870,7 +911,9 @@ const unsubscribeOrder = (
       options);
     }
 
-return {chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
+return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
+export type GetResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['get']>>>
+export type PutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['put']>>>
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
 export type ExchangeMoneyToPointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['exchangeMoneyToPoint']>>>
 export type SendVerificationCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['sendVerificationCode']>>>
@@ -918,6 +961,7 @@ export type ChangeRoleResult = NonNullable<Awaited<ReturnType<ReturnType<typeof 
 export type MeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['me']>>>
 export type GetPresignedUrlResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getPresignedUrl']>>>
 export type SubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['subscribe']>>>
+export type GetCurrentStatusResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getCurrentStatus']>>>
 export type GetProfileResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getProfile']>>>
 export type GetDreamiOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrders']>>>
 export type FindCurrentDeliveryCardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findCurrentDeliveryCard']>>>

@@ -4,7 +4,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
-import com.naengsam.quick.domain.address.service.KakaoDirectionsService;
+import com.naengsam.quick.domain.address.service.DirectionsService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
@@ -76,7 +76,7 @@ public class DeliveryService {
     private final UploadSessionService uploadSessionService;
     private final UserService userService;
     private final OrderService orderService;
-    private final KakaoDirectionsService kakaoDirectionsService;
+    private final DirectionsService directionsService;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
 
@@ -252,7 +252,7 @@ public class DeliveryService {
             GeoPoint dreami = new GeoPoint(latitude, longitude);
             GeoPoint pickup = new GeoPoint(order.getOriginLatitude(), order.getOriginLongitude());
 
-            KakaoDirectionsResponseDto.Route route = kakaoDirectionsService.getRoute(dreami, pickup);
+            KakaoDirectionsResponseDto.Route route = directionsService.getRoute(dreami, pickup);
             String routePathJson = objectMapper.writeValueAsString(RoutePointDto.from(route));
 
             // 드리미→픽업지 소요(분, BoormiService와 동일 공식) + 주문의 픽업지→도착지 delivery_eta(분)를 현재 시각에 더한다.

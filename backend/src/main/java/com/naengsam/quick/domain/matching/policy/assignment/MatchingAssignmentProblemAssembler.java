@@ -1,6 +1,5 @@
 package com.naengsam.quick.domain.matching.policy.assignment;
 
-import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
@@ -10,7 +9,7 @@ import com.naengsam.quick.domain.matching.model.PreviousOfferOutcome;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
-import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -25,30 +24,43 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * 엔진 상태({@link MatchingService}가 들고 있는 {@link OrderOfferGroup}/{@link WaitingDreami})를
+ * 엔진 상태의 {@link OrderOfferGroup}/{@link WaitingDreami} 스냅샷을
  * {@link MatchingAssignmentProblemFactory}에 넣을 입력({@link MatchingOrderInput}, {@link MatchingDreamiInput},
  * {@link MatchingCandidate})으로 변환한다.
  * <p>대상은 WAITING 상태(다음 micro-batch 라운드를 기다리는 중)인 주문 그룹과 MATCHING 상태(다른 방에 들어가지
- * 않은)인 드리미뿐이다. previousInteraction은 같은 주문 그룹의 offers() 이력 중 그 드리미에게 나갔던 오퍼를 찾아,
- * 아직 진행 중이지 않은(응답이 끝난) 것 중 가장 최근 것으로 만든다.
+ * 않은)인 드리미뿐이다. previousInteraction은 같은 주문 그룹의 offers() 이력 중 그 드리미에게 나갔던 오퍼를 찾아, 아직 진행 중이지 않은(응답이 끝난) 것 중 가장 최근 것으로
+ * 만든다.
  */
 @Service
 @RequiredArgsConstructor
 public class MatchingAssignmentProblemAssembler {
 
-    private final MatchingService matchingService;
-    private final BoormiService boormiService;
+    private final GeoDistanceCalculator geoDistanceCalculator;
     private final MatchingAssignmentProblemFactory matchingAssignmentProblemFactory;
     private final MatchingPolicyProperties matchingPolicyProperties;
     private final Clock clock;
 
-    public MatchingAssignmentProblem assemble() {
+    private static Optional<PreviousOfferOutcome> toOutcome(MatchOfferStatus status) {
+        return switch (status) {
+            case DREAMI_REJECTED -> Optional.of(PreviousOfferOutcome.DREAMI_REJECTED);
+            case BOORMI_REJECTED -> Optional.of(PreviousOfferOutcome.BOORMI_REJECTED);
+            case DREAMI_EXPIRED -> Optional.of(PreviousOfferOutcome.DREAMI_EXPIRED);
+            case BOORMI_EXPIRED -> Optional.of(PreviousOfferOutcome.BOORMI_EXPIRED);
+            case WITHDRAWN -> Optional.of(PreviousOfferOutcome.WITHDRAWN);
+            case OFFERED, PENDING_BOORMI_CONFIRMATION, MATCHED -> Optional.empty();
+        };
+    }
+
+    public MatchingAssignmentProblem assemble(
+            List<OrderOfferGroup> orderOfferGroups,
+            List<WaitingDreami> waitingDreamis
+    ) {
         LocalDateTime evaluatedAt = LocalDateTime.now(clock);
 
-        List<OrderOfferGroup> waitingGroups = matchingService.orderOfferGroups().stream()
+        List<OrderOfferGroup> waitingGroups = orderOfferGroups.stream()
                 .filter(group -> group.status() == OrderOfferGroupStatus.WAITING)
                 .toList();
-        List<WaitingDreami> matchingDreamis = matchingService.waitingDreamis().stream()
+        List<WaitingDreami> matchingDreamis = waitingDreamis.stream()
                 .filter(dreami -> dreami.status() == WaitingDreamiStatus.MATCHING)
                 .toList();
 
@@ -69,7 +81,7 @@ public class MatchingAssignmentProblemAssembler {
         List<MatchingCandidate> rawCandidates = new ArrayList<>();
         for (OrderOfferGroup group : waitingGroups) {
             for (WaitingDreami dreami : matchingDreamis) {
-                double distanceMeters = boormiService.distanceMeters(group.location(), dreami.location());
+                double distanceMeters = geoDistanceCalculator.distanceMeters(group.location(), dreami.location());
 
                 rawCandidates.add(new MatchingCandidate(
                         group.orderId(),
@@ -93,16 +105,5 @@ public class MatchingAssignmentProblemAssembler {
                         .map(outcome -> new PreviousOfferInteraction(outcome, offer.statusUpdatedAt()))
                         .stream())
                 .max(Comparator.comparing(PreviousOfferInteraction::occurredAt));
-    }
-
-    private static Optional<PreviousOfferOutcome> toOutcome(MatchOfferStatus status) {
-        return switch (status) {
-            case DREAMI_REJECTED -> Optional.of(PreviousOfferOutcome.DREAMI_REJECTED);
-            case BOORMI_REJECTED -> Optional.of(PreviousOfferOutcome.BOORMI_REJECTED);
-            case DREAMI_EXPIRED -> Optional.of(PreviousOfferOutcome.DREAMI_EXPIRED);
-            case BOORMI_EXPIRED -> Optional.of(PreviousOfferOutcome.BOORMI_EXPIRED);
-            case WITHDRAWN -> Optional.of(PreviousOfferOutcome.WITHDRAWN);
-            case OFFERED, PENDING_BOORMI_CONFIRMATION, MATCHED -> Optional.empty();
-        };
     }
 }

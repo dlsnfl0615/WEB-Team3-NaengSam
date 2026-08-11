@@ -19,6 +19,7 @@ import {
   getUntrackableDeliveryNotice,
   useDeliveryDetailGate,
   useSse,
+  useSseReconnectSync,
   formatArrivalTime,
   type SseHandlers,
 } from "@/shared/lib";
@@ -233,7 +234,14 @@ export function RealDeliveryTracking({
     },
   };
 
-  const { connected } = useSse(handlers, { enabled: detailReady });
+  const { connected, status: sseStatus } = useSse(handlers, {
+    enabled: detailReady,
+  });
+
+  // SSE가 끊긴 사이 놓친 위치·상태 전이(배송중/취소/완료)를 재연결 시 스냅샷 재조회로 복구한다.
+  useSseReconnectSync(sseStatus, refreshDeliveryDetail, {
+    enabled: detailReady,
+  });
 
   const view = realTrackView(status);
   const driver: Coords | undefined =
