@@ -1,6 +1,7 @@
 /** shared/lib 공개 API. */
 export { cn } from './cn'
 export { formatArrivalTime } from './formatArrivalTime'
+export { formatLastSeen } from './formatLastSeen'
 export { useSse, type UseSseOptions } from './sse/useSse'
 export {
   useSseReconnectSync,
