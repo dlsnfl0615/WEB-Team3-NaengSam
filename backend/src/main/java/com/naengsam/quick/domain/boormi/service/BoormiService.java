@@ -106,7 +106,7 @@ public class BoormiService {
 
         orderService.createOrders(orders);
         paymentService.payWithPoint(boormiId, orderId, charge.amount());
-        if (matchingService.isOpenGroupExists(orderId)) {
+        if (matchingService.isActiveGroupExists(orderId)) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);
         }
         // 엔진은 매칭 시작 즉시 드리미에게 오퍼 팝업을 보내므로, 주문이 커밋된 뒤에 제출해야 드리미가 그 주문을 조회할 수 있다.

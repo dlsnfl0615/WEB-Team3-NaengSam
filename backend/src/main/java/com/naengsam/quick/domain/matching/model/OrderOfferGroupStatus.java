@@ -2,7 +2,11 @@ package com.naengsam.quick.domain.matching.model;
 
 public enum OrderOfferGroupStatus {
     /**
-     * 제안 응답 대기 중 (드리미 수락 후 부르미 확인 대기 포함)
+     * micro-batch 다음 라운드를 기다리는 중 (최초 매칭 시작 직후 또는 현재 라운드 오퍼가 모두 종료된 뒤의 재매칭 대기)
+     */
+    WAITING,
+    /**
+     * 오퍼가 한 건 이상 나가 드리미/부르미 응답을 기다리는 중
      */
     OPEN,
     /**
@@ -10,7 +14,7 @@ public enum OrderOfferGroupStatus {
      */
     MATCHED,
     /**
-     * 더 이상 유효한 제안이 없음. rematchRequired로 재매칭 필요 여부를 판단한다.
+     * 부르미가 주문을 취소함
      */
-    CLOSED
+    CANCELLED
 }
