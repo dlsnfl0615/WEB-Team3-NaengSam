@@ -40,6 +40,8 @@ export interface DeliveryDetailGateState {
   loading: boolean;
   blockingModal: DeliveryDetailBlockingModalState;
   retry: () => void;
+  /** ready 상태를 유지한 채 상세를 조용히 다시 불러온다(경로·배송완료예상시간이 뒤늦게 계산됐을 때 반영용). */
+  refresh: () => void;
   block: (notice: DeliveryDetailBlockNotice) => void;
 }
 
@@ -81,6 +83,10 @@ export function useDeliveryDetailGate(
         const closedNotice = getUntrackableDeliveryNotice(result.status);
         if (closedNotice) {
           if (result.status) rememberDeliveryStage(orderId, result.status);
+          // 이미 ready였던 화면에서 조용한 refresh(재연결 복구 등)로 취소/완료를 발견하면
+          // ready를 내려 차단 모달(blockingModal.open = attempted && !ready)이 열리도록 한다.
+          setDetail(null);
+          setReadyOrderId(null);
           setAttemptedOrderId(orderId);
           setTitle(closedNotice.title);
           setMessage(closedNotice.message);
@@ -160,6 +166,7 @@ export function useDeliveryDetailGate(
       canRetry,
     },
     retry,
+    refresh: requestDetail,
     block,
   };
 }

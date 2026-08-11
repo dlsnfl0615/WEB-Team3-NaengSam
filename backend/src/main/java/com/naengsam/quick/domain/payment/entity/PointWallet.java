@@ -54,6 +54,14 @@ public class PointWallet {
     }
 
     /**
+     * 포인트를 적립한다. 충전(CHARGE)과 머니→포인트 전환(EXCHANGE_IN) 의 유입분이 여기로 들어온다.
+     */
+    public void charge(long amount) {
+        this.amount += amount;
+        this.updatedDtm = LocalDateTime.now();
+    }
+
+    /**
      * 차감했던 포인트를 되돌린다.
      */
     public void refund(long amount) {

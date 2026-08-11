@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Button, ScreenShell, TextField } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
 import { useSessionStore } from '@/shared/store/sessionStore'
+import { useRole } from '@/shared/lib/role/useRole'
 import { isApiError } from '@/shared/api'
 import { isEmail, VALIDATION_MESSAGE } from '@/shared/lib/validation'
 
@@ -13,6 +14,7 @@ import { isEmail, VALIDATION_MESSAGE } from '@/shared/lib/validation'
 export function LoginScreen() {
   const navigate = useNavigate()
   const login = useSessionStore((s) => s.login)
+  const { setRole } = useRole()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -26,7 +28,8 @@ export function LoginScreen() {
     setError(null)
     setSubmitting(true)
     try {
-      await login({ email, password })
+      const user = await login({ email, password })
+      setRole(user.activeRole === 'DREAMI' ? '드리미' : '부르미')
       navigate(ROUTES.home, { replace: true })
     } catch (e) {
       setError(

@@ -21,6 +21,7 @@ import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyDreamiFinder;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.global.exception.GlobalExceptionHandler;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -233,10 +234,12 @@ class MatchingDebugControllerTest {
         UUID dreamiId = UUID.randomUUID();
 
         MatchOffer offer = new MatchOffer(
-                offerId, orderId, dreamiId, MatchOfferStatus.OFFERED);
+                offerId, orderId, dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
         OrderOfferGroup group =
                 new OrderOfferGroup(orderId, UUID.randomUUID(),
-                        new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)), null, List.of(offer));
+                        new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0)), mock(OrderSummaryDto.class),
+                        List.of(), LocalDateTime.now());
+        group.addOffersAndOpen(List.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
 
         mockMvc.perform(get("/api/v1/debug/matching/orders/{orderId}/group", orderId))

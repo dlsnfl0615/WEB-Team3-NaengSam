@@ -1,9 +1,12 @@
 package com.naengsam.quick.domain.delivery.service;
 
 import tools.jackson.databind.ObjectMapper;
+import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
+import com.naengsam.quick.domain.address.service.KakaoDirectionsService;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
+import com.naengsam.quick.domain.delivery.dto.DreamiLocationResponseDto;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCertification;
@@ -25,6 +28,7 @@ import com.naengsam.quick.domain.user.dto.UserDto;
 import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.code.BaseErrorCode;
+import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.sse.SseService;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,6 +38,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
 
@@ -61,6 +66,7 @@ class DeliveryServiceTest {
     private UploadSessionService uploadSessionService;
     private UserService userService;
     private OrderService orderService;
+    private KakaoDirectionsService kakaoDirectionsService;
     private ApplicationEventPublisher eventPublisher;
     private DeliveryService deliveryService;
 
@@ -76,14 +82,44 @@ class DeliveryServiceTest {
         uploadSessionService = mock(UploadSessionService.class);
         userService = mock(UserService.class);
         orderService = mock(OrderService.class);
+        kakaoDirectionsService = mock(KakaoDirectionsService.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, sseService, uploadSessionService,
-                userService, orderService, eventPublisher, new ObjectMapper());
+                userService, orderService, kakaoDirectionsService, eventPublisher, new ObjectMapper());
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
         given(uploadSessionService.checkUpload(any(), any(), any(), any())).willReturn(true);
+        // 기본값: 위치 갱신 때 도는 '드리미→픽업지' 계산이 다른 테스트를 깨지 않도록, 주문은 좌표 있는 목을,
+        // 카카오는 정상 경로를 돌려준다(실제 HTTP 미호출). 계산·실패를 검증하는 테스트에서만 getRoute를 개별 스텁한다.
+        Orders defaultOrder = orderWithPickup("37.40000000", "127.00000000", 20);
+        given(orderService.getOrder(any())).willReturn(defaultOrder);
+        KakaoDirectionsResponseDto.Route defaultRoute = routeWith(60);
+        given(kakaoDirectionsService.getRoute(any(), any())).willReturn(defaultRoute);
+    }
+
+    // 픽업지 좌표와 delivery_eta(분)를 가진 주문 목. '드리미→픽업지' 경로/배송완료예상시간 계산 경로에서 쓴다.
+    private Orders orderWithPickup(String originLat, String originLng, int deliveryEtaMinutes) {
+        Orders order = mock(Orders.class);
+        given(order.getOriginLatitude()).willReturn(new BigDecimal(originLat));
+        given(order.getOriginLongitude()).willReturn(new BigDecimal(originLng));
+        given(order.getDeliveryEta()).willReturn(deliveryEtaMinutes);
+        return order;
+    }
+
+    // totalTime(초)와 좌표 두 점을 가진 카카오 도보 경로 목 응답. RoutePointDto.from 이 [경도,위도]→(위도,경도)로 정규화한다.
+    private KakaoDirectionsResponseDto.Route routeWith(int totalTimeSeconds) {
+        KakaoDirectionsResponseDto.Path path = new KakaoDirectionsResponseDto.Path(
+                new double[][] {{127.0, 37.5}, {127.1, 37.6}});
+        KakaoDirectionsResponseDto.Step step = new KakaoDirectionsResponseDto.Step(
+                new KakaoDirectionsResponseDto.StepProperties(1000, "", totalTimeSeconds, 127.0, 37.5), path);
+        KakaoDirectionsResponseDto.Leg leg = new KakaoDirectionsResponseDto.Leg(
+                new KakaoDirectionsResponseDto.LegProperties(1000, totalTimeSeconds),
+                new KakaoDirectionsResponseDto.Step[] {step});
+        return new KakaoDirectionsResponseDto.Route(
+                new KakaoDirectionsResponseDto.Properties(1000, totalTimeSeconds),
+                new KakaoDirectionsResponseDto.Leg[] {leg});
     }
 
     // ===== 픽스처 =====
@@ -144,6 +180,10 @@ class DeliveryServiceTest {
         return new DreamiLocationRequest(new BigDecimal(latitude), new BigDecimal(longitude));
     }
 
+    private DreamiLocationRequest location(String latitude, String longitude, boolean includeRoute) {
+        return new DreamiLocationRequest(new BigDecimal(latitude), new BigDecimal(longitude), includeRoute);
+    }
+
     // 세 취소 경로를 orderId 하나로 실행하는 헬퍼. 드리미/부르미는 등록된 소유자 본인으로 호출해 소유권 검증을 통과시키고,
     // 그 이후의 상태 가드 분기만 검증되도록 한다.
     private List<Function<UUID, DeliveryStatusResponseDto>> cancelOperations() {
@@ -157,8 +197,10 @@ class DeliveryServiceTest {
 
     // 주문자는 활성 드리미가 아니고(false), 배달자는 활성 드리미(true)인 정상 역할 상태를 스텁한다.
     private void stubValidRoles(UUID boormiId, UUID dreamiId) {
-        given(userService.getUserInfo(boormiId)).willReturn(new UserDto(boormiId, "b@t.com", "부르미", false));
-        given(userService.getUserInfo(dreamiId)).willReturn(new UserDto(dreamiId, "d@t.com", "드리미", true));
+        given(userService.getUserInfo(boormiId))
+                .willReturn(new UserDto(boormiId, "b@t.com", "부르미", false, null, null));
+        given(userService.getUserInfo(dreamiId))
+                .willReturn(new UserDto(dreamiId, "d@t.com", "드리미", true, null, null));
     }
 
     private void stubOrderStatus(UUID orderId, OrderCd orderCd) {
@@ -267,6 +309,120 @@ class DeliveryServiceTest {
     }
 
     @Test
+    void 배달상세조회시_배달의_route_path와_배송완료예상시간도_함께_내려준다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        LocalDateTime completion = LocalDateTime.now().plusMinutes(25);
+        Delivery delivery = Delivery.create(orderId, UUID.randomUUID(), boormiId);
+        ReflectionTestUtils.setField(delivery, "routePath",
+                "[{\"latitude\":37.4,\"longitude\":127.0},{\"latitude\":37.5,\"longitude\":127.1}]");
+        ReflectionTestUtils.setField(delivery, "estimatedCompletionDtm", completion);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        DeliveryDetailResponseDto result = deliveryService.getDeliveryDetail(orderId, boormiId);
+
+        assertThat(result.deliveryRoutePath()).hasSize(2);
+        assertThat(result.deliveryRoutePath().getFirst().latitude()).isEqualTo(37.4);
+        assertThat(result.estimatedCompletionTime()).isEqualTo(completion);
+    }
+
+    // ===== 첫 위치 전송 시 '드리미→픽업지' 경로·배송완료예상시간 계산 =====
+
+    @Test
+    void 첫_위치_전송시_드리미픽업지_경로와_배송완료예상시간을_계산해_저장한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+        Orders order = orderWithPickup("37.50000000", "127.05000000", 20);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(kakaoDirectionsService.getRoute(any(), any())).willReturn(routeWith(300)); // 300초 = 5분
+
+        LocalDateTime before = LocalDateTime.now();
+        DreamiLocationResponseDto response =
+                deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
+        LocalDateTime after = LocalDateTime.now();
+
+        Delivery saved = registeredDeliveries.get(orderId);
+        assertThat(saved.getRoutePath()).contains("latitude");
+        // 드리미→픽업지 5분 + 주문 delivery_eta 20분 = 25분 뒤(계산 시각의 now 기준)
+        assertThat(saved.getEstimatedCompletionDtm())
+                .isBetween(before.plusMinutes(25), after.plusMinutes(25));
+        verify(kakaoDirectionsService).getRoute(any(), any());
+
+        // 응답에도 방금 계산된 경로·배송완료예상시간이 담겨 나간다(프론트가 재조회 없이 바로 반영).
+        assertThat(response.deliveryRoutePath()).hasSize(2);
+        assertThat(response.estimatedCompletionTime()).isEqualTo(saved.getEstimatedCompletionDtm());
+    }
+
+    @Test
+    void 이미_경로가_계산돼있으면_카카오를_다시_호출하지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+        Delivery delivery = registeredDeliveries.get(orderId);
+        ReflectionTestUtils.setField(delivery, "routePath", "[{\"latitude\":37.4,\"longitude\":127.0}]");
+
+        DreamiLocationResponseDto response =
+                deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
+
+        // 이미 저장돼 있으므로 카카오를 다시 호출하지 않고, 요청이 경로를 원했으므로(기본값) 저장된 경로를 그대로 돌려준다.
+        verify(kakaoDirectionsService, never()).getRoute(any(), any());
+        assertThat(response.deliveryRoutePath()).hasSize(1);
+    }
+
+    @Test
+    void 경로를_원하지_않으면_includeRoute_false_응답에_경로와_완료시간을_담지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+        Delivery delivery = registeredDeliveries.get(orderId);
+        ReflectionTestUtils.setField(delivery, "routePath", "[{\"latitude\":37.4,\"longitude\":127.0}]");
+        ReflectionTestUtils.setField(delivery, "estimatedCompletionDtm", LocalDateTime.now().plusMinutes(25));
+
+        DreamiLocationResponseDto response = deliveryService.updateDreamiLocation(
+                orderId, location("37.40000000", "127.00000000", false));
+
+        // 클라이언트가 경로를 원치 않으면(이미 받음) 좌표 배열을 중복 전송하지 않는다.
+        assertThat(response.deliveryRoutePath()).isNull();
+        assertThat(response.estimatedCompletionTime()).isNull();
+        verify(kakaoDirectionsService, never()).getRoute(any(), any());
+    }
+
+    @Test
+    void 배달중_상태의_위치갱신은_픽업경로를_계산하지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DELIVERING, dreamiId, boormiId);
+
+        deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
+
+        verify(kakaoDirectionsService, never()).getRoute(any(), any());
+        assertThat(registeredDeliveries.get(orderId).getRoutePath()).isNull();
+    }
+
+    @Test
+    void 카카오_실패시_위치는_갱신되고_경로와_완료시간은_null로_남는다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+        Orders order = orderWithPickup("37.50000000", "127.05000000", 20);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(kakaoDirectionsService.getRoute(any(), any()))
+                .willThrow(new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_TIMEOUT));
+
+        deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
+
+        Delivery saved = registeredDeliveries.get(orderId);
+        assertThat(saved.getCurrentLatitude()).isEqualByComparingTo("37.40000000");
+        assertThat(saved.getRoutePath()).isNull();
+        assertThat(saved.getEstimatedCompletionDtm()).isNull();
+        assertPublished(boormiId, DeliveryEventType.DELIVERY_LOCATION); // 위치 갱신 SSE는 정상 발행
+    }
+
+    @Test
     void 배달상세조회시_부르미도_드리미도_아니면_NOT_RESOURCE_OWNER_예외() {
         UUID orderId = UUID.randomUUID();
         Delivery delivery = Delivery.create(orderId, UUID.randomUUID(), UUID.randomUUID());
@@ -284,8 +440,10 @@ class DeliveryServiceTest {
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
         stubOrderStatus(orderId, OrderCd.IN_PROGRESS);
-        given(userService.getUserInfo(boormiId)).willReturn(new UserDto(boormiId, "b@t.com", "부르미", false));
-        given(userService.getUserInfo(dreamiId)).willReturn(new UserDto(dreamiId, "d@t.com", "드리미", false));
+        given(userService.getUserInfo(boormiId))
+                .willReturn(new UserDto(boormiId, "b@t.com", "부르미", false, null, null));
+        given(userService.getUserInfo(dreamiId))
+                .willReturn(new UserDto(dreamiId, "d@t.com", "드리미", false, null, null));
 
         Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
 

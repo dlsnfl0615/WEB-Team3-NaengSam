@@ -25,6 +25,7 @@ import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
 import com.naengsam.quick.domain.matching.event.OrderCancelledByBoormiEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
+import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -32,8 +33,6 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.service.PaymentService;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.math.BigDecimal;
@@ -49,6 +48,8 @@ import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * 예상 견적(가격/시간/거리) 계산 로직 단위 테스트.
@@ -84,6 +85,10 @@ BoormiServiceTest {
     // 실제 직렬화 결과(route_path JSON)를 검증하기 위해 진짜 ObjectMapper 를 주입한다.
     @Spy
     private ObjectMapper objectMapper = new ObjectMapper();
+
+    // 임계값(50m) 판정에 실제 하버사인 계산이 필요하므로 진짜 GeoDistanceCalculator 를 주입한다.
+    @Spy
+    private GeoDistanceCalculator geoDistanceCalculator = new GeoDistanceCalculator();
 
     @InjectMocks
     private BoormiService boormiService;
@@ -133,6 +138,19 @@ BoormiServiceTest {
                         null, null, null, null, null, null, null, null, null,
                         longitudeX, latitudeY);
         return new CoordinatesResponseDto(List.of(new CoordinatesResponseDto.Document(roadAddress)));
+    }
+
+    private static Orders order(UUID boormiId, OrderCd orderCd) {
+        GeoPoint point = new GeoPoint(new BigDecimal("37.0"), new BigDecimal("127.0"));
+        Orders order = Orders.create(UUID.randomUUID(), boormiId, point, point);
+        ReflectionTestUtils.setField(order, "orderCd", orderCd);
+        return order;
+    }
+
+    private static Orders confirmableOrder(UUID boormiId, UUID dreamiId, OrderCd orderCd) {
+        Orders order = order(boormiId, orderCd);
+        ReflectionTestUtils.setField(order, "dreamiId", dreamiId);
+        return order;
     }
 
     @Test
@@ -334,7 +352,7 @@ BoormiServiceTest {
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(directionsService.getRoute(any(), any()))
                 .willReturn(routeOf(5000, 900));
-        given(matchingService.isOpenGroupExists(any())).willReturn(true);
+        given(matchingService.isActiveGroupExists(any())).willReturn(true);
 
         Throwable thrown = catchThrowable(() -> boormiService.subscribeOrder(orderRequest(), boormiId));
 
@@ -367,13 +385,6 @@ BoormiServiceTest {
         assertThat(thrown).isInstanceOf(BusinessException.class);
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
-    }
-
-    private static Orders order(UUID boormiId, OrderCd orderCd) {
-        GeoPoint point = new GeoPoint(new BigDecimal("37.0"), new BigDecimal("127.0"));
-        Orders order = Orders.create(UUID.randomUUID(), boormiId, point, point);
-        ReflectionTestUtils.setField(order, "orderCd", orderCd);
-        return order;
     }
 
     @Test
@@ -437,12 +448,6 @@ BoormiServiceTest {
         then(paymentService).should().refundByPoint(orderId);
         then(matchingService).should(never()).cancelOrderByBoormi(any()); // 커밋 전에는 엔진에 직접 제출하지 않는다
         then(eventPublisher).should().publishEvent(new OrderCancelledByBoormiEvent(orderId));
-    }
-
-    private static Orders confirmableOrder(UUID boormiId, UUID dreamiId, OrderCd orderCd) {
-        Orders order = order(boormiId, orderCd);
-        ReflectionTestUtils.setField(order, "dreamiId", dreamiId);
-        return order;
     }
 
     @Test
