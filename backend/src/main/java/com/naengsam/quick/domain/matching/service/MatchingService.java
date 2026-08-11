@@ -647,6 +647,27 @@ public class MatchingService {
     }
 
     /**
+     * 해당 드리미가 응답 대기 중(OFFERED)인 제안을 조회한다. 한 드리미는 동시에 하나의 오퍼만 응답 대기 상태로 가질 수 있으므로 첫 건만 반환한다. 거절/만료 등으로 종료된
+     * 제안은 대상이 아니다.
+     */
+    public Optional<MatchOffer> findPendingOfferForDreami(UUID dreamiId) {
+        return offersById.values().stream()
+                .filter(offer -> offer.dreamiId().equals(dreamiId) && offer.status() == MatchOfferStatus.OFFERED)
+                .findFirst();
+    }
+
+    /**
+     * 해당 부르미의 주문 중, 드리미가 수락해 확인 대기 중(PENDING_BOORMI_CONFIRMATION)인 제안을 조회한다. 종료된 제안은 대상이 아니다.
+     */
+    public Optional<MatchOffer> findIncomingDreamiOffer(UUID boormiId) {
+        return orderOfferGroupsByOrderId.values().stream()
+                .filter(group -> group.boormiId().equals(boormiId))
+                .flatMap(group -> group.offers().stream())
+                .filter(offer -> offer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION)
+                .findFirst();
+    }
+
+    /**
      * 드리미를 다시 매칭 대기(MATCHING) 상태로 되돌린다. 이미 등록이 해제됐거나 이미 MATCHING이면(중복 처리) 아무 것도 바뀌지 않는다.
      *
      * @return 실제로 상태가 바뀌었으면(즉, 다른 대기 주문의 배치 후보가 될 수 있게 됐으면) true
