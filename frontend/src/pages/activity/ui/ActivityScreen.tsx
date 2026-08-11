@@ -86,7 +86,7 @@ export function ActivityScreen() {
 
   return (
     <ScreenShell footer={<BottomNav />}>
-      <TopBar title="활동" actions={["search", "profile"]} />
+      <TopBar title="활동" actions={["profile"]} />
 
       <main className="flex flex-1 flex-col gap-3 pt-4">
         <SegmentedToggle

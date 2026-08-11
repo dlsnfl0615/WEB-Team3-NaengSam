@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Card, Icon, TextField } from "@/shared/ui";
 import { AddressSheet, type AddressValue } from "./AddressSheet";
 import { KakaoMap } from "./KakaoMap";
-import type { Meeting, RequestForm, UpdateForm } from "./types";
+// Meeting 타입은 전달 방식 안내(MeetingNote) 복구 시 함께 되살린다.
+import type { RequestForm, UpdateForm } from "./types";
 
 export interface StepLocationProps {
   form: RequestForm;
@@ -16,7 +17,7 @@ const FIELD_LABELS: Record<Field, string> = {
   dropoff: "도착지 검색",
 };
 
-/** 스텝 1: 위치 — 카카오(다음) 주소 검색 + 대면/비대면 선택 + 지도. */
+/** 스텝 1: 위치 — 카카오(다음) 주소 검색 + 지도. (전달 방식은 비대면 고정) */
 export function StepLocation({ form, update }: StepLocationProps) {
   const [editing, setEditing] = useState<Field | null>(null);
 
@@ -66,7 +67,7 @@ export function StepLocation({ form, update }: StepLocationProps) {
           className="cursor-pointer"
           onClick={() => setEditing("pickup")}
         />
-        <MeetingNote meeting={form.pickupMeeting} suffix="드릴게요" />
+        {/* <MeetingNote meeting={form.pickupMeeting} suffix="드릴게요" /> */}
 
         <div className="flex justify-center py-1">
           <Icon name="transfer" size={28} className="text-track" />
@@ -81,7 +82,7 @@ export function StepLocation({ form, update }: StepLocationProps) {
           className="cursor-pointer"
           onClick={() => setEditing("dropoff")}
         />
-        <MeetingNote meeting={form.dropoffMeeting} suffix="받을게요" />
+        {/* <MeetingNote meeting={form.dropoffMeeting} suffix="받을게요" /> */}
       </Card>
 
       <KakaoMap pickup={form.pickup} dropoff={form.dropoff} />
@@ -90,7 +91,7 @@ export function StepLocation({ form, update }: StepLocationProps) {
         key={editing ?? "closed"}
         open={editing !== null}
         label={editing ? FIELD_LABELS[editing] : ""}
-        value={editing ? values[editing] : { address1: "", detail: "", meeting: "대면" }}
+        value={editing ? values[editing] : { address1: "", detail: "", meeting: "비대면" }}
         onClose={() => setEditing(null)}
         onSubmit={(value) => editing && submitAddress(editing, value)}
       />
@@ -98,12 +99,13 @@ export function StepLocation({ form, update }: StepLocationProps) {
   );
 }
 
+/* 전달 방식 안내 — 현재는 비대면 고정이라 숨김(대면 구현 시 복구).
 interface MeetingNoteProps {
   meeting: Meeting;
   suffix: string;
 }
 
-/** “대면”으로 드릴게요 — 해당 필드에 선택된 전달 방식을 문장으로 보여줍니다. */
+/** “대면”으로 드릴게요 — 해당 필드에 선택된 전달 방식을 문장으로 보여줍니다. * /
 function MeetingNote({ meeting, suffix }: MeetingNoteProps) {
   return (
     <p className="text-sm text-muted">
@@ -112,3 +114,4 @@ function MeetingNote({ meeting, suffix }: MeetingNoteProps) {
     </p>
   );
 }
+*/
