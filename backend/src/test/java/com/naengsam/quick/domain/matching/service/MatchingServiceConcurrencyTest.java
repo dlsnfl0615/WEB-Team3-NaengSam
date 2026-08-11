@@ -15,6 +15,7 @@ import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
+import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Clock;
@@ -49,10 +50,10 @@ class MatchingServiceConcurrencyTest {
     void setUp() {
         matchingEngine = new MatchingEngine();
         matchingEngine.start();
-        matchingService = new MatchingService(matchingEngine, mock(SseService.class), mock(OfferTimeoutScheduler.class),
-                mock(DeliveryService.class), Clock.systemDefaultZone(),
+        matchingService = new MatchingService(matchingEngine, mock(SseService.class), mock(MatchingActionScheduler.class),
+                mock(MatchingBatchDispatcher.class), mock(DeliveryService.class), Clock.systemDefaultZone(),
                 mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),
-                mock(MatchingPlanApplier.class));
+                mock(MatchingPlanApplier.class), mock(MatchingPolicyProperties.class));
         requestThreads = Executors.newFixedThreadPool(16);
     }
 
@@ -95,6 +96,8 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
+        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
+        matchingService.scheduleRematchWaitingGroups();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
@@ -163,8 +166,9 @@ class MatchingServiceConcurrencyTest {
             matchingService.findOrderOfferGroup(orderId).ifPresent(observedGroups::add);
         }
 
+        // 오퍼 생성은 이제 매칭 시작과 분리되어(dirty 표시 후 배치/재매칭으로 지연) 이 테스트의 관심사가 아니므로,
+        // 동시 시작에도 그룹이 단 하나만 생성/유지되는지만 확인한다.
         assertThat(observedGroups).hasSize(1);
-        assertThat(observedGroups.iterator().next().offers()).hasSizeLessThanOrEqualTo(1);
     }
 
     @Test
@@ -179,6 +183,8 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
+        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
+        matchingService.scheduleRematchWaitingGroups();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
@@ -215,6 +221,8 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
+        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
+        matchingService.scheduleRematchWaitingGroups();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
@@ -256,6 +264,8 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
+        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
+        matchingService.scheduleRematchWaitingGroups();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
