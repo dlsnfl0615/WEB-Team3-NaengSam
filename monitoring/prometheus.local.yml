@@ -1,0 +1,17 @@
+# 로컬 개발용 prometheus 스크레이프 설정. 배포 서버용은 prometheus.yml 이다.
+#
+# 배포는 백엔드가 도커 네트워크 안에 있어서 backend:8081 로 해석되지만,
+# 로컬은 백엔드를 호스트에서 ./gradlew bootRun 으로 띄우므로 그 이름이 없다.
+# host.docker.internal 은 컨테이너에서 본 호스트 머신이다.
+#
+# job_name 은 배포와 똑같이 두어야 한다 — 커밋된 대시보드 JSON 과 README 의
+# PromQL 이 이 이름을 그대로 쓴다.
+
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: symboorm-backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8081']

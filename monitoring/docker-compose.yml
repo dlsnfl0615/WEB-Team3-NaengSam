@@ -1,16 +1,19 @@
 # 배포 서버용 모니터링 스택 (Prometheus + Grafana).
-# 백엔드 배포(backend/docker-compose.yml)와 완전히 분리되어 있다.
+# 백엔드와 **다른 인스턴스**에서 뜬다. 도커 네트워크를 공유하지 않고,
+# prometheus 가 백엔드 인스턴스의 VPC 프라이빗 IP:8081 을 긁는다 (prometheus.yml).
+#
 # 백엔드 이미지는 CI 가 빌드해서 올리지만, 이 스택은 CI 를 타지 않는다 —
-# 이 폴더를 통째로 서버에 복사해서 여기서 직접 띄운다.
+# 이 폴더를 통째로 모니터링 인스턴스에 복사해서 여기서 직접 띄운다.
 #
-# 사용법 (배포 서버에서):
-#   0) (최초 1회) 두 스택이 공유할 네트워크 생성
-#      docker network create symboorm
-#   1) 이 폴더를 서버에 복사하고, 같은 폴더에 .env 를 둔다 (.env.example 참고)
-#   2) docker compose up -d
-#   3) docker compose logs -f prometheus   # 스크레이프 에러가 없어야 한다
+# 사용법 (모니터링 인스턴스에서):
+#   0) (사전 조건) 백엔드 인스턴스 보안그룹 인바운드에
+#      TCP 8081 ← 이 인스턴스의 보안그룹 규칙이 있어야 한다
+#   1) 이 폴더를 복사하고, 같은 폴더에 .env 를 둔다 (.env.example 참고)
+#   2) prometheus.yml 의 타깃을 백엔드 인스턴스 프라이빗 IP 로 고친다
+#   3) docker compose up -d
+#   4) docker compose logs -f prometheus   # 스크레이프 에러가 없어야 한다
 #
-# 백엔드와 별개로 재기동해도 된다. 백엔드를 재배포해도 이 스택은 건드릴 필요가 없다.
+# 백엔드와 완전히 독립적이다. 백엔드를 재배포해도 이 스택은 건드릴 필요가 없다.
 # 자세한 내용은 README.md 참고.
 
 name: symboorm-monitoring
@@ -20,12 +23,9 @@ services:
     image: prom/prometheus:v3.1.0
     container_name: symboorm-prometheus
     restart: always
-    # 호스트에 포트를 열지 않는다 — grafana 가 도커 네트워크 안에서만 조회한다
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
-    networks:
-      - symboorm
 
   grafana:
     image: grafana/grafana:11.5.0
@@ -33,23 +33,14 @@ services:
     restart: always
     ports:
       - "3000:3000"
-    # GF_SECURITY_ADMIN_USER / GF_SECURITY_ADMIN_PASSWORD 를 .env 에서 주입
     env_file:
       - .env
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - grafana-data:/var/lib/grafana
-    networks:
-      - symboorm
     depends_on:
       - prometheus
 
 volumes:
   prometheus-data:
   grafana-data:
-
-networks:
-  # 백엔드 스택과 공유하는 네트워크. 어느 쪽 compose 도 소유하지 않는다.
-  # (두 프로젝트가 같은 이름의 네트워크를 각자 만들려 하면 compose 가 라벨 불일치로 거부한다)
-  symboorm:
-    external: true

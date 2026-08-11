@@ -2,22 +2,23 @@
 
 배포 환경의 스프링 상태를 지속적으로 관측하기 위한 구성입니다. 관련 이슈: #193
 
-이 폴더는 **백엔드 배포 파이프라인과 완전히 분리**되어 있습니다. CI 는 `backend/` 만 빌드해서 이미지를 올리고, 모니터링 스택은 이 폴더를 그대로 서버에 복사해 별도 compose 로 띄웁니다. 여기 파일을 고쳐도 백엔드 이미지는 다시 빌드되지 않고, 백엔드를 재배포해도 모니터링은 건드릴 필요가 없습니다.
+이 폴더는 **백엔드 배포 파이프라인과 완전히 분리**되어 있습니다. CI 는 `backend/` 만 빌드해서 이미지를 올리고, 모니터링 스택은 이 폴더를 그대로 모니터링 인스턴스에 복사해 별도 compose 로 띄웁니다. 여기 파일을 고쳐도 백엔드 이미지는 다시 빌드되지 않고, 백엔드를 재배포해도 모니터링은 건드릴 필요가 없습니다.
 
 ## 구조
 
+모니터링은 **백엔드와 다른 인스턴스**에서 돕니다. 같은 VPC 안에 있으며, 프라이빗 IP 로만 통신합니다.
+
 ```
-backend/docker-compose.yml          monitoring/docker-compose.yml
-  backend(8080)  외부 공개 — API      prometheus  호스트에 공개하지 않음
-  backend(8081)  액츄에이터           grafana(3000)  대시보드. 호스트에 공개
-                 호스트에 공개하지 않음
-        └────────── 도커 네트워크 symboorm (외부 네트워크, 양쪽이 공유) ──────────┘
-                    prometheus 가 backend:8081 을 15초마다 스크레이프
+[백엔드 인스턴스]                          [모니터링 인스턴스]
+ backend(8080)  API                        prometheus  호스트에 공개하지 않음
+ backend(8081)  액츄에이터                  grafana(3000)  대시보드. 호스트에 공개
+       └──── VPC 프라이빗 IP:8081 ◀── 15초마다 스크레이프 ────┘
+       (보안그룹: 8081 은 모니터링 인스턴스 SG 에서만 허용)
 ```
 
-두 compose 는 서로 독립적으로 기동·중지할 수 있습니다. 연결점은 공유 네트워크 `symboorm` 하나뿐이며, 어느 쪽 compose 도 이 네트워크를 소유하지 않습니다(서버에서 한 번 만들어 둡니다). 백엔드가 내려가 있으면 prometheus 타깃이 `down` 으로 잡힐 뿐 스택 자체는 계속 돕니다.
+도커 네트워크는 인스턴스 경계를 넘지 못하므로 두 스택은 네트워크를 공유하지 않습니다. 연결점은 `prometheus.yml` 에 적힌 백엔드 프라이빗 IP 하나뿐이고, 각 compose 는 자기 기본 네트워크만 씁니다. 백엔드가 내려가 있으면 prometheus 타깃이 `down` 으로 잡힐 뿐 모니터링 스택은 계속 돕니다.
 
-액츄에이터 포트를 분리하고 호스트에 공개하지 않기 때문에 메트릭 엔드포인트가 공인 IP로 노출되지 않습니다. 덕분에 Spring Security 를 도입하지 않아도 됩니다.
+액츄에이터를 8081 로 분리해 두었지만, 인스턴스가 나뉘면서 이 포트는 백엔드 호스트에 열려야 합니다. EC2 는 공인 IP 를 IGW 가 NAT 하므로 **바인딩 주소로는 외부 접근을 막을 수 없습니다** — 8081 인바운드를 모니터링 인스턴스 보안그룹으로만 제한하는 것이 유일한 방어선입니다. **이 규칙을 먼저 넣고 백엔드를 띄우세요.** 규칙이 `0.0.0.0/0` 이면 메트릭 엔드포인트가 인터넷에 그대로 열립니다.
 
 노출 엔드포인트는 `health`, `info`, `prometheus` 세 개로 제한되어 있습니다 (`application.properties` 의 `management.endpoints.web.exposure.include`).
 
@@ -37,41 +38,84 @@ curl -s localhost:8081/actuator/prometheus | grep http_server_requests_seconds_c
 
 `MANAGEMENT_PORT` 환경변수로 포트를 바꿀 수 있습니다 (기본 8081).
 
+### 로컬에서 Grafana 까지 띄우기
+
+`docker-compose.local.yml` 은 로컬 전용입니다. 백엔드는 도커에 넣지 않고, 호스트에서 `bootRun` 으로 띄운 것을 prometheus 가 `host.docker.internal:8081` 로 긁습니다(`prometheus.local.yml`). `.env` 도 필요 없습니다.
+
+```bash
+cd monitoring
+docker compose -f docker-compose.local.yml up -d
+
+# 다른 터미널
+cd backend && ./gradlew bootRun
+
+# http://localhost:3000  (admin / admin)
+```
+
+백엔드를 나중에 띄워도 됩니다 — 그 전까지는 타깃이 `down` 으로 잡힐 뿐입니다. 수집이 되는지는 Grafana Explore 에서 `up{job="symboorm-backend"}` 가 `1` 인지로 확인합니다(로컬도 prometheus 9090 은 호스트에 열지 않습니다).
+
+배포용 스택과는 compose 프로젝트명·컨테이너명·볼륨이 모두 분리되어 있어 서로 간섭하지 않습니다. Grafana provisioning(데이터소스·대시보드)은 배포용과 같은 파일을 그대로 씁니다.
+
 ## 배포 서버 적용
 
-서버의 디렉토리 배치 (두 폴더는 어디에 두든 상관없습니다. 서로를 상대경로로 참조하지 않습니다):
+두 인스턴스에 각각 배치합니다. 서로를 상대경로로 참조하지 않으므로 폴더 위치는 자유입니다.
 
 ```
-~/symboorm/
-├── backend/       docker-compose.yml + .env   (백엔드. CI 이미지를 pull)
-└── monitoring/    이 폴더를 통째로 복사 + .env  (모니터링)
+[백엔드 인스턴스]  ~/symboorm/backend/      docker-compose.yml + .env  (CI 이미지를 pull)
+[모니터링 인스턴스] ~/symboorm/monitoring/   이 폴더를 통째로 복사 + .env
 ```
 
-1. **최초 1회** — 두 스택이 공유할 네트워크를 만듭니다. 어느 compose 도 이걸 만들지 않으므로 없으면 기동이 실패합니다.
+1. **보안그룹 먼저.** 백엔드 인스턴스 보안그룹 인바운드에 규칙을 추가합니다.
+
+   | 타입 | 포트 | 소스                             |
+   | ---- | ---- | -------------------------------- |
+   | TCP  | 8081 | **모니터링 인스턴스의 보안그룹** |
+
+   소스를 `0.0.0.0/0` 으로 두면 액츄에이터가 인터넷에 열립니다. 이 규칙을 넣기 전에 백엔드를 8081 공개 상태로 띄우지 마세요.
+
+2. 백엔드 인스턴스에서 백엔드를 기동합니다(`backend/docker-compose.yml` 이 8081 을 호스트에 공개합니다).
 
 ```bash
-docker network create symboorm
+cd ~/symboorm/backend && docker compose pull && docker compose up -d
 ```
 
-2. 이 `monitoring/` 폴더를 서버로 복사합니다.
+3. 이 `monitoring/` 폴더를 **모니터링 인스턴스**로 복사합니다.
 
 ```bash
-scp -r monitoring <서버>:~/symboorm/
+scp -r monitoring <모니터링 인스턴스>:~/symboorm/
 ```
 
-3. `monitoring/.env` 를 만들어 `GF_SECURITY_ADMIN_USER` / `GF_SECURITY_ADMIN_PASSWORD` 를 채웁니다(`.env.example` 참고). **기본값 admin/admin 을 그대로 두면 안 됩니다** — Grafana 는 3000 포트가 외부에 열려 있습니다. 가능하면 보안그룹에서 3000 을 팀 IP 로만 제한하세요.
-4. 기동 및 확인:
+4. `monitoring/prometheus.yml` 의 타깃을 백엔드 인스턴스의 **VPC 프라이빗 IP** 로 고칩니다. 커밋된 값은 플레이스홀더(`10.0.0.0:8081`)입니다.
+
+```yaml
+- targets: ["<백엔드 프라이빗 IP>:8081"]
+```
+
+5. `monitoring/.env` 를 만들어 `GF_SECURITY_ADMIN_USER` / `GF_SECURITY_ADMIN_PASSWORD` 를 채웁니다(`.env.example` 참고). **기본값 admin/admin 을 그대로 두면 안 됩니다** — Grafana 는 3000 포트가 외부에 열려 있습니다. 가능하면 보안그룹에서 3000 을 팀 IP 로만 제한하세요.
+6. 기동 및 확인:
 
 ```bash
 cd ~/symboorm/monitoring
+# 먼저 도달성 확인 — 여기서 실패하면 보안그룹이나 IP 문제다
+curl -s http://<백엔드 프라이빗 IP>:8081/actuator/health
+
 docker compose up -d
 docker compose logs prometheus   # 스크레이프 에러가 없어야 한다
 ```
 
-5. `http://<서버IP>:3000` 접속 → Prometheus 데이터소스는 자동 등록되어 있습니다.
-6. Explore 에서 `up{job="symboorm-backend"}` 가 `1` 이면 수집 정상입니다.
-7. `SymBoorm` 폴더의 **SymBoorm — HTTP & SSE** 대시보드는 자동 등록되어 있습니다(아래 참고).
-8. JVM·HikariCP 는 Dashboards → New → Import → ID **19004** (Spring Boot 3.x Statistics) → 데이터소스로 Prometheus 선택. JVM 을 더 파고들려면 ID **4701** (JVM Micrometer)도 함께 import 하세요. ID **6756** 은 Spring Boot 2 용이라 메트릭명이 달라 패널이 깨집니다.
+7. `http://<모니터링 인스턴스 IP>:3000` 접속 → Prometheus 데이터소스는 자동 등록되어 있습니다.
+8. Explore 에서 `up{job="symboorm-backend"}` 가 `1` 이면 수집 정상입니다.
+9. `SymBoorm` 폴더의 **SymBoorm — HTTP & SSE** 대시보드는 자동 등록되어 있습니다(아래 참고).
+10. JVM·HikariCP 는 Dashboards → New → Import → ID **19004** (Spring Boot 3.x Statistics) → 데이터소스로 Prometheus 선택. JVM 을 더 파고들려면 ID **4701** (JVM Micrometer)도 함께 import 하세요. ID **6756** 은 Spring Boot 2 용이라 메트릭명이 달라 패널이 깨집니다.
+
+### 타깃이 `down` 일 때
+
+순서대로 확인합니다.
+
+1. `monitoring/prometheus.yml` 의 IP 가 백엔드 인스턴스의 **현재** 프라이빗 IP 인지 (인스턴스를 재생성하면 바뀝니다)
+2. 백엔드 보안그룹에 `TCP 8081 ← 모니터링 SG` 인바운드 규칙이 있는지
+3. 백엔드 compose 가 `8081:8081` 을 공개하고 있는지 (`docker compose ps` 로 포트 확인)
+4. 백엔드 인스턴스에서 `curl -s localhost:8081/actuator/prometheus` 가 응답하는지
 
 메트릭에는 `application="quick"` 라벨이 붙으므로 대시보드에서 인스턴스 구분에 쓸 수 있습니다.
 

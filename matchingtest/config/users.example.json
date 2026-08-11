@@ -1,0 +1,59 @@
+[
+  {
+    "label": "dreami-1",
+    "role": "dreami",
+    "email": "dreami1@test.local",
+    "password": "test1234!",
+    "lat": 37.4979,
+    "lng": 127.0276
+  },
+  {
+    "label": "dreami-2",
+    "role": "dreami",
+    "email": "dreami2@test.local",
+    "password": "test1234!",
+    "lat": 37.4989,
+    "lng": 127.0286
+  },
+  {
+    "label": "dreami-3",
+    "role": "dreami",
+    "email": "dreami3@test.local",
+    "password": "test1234!",
+    "lat": 37.4999,
+    "lng": 127.0296
+  },
+  {
+    "label": "boormi-1",
+    "role": "boormi",
+    "email": "boormi1@test.local",
+    "password": "test1234!",
+    "lat": 37.4979,
+    "lng": 127.0276,
+    "order": {
+      "originAddressLine1": "서울 강남구 테헤란로 152",
+      "originAddressLine2": "3층",
+      "destinationAddressLine1": "서울 강남구 봉은사로 524",
+      "destinationAddressLine2": "1층 로비",
+      "itemName": "서류 봉투",
+      "itemCd": "DOCUMENT",
+      "itemDetail": "부하테스트용 더미 주문",
+      "deliveryRequest": "부하테스트"
+    }
+  },
+  {
+    "label": "boormi-2",
+    "role": "boormi",
+    "email": "boormi2@test.local",
+    "password": "test1234!",
+    "lat": 37.4985,
+    "lng": 127.028,
+    "order": {
+      "originAddressLine1": "서울 강남구 테헤란로 212",
+      "destinationAddressLine1": "서울 강남구 학동로 426",
+      "itemName": "소형 박스",
+      "itemCd": "DOCUMENT",
+      "deliveryRequest": "부하테스트"
+    }
+  }
+]
