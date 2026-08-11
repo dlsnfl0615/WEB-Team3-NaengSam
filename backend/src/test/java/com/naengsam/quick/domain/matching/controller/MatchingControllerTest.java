@@ -65,9 +65,12 @@ class MatchingControllerTest {
         UUID userId = UUID.randomUUID();
         UUID offerId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
-        MatchOffer offer = new MatchOffer(offerId, orderId, userId, MatchOfferStatus.OFFERED);
+        MatchOffer offer = new MatchOffer(
+                offerId, orderId, userId, MatchOfferStatus.OFFERED, LocalDateTime.now());
         OrderOfferGroup group =
-                new OrderOfferGroup(orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer));
+                new OrderOfferGroup(
+                        orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer),
+                        LocalDateTime.now());
         when(matchingService.findPendingOfferForDreami(userId)).thenReturn(Optional.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
         when(matchingService.findIncomingDreamiOffer(userId)).thenReturn(Optional.empty());
@@ -84,7 +87,8 @@ class MatchingControllerTest {
         UUID offerId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        MatchOffer offer = new MatchOffer(offerId, orderId, dreamiId, MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+        MatchOffer offer = new MatchOffer(
+                offerId, orderId, dreamiId, MatchOfferStatus.PENDING_BOORMI_CONFIRMATION, LocalDateTime.now());
         when(matchingService.findPendingOfferForDreami(userId)).thenReturn(Optional.empty());
         when(matchingService.findIncomingDreamiOffer(userId)).thenReturn(Optional.of(offer));
 
