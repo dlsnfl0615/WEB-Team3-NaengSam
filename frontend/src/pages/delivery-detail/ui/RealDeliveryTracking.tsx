@@ -347,7 +347,7 @@ export function RealDeliveryTracking({
         <Button block variant="outline">
           연락하기
         </Button>
-        {detailReady && !view.terminal && (
+        {detailReady && isPickup && (
           <button
             type="button"
             onClick={() => {
@@ -356,7 +356,7 @@ export function RealDeliveryTracking({
             }}
             className="text-2xs text-muted"
           >
-            배달 취소하기
+            배달 취소하기 (픽업 전에만 가능)
           </button>
         )}
       </footer>
