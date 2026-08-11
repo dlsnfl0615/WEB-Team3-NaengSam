@@ -37,6 +37,24 @@ curl -s localhost:8081/actuator/prometheus | grep http_server_requests_seconds_c
 
 `MANAGEMENT_PORT` 환경변수로 포트를 바꿀 수 있습니다 (기본 8081).
 
+### 로컬에서 Grafana 까지 띄우기
+
+`docker-compose.local.yml` 은 로컬 전용입니다. 백엔드는 도커에 넣지 않고, 호스트에서 `bootRun` 으로 띄운 것을 prometheus 가 `host.docker.internal:8081` 로 긁습니다(`prometheus.local.yml`). 공유 네트워크 `symboorm` 도, `.env` 도 필요 없습니다.
+
+```bash
+cd monitoring
+docker compose -f docker-compose.local.yml up -d
+
+# 다른 터미널
+cd backend && ./gradlew bootRun
+
+# http://localhost:3000  (admin / admin)
+```
+
+백엔드를 나중에 띄워도 됩니다 — 그 전까지는 타깃이 `down` 으로 잡힐 뿐입니다. 수집이 되는지는 Grafana Explore 에서 `up{job="symboorm-backend"}` 가 `1` 인지로 확인합니다(로컬도 prometheus 9090 은 호스트에 열지 않습니다).
+
+배포용 스택과는 compose 프로젝트명·컨테이너명·볼륨이 모두 분리되어 있어 서로 간섭하지 않습니다. Grafana provisioning(데이터소스·대시보드)은 배포용과 같은 파일을 그대로 씁니다.
+
 ## 배포 서버 적용
 
 서버의 디렉토리 배치 (두 폴더는 어디에 두든 상관없습니다. 서로를 상대경로로 참조하지 않습니다):
