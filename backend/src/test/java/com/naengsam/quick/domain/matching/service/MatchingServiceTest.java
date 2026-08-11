@@ -41,6 +41,7 @@ import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -896,6 +897,32 @@ class MatchingServiceTest {
         verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
         DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
         assertThat(payload.pickupEtaMinutes()).isNull();
+    }
+
+    @Test
+    void 드리미_수락시_DREAMI_INFO_payload의_만료시각은_수락시각에서_30초_뒤이다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+        when(order.getBoormiId()).thenReturn(boormiId);
+
+        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+        matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
+        MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
+
+        // when
+        matchingService.applyAcceptByDreami(offer.offerId());
+
+        // then
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
+        DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
+        assertThat(payload.acceptedAt()).isNotNull();
+        assertThat(payload.expiresAt()).isEqualTo(payload.acceptedAt().plusSeconds(30));
     }
 
     @Test
