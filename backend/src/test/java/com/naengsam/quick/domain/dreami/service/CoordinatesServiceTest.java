@@ -6,7 +6,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
-import com.naengsam.quick.domain.address.service.CoordinatesService;
+import com.naengsam.quick.domain.address.service.KakaoCoordinatesService;
 import java.net.URI;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -20,7 +20,7 @@ class CoordinatesServiceTest {
     void 도로명주소로_좌표를_조회한다() {
         // restApiKey는 static final이라 인스턴스 필드처럼 reflection으로 바꿀 수 없고, 아래 mock이
         // header(any(), any())로 값과 무관하게 매칭하므로 실제 키 값은 이 테스트에 영향을 주지 않는다.
-        CoordinatesService coordinatesService = new CoordinatesService();
+        KakaoCoordinatesService kakaoCoordinatesService = new KakaoCoordinatesService();
 
         RestClient restClient = mock(RestClient.class);
         RestClient.RequestHeadersUriSpec uriSpec = mock(RestClient.RequestHeadersUriSpec.class);
@@ -40,9 +40,9 @@ class CoordinatesServiceTest {
         when(uriSpec.retrieve()).thenReturn(responseSpec);
         when(responseSpec.body(CoordinatesResponseDto.class)).thenReturn(expected);
 
-        ReflectionTestUtils.setField(coordinatesService, "restClient", restClient);
+        ReflectionTestUtils.setField(kakaoCoordinatesService, "restClient", restClient);
 
-        CoordinatesResponseDto result = coordinatesService.getCoordinates("서울시 강남구");
+        CoordinatesResponseDto result = kakaoCoordinatesService.getCoordinates("서울시 강남구");
 
         System.out.println("latitude = " + result.documents().getFirst().roadAddress().y());
         System.out.println("longitude = " + result.documents().getFirst().roadAddress().x());

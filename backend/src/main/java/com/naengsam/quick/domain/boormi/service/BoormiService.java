@@ -4,7 +4,7 @@ import com.naengsam.quick.domain.address.dto.Addresses;
 import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.service.CoordinatesService;
-import com.naengsam.quick.domain.address.service.KakaoDirectionsService;
+import com.naengsam.quick.domain.address.service.DirectionsService;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
@@ -57,7 +57,7 @@ public class BoormiService {
     private static final int EARTH_RADIUS = 6_371_000;  // 지구 반지름(m)
 
     private final CoordinatesService coordinatesService;
-    private final KakaoDirectionsService kakaoDirectionsService;
+    private final DirectionsService directionsService;
     private final PaymentService paymentService;
     private final MatchingService matchingService;
     private final OrderService orderService;
@@ -82,7 +82,7 @@ public class BoormiService {
 
         // 요금·예상시간은 클라이언트 전송값을 신뢰하지 않고 견적과 동일한 로직으로 서버가 재계산한다.
         // 같은 카카오 응답에서 추천 이동경로 좌표도 함께 받아 주문에 저장한다(추적 지도 폴리라인용).
-        KakaoDirectionsResponseDto.Route route = kakaoDirectionsService.getRoute(originCoordinate, destinationCoordinate);
+        KakaoDirectionsResponseDto.Route route = directionsService.getRoute(originCoordinate, destinationCoordinate);
         Charge charge = calculatePrice(route, orderRequest.itemCd());
         String routePath = toRoutePathJson(route);
 
@@ -212,7 +212,7 @@ public class BoormiService {
 
         requireDifferentLocation(origin, destination);
 
-        KakaoDirectionsResponseDto.Route route = kakaoDirectionsService.getRoute(origin, destination);
+        KakaoDirectionsResponseDto.Route route = directionsService.getRoute(origin, destination);
         Charge charge = calculatePrice(route, request.itemCd());
 
         return new ExpectedValueDto(charge.amount(), charge.eta(), charge.distance());
