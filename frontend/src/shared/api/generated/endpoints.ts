@@ -56,6 +56,8 @@ import type {
   Pending200,
   PickupFinishByDreami200,
   PointChargeRequest,
+  PushSubscriptionRequest,
+  PushUnsubscribeRequest,
   PutParams,
   RegisterDreami200,
   RejectDreamiRequest,
@@ -69,6 +71,7 @@ import type {
   Subscribe204,
   SubscribeOrder200,
   UpdateDreamiLocation200,
+  VapidPublicKey200,
   VerifyCodeRequest,
   WaitingDreamis200,
   WaitingOrders200
@@ -203,6 +206,36 @@ const login = (
       {url: `/api/v1/user/login`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
       data: loginRequest
+    },
+      options);
+    }
+
+/**
+ * 브라우저 PushSubscription.toJSON() 결과를 그대로 보낸다. 같은 endpoint를 다시 보내면 행을 새로 만들지 않고 소유자와 키를 갱신하는 멱등 연산이라, 앱 포그라운드 복귀마다 재등록해도 안전하다.
+ * @summary 웹푸시 구독 등록
+ */
+const createSubscription = (
+    pushSubscriptionRequest: PushSubscriptionRequest,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/push/subscriptions`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: pushSubscriptionRequest
+    },
+      options);
+    }
+
+/**
+ * 로그아웃 직전에 호출한다(로그아웃 후에는 세션이 없어 호출할 수 없다). 이미 없는 구독이어도 성공이다.
+ * @summary 웹푸시 구독 해제
+ */
+const deleteSubscription = (
+    pushUnsubscribeRequest: PushUnsubscribeRequest,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/push/subscriptions`, method: 'DELETE',
+      headers: {'Content-Type': 'application/json', },
+      data: pushUnsubscribeRequest
     },
       options);
     }
@@ -787,6 +820,19 @@ const subscribe = (
     }
 
 /**
+ * 브라우저가 pushManager.subscribe의 applicationServerKey로 쓰는 공개키. 공개 상수이므로 로그인 없이 조회할 수 있다. 미설정(푸시 비활성)이면 publicKey는 null이며, 이 경우 프론트는 권한 요청 UI를 렌더하지 않는다.
+ * @summary Web Push VAPID 공개키 조회
+ */
+const vapidPublicKey = (
+
+ options?: SecondParameter<typeof customInstance<VapidPublicKey200>>,) => {
+      return customInstance<VapidPublicKey200>(
+      {url: `/api/v1/push/vapid-public-key`, method: 'GET'
+    },
+      options);
+    }
+
+/**
  * 드리미로서 응답 대기 중인 제안(pendingOffer)과, 부르미로서 확인 대기 중인 드리미 수락 정보(incomingDreami)를 반환한다. 진행 중인 것이 없으면 해당 필드는 null이다.
  * @summary 현재 매칭 상태 조회
  */
@@ -952,7 +998,7 @@ const unsubscribeOrder = (
       options);
     }
 
-return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,pending,removeDreami,unsubscribeOrder}};
+return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,createSubscription,deleteSubscription,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,pending,removeDreami,unsubscribeOrder}};
 export type GetResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['get']>>>
 export type PutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['put']>>>
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
@@ -962,6 +1008,8 @@ export type VerifyCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof 
 export type SignupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['signup']>>>
 export type LogoutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['logout']>>>
 export type LoginResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['login']>>>
+export type CreateSubscriptionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['createSubscription']>>>
+export type DeleteSubscriptionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['deleteSubscription']>>>
 export type VerifyUploadedDocumentsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['verifyUploadedDocuments']>>>
 export type GoOnlineResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['goOnline']>>>
 export type GoOfflineResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['goOffline']>>>
@@ -1004,6 +1052,7 @@ export type ChangeRoleResult = NonNullable<Awaited<ReturnType<ReturnType<typeof 
 export type MeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['me']>>>
 export type GetPresignedUrlResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getPresignedUrl']>>>
 export type SubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['subscribe']>>>
+export type VapidPublicKeyResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['vapidPublicKey']>>>
 export type GetCurrentStatusResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getCurrentStatus']>>>
 export type GetProfileResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getProfile']>>>
 export type GetDreamiOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrders']>>>
