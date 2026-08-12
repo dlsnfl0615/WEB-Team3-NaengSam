@@ -23,6 +23,10 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 웹푸시 구독 등록·해제와 VAPID 공개키 조회. {@code global.sse.SseController}와 마찬가지로, 특정 도메인에 속하지 않는
  * 횡단 인프라라서 도메인 패키지가 아니라 여기에 둔다.
+ *
+ * <p>메서드명이 {@code subscribe}/{@code unsubscribe}가 아닌 이유: springdoc이 메서드명을 operationId로 쓰는데,
+ * {@code SseController.subscribe}와 겹치면 하나가 {@code subscribe_1}로 밀린다. 그러면 orval 생성 클라이언트에서
+ * 기존 SSE 오퍼레이션의 이름이 조용히 바뀐다.
  */
 @Tag(name = "Push", description = "웹푸시 구독 관리")
 @RestController
@@ -50,7 +54,7 @@ public class PushSubscriptionController {
                     + "행을 새로 만들지 않고 소유자와 키를 갱신하는 멱등 연산이라, 앱 포그라운드 복귀마다 재등록해도 안전하다.")
     @ApiResponse(responseCode = "200", description = "등록 또는 갱신 완료")
     @PostMapping("/subscriptions")
-    public void subscribe(
+    public void createSubscription(
             @LoginUser UUID boormiId,
             @Valid @RequestBody PushSubscriptionRequest request,
             @RequestHeader(value = HttpHeaders.USER_AGENT, required = false) String userAgent) {
@@ -61,7 +65,7 @@ public class PushSubscriptionController {
             description = "로그아웃 직전에 호출한다(로그아웃 후에는 세션이 없어 호출할 수 없다). 이미 없는 구독이어도 성공이다.")
     @ApiResponse(responseCode = "200", description = "해제 완료")
     @DeleteMapping("/subscriptions")
-    public void unsubscribe(@LoginUser UUID boormiId, @Valid @RequestBody PushUnsubscribeRequest request) {
+    public void deleteSubscription(@LoginUser UUID boormiId, @Valid @RequestBody PushUnsubscribeRequest request) {
         pushSubscriptionService.unsubscribe(boormiId, request.endpoint());
     }
 }
