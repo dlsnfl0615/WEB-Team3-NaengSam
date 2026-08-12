@@ -82,6 +82,7 @@ class DeliveryServiceTest {
     private PaymentService paymentService;
     private DirectionsService directionsService;
     private ApplicationEventPublisher eventPublisher;
+    private DreamiOfflineDetector dreamiOfflineDetector;
     private DeliveryService deliveryService;
 
     // findByOrderId가 같은 Delivery 인스턴스를 돌려주도록 등록해 둔다(서비스가 이 객체를 변경하면 테스트에서 바로 관찰된다).
@@ -102,10 +103,11 @@ class DeliveryServiceTest {
         paymentService = mock(PaymentService.class);
         directionsService = mock(DirectionsService.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
+        dreamiOfflineDetector = mock(DreamiOfflineDetector.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, sseService, uploadSessionService,
                 userService, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
-                directionsService, eventPublisher, new ObjectMapper());
+                directionsService, eventPublisher, new ObjectMapper(), dreamiOfflineDetector);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));

@@ -39,7 +39,9 @@ beforeEach(() => {
     pendingOffer: null,
     incomingDreami: null,
     submitting: false,
+    myLocation: null,
     nearbyCalls: [],
+    nearbyCallsError: null,
     message: null,
   });
   useMatchingStore.getState().stopMatchingPolling();
@@ -47,7 +49,31 @@ beforeEach(() => {
 
 afterEach(() => {
   useMatchingStore.getState().stopMatchingPolling();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
+});
+
+describe("matchingStore 위치 확인", () => {
+  it("GPS 권한이 거부되면 드리미 화면을 차단할 수 있는 결과를 반환한다", async () => {
+    const permissionError = {
+      code: 1,
+      message: "User denied Geolocation",
+      PERMISSION_DENIED: 1,
+      POSITION_UNAVAILABLE: 2,
+      TIMEOUT: 3,
+    } as GeolocationPositionError;
+    const getCurrentPosition = vi.fn(
+      (_success: PositionCallback, error?: PositionErrorCallback | null) => {
+        error?.(permissionError);
+      },
+    );
+    vi.stubGlobal("navigator", { geolocation: { getCurrentPosition } });
+
+    const result = await useMatchingStore.getState().loadNearbyCalls();
+
+    expect(result).toBe("location-unavailable");
+    expect(useMatchingStore.getState().nearbyCallsError).toContain("위치 권한");
+  });
 });
 
 describe("matchingStore polling 복구", () => {

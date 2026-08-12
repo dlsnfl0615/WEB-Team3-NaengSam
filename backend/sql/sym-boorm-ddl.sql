@@ -275,11 +275,13 @@ CREATE TABLE `DELIVERY` (
                             `delivery_end_dtm`    timestamp   NULL,
                             `received_dtm`        timestamp   NULL,
                             `route_path`          text        NULL      COMMENT '드리미 위치→픽업지 카카오 도보 경로 좌표 JSON([{latitude, longitude}, ...])',
-                            `estimated_completion_dtm` timestamp NULL    COMMENT '배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta)'
+                            `estimated_completion_dtm` timestamp NULL    COMMENT '배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta)',
+                            `last_location_dtm`   timestamp   NULL      COMMENT '드리미가 마지막으로 위치를 전송한 시각(GPS 끊김 판정용)'
 );
 -- 이미 배포된 DB에는 위 CREATE 대신 아래 ALTER 로 컬럼을 추가한다.
 -- ALTER TABLE `DELIVERY` ADD COLUMN `route_path` text NULL COMMENT '드리미 위치→픽업지 카카오 도보 경로 좌표 JSON([{latitude, longitude}, ...])';
 -- ALTER TABLE `DELIVERY` ADD COLUMN `estimated_completion_dtm` timestamp NULL COMMENT '배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta)';
+-- ALTER TABLE `DELIVERY` ADD COLUMN `last_location_dtm` timestamp NULL COMMENT '드리미가 마지막으로 위치를 전송한 시각(GPS 끊김 판정용)';
 
 CREATE TABLE `DELIVERY_ACCIDENT` (
                                      `accident_id`       binary(16)   NOT NULL,
