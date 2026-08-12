@@ -193,6 +193,20 @@ class MatchingAssignmentProblemAssemblerTest {
     }
 
     @Test
+    void 모든_주문에_동일한_고정_maxConcurrentOffers가_적용된다() {
+        orderOfferGroups = List.of(
+                group(UUID.randomUUID(), OrderOfferGroupStatus.WAITING),
+                group(UUID.randomUUID(), OrderOfferGroupStatus.WAITING)
+        );
+
+        MatchingAssignmentProblem problem = assemble();
+
+        assertThat(problem.orders())
+                .extracting(MatchingOrderInput::maxConcurrentOffers)
+                .containsOnly(matchingPolicyProperties().maxConcurrentOffers());
+    }
+
+    @Test
     void 생성한_입력을_MatchingAssignmentProblemFactory에_전달해_결과를_만든다() {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
