@@ -498,6 +498,25 @@ class DreamiServiceTest {
         verify(eventPublisher, never()).publishEvent(any(DreamiAcceptedEvent.class));
     }
 
+    @Test
+    void 제안수락_주문이_PENDING_BOORMI_CONFIRMATION도_아니고_MATCHING도_아니면_NOT_ACCEPTABLE_STATUS_예외() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        ReflectionTestUtils.setField(order, "orderCd", OrderCd.CANCELLED);
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.of(orderId));
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
+
+        Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(offerId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(MatchingErrorCode.NOT_ACCEPTABLE_STATUS);
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.CANCELLED); // 건드리지 않음
+        verify(eventPublisher, never()).publishEvent(any(DreamiAcceptedEvent.class));
+    }
+
     // ---------- rejectOffer ----------
 
     @Test

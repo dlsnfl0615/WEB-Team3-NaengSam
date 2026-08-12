@@ -121,9 +121,14 @@ public class DreamiService {
                 .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
         Orders order = orderRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
+
         // 락을 잡은 뒤 재확인 — 다른 드리미가 먼저 커밋해 이미 MATCHING이 아니게 됐을 수 있다.
-        if (order.getOrderCd() != OrderCd.MATCHING) {
+        if (order.getOrderCd() == OrderCd.PENDING_BOORMI_CONFIRMATION) {
             throw new BusinessException(MatchingErrorCode.ALREADY_ACCEPTED_BY_OTHER);
+        }
+
+        if (order.getOrderCd() != OrderCd.MATCHING) {
+            throw new BusinessException(MatchingErrorCode.NOT_ACCEPTABLE_STATUS);
         }
 
         order.markPendingBoormiConfirmation();
