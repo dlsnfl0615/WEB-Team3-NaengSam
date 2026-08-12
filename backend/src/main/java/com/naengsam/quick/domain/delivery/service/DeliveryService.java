@@ -156,18 +156,12 @@ public class DeliveryService {
                 deliveryPhotoUrl, viewerIsDreami);
     }
 
-    // 배송 완료 인증 사진 URL을 조회한다. 완료 전이라 인증 사진이 아직 없거나(레코드 없음), 있어도 S3 조회에 실패하면
-    // (보존 정책 삭제, 스토리지 장애 등) 완료 요약 전체를 실패시키지 않고 사진만 없이 응답한다.
+    // 배송 완료 인증 사진 URL을 조회한다. 완료 전이라 인증 사진이 아직 없으면(레코드 없음) 조회하지 않고,
+    // 있어도 S3 조회 자체가 실패하면(보존 정책 삭제, 스토리지 장애 등) resolveDownloadUrl이 null로 degrade해
+    // 완료 요약 전체를 실패시키지 않는다.
     private String resolveDeliveryPhotoUrl(UUID deliveryId) {
         return deliveryCertificationRepository.findByDeliveryId(deliveryId)
-                .map(certification -> {
-                    try {
-                        return s3PresignService.generateDownloadUrl(certification.getImageKey());
-                    } catch (BusinessException e) {
-                        log.warn("배송 완료 인증 사진 URL 조회 실패 — 사진 없이 응답한다. deliveryId={}", deliveryId, e);
-                        return null;
-                    }
-                })
+                .map(certification -> s3PresignService.resolveDownloadUrl(certification.getImageKey()))
                 .orElse(null);
     }
 
