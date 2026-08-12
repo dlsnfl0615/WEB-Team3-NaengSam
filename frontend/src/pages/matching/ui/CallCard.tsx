@@ -2,6 +2,7 @@ import {
   Badge,
   Button,
   DeliveryRouteMap,
+  OfferCountdownBar,
   type Coords,
 } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
@@ -18,12 +19,14 @@ export interface CallCardProps {
   dropoff?: Coords; // 도착지 위도 경도
   currentLocation?: Coords; // 드리미 현재 위치
   deliveryDistance: string;
-  /** 예상 배송 시간 */
+  /** 픽업 후 배송에 걸리는 예상 시간 */
   eta: string;
   /** 목적지 거리. 값이 없으면 항목을 숨긴다. */
   dropoffDistance?: string;
   /** 물품 유형. 값이 없으면 항목을 숨긴다. */
   itemType?: string;
+  /** 콜 수락 응답 카운트다운(드리미가 콜을 선택하는 시간). */
+  countdown: { remainingSeconds: number; progressPercent: number };
   onReject: () => void;
   onAccept: () => void;
 }
@@ -33,7 +36,6 @@ export interface CallCardProps {
  * 금액·경로·거리·물품 유형을 보여주고 콜을 수락하거나 거절합니다.
  */
 export function CallCard({
-  code,
   price,
   place,
   route,
@@ -44,6 +46,7 @@ export function CallCard({
   eta,
   dropoffDistance,
   itemType,
+  countdown,
   onReject,
   onAccept,
 }: CallCardProps) {
@@ -62,7 +65,7 @@ export function CallCard({
       />
 
       <div className="flex items-start justify-between">
-        <Badge tone="info">새로운 콜! {code}</Badge>
+        <Badge tone="info">새로운 콜!</Badge>
         <p className="text-xl font-bold text-teal-700">{price}</p>
       </div>
 
@@ -73,7 +76,7 @@ export function CallCard({
       <div className="flex items-start">
         <CallStat label="배송 거리" value={deliveryDistance} />
         <CallStat
-          label="예상 시간"
+          label="픽업 후 배송"
           value={eta}
           className="ml-auto text-right"
         />
@@ -93,6 +96,11 @@ export function CallCard({
         )}
       </div>
 
+      <OfferCountdownBar
+        remainingSeconds={countdown.remainingSeconds}
+        progressPercent={countdown.progressPercent}
+      />
+
       <div className="flex gap-2">
         <Button
           variant="outline"
@@ -101,7 +109,12 @@ export function CallCard({
         >
           거절
         </Button>
-        <Button variant="navy" className="flex-1" onClick={onAccept}>
+        <Button
+          variant="navy"
+          className="flex-1"
+          onClick={onAccept}
+          disabled={countdown.remainingSeconds <= 0}
+        >
           콜 수락
         </Button>
       </div>

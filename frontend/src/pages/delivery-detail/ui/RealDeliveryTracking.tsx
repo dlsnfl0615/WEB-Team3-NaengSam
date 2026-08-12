@@ -222,7 +222,7 @@ export function RealDeliveryTracking({
       }
       applyStatus(completedStatus);
       setToast(null);
-      navigate(ROUTES.deliveryComplete, { replace: true });
+      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, { replace: true });
     },
     delivery_cancelled: (data) => {
       const dto = forThisOrder(data);
@@ -259,6 +259,22 @@ export function RealDeliveryTracking({
       setConfirmOpen(false);
       navigate(ROUTES.home, { replace: true });
     } catch (e) {
+      // 취소를 누르는 사이 SSE를 놓쳐 이미 종료된 건이면, 인라인 메시지 대신 종료 상태 전용 흐름으로 보낸다.
+      if (isApiError(e) && e.code === "DELIVERY_013") {
+        // 이미 배달 완료 → 리뷰(드리미 평가) 페이지로.
+        setConfirmOpen(false);
+        navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, { replace: true });
+        return;
+      }
+      if (isApiError(e) && e.code === "DELIVERY_012") {
+        // 이미 취소됨 → 취소 안내 차단 모달(나가기 시 홈).
+        setConfirmOpen(false);
+        blockDeliveryDetail({
+          title: "이미 취소된 배달이에요",
+          message: "취소된 배달은 더 이상 추적할 수 없어요.",
+        });
+        return;
+      }
       setCancelError(
         isApiError(e)
           ? e.message
@@ -331,7 +347,7 @@ export function RealDeliveryTracking({
         <Button block variant="outline">
           연락하기
         </Button>
-        {detailReady && !view.terminal && (
+        {detailReady && isPickup && (
           <button
             type="button"
             onClick={() => {
@@ -340,7 +356,7 @@ export function RealDeliveryTracking({
             }}
             className="text-2xs text-muted"
           >
-            배달 취소하기
+            배달 취소하기 (픽업 전에만 가능)
           </button>
         )}
       </footer>

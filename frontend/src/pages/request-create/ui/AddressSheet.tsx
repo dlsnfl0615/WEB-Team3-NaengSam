@@ -3,7 +3,7 @@ import {
   BottomSheet,
   Button,
   PlaceItem,
-  SegmentedToggle,
+  // SegmentedToggle, // 전달 방식(대면/비대면) 선택 숨김에 따라 미사용
   TextField,
   TopBar,
 } from "@/shared/ui";
@@ -43,7 +43,9 @@ export function AddressSheet({
   // StepLocation이 editing 값을 key로 주므로 열릴 때마다 새로 마운트된다.
   const [road, setRoad] = useState(() => value.address1);
   const [detail, setDetail] = useState(() => value.detail);
-  const [meeting, setMeeting] = useState<Meeting>(() => value.meeting);
+  // 전달 방식은 비대면 고정(대면 미지원). 선택 UI 복구 시 아래 useState로 되돌린다.
+  // const [meeting, setMeeting] = useState<Meeting>(() => value.meeting);
+  const meeting: Meeting = "비대면";
   const embedRef = useRef<HTMLDivElement>(null);
 
   // 저장된 주소 보기(findAll) 관련 상태.
@@ -223,6 +225,7 @@ export function AddressSheet({
             onChange={(e) => setDetail(e.target.value)}
           />
 
+          {/* 전달 방식 선택 — 현재는 비대면만 지원하므로 숨김(대면 구현 시 복구).
           <div className="flex flex-col gap-2">
             <p className="text-sm text-muted">전달 방식</p>
             <SegmentedToggle
@@ -231,6 +234,7 @@ export function AddressSheet({
               onChange={(v) => setMeeting(v as Meeting)}
             />
           </div>
+          */}
 
           <div className="flex gap-3">
             <Button

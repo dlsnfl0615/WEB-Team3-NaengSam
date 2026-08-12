@@ -36,7 +36,7 @@ export function SenderPanel() {
 
       <Card variant="hero" className="flex flex-col gap-3">
         <p className="text-xl font-bold tracking-[-0.4px]">물품 보내기</p>
-        <div className="h-[9px] w-3/4 rounded-[5px] bg-navy-700" />
+        {/*<div className="h-[9px] w-3/4 rounded-[5px] bg-navy-700" />*/}
         <Button
           variant="primary"
           arrow

@@ -1,10 +1,12 @@
 package com.naengsam.quick.domain.dreami.repository;
 
 import com.naengsam.quick.domain.dreami.entity.Dreami;
+import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -15,4 +17,6 @@ public interface DreamiRepository extends JpaRepository<Dreami, UUID> {
     // DB에 행 단위 락을 걸고 있음(dreami_id가 PK)
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<Dreami> findByDreamiId(UUID dreamiId);
+
+    List<Dreami> findAllByRequestCd(DreamiCd requestCd);
 }

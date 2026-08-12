@@ -30,7 +30,9 @@ axiosInstance.interceptors.response.use(
     const status = error.response?.status ?? 0
     const body = error.response?.data
     const code = body?.code ?? 'COMMON_010'
-    const message = body?.message ?? error.message ?? FALLBACK_ERROR_MESSAGE
+    // 백엔드가 준 한글 메시지를 우선하고, 없으면(네트워크 오류·타임아웃 등 응답 바디 부재)
+    // axios 원본 영문 메시지("Network Error") 대신 한글 폴백을 노출한다.
+    const message = body?.message ?? FALLBACK_ERROR_MESSAGE
 
     // 세션 probe(앱 시작 확인)의 401은 리다이렉트 대상에서 제외한다.
     const isProbe = Boolean(error.config?.headers?.[SESSION_PROBE_HEADER])
