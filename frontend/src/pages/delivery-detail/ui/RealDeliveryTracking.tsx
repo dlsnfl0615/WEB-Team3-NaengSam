@@ -260,7 +260,7 @@ export function RealDeliveryTracking({
       }
       applyStatus(completedStatus);
       setToast(null);
-      navigate(ROUTES.deliveryComplete, { replace: true });
+      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, { replace: true });
     },
     delivery_cancelled: (data) => {
       const dto = forThisOrder(data);
@@ -347,7 +347,7 @@ export function RealDeliveryTracking({
       if (isApiError(e) && e.code === "DELIVERY_013") {
         // 이미 배달 완료 → 리뷰(드리미 평가) 페이지로.
         setConfirmOpen(false);
-        navigate(ROUTES.deliveryComplete, { replace: true });
+        navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, { replace: true });
         return;
       }
       if (isApiError(e) && e.code === "DELIVERY_012") {

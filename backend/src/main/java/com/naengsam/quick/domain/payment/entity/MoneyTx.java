@@ -15,8 +15,8 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
 /**
- * 머니 지갑의 거래 1건. 배달 완료에 따른 정산(SETTLEMENT), 정산 취소(REVERSAL), 보상 조정(CLAIM_ADJUSTMENT), 포인트로의 전환(EXCHANGE_OUT)을 기록한다. 정산
- * 확정 전에는 PENDING 상태로 남는다.
+ * 머니 지갑의 거래 1건. 배달 완료에 따른 정산(SETTLEMENT), 정산 취소(REVERSAL), 보상 조정(CLAIM_ADJUSTMENT), 포인트로의 전환(EXCHANGE_OUT)을 기록한다.
+ * 정산은 배달이 끝난 시점에 확정(SETTLED)으로 만들어진다.
  */
 @Entity
 @Table(name = "MONEY_TX")
@@ -71,7 +71,8 @@ public class MoneyTx {
     }
 
     /**
-     * 확정 상태로 시작하는 머니 거래를 생성한다. 정산과 달리 전환(EXCHANGE_OUT)은 요청 시점에 잔액이 바로 빠지므로 PENDING 을 거치지 않는다.
+     * 확정 상태로 시작하는 머니 거래를 생성한다. 배달이 끝난 뒤에 만들어지는 정산(SETTLEMENT)과 요청 시점에 잔액이 바로 빠지는 전환(EXCHANGE_OUT)은 만들어지는 순간
+     * 이미 확정된 거래라 PENDING 을 거치지 않는다.
      */
     public static MoneyTx createSettled(UUID walletId, MoneyTxTypeCd type, Long amount, UUID orderId) {
         MoneyTx moneyTx = create(walletId, type, amount, orderId);
