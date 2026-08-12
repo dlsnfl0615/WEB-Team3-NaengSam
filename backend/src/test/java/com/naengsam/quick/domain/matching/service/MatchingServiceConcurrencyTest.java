@@ -17,6 +17,7 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPo
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
