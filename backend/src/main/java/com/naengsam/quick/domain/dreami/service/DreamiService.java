@@ -124,6 +124,10 @@ public class DreamiService {
 
         // 락을 잡은 뒤 재확인 — 다른 드리미가 먼저 커밋해 이미 MATCHING이 아니게 됐을 수 있다.
         if (order.getOrderCd() == OrderCd.PENDING_BOORMI_CONFIRMATION) {
+            if (dreamiId.equals(order.getDreamiId())) {
+                // 본인이 이미 성공시킨 수락의 재시도(더블클릭/네트워크 재시도) — 멱등하게 조용히 반환한다.
+                return;
+            }
             throw new BusinessException(MatchingErrorCode.ALREADY_ACCEPTED_BY_OTHER);
         }
 
@@ -131,7 +135,7 @@ public class DreamiService {
             throw new BusinessException(MatchingErrorCode.NOT_ACCEPTABLE_STATUS);
         }
 
-        order.markPendingBoormiConfirmation();
+        order.markPendingBoormiConfirmation(dreamiId);
 
         // 엔진은 수락 즉시 부르미에게 확인 팝업을 보내고, 부르미의 확정은 주문이 PENDING_BOORMI_CONFIRMATION 인지
         // 검사하므로 커밋 후에 제출해야 한다. 커밋 후 처리는 MatchingService 의 리스너가 담당한다.
