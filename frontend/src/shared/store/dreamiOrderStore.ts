@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { create } from "zustand";
 import { api, isApiError } from "@/shared/api";
 import { toBoormiOrder, type BoormiOrder } from "./boormiOrderAdapter";
@@ -75,3 +76,23 @@ export const useDreamiOrderStore = create<DreamiOrderState>((set, get) => ({
     }
   },
 }));
+
+/**
+ * id로 활동 내역 상세를 찾는다. 활동 목록을 거치지 않고 상세 URL로 바로 들어온 경우(새로고침 등)
+ * 스토어가 비어있을 수 있어, 그럴 때만 한 번 load()로 채운다.
+ */
+export function useDreamiOrderById(id: string | null): BoormiOrder | null {
+  const deliveries = useDreamiOrderStore((s) => s.deliveries);
+  const loading = useDreamiOrderStore((s) => s.loading);
+  const load = useDreamiOrderStore((s) => s.load);
+  const attemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (deliveries.length > 0 || loading || attemptedRef.current) return;
+    attemptedRef.current = true;
+    load();
+  }, [deliveries.length, loading, load]);
+
+  if (!id) return null;
+  return deliveries.find((d) => d.id === id) ?? null;
+}
