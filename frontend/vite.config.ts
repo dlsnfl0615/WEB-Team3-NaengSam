@@ -26,10 +26,10 @@ export default defineConfig({
         background_color: '#f7f8fa', // --color-canvas
         theme_color: '#0d1b3d', // --color-navy-900
         icons: [
-          { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/pwa-icon-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },
           {
-            src: '/pwa-512x512.png',
+            src: '/pwa-512x512-maskable.png',
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
