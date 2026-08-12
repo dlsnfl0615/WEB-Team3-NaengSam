@@ -498,3 +498,33 @@ ALTER TABLE `UPLOAD_SESSION` ADD CONSTRAINT `PK_UPLOAD_SESSION` PRIMARY KEY (`up
 ALTER TABLE `UPLOAD_SESSION` ADD CONSTRAINT `UQ_UPLOAD_SESSION_S3_KEY` UNIQUE (`s3_key`);
 
 ALTER TABLE `UPLOAD_SESSION` ADD CONSTRAINT `FK_BOORMI_TO_UPLOAD_SESSION_1` FOREIGN KEY (`boormi_id`) REFERENCES `BOORMI` (`boormi_id`);
+
+-- ============================================================
+-- ERD 도구 생성분 이후 추가 (웹푸시 구독)
+-- ============================================================
+
+-- endpoint 는 (브라우저, 기기, 서비스워커 등록) 조합마다 유일하므로 그 자체가 기기 식별자다.
+-- unique 를 (boormi_id, endpoint) 가 아니라 endpoint 단독으로 거는 것이 핵심이다 - 공용 기기에서 계정이
+-- 바뀌면 두 번째 행을 만드는 대신 소유자를 재배정해야 이전 사용자가 새 사용자의 알림을 받지 않는다.
+CREATE TABLE `PUSH_SUBSCRIPTION` (
+                                     `push_subscription_id`  binary(16)    NOT NULL,
+                                     `boormi_id`             binary(16)    NOT NULL,
+                                     `endpoint`              varchar(512)  NOT NULL  COMMENT 'push 서비스 엔드포인트 URL. 브라우저·기기·SW 조합마다 유일하므로 이것이 기기 식별자다',
+                                     `p256dh`                varchar(255)  NOT NULL  COMMENT '클라이언트 공개키(base64url)',
+                                     `auth`                  varchar(255)  NOT NULL  COMMENT '클라이언트 인증 시크릿(base64url)',
+                                     `user_agent`            varchar(255)  NULL      COMMENT '디버깅용 기기 식별 문구',
+                                     `created_dtm`           timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+                                     `last_success_dtm`      timestamp     NULL      COMMENT '마지막 전송 성공 시각',
+                                     `consecutive_failures`  int           NOT NULL  DEFAULT 0  COMMENT '연속 실패 횟수. 10회 도달 시 정리 대상'
+);
+
+ALTER TABLE `PUSH_SUBSCRIPTION` ADD CONSTRAINT `PK_PUSH_SUBSCRIPTION` PRIMARY KEY (`push_subscription_id`);
+
+-- varchar(512) unique 는 utf8mb4 기준 2048바이트로 InnoDB 3072바이트 키 한계 아래다.
+-- 768자를 넘기게 되면 해시 컬럼으로 바꿔야 한다.
+ALTER TABLE `PUSH_SUBSCRIPTION` ADD CONSTRAINT `UQ_PUSH_SUBSCRIPTION_ENDPOINT` UNIQUE (`endpoint`);
+
+-- 사용자에게 푸시를 보낼 때마다 findAllByBoormiId 가 실행된다.
+CREATE INDEX `IX_PUSH_SUBSCRIPTION_BOORMI` ON `PUSH_SUBSCRIPTION` (`boormi_id`);
+
+-- 이미 배포된 DB에는 위 블록을 그대로 실행하면 된다(신규 테이블이라 기존 데이터에 영향 없음).
