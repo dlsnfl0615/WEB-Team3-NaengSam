@@ -23,6 +23,9 @@ export type { IconChipProps } from "./IconChip/IconChip";
 export { ProgressBar } from "./ProgressBar/ProgressBar";
 export type { ProgressBarProps } from "./ProgressBar/ProgressBar";
 
+export { OfferCountdownBar } from "./OfferCountdownBar/OfferCountdownBar";
+export type { OfferCountdownBarProps } from "./OfferCountdownBar/OfferCountdownBar";
+
 export { RadioOption } from "./RadioOption/RadioOption";
 export type { RadioOptionProps } from "./RadioOption/RadioOption";
 
