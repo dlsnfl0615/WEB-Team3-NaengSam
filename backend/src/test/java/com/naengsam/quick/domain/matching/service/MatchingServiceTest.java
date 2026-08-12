@@ -147,6 +147,62 @@ class MatchingServiceTest {
     }
 
     @Test
+    void SSE_연결이_없는_드리미는_오퍼_후보에서_제외된다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        UUID connectedDreamiId = UUID.randomUUID();
+        UUID ghostDreamiId = UUID.randomUUID();
+
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+
+        when(order.getOrderId()).thenReturn(orderId);
+        // goOffline을 못 부르고 브라우저가 죽은 드리미. dreamiMap에는 MATCHING으로 남아 있지만 SSE로는 닿을 수 없다.
+        when(notificationService.isReachableNow(ghostDreamiId)).thenReturn(false);
+
+        matchingService.applyRegisterDreami(connectedDreamiId, location);
+        matchingService.applyRegisterDreami(ghostDreamiId, location);
+
+        // when
+        matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
+
+        // then
+        List<MatchOffer> offers = getOrderOfferGroups().get(orderId).offers();
+
+        assertThat(offers).hasSize(1);
+        assertThat(offers.getFirst().dreamiId()).isEqualTo(connectedDreamiId);
+        // 유령은 오퍼를 받지 않았으므로 PROPOSED로 넘어가지도, 30초 TTL을 태우지도 않는다.
+        assertThat(getDreamiMap().get(ghostDreamiId).status()).isEqualTo(WaitingDreamiStatus.MATCHING);
+        verify(notificationService, never()).notify(eq(ghostDreamiId), any(), any());
+    }
+
+    @Test
+    void 배치_사이클은_SSE_연결이_없는_드리미를_할당_문제_입력에서_제외한다() {
+        // given
+        UUID connectedDreamiId = UUID.randomUUID();
+        UUID ghostDreamiId = UUID.randomUUID();
+
+        GeoPoint location = mock(GeoPoint.class);
+
+        when(notificationService.isReachableNow(ghostDreamiId)).thenReturn(false);
+
+        matchingService.applyRegisterDreami(connectedDreamiId, location);
+        matchingService.applyRegisterDreami(ghostDreamiId, location);
+
+        // when
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        // then (걸러진 드리미가 problem에 아예 등장하지 않아야 정책·validator가 일관되게 동작한다)
+        ArgumentCaptor<List<WaitingDreami>> dreamisCaptor = ArgumentCaptor.captor();
+        verify(matchingAssignmentProblemAssembler).assemble(any(), dreamisCaptor.capture());
+
+        assertThat(dreamisCaptor.getValue())
+                .extracting(WaitingDreami::dreamiId)
+                .containsExactly(connectedDreamiId);
+    }
+
+    @Test
     void 드리미_한명이_수락하면_나머지_제안은_회수된다() {
         // given
         UUID orderId = UUID.randomUUID();
