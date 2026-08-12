@@ -5,7 +5,8 @@ import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import java.time.Duration;
-import java.time.LocalDateTime;
+import java.time.Instant;
+import java.time.ZoneId;
 import java.util.UUID;
 
 /**
@@ -20,13 +21,13 @@ public record CurrentMatchingStatusDto(
     public record PendingOfferDto(
             UUID offerId,
             OrderSummaryDto orderSummary,
-            LocalDateTime offeredAt,
-            LocalDateTime expiresAt
+            Instant offeredAt,
+            Instant expiresAt
     ) {
 
         // SSE 유실 후 클라이언트가 폴백으로 이 API를 호출했을 때도, 팝업으로 받았을 expiresAt과 같은 값을 복원해 남은 시간을 다시 계산할 수 있게 한다.
         public static PendingOfferDto from(MatchOffer offer, OrderOfferGroup group, Duration ttl) {
-            LocalDateTime offeredAt = offer.statusUpdatedAt();
+            Instant offeredAt = offer.statusUpdatedAt().atZone(ZoneId.systemDefault()).toInstant();
             return new PendingOfferDto(offer.offerId(), group.orderSummary(), offeredAt, offeredAt.plus(ttl));
         }
     }

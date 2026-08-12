@@ -36,10 +36,9 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 /**
- * MatchingEngine/MatchingActionScheduler가 하나의 MatchingScheduler로 합쳐진 뒤에도, 배치 window(마이크로배치)와 오퍼
- * timeout이 실제 스케줄러 위에서 지연 순서대로(배치가 먼저, timeout이 나중에) 올바르게 실행되는지 검증한다. Mock이 아닌 실제
- * MatchingScheduler/MatchingBatchDispatcher/MatchingPlanApplier를 조합해, 두 종류의 지연 Action이 같은 워커에서 경합 없이
- * 처리되는지 확인한다.
+ * MatchingEngine/MatchingActionScheduler가 하나의 MatchingScheduler로 합쳐진 뒤에도, 배치 window(마이크로배치)와 오퍼 timeout이 실제 스케줄러 위에서 지연
+ * 순서대로(배치가 먼저, timeout이 나중에) 올바르게 실행되는지 검증한다. Mock이 아닌 실제
+ * MatchingScheduler/MatchingBatchDispatcher/MatchingPlanApplier를 조합해, 두 종류의 지연 Action이 같은 워커에서 경합 없이 처리되는지 확인한다.
  */
 class MatchingSchedulerIntegrationTest {
 
@@ -48,6 +47,12 @@ class MatchingSchedulerIntegrationTest {
 
     private MatchingScheduler matchingScheduler;
     private MatchingService matchingService;
+
+    private static Orders orderMock(UUID orderId) {
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+        return order;
+    }
 
     @BeforeEach
     void setUp() {
@@ -77,7 +82,7 @@ class MatchingSchedulerIntegrationTest {
 
         matchingService = new MatchingService(
                 matchingScheduler, sseService, matchingBatchDispatcher, deliveryService, clock,
-                assembler, assignmentPolicy, null, properties);
+                assembler, assignmentPolicy, null, properties, geoDistanceCalculator);
         MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
                 new MatchingPlanValidator(new LegacyOfferPolicy()), matchingService, sseService, OFFER_TTL);
         setPlanApplier(matchingBatchDispatcher, matchingService, matchingPlanApplier);
@@ -123,12 +128,6 @@ class MatchingSchedulerIntegrationTest {
         awaitUntil(() -> offer.status() == MatchOfferStatus.DREAMI_EXPIRED, Duration.ofSeconds(2));
 
         assertThat(offer.status()).isEqualTo(MatchOfferStatus.DREAMI_EXPIRED);
-    }
-
-    private static Orders orderMock(UUID orderId) {
-        Orders order = mock(Orders.class);
-        when(order.getOrderId()).thenReturn(orderId);
-        return order;
     }
 
     private void awaitUntil(BooleanSupplier condition, Duration timeout) {

@@ -38,8 +38,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * MatchingScheduler가 실제로 액션을 단일 스레드로 직렬화하는지 검증한다. Mock이 아닌 실제 MatchingScheduler를 띄워 여러 요청 스레드에서 동시에 액션을 제출했을 때, 내부 HashMap이
- * 경합 없이 일관된 상태로 수렴하는지 확인한다.
+ * MatchingScheduler가 실제로 액션을 단일 스레드로 직렬화하는지 검증한다. Mock이 아닌 실제 MatchingScheduler를 띄워 여러 요청 스레드에서 동시에 액션을 제출했을 때, 내부
+ * HashMap이 경합 없이 일관된 상태로 수렴하는지 확인한다.
  */
 class MatchingServiceConcurrencyTest {
 
@@ -53,11 +53,6 @@ class MatchingServiceConcurrencyTest {
         matchingScheduler.start();
         matchingService = new MatchingService(matchingScheduler, mock(SseService.class),
                 mock(MatchingBatchDispatcher.class), mock(DeliveryService.class), Clock.systemDefaultZone(),
-        matchingEngine = new MatchingEngine();
-        matchingEngine.start();
-        matchingService = new MatchingService(matchingEngine, mock(SseService.class), mock(MatchingActionScheduler.class),
-                mock(MatchingBatchDispatcher.class), mock(DeliveryService.class),
-                Clock.systemDefaultZone(),
                 mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),
                 mock(MatchingPlanApplier.class), mock(MatchingPolicyProperties.class), new GeoDistanceCalculator());
         requestThreads = Executors.newFixedThreadPool(16);
