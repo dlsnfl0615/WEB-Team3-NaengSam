@@ -239,9 +239,10 @@ export function DeliveryTrackScreen() {
       if (isApiError(e) && e.code === "DELIVERY_013") {
         // 이미 배달 완료 → 리뷰(드리미가 부르미를 평가) 페이지로.
         setConfirmOpen(false);
-        navigate(`${ROUTES.deliveryComplete}?reviewee=boormi`, {
-          replace: true,
-        });
+        navigate(
+          `${ROUTES.deliveryComplete}?reviewee=boormi&orderId=${orderId}`,
+          { replace: true },
+        );
         return;
       }
       if (isApiError(e) && e.code === "DELIVERY_012") {

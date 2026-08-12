@@ -157,9 +157,7 @@ export function RealDeliveryTracking({
     blockDeliveryDetail({
       title: notice?.title ?? "배달이 종료됐어요",
       message:
-        message ??
-        notice?.message ??
-        "종료된 배달은 더 이상 추적할 수 없어요.",
+        message ?? notice?.message ?? "종료된 배달은 더 이상 추적할 수 없어요.",
     });
   };
 
@@ -222,7 +220,9 @@ export function RealDeliveryTracking({
       }
       applyStatus(completedStatus);
       setToast(null);
-      navigate(ROUTES.deliveryComplete, { replace: true });
+      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
+        replace: true,
+      });
     },
     delivery_cancelled: (data) => {
       const dto = forThisOrder(data);
@@ -263,7 +263,9 @@ export function RealDeliveryTracking({
       if (isApiError(e) && e.code === "DELIVERY_013") {
         // 이미 배달 완료 → 리뷰(드리미 평가) 페이지로.
         setConfirmOpen(false);
-        navigate(ROUTES.deliveryComplete, { replace: true });
+        navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
+          replace: true,
+        });
         return;
       }
       if (isApiError(e) && e.code === "DELIVERY_012") {
