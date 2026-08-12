@@ -38,6 +38,7 @@ import type {
   GetDeliveryDetail200,
   GetDreamiOrders200,
   GetDreamiOrdersParams,
+  GetMyReview200,
   GetOrderOfferGroup200,
   GetParams,
   GetPresignedUrl200,
@@ -59,6 +60,8 @@ import type {
   PutParams,
   RegisterDreami200,
   RejectDreamiRequest,
+  ReviewContentRequest,
+  ReviewScoreRequest,
   SaveAddress200,
   Seed200,
   SeedParams,
@@ -71,7 +74,9 @@ import type {
   UpdateDreamiLocation200,
   VerifyCodeRequest,
   WaitingDreamis200,
-  WaitingOrders200
+  WaitingOrders200,
+  WriteContent200,
+  WriteScore200
 } from './model';
 
 import { customInstance } from '../http/customInstance';
@@ -203,6 +208,51 @@ const login = (
       {url: `/api/v1/user/login`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
       data: loginRequest
+    },
+      options);
+    }
+
+/**
+ * 별점만 남긴 상태로 다시 들어왔을 때 기존 리뷰를 확인한다.
+ * @summary 내가 남긴 리뷰 조회
+ */
+const getMyReview = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetMyReview200>>,) => {
+      return customInstance<GetMyReview200>(
+      {url: `/api/v1/orders/${orderId}/review`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 완료된 주문의 상대방에게 별점을 남긴다. 리뷰 내용은 이후 PATCH 로 채운다.
+ * @summary 별점 등록
+ */
+const writeScore = (
+    orderId: string,
+    reviewScoreRequest: ReviewScoreRequest,
+ options?: SecondParameter<typeof customInstance<WriteScore200>>,) => {
+      return customInstance<WriteScore200>(
+      {url: `/api/v1/orders/${orderId}/review`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: reviewScoreRequest
+    },
+      options);
+    }
+
+/**
+ * 먼저 남긴 별점 리뷰에 내용을 채우거나 수정한다.
+ * @summary 리뷰 내용 등록
+ */
+const writeContent = (
+    orderId: string,
+    reviewContentRequest: ReviewContentRequest,
+ options?: SecondParameter<typeof customInstance<WriteContent200>>,) => {
+      return customInstance<WriteContent200>(
+      {url: `/api/v1/orders/${orderId}/review`, method: 'PATCH',
+      headers: {'Content-Type': 'application/json', },
+      data: reviewContentRequest
     },
       options);
     }
@@ -952,7 +1002,7 @@ const unsubscribeOrder = (
       options);
     }
 
-return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,pending,removeDreami,unsubscribeOrder}};
+return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,getMyReview,writeScore,writeContent,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,pending,removeDreami,unsubscribeOrder}};
 export type GetResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['get']>>>
 export type PutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['put']>>>
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
@@ -962,6 +1012,9 @@ export type VerifyCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof 
 export type SignupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['signup']>>>
 export type LogoutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['logout']>>>
 export type LoginResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['login']>>>
+export type GetMyReviewResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getMyReview']>>>
+export type WriteScoreResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['writeScore']>>>
+export type WriteContentResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['writeContent']>>>
 export type VerifyUploadedDocumentsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['verifyUploadedDocuments']>>>
 export type GoOnlineResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['goOnline']>>>
 export type GoOfflineResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['goOffline']>>>
