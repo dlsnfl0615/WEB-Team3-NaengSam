@@ -160,7 +160,8 @@ CREATE TABLE `MONEY_LEDGERS` (
 CREATE TABLE `POINT_TX` (
                             `point_tx_id`  binary(16)  NOT NULL,
                             `type`         enum('CHARGE', 'PAYMENT', 'REFUND', 'EXCHANGE_IN')  NOT NULL,
-                            `status`       enum('PAID', 'REFUNDED_PARTIAL', 'REFUNDED_FULL')  NOT NULL,
+                            -- 배달 콜 결제는 배달이 끝나기 전까지 PENDING 으로 남고, 배달 완료 시 PAID 로 확정된다.
+                            `status`       enum('PENDING', 'PAID', 'REFUNDED_PARTIAL', 'REFUNDED_FULL')  NOT NULL,
                             `amount`       bigint      NOT NULL,
                             `created_dtm`  timestamp   NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                             `updated_dtm`  timestamp   NULL,
@@ -365,6 +366,8 @@ ALTER TABLE `EXCHANGES` ADD CONSTRAINT `PK_EXCHANGES` PRIMARY KEY (`exchanges_id
 
 ALTER TABLE `BOORMI_REVIEW` ADD CONSTRAINT `PK_BOORMI_REVIEW` PRIMARY KEY (`review_id`);
 
+ALTER TABLE `BOORMI_REVIEW` ADD CONSTRAINT `UQ_BOORMI_REVIEW_ORDER` UNIQUE (`order_id`);
+
 ALTER TABLE `CANCEL` ADD CONSTRAINT `PK_CANCEL` PRIMARY KEY (`cancel_id`);
 
 ALTER TABLE `ADDRESS` ADD CONSTRAINT `PK_ADDRESS` PRIMARY KEY (`address_id`);
@@ -395,6 +398,8 @@ ALTER TABLE `COMPENSATION_CLAIM` ADD CONSTRAINT `PK_COMPENSATION_CLAIM` PRIMARY 
 ALTER TABLE `DREAMI_REQUEST_DENIED_DETAILS` ADD CONSTRAINT `PK_DREAMI_REQUEST_DENIED_DETAILS` PRIMARY KEY (`reject_id`);
 
 ALTER TABLE `DREAMI_REVIEW` ADD CONSTRAINT `PK_DREAMI_REVIEW` PRIMARY KEY (`review_id`);
+
+ALTER TABLE `DREAMI_REVIEW` ADD CONSTRAINT `UQ_DREAMI_REVIEW_ORDER` UNIQUE (`order_id`);
 
 ALTER TABLE `PARTNER_HANDOFF` ADD CONSTRAINT `FK_PARTNER_TO_PARTNER_HANDOFF_1` FOREIGN KEY (`partner_id`) REFERENCES `PARTNER` (`partner_id`);
 

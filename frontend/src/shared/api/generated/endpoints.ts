@@ -35,9 +35,11 @@ import type {
   GetCoordinates200,
   GetCurrentStatus200,
   GetDashboard200,
+  GetDeliveryCompletion200,
   GetDeliveryDetail200,
   GetDreamiOrders200,
   GetDreamiOrdersParams,
+  GetMyReview200,
   GetOrderOfferGroup200,
   GetParams,
   GetPresignedUrl200,
@@ -61,6 +63,8 @@ import type {
   PutParams,
   RegisterDreami200,
   RejectDreamiRequest,
+  ReviewContentRequest,
+  ReviewScoreRequest,
   SaveAddress200,
   Seed200,
   SeedParams,
@@ -74,7 +78,9 @@ import type {
   VapidPublicKey200,
   VerifyCodeRequest,
   WaitingDreamis200,
-  WaitingOrders200
+  WaitingOrders200,
+  WriteContent200,
+  WriteScore200
 } from './model';
 
 import { customInstance } from '../http/customInstance';
@@ -236,6 +242,51 @@ const deleteSubscription = (
       {url: `/api/v1/push/subscriptions`, method: 'DELETE',
       headers: {'Content-Type': 'application/json', },
       data: pushUnsubscribeRequest
+    },
+      options);
+    }
+
+/**
+ * 별점만 남긴 상태로 다시 들어왔을 때 기존 리뷰를 확인한다.
+ * @summary 내가 남긴 리뷰 조회
+ */
+const getMyReview = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetMyReview200>>,) => {
+      return customInstance<GetMyReview200>(
+      {url: `/api/v1/orders/${orderId}/review`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 완료된 주문의 상대방에게 별점을 남긴다. 리뷰 내용은 이후 PATCH 로 채운다.
+ * @summary 별점 등록
+ */
+const writeScore = (
+    orderId: string,
+    reviewScoreRequest: ReviewScoreRequest,
+ options?: SecondParameter<typeof customInstance<WriteScore200>>,) => {
+      return customInstance<WriteScore200>(
+      {url: `/api/v1/orders/${orderId}/review`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: reviewScoreRequest
+    },
+      options);
+    }
+
+/**
+ * 먼저 남긴 별점 리뷰에 내용을 채우거나 수정한다.
+ * @summary 리뷰 내용 등록
+ */
+const writeContent = (
+    orderId: string,
+    reviewContentRequest: ReviewContentRequest,
+ options?: SecondParameter<typeof customInstance<WriteContent200>>,) => {
+      return customInstance<WriteContent200>(
+      {url: `/api/v1/orders/${orderId}/review`, method: 'PATCH',
+      headers: {'Content-Type': 'application/json', },
+      data: reviewContentRequest
     },
       options);
     }
@@ -938,6 +989,19 @@ const getDeliveryDetail = (
     }
 
 /**
+ * 완료 화면용. 물품명·담당 드리미·결제금액·소요시간을 반환한다.
+ * @summary 배달 완료 요약 조회
+ */
+const getDeliveryCompletion = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetDeliveryCompletion200>>,) => {
+      return customInstance<GetDeliveryCompletion200>(
+      {url: `/api/v1/delivery/orders/${orderId}/completion`, method: 'GET'
+    },
+      options);
+    }
+
+/**
  * @summary 주문의 매칭 방(OrderOfferGroup) 상태 조회
  */
 const getOrderOfferGroup = (
@@ -998,7 +1062,7 @@ const unsubscribeOrder = (
       options);
     }
 
-return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,createSubscription,deleteSubscription,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,pending,removeDreami,unsubscribeOrder}};
+return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,removeDreami,unsubscribeOrder}};
 export type GetResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['get']>>>
 export type PutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['put']>>>
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
@@ -1010,6 +1074,9 @@ export type LogoutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getO
 export type LoginResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['login']>>>
 export type CreateSubscriptionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['createSubscription']>>>
 export type DeleteSubscriptionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['deleteSubscription']>>>
+export type GetMyReviewResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getMyReview']>>>
+export type WriteScoreResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['writeScore']>>>
+export type WriteContentResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['writeContent']>>>
 export type VerifyUploadedDocumentsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['verifyUploadedDocuments']>>>
 export type GoOnlineResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['goOnline']>>>
 export type GoOfflineResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['goOffline']>>>
@@ -1061,6 +1128,7 @@ export type GetDashboardResult = NonNullable<Awaited<ReturnType<ReturnType<typeo
 export type GetTodayStatsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getTodayStats']>>>
 export type DevSubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['devSubscribe']>>>
 export type GetDeliveryDetailResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDeliveryDetail']>>>
+export type GetDeliveryCompletionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDeliveryCompletion']>>>
 export type GetOrderOfferGroupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getOrderOfferGroup']>>>
 export type WaitingOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['waitingOrders']>>>
 export type PendingResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['pending']>>>

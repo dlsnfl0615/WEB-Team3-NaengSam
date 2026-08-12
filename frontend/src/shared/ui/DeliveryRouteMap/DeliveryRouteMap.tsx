@@ -2,12 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { DELIVERY_MAP_SMOOTH_MODE } from "@/shared/config";
 import { loadKakaoMaps } from "@/shared/lib";
 import { cn } from "@/shared/lib/cn";
-import {
-  interpolatePoint,
-  planDriverMotion,
-  type PixelPoint,
-} from "./driverMotion";
-import { pinImageSrc } from "./pinImage";
+import { planDriverMotion } from "./driverMotion";
+import { makePinOverlay } from "./pinOverlay";
+import type { KakaoMap, PinOverlayHandle, PinStyle } from "./pinOverlay";
 
 /** 위·경도 좌표쌍. */
 export interface Coords {
@@ -33,8 +30,6 @@ export interface DeliveryRouteMapProps {
 }
 
 type Role = "pickup" | "dropoff" | "driver";
-type KakaoMap = ReturnType<typeof window.kakao.maps.Map>;
-type KakaoLatLng = ReturnType<typeof window.kakao.maps.LatLng>;
 
 interface DriverMotionState {
   target?: Coords;
@@ -42,213 +37,18 @@ interface DriverMotionState {
   averageSpeedMps?: number;
 }
 
-interface DeliveryPinOverlay {
-  setMap(map: KakaoMap | null): void;
-  setPosition(position: KakaoLatLng): void;
-  setSmoothPosition(position: KakaoLatLng, durationMs: number): void;
-}
-
-interface PinAnimation {
-  fromPosition: KakaoLatLng;
-  toPosition: KakaoLatLng;
-  fromPoint: PixelPoint;
-  toPoint: PixelPoint;
-  startedAt: number;
-  durationMs: number;
-  frame?: number;
-}
-
 /** 역할별 핀 색(theme.css 토큰 hex 재사용)·라벨 텍스트·라벨 배경(토큰 유틸). */
-const ROLE: Record<Role, { color: string; label: string; bg: string }> = {
+const ROLE: Record<Role, PinStyle> = {
   pickup: { color: "#0d1b3d", label: "픽업 장소", bg: "bg-navy-900" }, // navy-900
   dropoff: { color: "#00b7a7", label: "도착지", bg: "bg-teal-500" }, // teal-500
   driver: { color: "#b26a00", label: "드리미", bg: "bg-status-warning" }, // status-warning
 };
 
-/** 핀과 역할 라벨을 하나의 AbstractOverlay로 만든다. */
-function makePinOverlay(
-  kakao: typeof window.kakao,
-  map: KakaoMap,
-  position: KakaoLatLng,
-  role: Role,
-  label: string,
-  smooth: boolean,
-): DeliveryPinOverlay {
-  const root = document.createElement("div");
-  root.className =
-    "pointer-events-none absolute flex flex-col items-center gap-0.5 whitespace-nowrap";
-  root.style.transform = "translate(-50%, -100%)";
-  if (smooth) root.style.willChange = "transform";
-
-  const labelElement = document.createElement("div");
-  labelElement.className = cn(
-    "rounded-pill px-1.5 py-0.5 text-2xs font-semibold text-white shadow-card",
-    ROLE[role].bg,
-  );
-  labelElement.textContent = label;
-
-  const pin = document.createElement("span");
-  pin.setAttribute("aria-hidden", "true");
-  pin.style.width = "30px";
-  pin.style.height = "40px";
-  pin.style.backgroundImage = `url("${pinImageSrc(ROLE[role].color)}")`;
-  pin.style.backgroundPosition = "center";
-  pin.style.backgroundRepeat = "no-repeat";
-  pin.style.backgroundSize = "contain";
-
-  root.append(labelElement, pin);
-
-  class PinOverlay extends kakao.maps.AbstractOverlay {
-    private position = position;
-    private animation?: PinAnimation;
-
-    private progress(animation: PinAnimation, now: number) {
-      return Math.min(
-        Math.max((now - animation.startedAt) / animation.durationMs, 0),
-        1,
-      );
-    }
-
-    private positionAt(animation: PinAnimation, progress: number) {
-      return new kakao.maps.LatLng(
-        animation.fromPosition.getLat() +
-          (animation.toPosition.getLat() - animation.fromPosition.getLat()) *
-            progress,
-        animation.fromPosition.getLng() +
-          (animation.toPosition.getLng() - animation.fromPosition.getLng()) *
-            progress,
-      );
-    }
-
-    private renderPoint(point: PixelPoint) {
-      if (smooth) {
-        // transform은 소수점 픽셀을 유지하고 브라우저 합성 레이어에서 처리돼 left/top보다 부드럽다.
-        root.style.left = "0px";
-        root.style.top = "0px";
-        root.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) translate(-50%, -100%)`;
-        return;
-      }
-      // SMOOTH 모드가 꺼지면 기존 위치 반영 방식을 그대로 사용한다.
-      root.style.left = `${point.x}px`;
-      root.style.top = `${point.y}px`;
-      root.style.transform = "translate(-50%, -100%)";
-    }
-
-    private cancelAnimation() {
-      if (this.animation?.frame != null) {
-        cancelAnimationFrame(this.animation.frame);
-      }
-      this.animation = undefined;
-    }
-
-    private animate = (now: number) => {
-      const animation = this.animation;
-      if (!animation) return;
-      const progress = this.progress(animation, now);
-      this.renderPoint(
-        interpolatePoint(animation.fromPoint, animation.toPoint, progress),
-      );
-
-      if (progress < 1) {
-        animation.frame = requestAnimationFrame(this.animate);
-        return;
-      }
-      this.position = animation.toPosition;
-      this.animation = undefined;
-      this.renderPoint(animation.toPoint);
-    };
-
-    onAdd() {
-      this.getPanels().overlayLayer.appendChild(root);
-    }
-
-    draw() {
-      const projection = this.getProjection();
-      const animation = this.animation;
-      if (!animation) {
-        this.renderPoint(projection.pointFromCoords(this.position));
-        return;
-      }
-
-      // 지도 이동·확대 중에는 현재 진행 위치를 새 투영 좌표로 다시 잡고 남은 애니메이션을 이어간다.
-      const now = performance.now();
-      const progress = this.progress(animation, now);
-      const currentPosition = this.positionAt(animation, progress);
-      const remainingDurationMs = animation.durationMs * (1 - progress);
-      const currentPoint = projection.pointFromCoords(currentPosition);
-      const targetPoint = projection.pointFromCoords(animation.toPosition);
-
-      animation.fromPosition = currentPosition;
-      animation.fromPoint = currentPoint;
-      animation.toPoint = targetPoint;
-      animation.startedAt = now;
-      animation.durationMs = Math.max(remainingDurationMs, 1);
-      this.renderPoint(currentPoint);
-    }
-
-    onRemove() {
-      this.cancelAnimation();
-      root.remove();
-    }
-
-    setMap(nextMap: KakaoMap | null) {
-      super.setMap(nextMap);
-    }
-
-    setPosition(nextPosition: KakaoLatLng) {
-      this.cancelAnimation();
-      this.position = nextPosition;
-      if (this.getMap()) this.draw();
-    }
-
-    setSmoothPosition(nextPosition: KakaoLatLng, durationMs: number) {
-      if (!smooth || !this.getMap()) {
-        this.setPosition(nextPosition);
-        return;
-      }
-
-      const now = performance.now();
-      const previousAnimation = this.animation;
-      const progress = previousAnimation
-        ? this.progress(previousAnimation, now)
-        : 1;
-      const fromPosition = previousAnimation
-        ? this.positionAt(previousAnimation, progress)
-        : this.position;
-      const projection = this.getProjection();
-      const fromPoint = previousAnimation
-        ? interpolatePoint(
-            previousAnimation.fromPoint,
-            previousAnimation.toPoint,
-            progress,
-          )
-        : projection.pointFromCoords(fromPosition);
-
-      this.cancelAnimation();
-      this.position = nextPosition;
-      this.animation = {
-        fromPosition,
-        toPosition: nextPosition,
-        fromPoint,
-        toPoint: projection.pointFromCoords(nextPosition),
-        startedAt: now,
-        durationMs: Math.max(durationMs, 1),
-      };
-      this.renderPoint(fromPoint);
-      this.animation.frame = requestAnimationFrame(this.animate);
-    }
-  }
-
-  const overlay = new PinOverlay();
-  overlay.setMap(map);
-  return overlay;
-}
-
 /** 핀 오버레이를 처음이면 생성하고, 이미 있으면 위치만 옮긴다. */
 function upsertMarker(
   kakao: typeof window.kakao,
   map: KakaoMap,
-  store: { overlay?: DeliveryPinOverlay },
+  store: { overlay?: PinOverlayHandle },
   role: Role,
   coords: Coords,
   label: string,
@@ -259,14 +59,21 @@ function upsertMarker(
     store.overlay.setPosition(pos);
     return;
   }
-  store.overlay = makePinOverlay(kakao, map, pos, role, label, smooth);
+  store.overlay = makePinOverlay(
+    kakao,
+    map,
+    pos,
+    { ...ROLE[role], label },
+    undefined,
+    smooth,
+  );
 }
 
 /** 드리미 핀을 처음이면 생성하고, 이미 있으면 픽셀 기반 애니메이션으로 옮긴다. */
 function upsertSmoothDriver(
   kakao: typeof window.kakao,
   map: KakaoMap,
-  store: { overlay?: DeliveryPinOverlay },
+  store: { overlay?: PinOverlayHandle },
   coords: Coords,
   label: string,
   durationMs?: number,
@@ -284,8 +91,8 @@ function upsertSmoothDriver(
     kakao,
     map,
     position,
-    "driver",
-    label,
+    { ...ROLE.driver, label },
+    undefined,
     true,
   );
 }
@@ -307,7 +114,7 @@ export function DeliveryRouteMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const kakaoRef = useRef<typeof window.kakao | null>(null);
   const mapRef = useRef<KakaoMap | null>(null);
-  const storeRef = useRef<Record<Role, { overlay?: DeliveryPinOverlay }>>({
+  const storeRef = useRef<Record<Role, { overlay?: PinOverlayHandle }>>({
     pickup: {},
     dropoff: {},
     driver: {},

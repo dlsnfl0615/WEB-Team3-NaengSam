@@ -65,6 +65,34 @@ class S3PresignServiceTest {
     }
 
     @Test
+    void 다운로드_URL_조회_시도시_파일이_없으면_예외없이_null을_반환한다() {
+        when(uploader.exists("uploads/x/y-a.png")).thenReturn(false);
+
+        String url = s3PresignService.resolveDownloadUrl("uploads/x/y-a.png");
+
+        assertThat(url).isNull();
+    }
+
+    @Test
+    void 다운로드_URL_조회_시도시_존재_확인_자체가_실패해도_예외없이_null을_반환한다() {
+        when(uploader.exists("uploads/x/y-a.png")).thenThrow(new BusinessException(UploadErrorCode.STORAGE_UPLOAD_FAILED));
+
+        String url = s3PresignService.resolveDownloadUrl("uploads/x/y-a.png");
+
+        assertThat(url).isNull();
+    }
+
+    @Test
+    void 다운로드_URL_조회_시도시_존재하면_정상적으로_URL을_반환한다() {
+        when(uploader.exists("uploads/x/y-a.png")).thenReturn(true);
+        when(uploader.generateDownloadUrl("uploads/x/y-a.png")).thenReturn("https://example.com/download");
+
+        String url = s3PresignService.resolveDownloadUrl("uploads/x/y-a.png");
+
+        assertThat(url).isEqualTo("https://example.com/download");
+    }
+
+    @Test
     void 업로드_확인은_uploader의_exists에_그대로_위임한다() {
         when(uploader.exists("uploads/x/y-a.png")).thenReturn(true);
 

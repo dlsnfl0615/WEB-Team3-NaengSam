@@ -126,7 +126,7 @@ const PROOF_CONFIG: Record<
     button: "전달 완료 · 사진 첨부",
     locationLabel: "배달 도착지",
     // 드리미가 전달 완료 → 부르미를 평가하는 리뷰 화면으로.
-    next: () => `${ROUTES.deliveryComplete}?reviewee=boormi`,
+    next: (orderId) => `${ROUTES.deliveryComplete}?reviewee=boormi&orderId=${orderId}`,
   },
 };
 
