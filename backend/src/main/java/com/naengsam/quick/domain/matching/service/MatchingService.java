@@ -29,6 +29,7 @@ import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.notification.NotificationService;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -97,9 +98,39 @@ public class MatchingService {
     private final MatchingPlanApplier matchingPlanApplier;
     private final MatchingPolicyProperties matchingPolicyProperties;
     private final GeoDistanceCalculator geoDistanceCalculator;
+    private final MeterRegistry meterRegistry;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
+    }
+
+    /**
+     * 지금 실시간 채널로 닿을 수 있는(= SSE 연결이 살아 있는) 대기 드리미만 남긴다.
+     *
+     * <p>{@code goOffline}을 호출하지 못하고 브라우저가 죽은 드리미(앱 스와이프 종료, 탭 메모리 회수 등)는 여전히
+     * {@code dreamiMap}에 MATCHING으로 남아 있다. 이 유령에게 오퍼 슬롯이 가면 주문은 30초 TTL을 그대로 태우고
+     * 재매칭 대기로 되돌아가며, 그 뒤 쿨다운 정책까지 적용된다. 웹푸시로 깨우더라도 30초 안에 알림 확인 → 잠금해제 →
+     * 앱 로딩 → 수락까지 끝내는 것은 사실상 불가능하므로, 판정 기준은 "푸시 구독 보유"가 아니라 "살아 있는 SSE 연결"이다.
+     *
+     * <p>엔진 스레드에서 호출되지만 판정은 {@code ConcurrentHashMap} 조회 한 번이라 블로킹이 없다.
+     */
+    private List<WaitingDreami> reachableWaitingDreamis() {
+        return dreamiMap.values().stream()
+                .filter(dreami -> dreami.status() == WaitingDreamiStatus.MATCHING)
+                .filter(this::isReachable)
+                .toList();
+    }
+
+    /**
+     * 드리미에게 실시간으로 닿을 수 있는지 판정하고, 걸러낸 경우 그 사실을 지표로 남긴다. 필터가 실제로 몇 명의 유령을
+     * 막았는지는 {@code matching.candidates.filtered{reason=not_connected}}로 Grafana에서 확인한다.
+     */
+    private boolean isReachable(WaitingDreami dreami) {
+        if (notificationService.isReachableNow(dreami.dreamiId())) {
+            return true;
+        }
+        meterRegistry.counter("matching.candidates.filtered", "reason", "not_connected").increment();
+        return false;
     }
 
     /**
@@ -313,7 +344,7 @@ public class MatchingService {
     void applyRunMatchingAssignmentCycle() {
         matchingBatchDispatcher.reset();
         MatchingAssignmentProblem problem = matchingAssignmentProblemAssembler.assemble(
-                orderOfferGroups(), waitingDreamis());
+                orderOfferGroups(), reachableWaitingDreamis());
         MatchingPlan plan = matchingAssignmentPolicy.createPlan(problem);
         matchingPlanApplier.apply(problem, plan, LocalDateTime.now(clock),
                 orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
@@ -353,7 +384,7 @@ public class MatchingService {
      * ({@link #retryRematchWaitingGroups()}, {@link #scheduleRematchWaitingGroups()})에서만 쓰인다. 이미 취소(CANCELLED)되었거나
      * 확정(MATCHED)된 그룹은 다시 열리면 안 되므로 아무 것도 하지 않는다. {@link MatchOffer#shouldExcludeFromRematch()}에 따라, 명시적으로 거절했거나 드리미 응답
      * timeout(DREAMI_EXPIRED)인 드리미는 재제안 대상에서 제외하고 타의로 회수됐거나(WITHDRAWN) 부르미 응답 timeout(BOORMI_EXPIRED)인 드리미는 다시 후보에
-     * 포함한다.
+     * 포함한다. 후보는 {@link #isReachable}로 한 번 더 걸러, SSE 연결이 끊긴 드리미가 오퍼 슬롯을 차지하지 않게 한다.
      */
     private void attemptOfferRound(OrderOfferGroup group) {
         if (!group.isActive()) {
@@ -368,6 +399,7 @@ public class MatchingService {
         List<WaitingDreami> candidates = dreamiMap.values().stream()
                 .filter(dreami -> dreami.status() == WaitingDreamiStatus.MATCHING)
                 .filter(dreami -> !excludedDreamiIds.contains(dreami.dreamiId()))
+                .filter(this::isReachable)
                 .sorted(orderingComparator())
                 .limit(MAX_OFFER_COUNT)
                 .toList();

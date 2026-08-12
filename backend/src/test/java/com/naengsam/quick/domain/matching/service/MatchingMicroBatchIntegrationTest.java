@@ -25,6 +25,7 @@ import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.notification.NotificationService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
@@ -63,6 +64,8 @@ class MatchingMicroBatchIntegrationTest {
     private MatchingService newMatchingService(int maxConcurrentOffers) {
         MatchingEngine matchingEngine = mock(MatchingEngine.class);
         NotificationService notificationService = mock(NotificationService.class);
+        // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 이 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
+        when(notificationService.isReachableNow(any())).thenReturn(true);
         MatchingActionScheduler matchingActionScheduler = mock(MatchingActionScheduler.class);
         MatchingBatchDispatcher matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         DeliveryService deliveryService = mock(DeliveryService.class);
@@ -84,7 +87,8 @@ class MatchingMicroBatchIntegrationTest {
         return new MatchingService(
                 matchingEngine, notificationService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
                 clock,
-                assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator);
+                assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
+                new SimpleMeterRegistry());
     }
 
     @Test
