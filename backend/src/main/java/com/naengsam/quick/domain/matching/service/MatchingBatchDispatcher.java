@@ -1,6 +1,7 @@
 package com.naengsam.quick.domain.matching.service;
 
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
