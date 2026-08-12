@@ -39,10 +39,13 @@ public record DeliveryCompletionDto(
 
         @Schema(description = "배송 완료 인증 사진 다운로드 URL. 인증 사진이 없으면 null",
                 example = "https://s3.ap-northeast-2.amazonaws.com/...")
-        String deliveryPhotoUrl
+        String deliveryPhotoUrl,
+
+        @Schema(description = "조회한 사용자가 이 배달의 드리미인지 여부(false면 부르미). 평가 대상 문구 분기용", example = "false")
+        boolean viewerIsDreami
 ) {
     public static DeliveryCompletionDto from(Delivery delivery, Orders order, String dreamiName,
-            BigDecimal dreamiAvgScore, String boormiName, String deliveryPhotoUrl) {
+            BigDecimal dreamiAvgScore, String boormiName, String deliveryPhotoUrl, boolean viewerIsDreami) {
         Long durationMinutes = (delivery.getDeliveryStartDtm() == null || delivery.getDeliveryEndDtm() == null)
                 ? null
                 : Duration.between(delivery.getDeliveryStartDtm(), delivery.getDeliveryEndDtm()).toMinutes();
@@ -56,6 +59,7 @@ public record DeliveryCompletionDto(
                 boormiName,
                 order.getDeliveryAmount(),
                 durationMinutes,
-                deliveryPhotoUrl);
+                deliveryPhotoUrl,
+                viewerIsDreami);
     }
 }
