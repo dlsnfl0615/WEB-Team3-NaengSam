@@ -212,23 +212,27 @@ export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) 
   );
 
   // ── 이벤트 처리 ──
+  // 요청 발신 시각(reqAt)을 응답 시각과 함께 원장에 넘긴다. 응답 시각만 남기면 서버가 비동기로 보낸 SSE가
+  // 응답보다 먼저 도착했을 때 구간이 음수가 되고, API 왕복 시간도 어느 지표에도 분리되지 않는다.
   async function acceptOffer(agent, offerId) {
     if (config.acceptDelayMs > 0) await sleep(config.acceptDelayMs);
+    const reqAt = Date.now();
     try {
       await call(agent, "POST", `/api/v1/dreami/offers/${offerId}/accept`);
-      ledger.acceptResult({ offerId, ok: true, at: Date.now() });
+      ledger.acceptResult({ offerId, ok: true, reqAt, at: Date.now() });
     } catch (e) {
-      ledger.acceptResult({ offerId, ok: false, at: Date.now(), error: e.message });
+      ledger.acceptResult({ offerId, ok: false, reqAt, at: Date.now(), error: e.message });
       note("수락 실패", e);
     }
   }
 
   async function confirmDreami(agent, orderId, offerId) {
+    const reqAt = Date.now();
     try {
       await call(agent, "POST", `/api/v1/boormi/calls/${orderId}/confirm-dreami`, { offerId });
-      ledger.confirmResult({ orderId, ok: true, at: Date.now() });
+      ledger.confirmResult({ orderId, ok: true, reqAt, at: Date.now() });
     } catch (e) {
-      ledger.confirmResult({ orderId, ok: false, at: Date.now(), error: e.message });
+      ledger.confirmResult({ orderId, ok: false, reqAt, at: Date.now(), error: e.message });
       note("확정 실패", e);
     }
   }
@@ -280,9 +284,10 @@ export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) 
   // 매칭이 아니라 외부 호출에서 먼저 막힌다.
   async function createOrder(agent) {
     ledger.createAttempt();
+    const reqAt = Date.now();
     try {
       const orderId = await call(agent, "POST", "/api/v1/boormi/calls", agent.order);
-      ledger.createOk(orderId, agent.email, Date.now());
+      ledger.createOk(orderId, agent.email, reqAt, Date.now());
       state.created++;
     } catch (e) {
       ledger.createFail(e.message);

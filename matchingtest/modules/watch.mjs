@@ -9,12 +9,14 @@
  *  2. SSE는 유저당 연결을 하나씩 물고 있는데, HTTP/1.1은 origin당 동시 연결이 6개다.
  *     한 브라우저에 탭을 여럿 띄우면 7번째부터 SSE가 열리지 않고 대기한다.
  *
- * 부하보다 **먼저** 준비를 마쳐야 한다. 오퍼 배정이 거리 무관 전역 FIFO(`updatedAt` 오름차순)이므로,
- * 브라우저 드리미가 큐 앞단을 잡고 있어야 에이전트 100명 사이에서 오퍼를 받는다.
+ * 부하보다 **먼저** 준비를 마쳐야 한다. 오퍼 배정은 2초 디바운스 배치 + 점수 기반 그리디
+ * (`거리 − 주문대기 − 드리미대기`)라, 브라우저 드리미가 먼저 온라인이 되어 대기 시간을 쌓고 있어야
+ * 에이전트 수십 명 사이에서 오퍼를 받는다.
  */
 import { chromium } from "playwright";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { orderPayload } from "./seed.mjs";
 
 /** 기록할 매칭 SSE 이벤트 타입. 백엔드 `MatchingEventType`의 소문자 표기와 같다. */
 const SSE_TYPES = [
@@ -146,8 +148,11 @@ async function prepareDreami(user, page, config) {
  * 부르미: 부름 등록은 4단계 위저드(주소검색·물품·사진·결제)라 UI로 몰기엔 취약하다.
  * 로그인된 페이지 컨텍스트에서 세션 쿠키를 그대로 태워 API로 등록하고 화면만 매칭 대기로 보낸다 —
  * 드리미 수락 팝업은 실제 SSE로 받는다.
+ *
+ * users.json에 `order`를 적어두면 그걸 쓰고, 없으면 에이전트가 쓰는 것과 같은 주소 목록에서 뽑는다.
+ * 창이 열 개를 넘어가면 주소 블록을 손으로 다 적는 것이 관리되지 않는다.
  */
-async function prepareBoormi(user, page, config) {
+async function prepareBoormi(user, page, config, index) {
   const orderId = await page.evaluate(async (order) => {
     const res = await fetch("/api/v1/boormi/calls", {
       method: "POST",
@@ -158,58 +163,106 @@ async function prepareBoormi(user, page, config) {
     const body = await res.json();
     if (!res.ok) throw new Error(`부름 등록 실패 ${res.status}: ${JSON.stringify(body)}`);
     return body.result;
-  }, user.order);
+  }, user.order ?? orderPayload(index));
 
   await page.goto(`${config.webBase}/matching?orderId=${orderId}`);
   return { screen: "/matching", orderId };
 }
 
-/** 준비된 화면에서 매칭이 잡히는지 지켜보고 단언한다. */
+/**
+ * 준비된 화면에서 매칭이 잡히는지 지켜보고 단언한다.
+ *
+ * 선착순에서 져도 끝이 아니다. 백엔드는 패배한 드리미를 즉시 대기열로 되돌리고(`releaseDreami`,
+ * 결과 쿨다운도 `WITHDRAWN → Duration.ZERO`) 다음 배치에서 새 오퍼를 보낸다. 그래서 한 번 지고
+ * 반환해 버리면 그 창은 이후로 오는 팝업을 아무도 누르지 않아 영영 미매칭으로 남고, 받은 오퍼를
+ * OFFER_TTL(30초)로 만료시켜 주문 지연까지 부풀린다.
+ * 이기거나 전체 제한시간이 끝날 때까지 반복해서 수락한다.
+ *
+ * 부르미에게는 패배가 없으므로 첫 회차에서 그대로 끝난다.
+ */
 async function assertMatched(user, page, config, shotDir) {
   const button = user.role === "dreami" ? "콜 수락" : "수락하기";
   const target = user.role === "dreami" ? "**/delivery-track**" : "**/delivery-detail**";
 
   const startedAt = Date.now();
+  const deadline = startedAt + config.timeoutMs;
+  const remaining = () => deadline - Date.now();
   const locator = page.getByRole("button", { name: button });
-  await locator.waitFor({ state: "visible", timeout: config.timeoutMs });
 
   const popupShot = join(shotDir, `${user.label}-popup.png`);
-  await page.screenshot({ path: popupShot });
+  const doneShot = join(shotDir, `${user.label}-done.png`);
 
-  // 수락 버튼을 누르기 전까지 쌓인 이벤트는 판정에서 제외한다. 드리미 등록 단계에서도
-  // offer_error("이미 등록된 드리미입니다.")가 올 수 있어, 그걸 패배로 세면 안 된다.
-  const mark = await page.evaluate(() => window.__sse?.length ?? 0);
+  let attempts = 0;
+  let stage;
+  for (;;) {
+    try {
+      await locator.waitFor({ state: "visible", timeout: Math.max(1, remaining()) });
+    } catch (e) {
+      // 첫 팝업이 끝내 오지 않은 것은 실패다(매칭대기_타임아웃). 이미 한 번 이상 수락해 봤다면
+      // 제한시간이 끝난 것뿐이므로 마지막 판정을 그대로 들고 나간다.
+      if (attempts === 0) throw e;
+      break;
+    }
 
-  await locator.click();
+    await page.screenshot({ path: popupShot });
 
-  // 수락 즉시 화면이 넘어가지 않는다. 드리미 수락 → 부르미 확정 → 배달 시작(delivery_started_* SSE)
-  // 순서로 진행되고, 화면 이동은 마지막 SSE를 받은 시점에 일어난다.
-  //
-  // 같은 오퍼를 여러 드리미가 동시에 받으므로 선착순에서 지는 것은 정상 동작이다.
-  // 화면 전환과 패배 통지 중 먼저 오는 쪽으로 판정한다 — 지는 것을 실패로 세면 리포트가 늘 빨갛다.
-  // 패배 통지는 offer_closed("선착순 마감") 또는 offer_error("이미 다른 드리미가 수락한 주문입니다.")로 온다.
-  const stage = await Promise.race(
-    [
-      page.waitForURL(target, { timeout: 30_000 }).then(() => "완료", () => null),
-      user.role === "dreami"
-        ? page
-            .waitForFunction(
-              ([from, types]) => window.__sse.slice(from).some((e) => types.includes(e.type)),
-              [mark, LOSS_TYPES],
-              { timeout: 30_000 },
-            )
-            .then(() => "선착순패배", () => null)
-        : null,
-    ].filter(Boolean),
-  );
-  if (stage === null) {
-    throw new Error(`수락 후 화면 전환도, 패배 통지도 오지 않았습니다. 수신 SSE: ${await sseDump(page, mark)}`);
+    // 수락 버튼을 누르기 전까지 쌓인 이벤트는 판정에서 제외한다. 드리미 등록 단계에서도
+    // offer_error("이미 등록된 드리미입니다.")가 올 수 있어, 그걸 패배로 세면 안 된다.
+    const mark = await page.evaluate(() => window.__sse?.length ?? 0);
+
+    await locator.click();
+    attempts++;
+
+    // 수락 즉시 화면이 넘어가지 않는다. 드리미 수락 → 부르미 확정 → 배달 시작(delivery_started_* SSE)
+    // 순서로 진행되고, 화면 이동은 마지막 SSE를 받은 시점에 일어난다.
+    //
+    // 같은 오퍼를 여러 드리미가 동시에 받으므로 선착순에서 지는 것은 정상 동작이다.
+    // 화면 전환과 패배 통지 중 먼저 오는 쪽으로 판정한다.
+    // 패배 통지는 offer_closed("선착순 마감") 또는 offer_error("이미 다른 드리미가 수락한 주문입니다.")로 온다.
+    // 이 대기는 제한시간으로 자르지 않는다 — 이미 누른 수락의 결과는 끝까지 봐야 판정이 선다.
+    stage = await Promise.race(
+      [
+        page.waitForURL(target, { timeout: 30_000 }).then(() => "완료", () => null),
+        user.role === "dreami"
+          ? page
+              .waitForFunction(
+                ([from, types]) => window.__sse.slice(from).some((e) => types.includes(e.type)),
+                [mark, LOSS_TYPES],
+                { timeout: 30_000 },
+              )
+              .then(() => "선착순패배", () => null)
+          : null,
+      ].filter(Boolean),
+    );
+    if (stage === null) {
+      throw new Error(`수락 후 화면 전환도, 패배 통지도 오지 않았습니다. 수신 SSE: ${await sseDump(page, mark)}`);
+    }
+
+    await page.screenshot({ path: doneShot });
+
+    if (stage === "완료" || remaining() <= 0) break;
+
+    // 같은 팝업을 두 번 누르지 않으려고, 이전 팝업이 닫힌 것을 확인한 뒤 다음 오퍼를 기다린다.
+    // 패배 통지(offer_closed)를 받은 프론트가 pendingOffer를 비우므로 곧 사라진다.
+    await locator.waitFor({ state: "hidden", timeout: Math.max(1, remaining()) }).catch(() => {});
   }
 
-  const doneShot = join(shotDir, `${user.label}-done.png`);
-  await page.screenshot({ path: doneShot });
+  return { stage, attempts, elapsedMs: Date.now() - startedAt, screenshots: [popupShot, doneShot] };
+}
 
-  return { stage, elapsedMs: Date.now() - startedAt, screenshots: [popupShot, doneShot] };
+/**
+ * 항목을 한 번에 `limit`개씩만 굴린다. 순차보다 빠르면서, 한꺼번에 다 띄웠을 때의
+ * 크롬 프로세스 스파이크(첫 로그인들이 타임아웃난다)는 피한다.
+ */
+async function pool(items, limit, worker) {
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next++;
+      await worker(items[index], index);
+    }
+  });
+  await Promise.all(runners);
 }
 
 /**
@@ -222,38 +275,59 @@ export async function startWatch({ users, config, log }) {
   await mkdir(shotDir, { recursive: true });
 
   const sessions = [];
-  const results = [];
+  const results = users.map((user) => ({
+    label: user.label,
+    email: user.email,
+    role: user.role,
+    stage: "시작",
+    matched: false,
+    elapsedMs: null,
+    screenshots: [],
+    error: null,
+  }));
 
-  // 순차 launch. 동시에 여러 개를 띄우면 크롬 프로세스 스파이크로 첫 로그인들이 타임아웃난다.
-  for (const [index, user] of users.entries()) {
-    const result = {
-      label: user.label,
-      email: user.email,
-      role: user.role,
-      stage: "시작",
-      matched: false,
-      elapsedMs: null,
-      screenshots: [],
-      error: null,
-    };
-    results.push(result);
+  // 창 기동·로그인은 대부분 대기 시간이라 동시에 굴린다. 다만 무제한으로 띄우면 크롬
+  // 프로세스 스파이크로 첫 로그인들이 타임아웃나므로 `concurrency`개씩 끊는다.
+  await pool(users, Math.max(1, config.concurrency ?? 4), async (user, index) => {
+    const result = results[index];
     try {
       const session = await openUser(user, index, config);
-      sessions.push(session);
-      result.stage = "로그인";
-      const prepared =
-        user.role === "dreami"
-          ? await prepareDreami(user, session.page, config)
-          : await prepareBoormi(user, session.page, config);
-      result.stage = "대기중";
-      result.orderId = prepared.orderId ?? null;
       session.user = user;
       session.result = result;
-      log(`${user.label} (${user.role}) 로그인 ✓ ${prepared.screen} ✓ 대기중`);
+      session.index = index;
+      sessions.push(session);
+      result.stage = "로그인";
+      if (user.role === "dreami") {
+        const prepared = await prepareDreami(user, session.page, config);
+        result.stage = "대기중";
+        log(`${user.label} (dreami) 로그인 ✓ ${prepared.screen} ✓ 대기중`);
+      } else {
+        log(`${user.label} (boormi) 로그인 ✓`);
+      }
     } catch (e) {
       result.stage = "준비실패";
       result.error = e.message;
       log(`${user.label} 준비 실패: ${e.message}`);
+    }
+  });
+
+  // 완료 순서가 아니라 users 순서로 되돌린다 — 아래 부름 등록과 리포트가 이 순서를 따른다.
+  sessions.sort((a, b) => a.index - b.index);
+
+  // 부름 등록은 로그인이 전부 끝난 뒤에 몬다. 창 20개는 순차 기동만 1~2분이라, 등록을 로그인과
+  // 섞으면 먼저 만든 주문의 오퍼가 아직 준비 중인 드리미들에게 갔다가 OFFER_TTL(30초)로 만료된다.
+  // 만료된 드리미는 그 주문의 재제안 대상에서 빠지므로 주문이 한참을 굶는다.
+  for (const session of sessions) {
+    if (session.user.role !== "boormi" || session.result.stage !== "로그인") continue;
+    try {
+      const prepared = await prepareBoormi(session.user, session.page, config, session.index);
+      session.result.stage = "대기중";
+      session.result.orderId = prepared.orderId;
+      log(`${session.user.label} (boormi) 부름 등록 ✓ ${prepared.screen} ✓ 대기중`);
+    } catch (e) {
+      session.result.stage = "준비실패";
+      session.result.error = e.message;
+      log(`${session.user.label} 준비 실패: ${e.message}`);
     }
   }
 
@@ -263,7 +337,9 @@ export async function startWatch({ users, config, log }) {
   const watching = ready.map(async (session) => {
     try {
       const outcome = await assertMatched(session.user, session.page, config, shotDir);
-      Object.assign(session.result, { matched: true, ...outcome });
+      // 제한시간이 끝날 때까지 계속 수락했는데도 못 이겼다면 미매칭이다. 패배로 끝난 창을
+      // matched로 세면 "실사용자가 부하 속에서 매칭을 잡는가"라는 이 테스트의 질문이 사라진다.
+      Object.assign(session.result, { ...outcome, matched: outcome.stage === "완료" });
     } catch (e) {
       session.result.stage = session.result.stage === "대기중" ? "매칭대기_타임아웃" : session.result.stage;
       session.result.error = e.message.split("\n")[0];

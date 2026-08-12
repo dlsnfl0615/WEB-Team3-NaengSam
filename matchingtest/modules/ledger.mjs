@@ -45,6 +45,11 @@ function stats(values) {
   };
 }
 
+/** 표본 배열들의 묶음을 같은 키의 통계 묶음으로 바꾼다. */
+export function statsOf(groups) {
+  return Object.fromEntries(Object.entries(groups).map(([key, values]) => [key, stats(values)]));
+}
+
 export function createLedger() {
   /** orderId → 주문 레코드 */
   const orders = new Map();
@@ -67,6 +72,8 @@ export function createLedger() {
     /** 원장이 모르는 오퍼/주문에 붙은 이벤트. 이전 런의 잔여 상태를 의심할 근거가 된다. */
     orphanEvents: 0,
   };
+  /** 엔드포인트별 API 왕복 시간. 톰캣 큐 + 트랜잭션 + DB까지의 동기 서버 처리 시간이다. */
+  const rtt = { create: [], accept: [], confirm: [] };
   /** 드리미 이메일 → offer_error 수신 시각들. 형제 오퍼 마감을 이걸로 알게 된 경우를 가린다. */
   const offerErrorsByDreami = new Map();
   const closedReasons = new Map();
@@ -96,10 +103,14 @@ export function createLedger() {
       rec = {
         orderId,
         boormiEmail: null,
+        // createReqAt은 요청을 보낸 시각, createdAt은 응답을 받은 시각이다. 서버 구간은 요청 발신부터 재야
+        // API 왕복이 빠지지 않고, 응답보다 먼저 도착하는 SSE 때문에 음수가 되지도 않는다.
+        createReqAt: null,
         createdAt: null,
         offers: [],
         dreamiInfoAt: null,
         winnerOfferId: null,
+        confirmReqAt: null,
         confirmAt: null,
         confirmOk: false,
         winnerDreamiEmail: null,
@@ -120,10 +131,12 @@ export function createLedger() {
       counters.createAttempt++;
     },
 
-    createOk(orderId, boormiEmail, at) {
+    createOk(orderId, boormiEmail, reqAt, at) {
       counters.createOk++;
+      rtt.create.push(at - reqAt);
       const rec = ensureOrder(orderId);
       rec.boormiEmail = boormiEmail;
+      rec.createReqAt = reqAt;
       rec.createdAt = at;
     },
 
@@ -141,6 +154,7 @@ export function createLedger() {
         offerId,
         dreamiEmail,
         popupAt: at,
+        acceptReqAt: null,
         acceptAt: null,
         acceptOk: null,
         closedAt: null,
@@ -150,14 +164,16 @@ export function createLedger() {
       offers.set(offerId, offer);
     },
 
-    acceptResult({ offerId, ok, at, error }) {
+    acceptResult({ offerId, ok, reqAt, at, error }) {
       if (ok) counters.acceptSubmitted++;
       else {
         counters.acceptFail++;
         if (error) bump(acceptErrors, error.slice(0, 160));
       }
+      rtt.accept.push(at - reqAt);
       const offer = offers.get(offerId);
       if (!offer) return;
+      offer.acceptReqAt = reqAt;
       offer.acceptAt = at;
       offer.acceptOk = ok;
     },
@@ -181,13 +197,15 @@ export function createLedger() {
       rec.winnerOfferId = offerId;
     },
 
-    confirmResult({ orderId, ok, at, error }) {
+    confirmResult({ orderId, ok, reqAt, at, error }) {
       if (ok) counters.confirmOk++;
       else {
         counters.confirmFail++;
         if (error) bump(confirmErrors, error.slice(0, 160));
       }
+      rtt.confirm.push(at - reqAt);
       const rec = ensureOrder(orderId);
+      rec.confirmReqAt = reqAt;
       rec.confirmAt = at;
       rec.confirmOk = ok;
     },
@@ -230,6 +248,8 @@ export function createLedger() {
       const orphanOrders = [];
       /** 그중 브라우저 부르미가 만든 주문. 정상이며, 잔여 상태 경고에서 빼야 한다. */
       const browserOrders = [];
+      /** 부하 주문인데 원장이 모르는 드리미(=브라우저 드리미)가 이긴 건. 유실이 아니다. */
+      const externalWinnerOrders = [];
 
       const add = (list, item) => list.push(item);
 
@@ -242,7 +262,21 @@ export function createLedger() {
       const gotErrorAfter = (dreamiEmail, since) =>
         (offerErrorsByDreami.get(dreamiEmail) ?? []).some((t) => t >= since);
 
-      const completedCount = [...orders.values()].filter((o) => o.confirmOk).length;
+      /**
+       * 확정(confirm 200)까지 간 주문. 드리미 계정을 소진시킨 건 확정 시점이므로 완주 상한 판별은 이 값으로 한다.
+       */
+      const matchedCount = [...orders.values()].filter((o) => o.confirmOk).length;
+
+      /**
+       * 완주 = 배달이 실제로 시작된 주문. confirm 200은 "매칭엔진에 제출됐다"까지만 뜻하고,
+       * DELIVERY 생성은 엔진 스레드의 별도 트랜잭션이라 여기서 실패해도 200은 이미 나간 뒤다.
+       * 그래서 confirm 200이 아니라 배달시작 SSE 수신을 기준으로 센다.
+       * 드리미 쪽(deliveryDreamiAt)은 조건에 넣지 않는다 — 브라우저 드리미가 이긴 주문은
+       * 원장이 그 SSE를 볼 수 없어(winnerDreamiEmail === null) 정상 건이 미완주로 잡힌다.
+       */
+      const completedCount = [...orders.values()].filter(
+        (o) => o.confirmOk && o.deliveryBoormiAt !== null,
+      ).length;
 
       for (const rec of orders.values()) {
         if (rec.createdAt === null) {
@@ -253,7 +287,7 @@ export function createLedger() {
 
         // 1. 오퍼 미발송
         if (rec.offers.length === 0) {
-          if (completedCount >= dreamiCount) {
+          if (matchedCount >= dreamiCount) {
             capacityBlocked.push({ orderId: rec.orderId, boormiEmail: rec.boormiEmail });
           } else {
             judge(missing, rec.createdAt, TIMEOUTS.offer, {
@@ -314,12 +348,19 @@ export function createLedger() {
         // 4. 배달 시작 알림 유실
         if (rec.confirmOk) {
           if (rec.deliveryDreamiAt === null) {
-            judge(missing, rec.confirmAt, TIMEOUTS.delivery, {
-              orderId: rec.orderId,
-              stage: "delivery_started_dreami_유실",
-              target: rec.winnerDreamiEmail,
-              since: rec.confirmAt,
-            });
+            // 승자가 브라우저 드리미면 이 원장은 그 오퍼의 offer_popup을 본 적이 없어
+            // winnerDreamiEmail이 비어 있다. delivery_started_dreami는 승자 브라우저로 가므로
+            // 부하 에이전트 SSE에는 영영 오지 않는다 — 유실이 아니라 관측 범위 밖이다.
+            if (rec.winnerDreamiEmail === null) {
+              externalWinnerOrders.push({ orderId: rec.orderId, boormiEmail: rec.boormiEmail });
+            } else {
+              judge(missing, rec.confirmAt, TIMEOUTS.delivery, {
+                orderId: rec.orderId,
+                stage: "delivery_started_dreami_유실",
+                target: rec.winnerDreamiEmail,
+                since: rec.confirmAt,
+              });
+            }
           }
           if (rec.deliveryBoormiAt === null) {
             judge(missing, rec.confirmAt, TIMEOUTS.delivery, {
@@ -333,19 +374,29 @@ export function createLedger() {
       }
 
       // ── 지연 ──
-      const lat = { createToOffer: [], offerToAccept: [], acceptToInfo: [], infoToConfirm: [], confirmToDelivery: [] };
+      // 서버 구간은 "요청 발신 → SSE 도착"이다. 응답 수신을 기준점으로 삼으면 API 왕복이 어느 지표에도
+      // 잡히지 않고 사라지며, 엔진이 보낸 SSE가 응답보다 먼저 도착하는 정상 상황에서 구간이 음수가 된다.
+      const server = {
+        createReqToOffer: [],
+        acceptReqToInfo: [],
+        confirmReqToDeliveryBoormi: [],
+        confirmReqToDeliveryDreami: [],
+      };
       for (const rec of orders.values()) {
-        if (rec.createdAt === null) continue;
+        if (rec.createReqAt === null) continue;
         const first = rec.offers[0];
-        if (first) lat.createToOffer.push(first.popupAt - rec.createdAt);
+        if (first) server.createReqToOffer.push(first.popupAt - rec.createReqAt);
         const winner = rec.offers.find((o) => o.offerId === rec.winnerOfferId);
-        if (winner?.acceptAt) lat.offerToAccept.push(winner.acceptAt - winner.popupAt);
-        // 음수가 나올 수 있다. 엔진이 부르미에게 보낸 SSE가 드리미의 accept HTTP 응답보다
-        // 먼저 도착하는 경우다 — 오류가 아니라 비동기 처리의 정상 결과다.
-        if (winner?.acceptAt && rec.dreamiInfoAt) lat.acceptToInfo.push(rec.dreamiInfoAt - winner.acceptAt);
-        if (rec.dreamiInfoAt && rec.confirmAt) lat.infoToConfirm.push(rec.confirmAt - rec.dreamiInfoAt);
-        if (rec.confirmOk && rec.deliveryBoormiAt) {
-          lat.confirmToDelivery.push(rec.deliveryBoormiAt - rec.confirmAt);
+        if (winner?.acceptReqAt && rec.dreamiInfoAt) {
+          server.acceptReqToInfo.push(rec.dreamiInfoAt - winner.acceptReqAt);
+        }
+        if (rec.confirmReqAt !== null) {
+          if (rec.deliveryBoormiAt) {
+            server.confirmReqToDeliveryBoormi.push(rec.deliveryBoormiAt - rec.confirmReqAt);
+          }
+          if (rec.deliveryDreamiAt) {
+            server.confirmReqToDeliveryDreami.push(rec.deliveryDreamiAt - rec.confirmReqAt);
+          }
         }
       }
 
@@ -367,7 +418,8 @@ export function createLedger() {
           // 선착순에서 실제로 이긴 오퍼만 센다.
           if (offer.offerId === rec.winnerOfferId) {
             d.won++;
-            if (rec.confirmOk) d.completed++;
+            // 1절 완주와 같은 기준(배달시작 SSE 수신)으로 센다.
+            if (rec.confirmOk && rec.deliveryBoormiAt !== null) d.completed++;
           }
           byDreami.set(offer.dreamiEmail, d);
         }
@@ -384,7 +436,11 @@ export function createLedger() {
         closedViaError,
         orphanOrders,
         browserOrders,
-        latency: Object.fromEntries(Object.entries(lat).map(([k, v]) => [k, stats(v)])),
+        externalWinnerOrders,
+        latency: {
+          api: statsOf(rtt),
+          server: statsOf(server),
+        },
         byDreami: Object.fromEntries(byDreami),
         byBoormi: Object.fromEntries(byBoormi),
         dreamiCount,
