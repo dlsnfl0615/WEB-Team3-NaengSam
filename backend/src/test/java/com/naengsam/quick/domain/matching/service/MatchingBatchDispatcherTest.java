@@ -9,6 +9,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.service.scheduler.Action;
+import com.naengsam.quick.domain.matching.service.scheduler.MatchingScheduler;
 import java.time.Duration;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,18 +22,18 @@ import org.mockito.ArgumentCaptor;
 class MatchingBatchDispatcherTest {
 
     private MatchingBatchDispatcher matchingBatchDispatcher;
-    private MatchingActionScheduler matchingActionScheduler;
+    private MatchingScheduler matchingScheduler;
     private Duration batchWindow;
 
     @BeforeEach
     void setUp() {
-        matchingActionScheduler = mock(MatchingActionScheduler.class);
+        matchingScheduler = mock(MatchingScheduler.class);
         MatchingPolicyProperties matchingPolicyProperties = mock(MatchingPolicyProperties.class);
         MatchingService matchingService = mock(MatchingService.class);
         batchWindow = Duration.ofMillis(200);
         when(matchingPolicyProperties.batchWindow()).thenReturn(batchWindow);
         matchingBatchDispatcher =
-                new MatchingBatchDispatcher(matchingActionScheduler, matchingPolicyProperties, matchingService);
+                new MatchingBatchDispatcher(matchingScheduler, matchingPolicyProperties, matchingService);
     }
 
     @Test
@@ -41,7 +43,7 @@ class MatchingBatchDispatcherTest {
 
         // then
         ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
-        verify(matchingActionScheduler).schedule(captor.capture(), eq(batchWindow));
+        verify(matchingScheduler).schedule(captor.capture(), eq(batchWindow));
         assertThat(captor.getValue()).isInstanceOf(RunMatchingAssignmentCycle.class);
     }
 
@@ -52,7 +54,7 @@ class MatchingBatchDispatcherTest {
         matchingBatchDispatcher.markDirty();
 
         // then
-        verify(matchingActionScheduler, times(1)).schedule(any(), eq(batchWindow));
+        verify(matchingScheduler, times(1)).schedule(any(), eq(batchWindow));
     }
 
     @Test
@@ -63,6 +65,6 @@ class MatchingBatchDispatcherTest {
         matchingBatchDispatcher.markDirty();
 
         // then
-        verify(matchingActionScheduler, times(2)).schedule(any(), eq(batchWindow));
+        verify(matchingScheduler, times(2)).schedule(any(), eq(batchWindow));
     }
 }

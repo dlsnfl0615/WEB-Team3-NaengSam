@@ -32,6 +32,8 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPr
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlan;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.service.scheduler.Action;
+import com.naengsam.quick.domain.matching.service.scheduler.MatchingScheduler;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
@@ -57,9 +59,8 @@ class MatchingServiceTest {
             "img", LocalDateTime.now());
 
     private MatchingService matchingService;
-    private MatchingEngine matchingEngine;
+    private MatchingScheduler matchingScheduler;
     private SseService sseService;
-    private MatchingActionScheduler matchingActionScheduler;
     private MatchingBatchDispatcher matchingBatchDispatcher;
     private DeliveryService deliveryService;
     private MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
@@ -69,9 +70,8 @@ class MatchingServiceTest {
 
     @BeforeEach
     void setUp() {
-        matchingEngine = mock(MatchingEngine.class);
+        matchingScheduler = mock(MatchingScheduler.class);
         sseService = mock(SseService.class);
-        matchingActionScheduler = mock(MatchingActionScheduler.class);
         matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         deliveryService = mock(DeliveryService.class);
         matchingAssignmentProblemAssembler = mock(MatchingAssignmentProblemAssembler.class);
@@ -79,7 +79,7 @@ class MatchingServiceTest {
         matchingPlanApplier = mock(MatchingPlanApplier.class);
         matchingPolicyProperties = mock(MatchingPolicyProperties.class);
         matchingService = new MatchingService(
-                matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
+                matchingScheduler, sseService, matchingBatchDispatcher, deliveryService,
                 Clock.systemDefaultZone(),
                 matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties);
     }
@@ -1200,7 +1200,7 @@ class MatchingServiceTest {
         OrderOfferGroup group = new OrderOfferGroup(
                 orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(), LocalDateTime.now());
         getOrderOfferGroups().put(orderId, group);
-        when(matchingEngine.submit(any())).thenReturn(true);
+        when(matchingScheduler.submit(any())).thenReturn(true);
 
         // when
         boolean result = matchingService.cancelOrderByBoormi(orderId);
@@ -1208,7 +1208,7 @@ class MatchingServiceTest {
         // then
         assertThat(result).isTrue();
         ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
-        verify(matchingEngine).submit(captor.capture());
+        verify(matchingScheduler).submit(captor.capture());
         assertThat(captor.getValue()).isInstanceOf(CancelOrderByBoormi.class);
         assertThat(((CancelOrderByBoormi) captor.getValue()).orderId()).isEqualTo(orderId);
     }
@@ -1223,7 +1223,7 @@ class MatchingServiceTest {
 
         // then
         assertThat(result).isFalse();
-        verify(matchingEngine, never()).submit(any());
+        verify(matchingScheduler, never()).submit(any());
     }
 
     @Test
@@ -1236,7 +1236,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
-        verify(matchingEngine).submit(captor.capture());
+        verify(matchingScheduler).submit(captor.capture());
         assertThat(captor.getValue()).isInstanceOf(AcceptByBoormi.class);
         assertThat(((AcceptByBoormi) captor.getValue()).offerId()).isEqualTo(offerId);
     }
@@ -1252,7 +1252,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
-        verify(matchingEngine).submit(captor.capture());
+        verify(matchingScheduler).submit(captor.capture());
         assertThat(captor.getValue()).isInstanceOf(StartMatching.class);
         assertThat(((StartMatching) captor.getValue()).order()).isSameAs(order);
     }
@@ -1270,7 +1270,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
-        verify(matchingEngine).submit(captor.capture());
+        verify(matchingScheduler).submit(captor.capture());
         assertThat(captor.getValue()).isInstanceOf(CancelOrderByBoormi.class);
         assertThat(((CancelOrderByBoormi) captor.getValue()).orderId()).isEqualTo(orderId);
     }
@@ -1285,7 +1285,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
-        verify(matchingEngine).submit(captor.capture());
+        verify(matchingScheduler).submit(captor.capture());
         assertThat(captor.getValue()).isInstanceOf(AcceptByDreami.class);
         assertThat(((AcceptByDreami) captor.getValue()).offerId()).isEqualTo(offerId);
     }
@@ -1300,7 +1300,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
-        verify(matchingEngine).submit(captor.capture());
+        verify(matchingScheduler).submit(captor.capture());
         assertThat(captor.getValue()).isInstanceOf(RejectByBoormi.class);
         assertThat(((RejectByBoormi) captor.getValue()).offerId()).isEqualTo(offerId);
     }
@@ -1312,14 +1312,14 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
-        verify(matchingEngine).submit(captor.capture());
+        verify(matchingScheduler).submit(captor.capture());
         assertThat(captor.getValue()).isInstanceOf(RematchWaitingGroups.class);
     }
 
     @Test
     void 배치_매칭_사이클_실행_요청은_엔진_큐에_RunMatchingAssignmentCycle_액션을_제출한다() {
         // given
-        when(matchingEngine.submit(any())).thenReturn(true);
+        when(matchingScheduler.submit(any())).thenReturn(true);
 
         // when
         boolean result = matchingService.runMatchingAssignmentCycle();
@@ -1327,7 +1327,7 @@ class MatchingServiceTest {
         // then
         assertThat(result).isTrue();
         ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
-        verify(matchingEngine).submit(captor.capture());
+        verify(matchingScheduler).submit(captor.capture());
         assertThat(captor.getValue()).isInstanceOf(RunMatchingAssignmentCycle.class);
     }
 

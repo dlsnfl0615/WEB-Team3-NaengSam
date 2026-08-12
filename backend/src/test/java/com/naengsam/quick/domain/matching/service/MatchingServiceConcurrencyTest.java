@@ -16,6 +16,7 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPo
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.service.scheduler.MatchingScheduler;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Clock;
@@ -37,20 +38,20 @@ import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * MatchingEngine이 실제로 액션을 단일 스레드로 직렬화하는지 검증한다. Mock이 아닌 실제 MatchingEngine을 띄워 여러 요청 스레드에서 동시에 액션을 제출했을 때, 내부 HashMap이
+ * MatchingScheduler가 실제로 액션을 단일 스레드로 직렬화하는지 검증한다. Mock이 아닌 실제 MatchingScheduler를 띄워 여러 요청 스레드에서 동시에 액션을 제출했을 때, 내부 HashMap이
  * 경합 없이 일관된 상태로 수렴하는지 확인한다.
  */
 class MatchingServiceConcurrencyTest {
 
-    private MatchingEngine matchingEngine;
+    private MatchingScheduler matchingScheduler;
     private MatchingService matchingService;
     private ExecutorService requestThreads;
 
     @BeforeEach
     void setUp() {
-        matchingEngine = new MatchingEngine();
-        matchingEngine.start();
-        matchingService = new MatchingService(matchingEngine, mock(SseService.class), mock(MatchingActionScheduler.class),
+        matchingScheduler = new MatchingScheduler();
+        matchingScheduler.start();
+        matchingService = new MatchingService(matchingScheduler, mock(SseService.class),
                 mock(MatchingBatchDispatcher.class), mock(DeliveryService.class), Clock.systemDefaultZone(),
                 mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),
                 mock(MatchingPlanApplier.class), mock(MatchingPolicyProperties.class));
@@ -60,6 +61,7 @@ class MatchingServiceConcurrencyTest {
     @AfterEach
     void tearDown() {
         requestThreads.shutdownNow();
+        matchingScheduler.shutdown();
     }
 
     @Test

@@ -13,12 +13,13 @@ import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import com.naengsam.quick.domain.matching.policy.scoring.MatchingScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
-import com.naengsam.quick.domain.matching.service.MatchingActionScheduler;
+import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
 
 /**
  * {@link MatchingPolicyProperties}의 선택값에 따라 배정/점수/적격성 정책 Bean을 조립한다. 배정 정책은 점수 정책에 의존하므로, 점수 정책 Bean을 먼저 만들어 주입한다.
@@ -84,8 +85,8 @@ public class MatchingPolicyConfiguration {
     @Bean
     public MatchingPlanApplier matchingPlanApplier(
             MatchingPlanValidator matchingPlanValidator,
-            MatchingActionScheduler matchingActionScheduler,
+            @Lazy MatchingService matchingService,
             SseService sseService) {
-        return new MatchingPlanApplier(matchingPlanValidator, matchingActionScheduler, sseService, OFFER_TTL);
+        return new MatchingPlanApplier(matchingPlanValidator, matchingService, sseService, OFFER_TTL);
     }
 }

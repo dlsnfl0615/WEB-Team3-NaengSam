@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.matching.service;
 
+import com.naengsam.quick.domain.matching.service.scheduler.Action;
 import java.util.UUID;
 
 record ExpireDreamiOffer(MatchingService service, UUID offerId) implements Action {

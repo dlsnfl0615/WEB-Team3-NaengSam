@@ -6,7 +6,7 @@ import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
-import com.naengsam.quick.domain.matching.service.MatchingActionScheduler;
+import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -28,18 +28,18 @@ import java.util.stream.Collectors;
 public class MatchingPlanApplier {
 
     private final MatchingPlanValidator planValidator;
-    private final MatchingActionScheduler matchingActionScheduler;
+    private final MatchingService matchingService;
     private final SseService sseService;
     private final Duration offerTtl;
 
     public MatchingPlanApplier(
             MatchingPlanValidator planValidator,
-            MatchingActionScheduler matchingActionScheduler,
+            MatchingService matchingService,
             SseService sseService,
             Duration offerTtl
     ) {
         this.planValidator = planValidator;
-        this.matchingActionScheduler = matchingActionScheduler;
+        this.matchingService = matchingService;
         this.sseService = sseService;
         this.offerTtl = offerTtl;
     }
@@ -94,7 +94,7 @@ public class MatchingPlanApplier {
         group.addOffersAndOpen(newOffers);
 
         for (MatchOffer offer : newOffers) {
-            matchingActionScheduler.scheduleDreamiOfferTimeout(offer.offerId(), offerTtl);
+            matchingService.scheduleDreamiOfferTimeout(offer.offerId(), offerTtl);
             sseService.send(offer.dreamiId(), MatchingEventType.OFFER_POPUP,
                     OfferPopupPayload.from(offer, group.orderSummary(), offerTtl));
         }

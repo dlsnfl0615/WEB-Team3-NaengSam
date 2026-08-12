@@ -23,6 +23,7 @@ import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
+import com.naengsam.quick.domain.matching.service.scheduler.MatchingScheduler;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
 import java.time.Clock;
@@ -61,9 +62,8 @@ class MatchingMicroBatchIntegrationTest {
     }
 
     private MatchingService newMatchingService(int maxConcurrentOffers) {
-        MatchingEngine matchingEngine = mock(MatchingEngine.class);
+        MatchingScheduler matchingScheduler = mock(MatchingScheduler.class);
         SseService sseService = mock(SseService.class);
-        MatchingActionScheduler matchingActionScheduler = mock(MatchingActionScheduler.class);
         MatchingBatchDispatcher matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         DeliveryService deliveryService = mock(DeliveryService.class);
         Clock clock = Clock.systemDefaultZone();
@@ -74,14 +74,14 @@ class MatchingMicroBatchIntegrationTest {
         MatchingPolicyProperties properties = matchingPolicyProperties(maxConcurrentOffers);
         MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
         MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
-                new MatchingPlanValidator(new LegacyOfferPolicy()), matchingActionScheduler, sseService, OFFER_TTL);
+                new MatchingPlanValidator(new LegacyOfferPolicy()), mock(MatchingService.class), sseService, OFFER_TTL);
 
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
                 properties, clock);
 
         return new MatchingService(
-                matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService, clock,
+                matchingScheduler, sseService, matchingBatchDispatcher, deliveryService, clock,
                 assembler, assignmentPolicy, matchingPlanApplier, properties);
     }
 

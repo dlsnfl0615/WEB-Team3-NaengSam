@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.matching.service;
 
+import com.naengsam.quick.domain.matching.service.scheduler.Action;
 import java.util.UUID;
 
 record DreamiRemove(MatchingService service, UUID dreamiId) implements Action {

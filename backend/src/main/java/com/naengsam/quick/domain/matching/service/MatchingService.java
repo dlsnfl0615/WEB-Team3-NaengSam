@@ -26,9 +26,11 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPr
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlan;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.service.scheduler.MatchingScheduler;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.sse.SseService;
+import jakarta.annotation.PostConstruct;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -44,7 +46,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -86,9 +87,8 @@ public class MatchingService {
 
     // ────────────────────────────── 저장소 ──────────────────────────────
     private final Map<UUID, WaitingDreami> dreamiMap = new ConcurrentHashMap<>();
-    private final MatchingEngine matchingEngine;
+    private final MatchingScheduler matchingScheduler;
     private final SseService sseService;
-    private final MatchingActionScheduler matchingActionScheduler;
     private final MatchingBatchDispatcher matchingBatchDispatcher;
     private final DeliveryService deliveryService;
     private final Clock clock;
@@ -137,7 +137,7 @@ public class MatchingService {
                     new NotificationErrorPayload("이미 등록된 드리미입니다."));
             return false;
         }
-        return matchingEngine.submit(new DreamiRegister(this, dreamiId, location));
+        return matchingScheduler.submit(new DreamiRegister(this, dreamiId, location));
     }
 
     /**
@@ -153,7 +153,7 @@ public class MatchingService {
                     new NotificationErrorPayload("등록되지 않은 드리미입니다."));
             return false;
         }
-        return matchingEngine.submit(new DreamiRemove(this, dreamiId));
+        return matchingScheduler.submit(new DreamiRemove(this, dreamiId));
     }
 
     /**
@@ -167,7 +167,7 @@ public class MatchingService {
         if (isActiveGroupExists(order.getOrderId())) {
             return false;
         }
-        return matchingEngine.submit(new StartMatching(this, order));
+        return matchingScheduler.submit(new StartMatching(this, order));
     }
 
     /**
@@ -195,7 +195,7 @@ public class MatchingService {
             }
             return false;
         }
-        return matchingEngine.submit(new CancelOrderByBoormi(this, orderId));
+        return matchingScheduler.submit(new CancelOrderByBoormi(this, orderId));
     }
 
     /**
@@ -213,7 +213,7 @@ public class MatchingService {
      * @param offerId 수락할 제안 UUID
      */
     public void acceptByDreami(UUID offerId) {
-        matchingEngine.submit(new AcceptByDreami(this, offerId));
+        matchingScheduler.submit(new AcceptByDreami(this, offerId));
     }
 
     /**
@@ -232,7 +232,7 @@ public class MatchingService {
      * @param offerId 거절할 제안 UUID
      */
     public void rejectByDreami(UUID offerId) {
-        matchingEngine.submit(new RejectByDreami(this, offerId));
+        matchingScheduler.submit(new RejectByDreami(this, offerId));
     }
 
     /**
@@ -241,7 +241,7 @@ public class MatchingService {
      * @param offerId 승인할 제안 UUID
      */
     public void acceptByBoormi(UUID offerId) {
-        matchingEngine.submit(new AcceptByBoormi(this, offerId));
+        matchingScheduler.submit(new AcceptByBoormi(this, offerId));
     }
 
     /**
@@ -260,7 +260,7 @@ public class MatchingService {
      * @param offerId 거절할 제안 UUID
      */
     public void rejectByBoormi(UUID offerId) {
-        matchingEngine.submit(new RejectByBoormi(this, offerId));
+        matchingScheduler.submit(new RejectByBoormi(this, offerId));
     }
 
     /**
@@ -287,12 +287,20 @@ public class MatchingService {
     }
 
     /**
-     * 드리미 등록 없이도 재매칭 대기 방이 방치되지 않도록, 주기적으로 재매칭을 시도한다. 엔진의 단일 기록자 스레드가 아닌 스케줄러 스레드에서 실행되므로, 상태를 직접 건드리지 않고 다른 액션들과 동일하게
-     * 큐에 제출만 한다.
+     * 드리미 등록 없이도 재매칭 대기 방이 방치되지 않도록, {@link #REMATCH_SCAN_INTERVAL}마다 재매칭을 반복 시도하는 watchdog을
+     * 스케줄러에 등록한다. Spring의 별도 스케줄링 스레드가 아니라, 다른 모든 매칭 Action과 동일하게 {@link MatchingScheduler}의 단일
+     * 워커 스레드에서 실행된다.
      */
-    @Scheduled(fixedRate = 600_000L) // REMATCH_SCAN_INTERVAL과 동일한 값(ms) — @Scheduled는 상수 표현식만 허용
+    @PostConstruct
+    public void startRematchWatchdog() {
+        matchingScheduler.scheduleRepeating(new RematchWaitingGroups(this), REMATCH_SCAN_INTERVAL);
+    }
+
+    /**
+     * 재매칭 대기 방 스캔을 즉시 한 번 큐에 제출한다. 상태를 직접 건드리지 않고 다른 액션들과 동일하게 큐에 제출만 한다.
+     */
     public void scheduleRematchWaitingGroups() {
-        matchingEngine.submit(new RematchWaitingGroups(this));
+        matchingScheduler.submit(new RematchWaitingGroups(this));
     }
 
     void applyRematchWaitingGroups() {
@@ -306,7 +314,7 @@ public class MatchingService {
      * @return 배치 매칭 액션이 큐에 제출되었으면 true
      */
     public boolean runMatchingAssignmentCycle() {
-        return matchingEngine.submit(new RunMatchingAssignmentCycle(this));
+        return matchingScheduler.submit(new RunMatchingAssignmentCycle(this));
     }
 
     void applyRunMatchingAssignmentCycle() {
@@ -387,7 +395,7 @@ public class MatchingService {
             offersById.put(offerId, offer);
             offerIdsByDreamiId.computeIfAbsent(dreami.dreamiId(), k -> new HashSet<>()).add(offerId);
             dreami.markProposed();
-            matchingActionScheduler.scheduleDreamiOfferTimeout(offerId, OFFER_TTL);
+            scheduleDreamiOfferTimeout(offerId, OFFER_TTL);
         }
         group.addOffersAndOpen(newOffers);
 
@@ -459,7 +467,7 @@ public class MatchingService {
             // 나머지 사람은 WITHDRAWN
             if (offer.dreamiId().equals(acceptedDreamiId)) {
                 offer.acceptByDreami(now);
-                matchingActionScheduler.scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
+                scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
                 sseService.send(group.boormiId(), MatchingEventType.DREAMI_INFO, DreamiInfoPayload.from(offer));
             } else if (offer.status() == MatchOfferStatus.OFFERED) {
@@ -544,7 +552,15 @@ public class MatchingService {
     }
 
     public void expireDreamiOffer(UUID offerId) {
-        matchingEngine.submit(new ExpireDreamiOffer(this, offerId));
+        matchingScheduler.submit(new ExpireDreamiOffer(this, offerId));
+    }
+
+    /**
+     * 지정한 지연 후 드리미 응답시간 만료 Action을 예약한다. {@link ExpireDreamiOffer}가 이 패키지 안에서만 접근 가능한 record이므로,
+     * 다른 패키지({@link MatchingPlanApplier})가 오퍼 timeout을 예약하려면 이 메서드를 거쳐야 한다.
+     */
+    public void scheduleDreamiOfferTimeout(UUID offerId, Duration ttl) {
+        matchingScheduler.schedule(new ExpireDreamiOffer(this, offerId), ttl);
     }
 
     void applyExpireDreamiOffer(UUID offerId) {
@@ -564,7 +580,11 @@ public class MatchingService {
     }
 
     public void expireBoormiOffer(UUID offerId) {
-        matchingEngine.submit(new ExpireBoormiOffer(this, offerId));
+        matchingScheduler.submit(new ExpireBoormiOffer(this, offerId));
+    }
+
+    private void scheduleBoormiOfferTimeout(UUID offerId, Duration ttl) {
+        matchingScheduler.schedule(new ExpireBoormiOffer(this, offerId), ttl);
     }
 
     void applyExpireBoormiOffer(UUID offerId) {
