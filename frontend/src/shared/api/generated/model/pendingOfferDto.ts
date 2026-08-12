@@ -9,4 +9,6 @@ import type { OrderSummaryDto } from './orderSummaryDto';
 export interface PendingOfferDto {
   offerId?: string;
   orderSummary?: OrderSummaryDto;
+  offeredAt?: string;
+  expiresAt?: string;
 }

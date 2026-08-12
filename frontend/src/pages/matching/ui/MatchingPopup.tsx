@@ -1,7 +1,7 @@
 import {useEffect} from "react";
 import {useLocation, useNavigate} from "react-router-dom";
 import {ROUTES} from "@/shared/config/routes";
-import {type SseHandlers, useSse} from "@/shared/lib";
+import {type SseHandlers, useExpiryCountdown, useSse} from "@/shared/lib";
 import {Toast, type Coords} from "@/shared/ui";
 import type {DeliveryStatusResponseDto} from "@/shared/api";
 import {useMatchingStore} from "@/shared/store/matchingStore";
@@ -62,6 +62,20 @@ export function MatchingPopup() {
     const clearOffers = useMatchingStore((s) => s.clearOffers);
     const message = useMatchingStore((s) => s.message);
     const clearMessage = useMatchingStore((s) => s.clearMessage);
+    const expirePendingOffer = useMatchingStore((s) => s.expirePendingOffer);
+    const expireIncomingDreami = useMatchingStore((s) => s.expireIncomingDreami);
+
+    // 카드가 없어도(call/offer가 null) 항상 최상단에서 호출한다 — 훅이 그 경우 스스로 비활성 상태를 반환한다.
+    const callCountdown = useExpiryCountdown(pendingOffer?.offeredAt, pendingOffer?.expiresAt, {
+        onExpire: () => {
+            if (pendingOffer) expirePendingOffer(pendingOffer.offerId);
+        },
+    });
+    const offerCountdown = useExpiryCountdown(incomingDreami?.acceptedAt, incomingDreami?.expiresAt, {
+        onExpire: () => {
+            if (incomingDreami) expireIncomingDreami(incomingDreami.offerId);
+        },
+    });
 
     // 매칭 이벤트는 스토어 액션에 위임한다(배달 진행 중 이벤트는 각 배달 화면이 구독).
     // delivery_started_* 는 배달이 실제로 시작됐다는 서버 신호이며, 이때 비로소 배달 화면으로 이동한다.
@@ -73,6 +87,9 @@ export function MatchingPopup() {
         offer_error: useMatchingStore.getState().receiveOfferError,
         delivery_started_dreami: (payload) => {
             const {orderId} = payload as DeliveryStatusResponseDto;
+            // BE가 이 시점에 드리미를 매칭 후보·대기열에서 이미 제거했으므로, FE도 온라인 상태를 맞춘다.
+            // 드리미가 의도적으로 오프라인 전환한 게 아니므로 goOffline API는 호출하지 않고 로컬 상태만 갱신한다.
+            useMatchingStore.setState({online: false, pendingOffer: null});
             navigate(`${ROUTES.deliveryTrack}?orderId=${orderId}`, {replace: true});
         },
         delivery_started_boormi: (payload) => {
@@ -167,6 +184,7 @@ export function MatchingPopup() {
                         currentLocation={dreamiCoords ?? undefined}
                         deliveryDistance={formatDistance(call.deliveryDistance)}
                         eta={`${call.deliveryEta}분`}
+                        countdown={callCountdown}
                         onReject={rejectOffer}
                         onAccept={onAcceptCall}
                     />
@@ -180,9 +198,8 @@ export function MatchingPopup() {
                                     : "드리미 정보 확인 중"
                             }
                             rating={offer.profile?.dreamiAvgScore ?? 0}
-                            countLabel="거절"
-                            count={offer.profile?.rejectCount ?? 0}
-                            distance="-"
+                            pickupEtaMinutes={offer.pickupEtaMinutes ?? null}
+                            countdown={offerCountdown}
                             onReject={rejectDreami}
                             onAccept={onAcceptOffer}
                         />

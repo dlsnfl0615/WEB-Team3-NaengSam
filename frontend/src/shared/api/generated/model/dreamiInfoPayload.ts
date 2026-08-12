@@ -9,4 +9,7 @@ export interface DreamiInfoPayload {
   offerId?: string;
   orderId?: string;
   dreamiId?: string;
+  pickupEtaMinutes?: number;
+  acceptedAt?: string;
+  expiresAt?: string;
 }
