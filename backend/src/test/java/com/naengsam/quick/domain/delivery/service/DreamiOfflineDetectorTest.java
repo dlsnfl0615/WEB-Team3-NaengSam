@@ -5,7 +5,7 @@ import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -34,14 +34,14 @@ class DreamiOfflineDetectorTest {
     private static final Duration THRESHOLD = Duration.ofSeconds(30);
 
     private DeliveryRepository deliveryRepository;
-    private SseService sseService;
+    private NotificationService notificationService;
     private DreamiOfflineDetector detector;
 
     @BeforeEach
     void setUp() {
         deliveryRepository = mock(DeliveryRepository.class);
-        sseService = mock(SseService.class);
-        detector = new DreamiOfflineDetector(deliveryRepository, sseService, THRESHOLD);
+        notificationService = mock(NotificationService.class);
+        detector = new DreamiOfflineDetector(deliveryRepository, notificationService, THRESHOLD);
     }
 
     @Test
@@ -52,7 +52,7 @@ class DreamiOfflineDetectorTest {
         detector.detectOfflineDreamis();
 
         ArgumentCaptor<DreamiOfflineDto> payload = ArgumentCaptor.forClass(DreamiOfflineDto.class);
-        verify(sseService).send(eq(delivery.getBoormiId()),
+        verify(notificationService).notify(eq(delivery.getBoormiId()),
                 eq(DeliveryEventType.DELIVERY_DREAMI_OFFLINE), payload.capture());
         assertThat(payload.getValue().orderId()).isEqualTo(delivery.getOrderId());
         assertThat(payload.getValue().secondsSinceLastLocation()).isGreaterThanOrEqualTo(45);
@@ -67,7 +67,7 @@ class DreamiOfflineDetectorTest {
         detector.detectOfflineDreamis();
         detector.detectOfflineDreamis();
 
-        verify(sseService, times(1)).send(any(), any(), any());
+        verify(notificationService, times(1)).notify(any(), any(), any());
     }
 
     @Test
@@ -84,7 +84,7 @@ class DreamiOfflineDetectorTest {
         givenStaleDeliveries(delivery);
         detector.detectOfflineDreamis();
 
-        verify(sseService, times(2)).send(any(), any(), any());
+        verify(notificationService, times(2)).notify(any(), any(), any());
     }
 
     @Test
@@ -93,7 +93,7 @@ class DreamiOfflineDetectorTest {
 
         detector.detectOfflineDreamis();
 
-        verify(sseService, never()).send(any(), any(), any());
+        verify(notificationService, never()).notify(any(), any(), any());
     }
 
     @Test

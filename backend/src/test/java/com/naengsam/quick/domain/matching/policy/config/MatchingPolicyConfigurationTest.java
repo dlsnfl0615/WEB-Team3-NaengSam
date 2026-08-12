@@ -10,7 +10,7 @@ import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOffe
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.MatchingActionScheduler;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -166,8 +166,8 @@ class MatchingPolicyConfigurationTest {
         }
 
         @Bean
-        SseService sseService() {
-            return mock(SseService.class);
+        NotificationService notificationService() {
+            return mock(NotificationService.class);
         }
     }
 }
