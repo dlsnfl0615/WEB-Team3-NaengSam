@@ -65,17 +65,15 @@
 
 ![img_2.png](docs/img/arch.png)
 
-### ️ Frontend
+### Infra · DevOps
 
-|      구분      | 기술                            |
-|:------------:|-------------------------------|
-| **Language** | TypeScript                    |
-| **Library**  | React 19                      |
-|  **Build**   | Vite 8 · pnpm                 |
-|  **State**   | Zustand 5                     |
-| **Routing**  | React Router 7                |
-| **Styling**  | Tailwind CSS 4                |
-|    **기타**    | PWA(vite-plugin-pwa) · ESLint |
+|       구분       | 기술                            |
+|:--------------:|-------------------------------|
+| **Container**  | Docker · Docker Hub           |
+|   **CI/CD**    | GitHub Actions                |
+|   **Deploy**   | AWS S3 · CloudFront           |
+|  **Hosting**   | AWS EC2 · S3 · CloudFront     |
+| **Monitoring** | Prometheus 3.1 · Grafana 11.5 |
 
 ### Backend
 
@@ -88,14 +86,26 @@
 |  **인증 · 실시간**   | 세션 기반 인증 · SSE(실시간 알림)                          |
 |   **API 문서**    | SpringDoc OpenAPI(Swagger)                      |
 |    **외부 연동**    | AWS S3 · Kakao Local API(지오코딩) · Solapi(SMS 인증) |
-|    **Test**     | JUnit 5 · Mockito · AssertJ · Vitest            |
 |     **기타**      | Lombok                                          |
 
-### Infra · DevOps
+### ️ Frontend
 
-|      구분       | 기술                  |
-|:-------------:|---------------------|
-| **Container** | Docker · Docker Hub |
-|   **CI/CD**   | GitHub Actions      |
-|  **Deploy**   | AWS S3 · CloudFront |
+|         구분          | 기술                            |
+|:-------------------:|-------------------------------|
+|    **Language**     | TypeScript                    |
+|     **Library**     | React 19                      |
+|      **Build**      | Vite 8                        |
+| **Package Manager** | pnpm 11                       |
+|      **State**      | Zustand 5                     |
+|     **Routing**     | React Router 7                |
+|     **Styling**     | Tailwind CSS 4                |
+|       **API**       | Axios · Orval 8               |
+|       **기타**        | PWA(vite-plugin-pwa) · ESLint |
 
+### Test
+
+|      구분       | 기술                          |
+|:-------------:|-----------------------------|
+|  **Backend**  | JUnit 5 · Mockito · AssertJ |
+| **Frontend**  | Vitest 4 · Testing Library  |
+| **Load Test** | K6 · Node.js · Playwright   |
