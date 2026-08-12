@@ -389,6 +389,23 @@ class DeliveryServiceTest {
         assertThat(result.deliveryAmount()).isEqualTo(8000L);
         assertThat(result.durationMinutes()).isEqualTo(8L);
         assertThat(result.deliveryPhotoUrl()).isEqualTo("https://s3/uploads/dreami/photo.png");
+        assertThat(result.viewerIsDreami()).isFalse(); // 조회자가 부르미
+    }
+
+    @Test
+    void 배달완료조회시_조회자가_드리미면_viewerIsDreami는_true다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        DeliveryCompletionDto result = deliveryService.getDeliveryCompletion(orderId, dreamiId);
+
+        assertThat(result.viewerIsDreami()).isTrue();
     }
 
     @Test
