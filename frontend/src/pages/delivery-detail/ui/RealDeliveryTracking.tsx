@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
@@ -26,6 +26,7 @@ import {
 } from "@/shared/lib";
 import { ROUTES } from "@/shared/config/routes";
 import { api, isApiError, DeliveryStatusResponseDtoStatus } from "@/shared/api";
+import { useToastStore } from "@/shared/store/toastStore";
 import type {
   DeliveryLocationDto,
   DeliveryStatusResponseDto,
@@ -38,9 +39,6 @@ interface RealDeliveryTrackingProps {
   /** 초기 상태(URL `?status=`, 없으면 픽업중). SSE 이벤트로 이후 갱신된다. */
   initialStatus?: DeliveryStatusResponseDtoStatus;
 }
-
-/** 진행 중 알림 토스트가 화면에 머무는 시간. */
-const TRANSIENT_TOAST_MS = 4000;
 
 /** "마지막 확인 N분 전" 라벨을 다시 계산하는 주기. 분 단위 표시라 초 단위로 돌릴 필요가 없다. */
 const LAST_SEEN_LABEL_REFRESH_MS = 15000;
@@ -66,6 +64,8 @@ export function RealDeliveryTracking({
   initialStatus,
 }: RealDeliveryTrackingProps) {
   const navigate = useNavigate();
+  const showToast = useToastStore((state) => state.show);
+  const clearToasts = useToastStore((state) => state.clear);
 
   // URL이 알려준 상태 > 마지막으로 관측한 상태 > 픽업중. 홈 카드로 재진입하면 URL에
   // 상태가 없어 픽업중으로 되돌아가므로 스냅샷으로 복원한다.
@@ -151,17 +151,11 @@ export function RealDeliveryTracking({
     status === DeliveryStatusResponseDtoStatus.PICKUP_DELAYED;
   const routePath = isPickup ? deliveryRoutePath : orderRoutePath;
   const arrivalTime = formatArrivalTime(detail?.estimatedCompletionTime);
-  const [toast, setToast] = useState<{
-    title: string;
-    description?: string;
-  } | null>(null);
 
   // 부르미 취소(확인 모달) 상태.
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
-
-  const toastTimer = useRef<number | null>(null);
 
   // 상태 전이는 항상 스냅샷에 남긴다(재진입 시 픽업중으로 되돌아가지 않도록).
   const applyStatus = (next: DeliveryStatusResponseDtoStatus) => {
@@ -175,13 +169,9 @@ export function RealDeliveryTracking({
     message?: string,
   ) => {
     const notice = getUntrackableDeliveryNotice(nextStatus);
-    if (toastTimer.current !== null) {
-      clearTimeout(toastTimer.current);
-      toastTimer.current = null;
-    }
+    clearToasts();
     applyStatus(nextStatus);
     setConfirmOpen(false);
-    setToast(null);
     blockDeliveryDetail({
       title: notice?.title ?? "배달이 종료됐어요",
       message:
@@ -198,23 +188,6 @@ export function RealDeliveryTracking({
     setLastSeenAt(now - secondsSinceLastLocation * 1000);
     setLabelNow(now);
   };
-
-  // 진행 중 알림 토스트: 잠시 노출 후 자동으로 사라진다.
-  const showTransientToast = (t: { title: string; description?: string }) => {
-    setToast(t);
-    if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(
-      () => setToast(null),
-      TRANSIENT_TOAST_MS,
-    );
-  };
-
-  useEffect(
-    () => () => {
-      if (toastTimer.current !== null) clearTimeout(toastTimer.current);
-    },
-    [],
-  );
 
   // 이 주문의 이벤트만 통과시킨다.
   const forThisOrder = (data: unknown): DeliveryStatusResponseDto | null => {
@@ -243,9 +216,11 @@ export function RealDeliveryTracking({
       const dto = forThisOrder(data);
       if (!dto) return;
       applyStatus(dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERING);
-      showTransientToast({
+      showToast({
+        icon: "bell",
         title: "드리미가 픽업을 완료했어요",
         description: dto.message ?? "지금부터 배송을 시작해요.",
+        dedupeKey: `delivery-delivering:${orderId}`,
       });
     },
     // "delivery_completed" 이라는 단어는 백엔드에서 결정한 이름임!!
@@ -254,12 +229,8 @@ export function RealDeliveryTracking({
       if (!dto) return;
       const completedStatus =
         dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERED;
-      if (toastTimer.current !== null) {
-        clearTimeout(toastTimer.current);
-        toastTimer.current = null;
-      }
+      clearToasts();
       applyStatus(completedStatus);
-      setToast(null);
       navigate(ROUTES.deliveryComplete, { replace: true });
     },
     delivery_cancelled: (data) => {
@@ -306,14 +277,9 @@ export function RealDeliveryTracking({
   const isMyConnectionDown =
     sseStatus === "reconnecting" || sseStatus === "closed";
 
-  // 상단 알림은 한 번에 하나만 노출한다(진행 이벤트 > 내 연결 > 드리미 위치).
-  const topNotice = toast
-    ? {
-        icon: "bell" as const,
-        title: toast.title,
-        description: toast.description,
-      }
-    : sseStatus === "reconnecting"
+  // 연결·위치 상태 안내는 일회성 토스트가 아니므로 화면 안에 유지한다.
+  const topNotice =
+    sseStatus === "reconnecting"
       ? {
           icon: "transfer" as const,
           title: "실시간 연결이 불안정해요",

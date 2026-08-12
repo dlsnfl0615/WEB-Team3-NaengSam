@@ -1,15 +1,13 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   BlockingLoadErrorModal,
   Button,
   Card,
-  Icon,
   MapCard,
   Modal,
   NearbyCallsMap,
   ScreenShell,
-  Toast,
   TopBar,
   type NearbyCall,
 } from "@/shared/ui";
@@ -18,8 +16,8 @@ import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useMatchingStore } from "@/shared/store/matchingStore";
 import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
+import { useToastStore } from "@/shared/store/toastStore";
 
-const TRANSIENT_TOAST_MS = 4000;
 /** 화면에 머무는 동안 주변 콜을 다시 조회하는 주기(ms). */
 const NEARBY_POLL_MS = 5000;
 
@@ -53,13 +51,6 @@ function fullAddress(line1?: string, line2?: string): string | null {
   return line2 ? `${line1} ${line2}` : line1;
 }
 
-interface ToastState {
-  title: string;
-  description?: ReactNode;
-  /** true면 자동으로 사라지지 않고 X 버튼으로만 닫힌다(화면 이동 시엔 언마운트로 사라짐). */
-  persistent?: boolean;
-}
-
 /**
  * 매칭(찾는 중) 화면(Figma node 191:763).
  * 드리미는 실제 지도 위에서 주변 콜 핀을 보고, 부르미는 대기 상태를 보여준다.
@@ -77,6 +68,8 @@ export function MatchingScreen() {
   const nearbyCallsError = useMatchingStore((s) => s.nearbyCallsError);
   const online = useMatchingStore((s) => s.online);
   const message = useMatchingStore((s) => s.message);
+  const showToast = useToastStore((state) => state.show);
+  const dismissToast = useToastStore((state) => state.dismiss);
 
   const isDriver = role === "드리미";
   const counterpart = isDriver ? "부르미" : "드리미";
@@ -90,17 +83,15 @@ export function MatchingScreen() {
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
   const [locationBlocked, setLocationBlocked] = useState(false);
-  const [toast, setToast] = useState<ToastState | null>(null);
-  const toastTimer = useRef<number | null>(null);
+  const callToastId = useRef<string | null>(null);
 
-  // 토스트 자동 소멸(persistent는 X 버튼으로만 닫는다).
-  useEffect(() => {
-    if (!toast || toast.persistent) return;
-    toastTimer.current = window.setTimeout(() => setToast(null), TRANSIENT_TOAST_MS);
-    return () => {
-      if (toastTimer.current !== null) window.clearTimeout(toastTimer.current);
-    };
-  }, [toast]);
+  // 주변 콜 상세는 이 화면에 결합된 안내라 화면을 나가면 제거한다.
+  useEffect(
+    () => () => {
+      if (callToastId.current) dismissToast(callToastId.current);
+    },
+    [dismissToast],
+  );
 
   // 드리미: 화면에 머무는 동안 주변 콜을 계속 갱신한다(시작하기 여부와 무관).
   // 오퍼 팝업 자체는 전역 `MatchingPopup`이 받으므로, 여기서는 지도용 목록만 폴링한다.
@@ -185,7 +176,8 @@ export function MatchingScreen() {
         : null,
     ].filter((v): v is string => v !== null);
 
-    setToast({
+    callToastId.current = showToast({
+      icon: "bell",
       title: itemLabel ? `${call.itemName ?? "콜 정보"} (${itemLabel})` : call.itemName ?? "콜 정보",
       description: (
         <div className="flex flex-col gap-0.5">
@@ -195,6 +187,7 @@ export function MatchingScreen() {
         </div>
       ),
       persistent: true,
+      dedupeKey: "nearby-call-details",
     });
   };
 
@@ -209,7 +202,12 @@ export function MatchingScreen() {
     useMatchingStore.setState({ message: null });
     await goOffline();
     if (!useMatchingStore.getState().message) {
-      setToast({ title: "오프라인으로 전환됐어요", description: "드리미 활동이 종료됐어요." });
+      showToast({
+        icon: "bell",
+        title: "오프라인으로 전환됐어요",
+        description: "드리미 활동이 종료됐어요.",
+        dedupeKey: "dreami-offline",
+      });
     }
     setEnding(false);
   };
@@ -236,28 +234,6 @@ export function MatchingScreen() {
 
   return (
     <ScreenShell>
-      {toast && (
-        <div className="fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
-          <Toast
-            icon="bell"
-            title={toast.title}
-            description={toast.description}
-            action={
-              toast.persistent ? (
-                <button
-                  type="button"
-                  aria-label="닫기"
-                  className="shrink-0 text-white/70"
-                  onClick={() => setToast(null)}
-                >
-                  <Icon name="close" size={16} />
-                </button>
-              ) : undefined
-            }
-          />
-        </div>
-      )}
-
       <TopBar
         title={`${counterpart}를 찾는 중`}
         onBack={() => navigate(-1)}
