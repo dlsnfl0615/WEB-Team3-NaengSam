@@ -58,4 +58,11 @@ public class ReviewController {
     public ReviewDto getMyReview(@PathVariable UUID orderId, @LoginUser UUID userId) {
         return reviewService.getMyReview(orderId, userId);
     }
+
+    @Operation(summary = "받은 리뷰 조회", description = "이 주문에서 상대방이 나에게 남긴 별점·리뷰 내용을 조회한다. 아직 안 남겼으면 result가 null이다.")
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER"})
+    @GetMapping("/{orderId}/review/received")
+    public ReviewDto getReceivedReview(@PathVariable UUID orderId, @LoginUser UUID userId) {
+        return reviewService.getReceivedReview(orderId, userId);
+    }
 }
