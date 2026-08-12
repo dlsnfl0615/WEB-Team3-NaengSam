@@ -98,7 +98,9 @@ describe("useDreamiLocationBroadcast", () => {
   });
 
   it("권한이_거부되면_더_이상_위치를_전송하지_않는다", async () => {
-    renderHook(() => useDreamiLocationBroadcast(ORDER_ID));
+    const { result } = renderHook(() =>
+      useDreamiLocationBroadcast(ORDER_ID),
+    );
 
     await emitFix(37.5, 127.0);
     expect(updateDreamiLocation).toHaveBeenCalledTimes(1);
@@ -106,6 +108,7 @@ describe("useDreamiLocationBroadcast", () => {
     await act(async () => {
       watchHandlers.error!(geolocationError(1)); // PERMISSION_DENIED
     });
+    expect(result.current.error).toBe("denied");
     updateDreamiLocation.mockClear();
 
     // 권한이 끊긴 뒤로는 stale 가드(15초)를 기다리지 않고 즉시 전송이 멈춘다.
@@ -115,12 +118,15 @@ describe("useDreamiLocationBroadcast", () => {
   });
 
   it("새_좌표가_STALE_FIX_MS_넘게_없으면_멈춘_좌표를_재전송하지_않는다", async () => {
-    renderHook(() => useDreamiLocationBroadcast(ORDER_ID));
+    const { result } = renderHook(() =>
+      useDreamiLocationBroadcast(ORDER_ID),
+    );
 
     await emitFix(37.5, 127.0);
 
     // 에러 콜백조차 뜨지 않고 fix만 조용히 끊긴 경우(지하·터널 등).
     await advance(STALE_FIX_MS + LOCATION_BROADCAST_INTERVAL_MS);
+    expect(result.current.error).toBe("GPS 위치를 확인할 수 없어요.");
     updateDreamiLocation.mockClear();
 
     await advance(LOCATION_BROADCAST_INTERVAL_MS * 4);

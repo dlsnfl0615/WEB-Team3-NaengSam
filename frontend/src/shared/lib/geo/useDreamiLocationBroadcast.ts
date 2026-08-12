@@ -137,7 +137,12 @@ export function useDreamiLocationBroadcast(
             const latestFix = lastFixRef.current;
             // 새 fix가 끊긴 뒤 마지막 좌표를 계속 보내면 서버가 정상 수신으로 오해한다 → 오래된 좌표는 보내지 않는다.
             if (!latestFix) return;
-            if (Date.now() - lastFixAtRef.current > STALE_FIX_MS) return;
+            if (Date.now() - lastFixAtRef.current > STALE_FIX_MS) {
+              // 일부 브라우저는 기기 GPS가 꺼져도 error 콜백을 주지 않는다. 서버 응답과 무관하게
+              // 마지막 fix 시각으로 중단을 감지해 드리미 화면이 위치 허용 안내를 띄울 수 있게 한다.
+              setPermissionError("GPS 위치를 확인할 수 없어요.");
+              return;
+            }
             sendLocation(latestFix);
           }, intervalMs);
         }
