@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { create } from "zustand";
 import { api, isApiError, type OrderRequest } from "@/shared/api";
 import { toBoormiOrder, type BoormiOrder } from "./boormiOrderAdapter";
@@ -90,3 +91,23 @@ export const useBoormiOrderStore = create<BoormiOrderState>((set, get) => ({
     set((s) => ({ orders: s.orders.filter((o) => o.id !== orderId) }));
   },
 }));
+
+/**
+ * id로 활동 내역 상세를 찾는다. 활동 목록을 거치지 않고 상세 URL로 바로 들어온 경우(새로고침 등)
+ * 스토어가 비어있을 수 있어, 그럴 때만 한 번 load()로 채운다.
+ */
+export function useBoormiOrderById(id: string | null): BoormiOrder | null {
+  const orders = useBoormiOrderStore((s) => s.orders);
+  const loading = useBoormiOrderStore((s) => s.loading);
+  const load = useBoormiOrderStore((s) => s.load);
+  const attemptedRef = useRef(false);
+
+  useEffect(() => {
+    if (orders.length > 0 || loading || attemptedRef.current) return;
+    attemptedRef.current = true;
+    load();
+  }, [orders.length, loading, load]);
+
+  if (!id) return null;
+  return orders.find((o) => o.id === id) ?? null;
+}
