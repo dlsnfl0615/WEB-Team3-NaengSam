@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.delivery.service;
 
+import com.naengsam.quick.domain.user.exception.UserErrorCode;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
@@ -140,20 +141,32 @@ public class DeliveryService {
 
         // 담당 드리미 이름은 BOORMI 테이블에서, 평점은 DREAMI 테이블에서 가져온다(dreamiId == boormiId).
         Dreami dreami = dreamiRepository.findById(delivery.getDreamiId())
-                .orElseThrow(() -> new BusinessException(DreamiErrorCode.NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
         String dreamiName = boormiRepository.findById(delivery.getDreamiId())
-                .orElseThrow(() -> new BusinessException(DreamiErrorCode.NOT_FOUND))
+                .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND))
                 .getName();
         String boormiName = boormiRepository.findById(delivery.getBoormiId())
-                .orElseThrow(() -> new BusinessException(DreamiErrorCode.NOT_FOUND))
+                .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND))
                 .getName();
-        // 배송 완료 인증 사진은 완료 전이면 없을 수 있으므로, 없으면 조회 없이 null로 내려준다.
-        String deliveryPhotoUrl = deliveryCertificationRepository.findByDeliveryId(delivery.getDeliveryId())
-                .map(certification -> s3PresignService.generateDownloadUrl(certification.getImageKey()))
-                .orElse(null);
+        String deliveryPhotoUrl = resolveDeliveryPhotoUrl(delivery.getDeliveryId());
 
         return DeliveryCompletionDto.from(delivery, order, dreamiName, dreami.getDreamiAvgScore(), boormiName,
                 deliveryPhotoUrl);
+    }
+
+    // 배송 완료 인증 사진 URL을 조회한다. 완료 전이라 인증 사진이 아직 없거나(레코드 없음), 있어도 S3 조회에 실패하면
+    // (보존 정책 삭제, 스토리지 장애 등) 완료 요약 전체를 실패시키지 않고 사진만 없이 응답한다.
+    private String resolveDeliveryPhotoUrl(UUID deliveryId) {
+        return deliveryCertificationRepository.findByDeliveryId(deliveryId)
+                .map(certification -> {
+                    try {
+                        return s3PresignService.generateDownloadUrl(certification.getImageKey());
+                    } catch (BusinessException e) {
+                        log.warn("배송 완료 인증 사진 URL 조회 실패 — 사진 없이 응답한다. deliveryId={}", deliveryId, e);
+                        return null;
+                    }
+                })
+                .orElse(null);
     }
 
     // 주문에 저장된 추천 이동경로 JSON을 좌표 목록으로 복원한다. 값이 없거나 손상됐으면 빈 목록(지도는 핀만 표시).
