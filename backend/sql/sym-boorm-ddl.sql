@@ -160,7 +160,8 @@ CREATE TABLE `MONEY_LEDGERS` (
 CREATE TABLE `POINT_TX` (
                             `point_tx_id`  binary(16)  NOT NULL,
                             `type`         enum('CHARGE', 'PAYMENT', 'REFUND', 'EXCHANGE_IN')  NOT NULL,
-                            `status`       enum('PAID', 'REFUNDED_PARTIAL', 'REFUNDED_FULL')  NOT NULL,
+                            -- 배달 콜 결제는 배달이 끝나기 전까지 PENDING 으로 남고, 배달 완료 시 PAID 로 확정된다.
+                            `status`       enum('PENDING', 'PAID', 'REFUNDED_PARTIAL', 'REFUNDED_FULL')  NOT NULL,
                             `amount`       bigint      NOT NULL,
                             `created_dtm`  timestamp   NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                             `updated_dtm`  timestamp   NULL,
