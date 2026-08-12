@@ -61,6 +61,7 @@ export function CallCard({
         dropoff={dropoff}
         driver={currentLocation}
         driverLabel="내 위치"
+        pickupLabel={place}
         height={280}
       />
 
