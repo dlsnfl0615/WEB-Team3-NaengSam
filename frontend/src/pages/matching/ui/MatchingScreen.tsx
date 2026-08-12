@@ -13,6 +13,7 @@ import {
 } from "@/shared/ui";
 import { isApiError } from "@/shared/api";
 import { ROUTES } from "@/shared/config/routes";
+import { PushPrompt } from "@/shared/lib/push/PushPrompt";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useMatchingStore } from "@/shared/store/matchingStore";
 import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
@@ -84,6 +85,10 @@ export function MatchingScreen() {
   const [ending, setEnding] = useState(false);
   const [locationBlocked, setLocationBlocked] = useState(false);
   const callToastId = useRef<string | null>(null);
+
+  // 부르미는 콜 등록을 마치고 이 화면에 들어오므로 진입 자체가 "찾으면 알려줘"라는 의도다.
+  // 드리미는 시작하기를 누른 뒤에야 켜진다(handleStart).
+  const [pushPromptOpen, setPushPromptOpen] = useState(cancelable);
 
   // 주변 콜 상세는 이 화면에 결합된 안내라 화면을 나가면 제거한다.
   useEffect(
@@ -194,6 +199,10 @@ export function MatchingScreen() {
   const handleStart = async () => {
     setStarting(true);
     await goOnline();
+    // 온라인 전환에 성공한 직후에만 알림을 묻는다. 사용자가 방금 "시작하기"를 눌렀으므로
+    // 의도가 문자 그대로 "콜을 알려줘"인 순간이다. 콜드 로드에서 묻지 않는 이유는
+    // 되돌릴 수 없는 거절을 수집하게 되기 때문이다.
+    if (useMatchingStore.getState().online) setPushPromptOpen(true);
     setStarting(false);
   };
 
@@ -241,6 +250,15 @@ export function MatchingScreen() {
       />
 
       <main className="flex flex-1 flex-col gap-3 pt-4">
+        <PushPrompt
+          active={pushPromptOpen}
+          description={
+            isDriver
+              ? "화면을 닫아도 놓친 콜을 알려드릴까요?"
+              : "드리미를 찾으면 바로 알려드릴까요?"
+          }
+        />
+
         {isDriver ? (
           <NearbyCallsMap
             center={myLocation}

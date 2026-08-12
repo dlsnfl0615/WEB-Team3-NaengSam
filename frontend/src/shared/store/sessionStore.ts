@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { api, SESSION_PROBE_HEADER } from "@/shared/api";
 import type { UserDto } from "@/shared/api";
+import { unregisterPushSubscription } from "@/shared/lib/push/unregisterPushSubscription";
 import type { AuthUser, LoginRequest, SignupRequest } from "@/shared/mock/types";
 
 interface SessionState {
@@ -95,6 +96,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     return updated;
   },
   logout: async () => {
+    // 세션이 살아 있는 동안 이 기기의 푸시 구독을 먼저 지운다. 로그아웃 후에는 호출할 수 없고,
+    // 남겨두면 로그아웃한 기기로 알림이 계속 간다(공용 기기에서 특히 문제다).
+    await unregisterPushSubscription();
     try {
       await api.logout();
     } finally {
