@@ -149,9 +149,11 @@ public class DeliveryService {
                 .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND))
                 .getName();
         String deliveryPhotoUrl = resolveDeliveryPhotoUrl(delivery.getDeliveryId());
+        // 평가 대상 문구는 클라이언트가 URL로 정하게 두면 조작 가능하므로, 로그인 세션 기반으로 서버가 판정해 내려준다.
+        boolean viewerIsDreami = userId.equals(delivery.getDreamiId());
 
         return DeliveryCompletionDto.from(delivery, order, dreamiName, dreami.getDreamiAvgScore(), boormiName,
-                deliveryPhotoUrl);
+                deliveryPhotoUrl, viewerIsDreami);
     }
 
     // 배송 완료 인증 사진 URL을 조회한다. 완료 전이라 인증 사진이 아직 없거나(레코드 없음), 있어도 S3 조회에 실패하면
