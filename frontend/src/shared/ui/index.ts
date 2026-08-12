@@ -55,6 +55,7 @@ export type { TextFieldProps } from "./TextField/TextField";
 
 export { Toast } from "./Toast/Toast";
 export type { ToastProps } from "./Toast/Toast";
+export { ToastViewport } from "./Toast/ToastViewport";
 
 export { InfoRow } from "./InfoRow/InfoRow";
 export type { InfoRowProps } from "./InfoRow/InfoRow";

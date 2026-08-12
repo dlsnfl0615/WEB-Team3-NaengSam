@@ -7,7 +7,7 @@ import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.service.MatchingActionScheduler;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -29,18 +29,18 @@ public class MatchingPlanApplier {
 
     private final MatchingPlanValidator planValidator;
     private final MatchingActionScheduler matchingActionScheduler;
-    private final SseService sseService;
+    private final NotificationService notificationService;
     private final Duration offerTtl;
 
     public MatchingPlanApplier(
             MatchingPlanValidator planValidator,
             MatchingActionScheduler matchingActionScheduler,
-            SseService sseService,
+            NotificationService notificationService,
             Duration offerTtl
     ) {
         this.planValidator = planValidator;
         this.matchingActionScheduler = matchingActionScheduler;
-        this.sseService = sseService;
+        this.notificationService = notificationService;
         this.offerTtl = offerTtl;
     }
 
@@ -95,7 +95,7 @@ public class MatchingPlanApplier {
 
         for (MatchOffer offer : newOffers) {
             matchingActionScheduler.scheduleDreamiOfferTimeout(offer.offerId(), offerTtl);
-            sseService.send(offer.dreamiId(), MatchingEventType.OFFER_POPUP,
+            notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_POPUP,
                     OfferPopupPayload.from(offer, group.orderSummary(), offerTtl));
         }
     }

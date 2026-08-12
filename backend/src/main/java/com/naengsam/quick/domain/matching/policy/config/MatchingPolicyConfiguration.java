@@ -14,7 +14,7 @@ import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import com.naengsam.quick.domain.matching.policy.scoring.MatchingScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.MatchingActionScheduler;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -85,7 +85,8 @@ public class MatchingPolicyConfiguration {
     public MatchingPlanApplier matchingPlanApplier(
             MatchingPlanValidator matchingPlanValidator,
             MatchingActionScheduler matchingActionScheduler,
-            SseService sseService) {
-        return new MatchingPlanApplier(matchingPlanValidator, matchingActionScheduler, sseService, OFFER_TTL);
+            NotificationService notificationService) {
+        return new MatchingPlanApplier(
+                matchingPlanValidator, matchingActionScheduler, notificationService, OFFER_TTL);
     }
 }

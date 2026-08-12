@@ -39,7 +39,7 @@ import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -72,7 +72,7 @@ class DeliveryServiceTest {
     private DeliveryRepository deliveryRepository;
     private PickupCertificationRepository pickupCertificationRepository;
     private DeliveryCertificationRepository deliveryCertificationRepository;
-    private SseService sseService;
+    private NotificationService notificationService;
     private UploadSessionService uploadSessionService;
     private UserService userService;
     private OrderService orderService;
@@ -93,7 +93,7 @@ class DeliveryServiceTest {
         deliveryRepository = mock(DeliveryRepository.class);
         pickupCertificationRepository = mock(PickupCertificationRepository.class);
         deliveryCertificationRepository = mock(DeliveryCertificationRepository.class);
-        sseService = mock(SseService.class);
+        notificationService = mock(NotificationService.class);
         uploadSessionService = mock(UploadSessionService.class);
         userService = mock(UserService.class);
         orderService = mock(OrderService.class);
@@ -105,7 +105,7 @@ class DeliveryServiceTest {
         eventPublisher = mock(ApplicationEventPublisher.class);
         dreamiOfflineDetector = mock(DreamiOfflineDetector.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
-                deliveryCertificationRepository, sseService, uploadSessionService,
+                deliveryCertificationRepository, notificationService, uploadSessionService,
                 userService, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
                 directionsService, eventPublisher, new ObjectMapper(), dreamiOfflineDetector);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
@@ -694,7 +694,7 @@ class DeliveryServiceTest {
     }
 
     @Test
-    void 커밋후리스너가_이벤트를_그대로_SseService로_전달한다() {
+    void 커밋후리스너가_이벤트를_그대로_NotificationService로_전달한다() {
         UUID userId = UUID.randomUUID();
         DeliveryStatusResponseDto payload =
                 new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지");
@@ -703,7 +703,7 @@ class DeliveryServiceTest {
 
         deliveryService.sendAfterCommit(event);
 
-        verify(sseService).send(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload);
+        verify(notificationService).notify(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload);
     }
 
     @Test

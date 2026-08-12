@@ -35,7 +35,8 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -60,7 +61,7 @@ class MatchingServiceTest {
 
     private MatchingService matchingService;
     private MatchingEngine matchingEngine;
-    private SseService sseService;
+    private NotificationService notificationService;
     private MatchingActionScheduler matchingActionScheduler;
     private MatchingBatchDispatcher matchingBatchDispatcher;
     private DeliveryService deliveryService;
@@ -73,7 +74,7 @@ class MatchingServiceTest {
     @BeforeEach
     void setUp() {
         matchingEngine = mock(MatchingEngine.class);
-        sseService = mock(SseService.class);
+        notificationService = mock(NotificationService.class);
         matchingActionScheduler = mock(MatchingActionScheduler.class);
         matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         deliveryService = mock(DeliveryService.class);
@@ -82,11 +83,13 @@ class MatchingServiceTest {
         matchingPlanApplier = mock(MatchingPlanApplier.class);
         matchingPolicyProperties = mock(MatchingPolicyProperties.class);
         geoDistanceCalculator = new GeoDistanceCalculator();
+        // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 별도 명시가 없는 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
+        when(notificationService.isReachableNow(any())).thenReturn(true);
         matchingService = new MatchingService(
-                matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
+                matchingEngine, notificationService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
                 Clock.systemDefaultZone(),
                 matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
-                geoDistanceCalculator);
+                geoDistanceCalculator, new SimpleMeterRegistry());
     }
 
     @Test
@@ -141,6 +144,62 @@ class MatchingServiceTest {
 
         assertThat(proposedCount).isEqualTo(3);
         assertThat(matchingCount).isEqualTo(1);
+    }
+
+    @Test
+    void SSE_연결이_없는_드리미는_오퍼_후보에서_제외된다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        UUID connectedDreamiId = UUID.randomUUID();
+        UUID ghostDreamiId = UUID.randomUUID();
+
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+
+        when(order.getOrderId()).thenReturn(orderId);
+        // goOffline을 못 부르고 브라우저가 죽은 드리미. dreamiMap에는 MATCHING으로 남아 있지만 SSE로는 닿을 수 없다.
+        when(notificationService.isReachableNow(ghostDreamiId)).thenReturn(false);
+
+        matchingService.applyRegisterDreami(connectedDreamiId, location);
+        matchingService.applyRegisterDreami(ghostDreamiId, location);
+
+        // when
+        matchingService.applyStartMatching(order);
+        matchingService.applyRematchWaitingGroups();
+
+        // then
+        List<MatchOffer> offers = getOrderOfferGroups().get(orderId).offers();
+
+        assertThat(offers).hasSize(1);
+        assertThat(offers.getFirst().dreamiId()).isEqualTo(connectedDreamiId);
+        // 유령은 오퍼를 받지 않았으므로 PROPOSED로 넘어가지도, 30초 TTL을 태우지도 않는다.
+        assertThat(getDreamiMap().get(ghostDreamiId).status()).isEqualTo(WaitingDreamiStatus.MATCHING);
+        verify(notificationService, never()).notify(eq(ghostDreamiId), any(), any());
+    }
+
+    @Test
+    void 배치_사이클은_SSE_연결이_없는_드리미를_할당_문제_입력에서_제외한다() {
+        // given
+        UUID connectedDreamiId = UUID.randomUUID();
+        UUID ghostDreamiId = UUID.randomUUID();
+
+        GeoPoint location = mock(GeoPoint.class);
+
+        when(notificationService.isReachableNow(ghostDreamiId)).thenReturn(false);
+
+        matchingService.applyRegisterDreami(connectedDreamiId, location);
+        matchingService.applyRegisterDreami(ghostDreamiId, location);
+
+        // when
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        // then (걸러진 드리미가 problem에 아예 등장하지 않아야 정책·validator가 일관되게 동작한다)
+        ArgumentCaptor<List<WaitingDreami>> dreamisCaptor = ArgumentCaptor.captor();
+        verify(matchingAssignmentProblemAssembler).assemble(any(), dreamisCaptor.capture());
+
+        assertThat(dreamisCaptor.getValue())
+                .extracting(WaitingDreami::dreamiId)
+                .containsExactly(connectedDreamiId);
     }
 
     @Test
@@ -818,8 +877,8 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<UUID> target = ArgumentCaptor.forClass(UUID.class);
-        verify(sseService, times(3))
-                .send(target.capture(), eq(MatchingEventType.OFFER_POPUP), any());
+        verify(notificationService, times(3))
+                .notify(target.capture(), eq(MatchingEventType.OFFER_POPUP), any());
         assertThat(target.getAllValues())
                 .containsExactlyInAnyOrder(dreamiId1, dreamiId2, dreamiId3);
     }
@@ -844,7 +903,7 @@ class MatchingServiceTest {
         matchingService.applyAcceptByDreami(offer.offerId());
 
         // then
-        verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), any());
+        verify(notificationService).notify(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), any());
     }
 
     @Test
@@ -869,7 +928,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
+        verify(notificationService).notify(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
         DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
         assertThat(payload.pickupEtaMinutes()).isNotNull().isPositive();
     }
@@ -894,7 +953,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
+        verify(notificationService).notify(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
         DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
         assertThat(payload.pickupEtaMinutes()).isNull();
     }
@@ -919,7 +978,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
+        verify(notificationService).notify(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
         DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
         assertThat(payload.acceptedAt()).isNotNull();
         assertThat(payload.expiresAt()).isEqualTo(payload.acceptedAt().plusSeconds(30));
@@ -946,7 +1005,7 @@ class MatchingServiceTest {
         matchingService.applyAcceptByDreami(accepted.offerId());
 
         // then
-        verify(sseService).send(eq(loser.dreamiId()), eq(MatchingEventType.OFFER_CLOSED), any());
+        verify(notificationService).notify(eq(loser.dreamiId()), eq(MatchingEventType.OFFER_CLOSED), any());
     }
 
     @Test
@@ -968,7 +1027,7 @@ class MatchingServiceTest {
         matchingService.applyRejectByBoormi(offer.offerId());
 
         // then
-        verify(sseService).send(eq(offer.dreamiId()), eq(MatchingEventType.BOORMI_REJECTED), any());
+        verify(notificationService).notify(eq(offer.dreamiId()), eq(MatchingEventType.BOORMI_REJECTED), any());
     }
 
     @Test
@@ -1006,7 +1065,7 @@ class MatchingServiceTest {
                 .containsExactly(newDreamiId);
         assertThat(getDreamiMap().get(newDreamiId).status())
                 .isEqualTo(WaitingDreamiStatus.PROPOSED);
-        verify(sseService).send(eq(newDreamiId), eq(MatchingEventType.OFFER_POPUP), any());
+        verify(notificationService).notify(eq(newDreamiId), eq(MatchingEventType.OFFER_POPUP), any());
     }
 
     @Test
@@ -1470,7 +1529,7 @@ class MatchingServiceTest {
         assertThat(group.offers()).isEmpty();
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         verify(matchingBatchDispatcher).markDirty();
-        verify(sseService, never()).send(any(), eq(MatchingEventType.OFFER_POPUP), any());
+        verify(notificationService, never()).notify(any(), eq(MatchingEventType.OFFER_POPUP), any());
     }
 
     @Test
@@ -1497,7 +1556,7 @@ class MatchingServiceTest {
         assertThat(group.offers())
                 .extracting(MatchOffer::dreamiId)
                 .containsExactly(dreamiId);
-        verify(sseService).send(eq(dreamiId), eq(MatchingEventType.OFFER_POPUP), any());
+        verify(notificationService).notify(eq(dreamiId), eq(MatchingEventType.OFFER_POPUP), any());
     }
 
     @Test
@@ -1529,7 +1588,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(sseService).send(eq(dreamiId), eq(MatchingEventType.OFFER_POPUP), captor.capture());
+        verify(notificationService).notify(eq(dreamiId), eq(MatchingEventType.OFFER_POPUP), captor.capture());
 
         assertThat(captor.getValue()).isInstanceOf(OfferPopupPayload.class);
         OfferPopupPayload payload = (OfferPopupPayload) captor.getValue();
