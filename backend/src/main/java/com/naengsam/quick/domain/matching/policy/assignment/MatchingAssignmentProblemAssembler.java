@@ -65,8 +65,7 @@ public class MatchingAssignmentProblemAssembler {
                 .toList();
 
         List<MatchingOrderInput> orders = waitingGroups.stream()
-                .map(group -> MatchingOrderInput.from(
-                        group, evaluatedAt, matchingPolicyProperties.maxConcurrentOffers()))
+                .map(group -> MatchingOrderInput.from(group, evaluatedAt, resolveMaxConcurrentOffers()))
                 .toList();
         List<MatchingDreamiInput> dreamis = matchingDreamis.stream()
                 .map(dreami -> new MatchingDreamiInput(
@@ -105,5 +104,9 @@ public class MatchingAssignmentProblemAssembler {
                         .map(outcome -> new PreviousOfferInteraction(outcome, offer.statusUpdatedAt()))
                         .stream())
                 .max(Comparator.comparing(PreviousOfferInteraction::occurredAt));
+    }
+
+    private int resolveMaxConcurrentOffers() {
+        return matchingPolicyProperties.maxConcurrentOffers();
     }
 }
