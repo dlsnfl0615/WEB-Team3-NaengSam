@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.delivery.controller;
 
+import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryPhotoRequest;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
@@ -10,6 +11,7 @@ import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
+import com.naengsam.quick.domain.user.exception.UserErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,6 +45,18 @@ public class DeliveryController {
     public DeliveryDetailResponseDto getDeliveryDetail(
             @PathVariable UUID orderId, @LoginUser UUID userId) {
         return deliveryService.getDeliveryDetail(orderId, userId);
+    }
+
+    // 배달 완료 화면을 로드할 때 호출하는 함수 — 추적용 위치·경로 없이 완료 요약만 필요할 때 쓴다.
+    @Operation(summary = "배달 완료 요약 조회", description = "완료 화면용. 물품명·담당 드리미·결제금액·소요시간을 반환한다.")
+    @ApiErrorCodes(enumClass = DeliveryErrorCode.class, codes = {"DELIVERY_NOT_FOUND"})
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
+    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"NOT_RESOURCE_OWNER"})
+    @ApiErrorCodes(enumClass = UserErrorCode.class, codes = {"USER_NOT_FOUND"})
+    @GetMapping("/orders/{orderId}/completion")
+    public DeliveryCompletionDto getDeliveryCompletion(
+            @PathVariable UUID orderId, @LoginUser UUID userId) {
+        return deliveryService.getDeliveryCompletion(orderId, userId);
     }
 
     @Operation(summary = "드리미 위치 갱신",

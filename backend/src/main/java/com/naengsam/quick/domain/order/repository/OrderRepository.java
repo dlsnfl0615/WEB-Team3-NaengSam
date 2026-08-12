@@ -2,11 +2,13 @@ package com.naengsam.quick.domain.order.repository;
 
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
+import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -16,6 +18,12 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
      * 드리미가 지금 수행 중인 배달 건을 찾는다. 드리미는 한 번에 하나만 수행하므로 단건 조회다.
      */
     Optional<Orders> findByDreamiIdAndOrderCd(UUID dreamiId, OrderCd orderCd);
+
+    // 드리미의 제안 수락 check-then-act를 직렬화하기 위해 비관적 쓰기 락으로 조회한다(트랜잭션 안에서만 사용).
+    // 여러 드리미가 동시에 같은 주문을 수락해도, 먼저 락을 잡은 트랜잭션이 끝날 때까지 나머지는 대기했다가
+    // 최신 상태(이미 MATCHING이 아님)를 다시 읽게 되므로 read-check-write 레이스가 닫힌다.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    Optional<Orders> findByOrderId(UUID orderId);
 
     /**
      * 드리미 대시보드의 완료 건수 집계용.
