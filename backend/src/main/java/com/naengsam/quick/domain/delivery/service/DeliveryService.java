@@ -25,6 +25,7 @@ import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.OrderService;
+import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.service.UserService;
@@ -76,6 +77,7 @@ public class DeliveryService {
     private final UploadSessionService uploadSessionService;
     private final UserService userService;
     private final OrderService orderService;
+    private final PaymentService paymentService;
     private final DirectionsService directionsService;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
@@ -437,6 +439,8 @@ public class DeliveryService {
 
         delivery.markDelivered(); // 배달_완료
         orderService.complete(delivery.getOrderId()); // 주문도 완료 상태로 전이
+        // 배달이 끝나야 지급이 확정된다: 결제 거래를 PAID 로 전이하고 드리미 머니 지갑에 정산을 쌓는다
+        paymentService.settleOrder(delivery.getOrderId(), dreamiId);
         // 비대면 배달 인증 행 저장 (submittedDtm은 markDelivered가 기록한 deliveryEndDtm 재사용)
         deliveryCertificationRepository.save(
                 DeliveryCertification.create(photoKey, delivery.getDeliveryEndDtm(), delivery.getDeliveryId()));
