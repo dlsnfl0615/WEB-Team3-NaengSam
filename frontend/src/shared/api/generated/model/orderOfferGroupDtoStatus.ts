@@ -9,7 +9,8 @@ export type OrderOfferGroupDtoStatus = typeof OrderOfferGroupDtoStatus[keyof typ
 
 
 export const OrderOfferGroupDtoStatus = {
+  WAITING: 'WAITING',
   OPEN: 'OPEN',
   MATCHED: 'MATCHED',
-  CLOSED: 'CLOSED',
+  CANCELLED: 'CANCELLED',
 } as const;

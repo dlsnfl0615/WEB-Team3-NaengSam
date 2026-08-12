@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.dreami.dto;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.dto.NearbyOrderDto;
+import com.naengsam.quick.domain.matching.service.PickupEtaCalculator;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import java.util.UUID;
@@ -26,8 +27,6 @@ public record NearbyCallDto(
         String destinationAddressLine1,
         String destinationAddressLine2
 ) {
-    /** 픽업까지 이동 시간 추정에 쓰는 가정 속도(도보 약 4km/h). */
-    private static final double WALK_SPEED_METERS_PER_MINUTE = 4_000.0 / 60;
 
     public static NearbyCallDto from(NearbyOrderDto nearby, Orders order) {
         return new NearbyCallDto(
@@ -39,19 +38,11 @@ public record NearbyCallDto(
                 order.getOrderCd(),
                 order.getDeliveryAmount(),
                 order.getDeliveryEta(),
-                pickupEtaMinutes(nearby.distanceMeters()),
+                PickupEtaCalculator.minutesFromDistance(nearby.distanceMeters()),
                 order.getOriginAddressLine1(),
                 order.getOriginAddressLine2(),
                 order.getDestinationAddressLine1(),
                 order.getDestinationAddressLine2()
         );
-    }
-
-    /**
-     * 카카오 길찾기 API는 주문 생성 시 1회만 호출한다(deliveryEta). 드리미별 위치는 폴링마다 바뀌므로, 픽업까지
-     * 걸리는 시간은 직선거리(distanceMeters)에 도보 속도를 가정해 추정한다 — 호출량 폭증을 피하기 위함이다.
-     */
-    private static int pickupEtaMinutes(double distanceMeters) {
-        return (int) Math.ceil(distanceMeters / WALK_SPEED_METERS_PER_MINUTE);
     }
 }
