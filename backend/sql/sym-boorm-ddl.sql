@@ -160,7 +160,8 @@ CREATE TABLE `MONEY_LEDGERS` (
 CREATE TABLE `POINT_TX` (
                             `point_tx_id`  binary(16)  NOT NULL,
                             `type`         enum('CHARGE', 'PAYMENT', 'REFUND', 'EXCHANGE_IN')  NOT NULL,
-                            `status`       enum('PAID', 'REFUNDED_PARTIAL', 'REFUNDED_FULL')  NOT NULL,
+                            -- 배달 콜 결제는 배달이 끝나기 전까지 PENDING 으로 남고, 배달 완료 시 PAID 로 확정된다.
+                            `status`       enum('PENDING', 'PAID', 'REFUNDED_PARTIAL', 'REFUNDED_FULL')  NOT NULL,
                             `amount`       bigint      NOT NULL,
                             `created_dtm`  timestamp   NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                             `updated_dtm`  timestamp   NULL,
@@ -274,11 +275,13 @@ CREATE TABLE `DELIVERY` (
                             `delivery_end_dtm`    timestamp   NULL,
                             `received_dtm`        timestamp   NULL,
                             `route_path`          text        NULL      COMMENT '드리미 위치→픽업지 카카오 도보 경로 좌표 JSON([{latitude, longitude}, ...])',
-                            `estimated_completion_dtm` timestamp NULL    COMMENT '배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta)'
+                            `estimated_completion_dtm` timestamp NULL    COMMENT '배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta)',
+                            `last_location_dtm`   timestamp   NULL      COMMENT '드리미가 마지막으로 위치를 전송한 시각(GPS 끊김 판정용)'
 );
 -- 이미 배포된 DB에는 위 CREATE 대신 아래 ALTER 로 컬럼을 추가한다.
 -- ALTER TABLE `DELIVERY` ADD COLUMN `route_path` text NULL COMMENT '드리미 위치→픽업지 카카오 도보 경로 좌표 JSON([{latitude, longitude}, ...])';
 -- ALTER TABLE `DELIVERY` ADD COLUMN `estimated_completion_dtm` timestamp NULL COMMENT '배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta)';
+-- ALTER TABLE `DELIVERY` ADD COLUMN `last_location_dtm` timestamp NULL COMMENT '드리미가 마지막으로 위치를 전송한 시각(GPS 끊김 판정용)';
 
 CREATE TABLE `DELIVERY_ACCIDENT` (
                                      `accident_id`       binary(16)   NOT NULL,
@@ -363,6 +366,8 @@ ALTER TABLE `EXCHANGES` ADD CONSTRAINT `PK_EXCHANGES` PRIMARY KEY (`exchanges_id
 
 ALTER TABLE `BOORMI_REVIEW` ADD CONSTRAINT `PK_BOORMI_REVIEW` PRIMARY KEY (`review_id`);
 
+ALTER TABLE `BOORMI_REVIEW` ADD CONSTRAINT `UQ_BOORMI_REVIEW_ORDER` UNIQUE (`order_id`);
+
 ALTER TABLE `CANCEL` ADD CONSTRAINT `PK_CANCEL` PRIMARY KEY (`cancel_id`);
 
 ALTER TABLE `ADDRESS` ADD CONSTRAINT `PK_ADDRESS` PRIMARY KEY (`address_id`);
@@ -393,6 +398,8 @@ ALTER TABLE `COMPENSATION_CLAIM` ADD CONSTRAINT `PK_COMPENSATION_CLAIM` PRIMARY 
 ALTER TABLE `DREAMI_REQUEST_DENIED_DETAILS` ADD CONSTRAINT `PK_DREAMI_REQUEST_DENIED_DETAILS` PRIMARY KEY (`reject_id`);
 
 ALTER TABLE `DREAMI_REVIEW` ADD CONSTRAINT `PK_DREAMI_REVIEW` PRIMARY KEY (`review_id`);
+
+ALTER TABLE `DREAMI_REVIEW` ADD CONSTRAINT `UQ_DREAMI_REVIEW_ORDER` UNIQUE (`order_id`);
 
 ALTER TABLE `PARTNER_HANDOFF` ADD CONSTRAINT `FK_PARTNER_TO_PARTNER_HANDOFF_1` FOREIGN KEY (`partner_id`) REFERENCES `PARTNER` (`partner_id`);
 

@@ -39,7 +39,9 @@ beforeEach(() => {
     pendingOffer: null,
     incomingDreami: null,
     submitting: false,
+    myLocation: null,
     nearbyCalls: [],
+    nearbyCallsError: null,
     message: null,
   });
   useMatchingStore.getState().stopMatchingPolling();
@@ -47,7 +49,31 @@ beforeEach(() => {
 
 afterEach(() => {
   useMatchingStore.getState().stopMatchingPolling();
+  vi.unstubAllGlobals();
   vi.useRealTimers();
+});
+
+describe("matchingStore 위치 확인", () => {
+  it("GPS 권한이 거부되면 드리미 화면을 차단할 수 있는 결과를 반환한다", async () => {
+    const permissionError = {
+      code: 1,
+      message: "User denied Geolocation",
+      PERMISSION_DENIED: 1,
+      POSITION_UNAVAILABLE: 2,
+      TIMEOUT: 3,
+    } as GeolocationPositionError;
+    const getCurrentPosition = vi.fn(
+      (_success: PositionCallback, error?: PositionErrorCallback | null) => {
+        error?.(permissionError);
+      },
+    );
+    vi.stubGlobal("navigator", { geolocation: { getCurrentPosition } });
+
+    const result = await useMatchingStore.getState().loadNearbyCalls();
+
+    expect(result).toBe("location-unavailable");
+    expect(useMatchingStore.getState().nearbyCallsError).toContain("위치 권한");
+  });
 });
 
 describe("matchingStore polling 복구", () => {
@@ -129,7 +155,7 @@ describe("matchingStore polling 복구", () => {
         deliveryEta: 0, deliveryDistance: null, originLatitude: null, originLongitude: null,
         originAlias: null, originAddressLine1: null, destinationLatitude: null,
         destinationLongitude: null, destinationAlias: null, destinationAddressLine1: null,
-        imageKey: null, ttlSeconds: 0 },
+        imageKey: null, offeredAt: "2026-08-11T10:00:00", expiresAt: "2026-08-11T10:00:30" },
       incomingDreami: { offerId: "old", orderId: "o", dreamiId: "d" },
     });
     getCurrentStatus.mockResolvedValue(snapshot({}) as never);
@@ -137,6 +163,91 @@ describe("matchingStore polling 복구", () => {
     await useMatchingStore.getState().syncCurrentMatching();
 
     expect(useMatchingStore.getState().pendingOffer).toBeNull();
+    expect(useMatchingStore.getState().incomingDreami).toBeNull();
+  });
+
+  it("스냅샷의 offeredAt/expiresAt을 pendingOffer로 그대로 threading한다(폴링 복구 시 정확한 카운트다운의 전제)", async () => {
+    getCurrentStatus.mockResolvedValue(
+      snapshot({
+        pendingOffer: {
+          offerId: "offer-1",
+          orderSummary: { orderId: "order-1", deliveryEta: 15, deliveryAmount: 3000 },
+          offeredAt: "2026-08-11T10:00:00",
+          expiresAt: "2026-08-11T10:00:30",
+        },
+      }) as never,
+    );
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    const pendingOffer = useMatchingStore.getState().pendingOffer;
+    expect(pendingOffer?.offeredAt).toBe("2026-08-11T10:00:00");
+    expect(pendingOffer?.expiresAt).toBe("2026-08-11T10:00:30");
+  });
+
+  it("receiveDreamiInfo는 acceptedAt/expiresAt을 incomingDreami에 반영한다", async () => {
+    useMatchingStore.getState().receiveDreamiInfo({
+      offerId: "offer-2",
+      orderId: "order-2",
+      dreamiId: "dreami-1",
+      acceptedAt: "2026-08-11T10:00:00",
+      expiresAt: "2026-08-11T10:00:30",
+    });
+
+    const incomingDreami = useMatchingStore.getState().incomingDreami;
+    expect(incomingDreami?.acceptedAt).toBe("2026-08-11T10:00:00");
+    expect(incomingDreami?.expiresAt).toBe("2026-08-11T10:00:30");
+  });
+
+  it("receiveDreamiInfo는 pickupEtaMinutes를 incomingDreami에 반영한다", async () => {
+    useMatchingStore.getState().receiveDreamiInfo({
+      offerId: "offer-3",
+      orderId: "order-3",
+      dreamiId: "dreami-2",
+      pickupEtaMinutes: 12,
+    });
+
+    expect(useMatchingStore.getState().incomingDreami?.pickupEtaMinutes).toBe(12);
+  });
+
+  it("receiveDreamiInfo는 pickupEtaMinutes가 없으면 null/undefined를 그대로 둔다(픽업 시간 미확인)", async () => {
+    useMatchingStore.getState().receiveDreamiInfo({
+      offerId: "offer-4",
+      orderId: "order-4",
+      dreamiId: "dreami-3",
+      pickupEtaMinutes: null,
+    });
+
+    expect(useMatchingStore.getState().incomingDreami?.pickupEtaMinutes).toBeNull();
+  });
+});
+
+describe("matchingStore 카운트다운 만료(로컬)", () => {
+  it("expirePendingOffer는 offerId가 일치할 때만 pendingOffer를 지운다", () => {
+    useMatchingStore.setState({
+      pendingOffer: { offerId: "offer-1", orderId: "o", deliveryAmount: null, itemName: null,
+        deliveryEta: 0, deliveryDistance: null, originLatitude: null, originLongitude: null,
+        originAlias: null, originAddressLine1: null, destinationLatitude: null,
+        destinationLongitude: null, destinationAlias: null, destinationAddressLine1: null,
+        imageKey: null, offeredAt: "2026-08-11T10:00:00", expiresAt: "2026-08-11T10:00:30" },
+    });
+
+    useMatchingStore.getState().expirePendingOffer("offer-stale");
+    expect(useMatchingStore.getState().pendingOffer?.offerId).toBe("offer-1");
+
+    useMatchingStore.getState().expirePendingOffer("offer-1");
+    expect(useMatchingStore.getState().pendingOffer).toBeNull();
+  });
+
+  it("expireIncomingDreami는 offerId가 일치할 때만 incomingDreami를 지운다", () => {
+    useMatchingStore.setState({
+      incomingDreami: { offerId: "offer-2", orderId: "o", dreamiId: "d" },
+    });
+
+    useMatchingStore.getState().expireIncomingDreami("offer-stale");
+    expect(useMatchingStore.getState().incomingDreami?.offerId).toBe("offer-2");
+
+    useMatchingStore.getState().expireIncomingDreami("offer-2");
     expect(useMatchingStore.getState().incomingDreami).toBeNull();
   });
 });

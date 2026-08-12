@@ -95,8 +95,8 @@ public class Orders {
     private LocalDateTime deliveryRequestDtm;
 
     /**
-     * 주문 접수 시 부르미 요청 정보로 신규 주문을 생성한다. PK 는 앱에서 생성(BINARY(16))하며 상태는 MATCHING 으로 시작한다. {@code dreami_id} 는 매칭 성사 시 채워지고,
-     * {@code delivery_request_dtm} 은 DB 기본값(CURRENT_TIMESTAMP)이 적용된다.
+     * 주문 접수 시 부르미 요청 정보로 신규 주문을 생성한다. PK 는 앱에서 생성(BINARY(16))하며 상태는 MATCHING 으로 시작한다. {@code dreami_id} 는 드리미가
+     * 제안을 수락하는 시점(임시 배정)에 채워지고, {@code delivery_request_dtm} 은 DB 기본값(CURRENT_TIMESTAMP)이 적용된다.
      */
     public static Orders create(UUID orderId, UUID boormiId, String itemName, ItemCd itemCd,
                                 String itemDetail, Long deliveryAmount, int deliveryEta, Long deliveryDistance,
@@ -157,9 +157,11 @@ public class Orders {
     }
 
     /**
-     * 드리미가 제안을 수락해 부르미의 최종 확인을 기다리는 상태로 전이한다. 검증은 서비스에서 수행한다.
+     * 드리미가 제안을 수락해 부르미의 최종 확인을 기다리는 상태로 전이한다. 수락한 드리미로 dreami_id 를 채워둔다(임시 배정).
+     * 부르미가 거절하면 {@link #rejectDreami()} 가 다시 비운다. 검증은 서비스에서 수행한다.
      */
-    public void markPendingBoormiConfirmation() {
+    public void markPendingBoormiConfirmation(UUID dreamiId) {
+        this.dreamiId = dreamiId;
         this.orderCd = OrderCd.PENDING_BOORMI_CONFIRMATION;
     }
 

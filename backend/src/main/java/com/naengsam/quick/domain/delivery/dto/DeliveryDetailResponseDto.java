@@ -51,10 +51,18 @@ public record DeliveryDetailResponseDto(
         List<RoutePointDto> deliveryRoutePath,
 
         @Schema(description = "배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta). 아직 계산 전이면 null")
-        LocalDateTime estimatedCompletionTime
+        LocalDateTime estimatedCompletionTime,
+
+        @Schema(description = "드리미 위치가 끊긴 상태인지(true면 화면에 안내 필요)", example = "false")
+        boolean dreamiOffline,
+
+        @Schema(description = "마지막으로 드리미 위치를 받은 뒤 흐른 시간(초). 위치를 한 번도 못 받았으면 null",
+                example = "7")
+        Long secondsSinceLastLocation
 ) {
     public static DeliveryDetailResponseDto from(Delivery delivery, Orders order,
-            List<RoutePointDto> routePath, List<RoutePointDto> deliveryRoutePath) {
+            List<RoutePointDto> routePath, List<RoutePointDto> deliveryRoutePath,
+            boolean dreamiOffline, Long secondsSinceLastLocation) {
         DeliveryLocationDto currentLocation = delivery.getCurrentLatitude() == null
                 ? null
                 : new DeliveryLocationDto(
@@ -74,6 +82,8 @@ public record DeliveryDetailResponseDto(
                 order.getItemName(),
                 routePath,
                 deliveryRoutePath,
-                delivery.getEstimatedCompletionDtm());
+                delivery.getEstimatedCompletionDtm(),
+                dreamiOffline,
+                secondsSinceLastLocation);
     }
 }

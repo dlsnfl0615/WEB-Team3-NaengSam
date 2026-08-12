@@ -1,9 +1,18 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Card, IconChip, ScreenShell, TopBar } from "@/shared/ui";
+import {
+  Button,
+  Card,
+  IconChip,
+  Modal,
+  ScreenShell,
+  TopBar,
+} from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
+import { DELIVERY_COMPLETION_WARNING_DISTANCE_M } from "@/shared/config/delivery";
 import { isApiError } from "@/shared/api";
 import { axiosInstance } from "@/shared/api/http/axiosInstance";
+import { getCompletionDistance } from "./completionDistance";
 import { ProofPhoto } from "./ProofPhoto";
 import { ProofSignature } from "./ProofSignature";
 import { ProofUpload } from "./ProofUpload";
@@ -95,6 +104,7 @@ const PROOF_CONFIG: Record<
     purpose: string;
     endpoint: (orderId: string) => string;
     button: string;
+    locationLabel: string;
     next: (orderId: string) => string;
   }
 > = {
@@ -104,6 +114,7 @@ const PROOF_CONFIG: Record<
     purpose: "PICKUP_CERTIFICATION_IMAGE",
     endpoint: (orderId) => `/api/v1/delivery/orders/${orderId}/pickup-finish`,
     button: "픽업 완료 · 사진 첨부",
+    locationLabel: "픽업지",
     next: (orderId) =>
       `${ROUTES.deliveryTrack}?orderId=${orderId}&status=DELIVERING`,
   },
@@ -113,8 +124,9 @@ const PROOF_CONFIG: Record<
     purpose: "DELIVERY_CERTIFICATION_IMAGE",
     endpoint: (orderId) => `/api/v1/delivery/orders/${orderId}/finish`,
     button: "전달 완료 · 사진 첨부",
+    locationLabel: "배달 도착지",
     // 드리미가 전달 완료 → 부르미를 평가하는 리뷰 화면으로.
-    next: () => `${ROUTES.deliveryComplete}?reviewee=boormi`,
+    next: (orderId) => `${ROUTES.deliveryComplete}?reviewee=boormi&orderId=${orderId}`,
   },
 };
 
@@ -135,9 +147,10 @@ function RealDeliveryProof({
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [warningDistance, setWarningDistance] = useState<number | null>(null);
 
-  const handleSubmit = async () => {
-    if (!file) return;
+  const submitProof = async () => {
+    if (!file || loading) return;
     setLoading(true);
     setError(null);
     try {
@@ -168,6 +181,27 @@ function RealDeliveryProof({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async () => {
+    if (!file || loading) return;
+    setLoading(true);
+    setError(null);
+
+    const distance = await getCompletionDistance(orderId, intent);
+    if (distance != null && distance > DELIVERY_COMPLETION_WARNING_DISTANCE_M) {
+      setWarningDistance(distance);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(false);
+    await submitProof();
+  };
+
+  const confirmFarCompletion = () => {
+    setWarningDistance(null);
+    void submitProof();
   };
 
   return (
@@ -204,6 +238,37 @@ function RealDeliveryProof({
           {loading ? "처리 중…" : cfg.button}
         </Button>
       </main>
+
+      <Modal
+        open={warningDistance != null}
+        label="완료 위치 확인"
+        onClose={loading ? undefined : () => setWarningDistance(null)}
+      >
+        <Card className="flex flex-col gap-4 text-center">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-md font-bold text-navy-900">
+              {cfg.locationLabel}와 현재 위치가 멀어요
+            </h2>
+            <p className="text-2xs text-muted">
+              현재 약 {Math.round(warningDistance ?? 0)}m 떨어져 있어요. 그래도
+              완료할까요?
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              block
+              disabled={loading}
+              onClick={() => setWarningDistance(null)}
+            >
+              아니요
+            </Button>
+            <Button block disabled={loading} onClick={confirmFarCompletion}>
+              예
+            </Button>
+          </div>
+        </Card>
+      </Modal>
     </ScreenShell>
   );
 }

@@ -1,4 +1,4 @@
-package com.naengsam.quick.domain.dreami.entity;
+package com.naengsam.quick.domain.order.entity;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -12,6 +12,9 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+/**
+ * 드리미가 받은 리뷰. 부르미가 작성한다. 리뷰 대상 드리미는 주문(ORDERS)의 dreami_id 로 역추적한다.
+ */
 @Entity
 @Table(name = "DREAMI_REVIEW")
 @Getter
@@ -42,13 +45,23 @@ public class DreamiReview {
     @Column(name = "order_id", columnDefinition = "BINARY(16)", nullable = false)
     private UUID orderId;
 
-    public static DreamiReview create(UUID orderId, int score, String content) {
+    /**
+     * 별점만 먼저 남긴다. 리뷰 내용은 나중에 {@link #updateContent(String)} 로 채운다.
+     */
+    public static DreamiReview create(UUID orderId, int score) {
         DreamiReview review = new DreamiReview();
         review.reviewId = UUID.randomUUID();
         review.orderId = orderId;
         review.score = score;
-        review.content = content;
         review.createdDtm = LocalDateTime.now();
         return review;
+    }
+
+    /**
+     * 리뷰 내용을 채우거나 수정한다.
+     */
+    public void updateContent(String content) {
+        this.content = content;
+        this.updatedDtm = LocalDateTime.now();
     }
 }

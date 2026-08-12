@@ -17,6 +17,11 @@ const GEOLOCATION_TIMEOUT_MS = 10_000;
 /** SSE 장애 중 매칭 상태를 되찾기 위한 polling 주기(ms). */
 export const MATCHING_POLL_INTERVAL_MS = 3_000;
 
+type NearbyCallsLoadResult = "loaded" | "location-unavailable" | "failed";
+
+/** 위치 권한 거부·브라우저 미지원처럼 드리미 화면을 사용할 수 없는 오류. */
+class LocationAccessError extends Error {}
+
 /** 백엔드 SSE `offer_popup` payload. */
 interface OfferPopupPayload {
   offerId: string;
@@ -34,7 +39,10 @@ interface OfferPopupPayload {
   destinationAlias: string | null;
   destinationAddressLine1: string | null;
   imageKey: string | null;
-  ttlSeconds: number;
+  /** 제안이 생성된 시각. 응답 마감(expiresAt)과 함께 카운트다운 계산에 쓴다. */
+  offeredAt: string;
+  /** 응답 마감 절대 시각. */
+  expiresAt: string;
 }
 
 /** 드리미가 받은 제안. 픽업 거리만 주변 콜 캐시에서 보충한다. */
@@ -47,6 +55,12 @@ export interface IncomingDreami {
   offerId: string;
   orderId: string;
   dreamiId: string;
+  /** 드리미 픽업 예상 소요 시간(분). 직선거리 기반 추정이며 위치를 모르면 null. */
+  pickupEtaMinutes?: number | null;
+  /** 드리미가 수락한 시각. 응답 마감(expiresAt)과 함께 카운트다운 계산에 쓴다. */
+  acceptedAt?: string;
+  /** 부르미 확인 응답 마감 절대 시각. */
+  expiresAt?: string;
   profile?: DreamiProfileDto;
 }
 
@@ -78,8 +92,12 @@ interface MatchingState {
   receiveOfferError: (payload: unknown) => void;
   /** 화면 이탈·로그아웃 시 진행 중 팝업 정리. */
   clearOffers: () => void;
+  /** 드리미 응답 카운트다운 만료(로컬). offerId가 다르면(이미 새 제안으로 교체됐으면) 무시한다. */
+  expirePendingOffer: (offerId: string) => void;
+  /** 부르미 확인 카운트다운 만료(로컬). offerId가 다르면 무시한다. */
+  expireIncomingDreami: (offerId: string) => void;
   /** 드리미 화면 진입 시(및 폴링 시) 실행: 좌표를 구해 주변 콜을 조회한다. 온라인 여부와 무관하게 항상 동작한다. */
-  loadNearbyCalls: () => Promise<void>;
+  loadNearbyCalls: () => Promise<NearbyCallsLoadResult>;
   /** 드리미 온라인 전환. myLocation이 있으면 재사용하고, 없으면 새로 조회한다. */
   goOnline: () => Promise<void>;
   goOffline: () => Promise<void>;
@@ -121,13 +139,18 @@ function geolocationMessage(error: GeolocationPositionError): string {
 function getCurrentCoords(): Promise<Coords> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error("이 브라우저에서는 위치를 사용할 수 없어요."));
+      reject(new LocationAccessError("이 브라우저에서는 위치를 사용할 수 없어요."));
       return;
     }
     navigator.geolocation.getCurrentPosition(
       ({ coords }) =>
         resolve({ latitude: coords.latitude, longitude: coords.longitude }),
-      (error) => reject(new Error(geolocationMessage(error))),
+      (error) =>
+        reject(
+          error.code === error.PERMISSION_DENIED
+            ? new LocationAccessError(geolocationMessage(error))
+            : new Error(geolocationMessage(error)),
+        ),
       {
         enableHighAccuracy: true,
         timeout: GEOLOCATION_TIMEOUT_MS,
@@ -153,8 +176,8 @@ function str(v: string | undefined): string | null {
 }
 
 /**
- * 스냅샷의 PendingOfferDto(offerId + OrderSummaryDto) → store의 PendingOffer로 매핑한다.
- * ttlSeconds는 스냅샷에 없으므로 0으로 둔다(팝업은 ttl로 카운트다운·자동만료를 하지 않는다).
+ * 스냅샷의 PendingOfferDto(offerId + OrderSummaryDto + offeredAt/expiresAt) → store의 PendingOffer로 매핑한다.
+ * offeredAt/expiresAt은 SSE 팝업과 같은 값이라 폴링으로 복구해도 카운트다운이 정확하다.
  */
 function pendingOfferFromSnapshot(
   dto: PendingOfferDto,
@@ -178,7 +201,8 @@ function pendingOfferFromSnapshot(
     destinationAlias: str(summary.destinationAlias),
     destinationAddressLine1: str(summary.destinationAddressLine1),
     imageKey: str(summary.imageKey),
-    ttlSeconds: 0,
+    offeredAt: dto.offeredAt ?? "",
+    expiresAt: dto.expiresAt ?? "",
     distanceMeters: nearbyCalls.find((c) => c.orderId === orderId)?.distanceMeters,
   };
 }
@@ -245,12 +269,18 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
 
   // 부르미: 드리미가 수락 → 프로필을 붙여 확정 카드를 띄운다.
   receiveDreamiInfo: (payload) => {
-    const { offerId, orderId, dreamiId } = payload as {
+    const { offerId, orderId, dreamiId, pickupEtaMinutes, acceptedAt, expiresAt } = payload as {
       offerId: string;
       orderId: string;
       dreamiId: string;
+      pickupEtaMinutes?: number | null;
+      acceptedAt?: string;
+      expiresAt?: string;
     };
-    set({ incomingDreami: { offerId, orderId, dreamiId }, message: null });
+    set({
+      incomingDreami: { offerId, orderId, dreamiId, pickupEtaMinutes, acceptedAt, expiresAt },
+      message: null,
+    });
     api
       .getProfile(dreamiId)
       .then(({ result }) => {
@@ -276,6 +306,18 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
       incomingDreami: null,
     }),
 
+  // 드리미 카운트다운 만료(로컬). 그 사이 새 제안으로 교체됐으면(offerId 다름) 건드리지 않는다.
+  expirePendingOffer: (offerId) =>
+    set((s) =>
+      s.pendingOffer?.offerId === offerId ? { pendingOffer: null } : {},
+    ),
+
+  // 부르미 카운트다운 만료(로컬). 그 사이 다른 확인 대기로 교체됐으면 건드리지 않는다.
+  expireIncomingDreami: (offerId) =>
+    set((s) =>
+      s.incomingDreami?.offerId === offerId ? { incomingDreami: null } : {},
+    ),
+
   // 온라인 여부와 무관하게 화면 진입 시(및 폴링 시) 항상 실행한다. myLocation이 이미 있으면 재사용한다.
   loadNearbyCalls: async () => {
     let coords = get().myLocation;
@@ -291,8 +333,12 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
         count: NEARBY_COUNT,
       });
       set({ nearbyCalls: result ?? [], nearbyCallsError: null });
+      return "loaded";
     } catch (e) {
       set({ nearbyCallsError: toMessage(e, "주변 콜을 불러오지 못했어요.") });
+      return e instanceof LocationAccessError
+        ? "location-unavailable"
+        : "failed";
     }
   },
 

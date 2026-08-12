@@ -21,6 +21,7 @@ import {
   useSse,
   useSseReconnectSync,
   formatArrivalTime,
+  formatLastSeen,
   type SseHandlers,
 } from "@/shared/lib";
 import { ROUTES } from "@/shared/config/routes";
@@ -40,6 +41,18 @@ interface RealDeliveryTrackingProps {
 
 /** 진행 중 알림 토스트가 화면에 머무는 시간. */
 const TRANSIENT_TOAST_MS = 4000;
+
+/** "마지막 확인 N분 전" 라벨을 다시 계산하는 주기. 분 단위 표시라 초 단위로 돌릴 필요가 없다. */
+const LAST_SEEN_LABEL_REFRESH_MS = 15000;
+
+/**
+ * `delivery_dreami_offline` payload. SSE 전용이라 orval이 생성하지 않아 직접 선언한다
+ * (matchingStore의 OfferPopupPayload와 같은 관례).
+ */
+interface DreamiOfflinePayload {
+  orderId: string;
+  secondsSinceLastLocation: number;
+}
 
 /**
  * 부르미(수령인) 실시간 배송 추적 — 실 백엔드 모드.
@@ -65,6 +78,12 @@ export function RealDeliveryTracking({
   // location이 바뀌면 RealDeliveryTracking을 다시 렌더링
   const [location, setLocation] = useState<DeliveryLocationDto | null>(null);
 
+  // 드리미 위치를 마지막으로 확인한 로컬 시각. null이면 정상(배너 없음).
+  // 서버가 준 '경과 초'를 내 시계로 역산해 담으므로, 서버-클라이언트 시계 오차가 라벨에 새지 않는다.
+  const [lastSeenAt, setLastSeenAt] = useState<number | null>(null);
+  // "마지막 확인 N분 전" 라벨을 계산할 기준 시각. lastSeenAt과 함께 잡고, 배너가 뜬 동안 주기적으로 갱신한다.
+  const [labelNow, setLabelNow] = useState(() => Date.now());
+
   // 상세 조회 성공 전에는 SSE·취소 등 모든 배달 기능을 차단한다.
   const {
     detail,
@@ -79,6 +98,15 @@ export function RealDeliveryTracking({
       // SSE가 아직 위치를 안 줬으면 응답의 currentLocation으로 시드한다.
       setLocation(loadedDetail.currentLocation ?? null);
       if (loadedDetail.status) setStatus(loadedDetail.status);
+      // 드리미 연결 상태는 이벤트 공백으로 추론하지 않고 서버 스냅샷으로 잡는다.
+      // 화면 재진입 시 즉시 정확하고, 끊긴 사이 놓친 오프라인 통보도 이 경로로 복구된다.
+      const now = Date.now();
+      setLastSeenAt(
+        loadedDetail.dreamiOffline
+          ? now - (loadedDetail.secondsSinceLastLocation ?? 0) * 1000
+          : null,
+      );
+      setLabelNow(now);
     },
   });
   const pickup: Coords | undefined =
@@ -163,6 +191,14 @@ export function RealDeliveryTracking({
     });
   };
 
+  // 서버가 알려준 '마지막 위치 수신 이후 경과 초'를 내 시계 기준점으로 역산해 저장한다.
+  // 라벨 기준 시각(labelNow)도 같이 잡아 배너가 뜨는 순간의 문구가 정확하게 나오도록 한다.
+  const markDreamiOffline = (secondsSinceLastLocation: number) => {
+    const now = Date.now();
+    setLastSeenAt(now - secondsSinceLastLocation * 1000);
+    setLabelNow(now);
+  };
+
   // 진행 중 알림 토스트: 잠시 노출 후 자동으로 사라진다.
   const showTransientToast = (t: { title: string; description?: string }) => {
     setToast(t);
@@ -192,6 +228,8 @@ export function RealDeliveryTracking({
     delivery_location: (data) => {
       const dto = forThisOrder(data);
       if (!dto) return;
+      // 위치가 다시 흐르면 곧 드리미가 살아난 것이다 → 별도 복구 이벤트 없이 여기서 배너를 내린다.
+      setLastSeenAt(null);
       if (dto.currentLocation) setLocation(dto.currentLocation);
       // 첫 위치가 서버에 도달하면 '드리미→픽업지' 경로·배송완료예상시간이 계산된다.
       // 아직 최초 조회에 안 담겼으면 이 시점에 상세를 조용히 다시 불러온다(채워지면 조건이 false가 돼 멈춘다).
@@ -222,7 +260,7 @@ export function RealDeliveryTracking({
       }
       applyStatus(completedStatus);
       setToast(null);
-      navigate(ROUTES.deliveryComplete, { replace: true });
+      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, { replace: true });
     },
     delivery_cancelled: (data) => {
       const dto = forThisOrder(data);
@@ -232,9 +270,16 @@ export function RealDeliveryTracking({
         dto.message,
       );
     },
+    // 서버가 판정한 '드리미 위치 무소식'. payload가 DeliveryStatusResponseDto가 아니라
+    // DreamiOfflinePayload라서 forThisOrder를 쓰지 않고 직접 필터한다.
+    delivery_dreami_offline: (data) => {
+      const dto = data as DreamiOfflinePayload;
+      if (dto?.orderId !== orderId) return;
+      markDreamiOffline(dto.secondsSinceLastLocation ?? 0);
+    },
   };
 
-  const { connected, status: sseStatus } = useSse(handlers, {
+  const { status: sseStatus } = useSse(handlers, {
     enabled: detailReady,
   });
 
@@ -242,6 +287,45 @@ export function RealDeliveryTracking({
   useSseReconnectSync(sseStatus, refreshDeliveryDetail, {
     enabled: detailReady,
   });
+
+  // 배너가 떠 있는 동안만 "마지막 확인 N분 전" 라벨의 기준 시각을 갱신한다(정상일 때는 타이머를 걸지 않는다).
+  // 기준 시각의 최초값은 markDreamiOffline이 lastSeenAt과 함께 잡아 주므로 여기서 따로 세팅하지 않는다.
+  useEffect(() => {
+    if (lastSeenAt === null) return;
+    const id = window.setInterval(
+      () => setLabelNow(Date.now()),
+      LAST_SEEN_LABEL_REFRESH_MS,
+    );
+    return () => window.clearInterval(id);
+  }, [lastSeenAt]);
+
+  // 내 SSE가 끊긴 동안에는 위치가 안 오는 게 당연하므로 드리미 배너를 신뢰할 수 없다 → 숨긴다.
+  // 이게 "내 인터넷이 끊긴 걸 드리미가 끊긴 것으로 오해"하는 상황을 막는 핵심이다.
+  // 최초 마운트의 `connecting`은 정상 절차라 배너를 띄우지 않고(매 진입마다 깜빡이므로),
+  // 영구 종료(`closed`)는 전역 SseStatusBanner 모달이 안내하므로 여기서는 드리미 배너만 억제한다.
+  const isMyConnectionDown =
+    sseStatus === "reconnecting" || sseStatus === "closed";
+
+  // 상단 알림은 한 번에 하나만 노출한다(진행 이벤트 > 내 연결 > 드리미 위치).
+  const topNotice = toast
+    ? {
+        icon: "bell" as const,
+        title: toast.title,
+        description: toast.description,
+      }
+    : sseStatus === "reconnecting"
+      ? {
+          icon: "transfer" as const,
+          title: "실시간 연결이 불안정해요",
+          description: "다시 연결 중…",
+        }
+      : !isMyConnectionDown && lastSeenAt !== null
+        ? {
+            icon: "pin" as const,
+            title: "드리미 위치를 받지 못하고 있어요",
+            description: `마지막 확인 ${formatLastSeen(lastSeenAt, labelNow)}`,
+          }
+        : null;
 
   const view = realTrackView(status);
   const driver: Coords | undefined =
@@ -263,7 +347,7 @@ export function RealDeliveryTracking({
       if (isApiError(e) && e.code === "DELIVERY_013") {
         // 이미 배달 완료 → 리뷰(드리미 평가) 페이지로.
         setConfirmOpen(false);
-        navigate(ROUTES.deliveryComplete, { replace: true });
+        navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, { replace: true });
         return;
       }
       if (isApiError(e) && e.code === "DELIVERY_012") {
@@ -289,18 +373,14 @@ export function RealDeliveryTracking({
     <ScreenShell>
       <TopBar title="실시간 배송" onBack={() => navigate(-1)} actions={[]} />
 
-      {toast && (
+      {topNotice && (
         <div className="pt-2">
           <Toast
-            icon="bell"
-            title={toast.title}
-            description={toast.description}
+            icon={topNotice.icon}
+            title={topNotice.title}
+            description={topNotice.description}
           />
         </div>
-      )}
-
-      {detailReady && !connected && !toast && (
-        <p className="pt-2 text-2xs text-muted">실시간 연결 중…</p>
       )}
 
       <main className="flex flex-1 flex-col gap-4 pt-4">

@@ -71,6 +71,13 @@ public class Dreami {
     }
 
     /**
+     * 부르미가 남긴 리뷰를 반영해 드리미 평균 평점을 갱신한다.
+     */
+    public void updateAvgScore(BigDecimal avgScore) {
+        this.dreamiAvgScore = avgScore;
+    }
+
+    /**
      * 관리자가 인증 신청을 반려한다.
      */
     public void reject(String detail) {
