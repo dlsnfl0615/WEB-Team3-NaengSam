@@ -22,7 +22,7 @@ import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
-import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
+import com.naengsam.quick.domain.user.exception.UserErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -408,6 +408,31 @@ class DeliveryServiceTest {
     }
 
     @Test
+    void 배달완료조회시_인증사진_URL_조회에_실패해도_나머지_정보는_정상_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(order.getItemName()).willReturn("서류봉투");
+        given(orderService.getOrder(orderId)).willReturn(order);
+        DeliveryCertification certification = DeliveryCertification.create(PHOTO_KEY,
+                LocalDateTime.of(2026, 1, 1, 10, 8), delivery.getDeliveryId());
+        given(deliveryCertificationRepository.findByDeliveryId(delivery.getDeliveryId()))
+                .willReturn(Optional.of(certification));
+        // S3 객체가 실제로는 없거나(보존 정책 삭제) 스토리지 장애 등으로 URL 발급이 실패하는 상황을 재현한다.
+        given(s3PresignService.generateDownloadUrl(PHOTO_KEY))
+                .willThrow(new BusinessException(UploadErrorCode.FILE_NOT_FOUND));
+
+        DeliveryCompletionDto result = deliveryService.getDeliveryCompletion(orderId, boormiId);
+
+        assertThat(result.deliveryPhotoUrl()).isNull();
+        assertThat(result.itemName()).isEqualTo("서류봉투"); // 사진 조회 실패가 나머지 응답을 막지 않는다
+    }
+
+    @Test
     void 배달완료조회시_시작_종료시각이_없으면_소요시간은_null이다() {
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
@@ -437,7 +462,7 @@ class DeliveryServiceTest {
 
         Throwable thrown = catchThrowable(() -> deliveryService.getDeliveryCompletion(orderId, boormiId));
 
-        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+        assertThat(errorCodeOf(thrown)).isEqualTo(UserErrorCode.USER_NOT_FOUND);
     }
 
     // ===== 첫 위치 전송 시 '드리미→픽업지' 경로·배송완료예상시간 계산 =====
