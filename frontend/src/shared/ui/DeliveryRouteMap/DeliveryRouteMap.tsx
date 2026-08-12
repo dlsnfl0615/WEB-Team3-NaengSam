@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
+import { DELIVERY_MAP_SMOOTH_MODE } from "@/shared/config";
 import { loadKakaoMaps } from "@/shared/lib";
 import { cn } from "@/shared/lib/cn";
+import {
+  interpolatePoint,
+  planDriverMotion,
+  type PixelPoint,
+} from "./driverMotion";
 import { pinImageSrc } from "./pinImage";
 
 /** 위·경도 좌표쌍. */
@@ -30,9 +36,26 @@ type Role = "pickup" | "dropoff" | "driver";
 type KakaoMap = ReturnType<typeof window.kakao.maps.Map>;
 type KakaoLatLng = ReturnType<typeof window.kakao.maps.LatLng>;
 
+interface DriverMotionState {
+  target?: Coords;
+  targetReceivedAt?: number;
+  averageSpeedMps?: number;
+}
+
 interface DeliveryPinOverlay {
   setMap(map: KakaoMap | null): void;
   setPosition(position: KakaoLatLng): void;
+  setSmoothPosition(position: KakaoLatLng, durationMs: number): void;
+}
+
+interface PinAnimation {
+  fromPosition: KakaoLatLng;
+  toPosition: KakaoLatLng;
+  fromPoint: PixelPoint;
+  toPoint: PixelPoint;
+  startedAt: number;
+  durationMs: number;
+  frame?: number;
 }
 
 /** 역할별 핀 색(theme.css 토큰 hex 재사용)·라벨 텍스트·라벨 배경(토큰 유틸). */
@@ -49,11 +72,13 @@ function makePinOverlay(
   position: KakaoLatLng,
   role: Role,
   label: string,
+  smooth: boolean,
 ): DeliveryPinOverlay {
   const root = document.createElement("div");
   root.className =
     "pointer-events-none absolute flex flex-col items-center gap-0.5 whitespace-nowrap";
   root.style.transform = "translate(-50%, -100%)";
+  if (smooth) root.style.willChange = "transform";
 
   const labelElement = document.createElement("div");
   labelElement.className = cn(
@@ -75,18 +100,94 @@ function makePinOverlay(
 
   class PinOverlay extends kakao.maps.AbstractOverlay {
     private position = position;
+    private animation?: PinAnimation;
+
+    private progress(animation: PinAnimation, now: number) {
+      return Math.min(
+        Math.max((now - animation.startedAt) / animation.durationMs, 0),
+        1,
+      );
+    }
+
+    private positionAt(animation: PinAnimation, progress: number) {
+      return new kakao.maps.LatLng(
+        animation.fromPosition.getLat() +
+          (animation.toPosition.getLat() - animation.fromPosition.getLat()) *
+            progress,
+        animation.fromPosition.getLng() +
+          (animation.toPosition.getLng() - animation.fromPosition.getLng()) *
+            progress,
+      );
+    }
+
+    private renderPoint(point: PixelPoint) {
+      if (smooth) {
+        // transform은 소수점 픽셀을 유지하고 브라우저 합성 레이어에서 처리돼 left/top보다 부드럽다.
+        root.style.left = "0px";
+        root.style.top = "0px";
+        root.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) translate(-50%, -100%)`;
+        return;
+      }
+      // SMOOTH 모드가 꺼지면 기존 위치 반영 방식을 그대로 사용한다.
+      root.style.left = `${point.x}px`;
+      root.style.top = `${point.y}px`;
+      root.style.transform = "translate(-50%, -100%)";
+    }
+
+    private cancelAnimation() {
+      if (this.animation?.frame != null) {
+        cancelAnimationFrame(this.animation.frame);
+      }
+      this.animation = undefined;
+    }
+
+    private animate = (now: number) => {
+      const animation = this.animation;
+      if (!animation) return;
+      const progress = this.progress(animation, now);
+      this.renderPoint(
+        interpolatePoint(animation.fromPoint, animation.toPoint, progress),
+      );
+
+      if (progress < 1) {
+        animation.frame = requestAnimationFrame(this.animate);
+        return;
+      }
+      this.position = animation.toPosition;
+      this.animation = undefined;
+      this.renderPoint(animation.toPoint);
+    };
 
     onAdd() {
       this.getPanels().overlayLayer.appendChild(root);
     }
 
     draw() {
-      const point = this.getProjection().pointFromCoords(this.position);
-      root.style.left = `${point.x}px`;
-      root.style.top = `${point.y}px`;
+      const projection = this.getProjection();
+      const animation = this.animation;
+      if (!animation) {
+        this.renderPoint(projection.pointFromCoords(this.position));
+        return;
+      }
+
+      // 지도 이동·확대 중에는 현재 진행 위치를 새 투영 좌표로 다시 잡고 남은 애니메이션을 이어간다.
+      const now = performance.now();
+      const progress = this.progress(animation, now);
+      const currentPosition = this.positionAt(animation, progress);
+      const remainingDurationMs = animation.durationMs * (1 - progress);
+      const currentPoint = projection.pointFromCoords(currentPosition);
+      const targetPoint = projection.pointFromCoords(animation.toPosition);
+
+      animation.fromPosition = currentPosition;
+      animation.fromPoint = currentPoint;
+      animation.toPoint = targetPoint;
+      animation.startedAt = now;
+      animation.durationMs = Math.max(remainingDurationMs, 1);
+      this.renderPoint(currentPoint);
     }
 
     onRemove() {
+      this.cancelAnimation();
       root.remove();
     }
 
@@ -95,8 +196,46 @@ function makePinOverlay(
     }
 
     setPosition(nextPosition: KakaoLatLng) {
+      this.cancelAnimation();
       this.position = nextPosition;
       if (this.getMap()) this.draw();
+    }
+
+    setSmoothPosition(nextPosition: KakaoLatLng, durationMs: number) {
+      if (!smooth || !this.getMap()) {
+        this.setPosition(nextPosition);
+        return;
+      }
+
+      const now = performance.now();
+      const previousAnimation = this.animation;
+      const progress = previousAnimation
+        ? this.progress(previousAnimation, now)
+        : 1;
+      const fromPosition = previousAnimation
+        ? this.positionAt(previousAnimation, progress)
+        : this.position;
+      const projection = this.getProjection();
+      const fromPoint = previousAnimation
+        ? interpolatePoint(
+            previousAnimation.fromPoint,
+            previousAnimation.toPoint,
+            progress,
+          )
+        : projection.pointFromCoords(fromPosition);
+
+      this.cancelAnimation();
+      this.position = nextPosition;
+      this.animation = {
+        fromPosition,
+        toPosition: nextPosition,
+        fromPoint,
+        toPoint: projection.pointFromCoords(nextPosition),
+        startedAt: now,
+        durationMs: Math.max(durationMs, 1),
+      };
+      this.renderPoint(fromPoint);
+      this.animation.frame = requestAnimationFrame(this.animate);
     }
   }
 
@@ -113,18 +252,47 @@ function upsertMarker(
   role: Role,
   coords: Coords,
   label: string,
+  smooth = false,
 ) {
   const pos = new kakao.maps.LatLng(coords.latitude, coords.longitude);
   if (store.overlay) {
     store.overlay.setPosition(pos);
     return;
   }
-  store.overlay = makePinOverlay(kakao, map, pos, role, label);
+  store.overlay = makePinOverlay(kakao, map, pos, role, label, smooth);
+}
+
+/** 드리미 핀을 처음이면 생성하고, 이미 있으면 픽셀 기반 애니메이션으로 옮긴다. */
+function upsertSmoothDriver(
+  kakao: typeof window.kakao,
+  map: KakaoMap,
+  store: { overlay?: DeliveryPinOverlay },
+  coords: Coords,
+  label: string,
+  durationMs?: number,
+) {
+  const position = new kakao.maps.LatLng(coords.latitude, coords.longitude);
+  if (store.overlay && durationMs != null) {
+    store.overlay.setSmoothPosition(position, durationMs);
+    return;
+  }
+  if (store.overlay) {
+    store.overlay.setPosition(position);
+    return;
+  }
+  store.overlay = makePinOverlay(
+    kakao,
+    map,
+    position,
+    "driver",
+    label,
+    true,
+  );
 }
 
 /**
  * 출발지·도착지·드리미 세 핀(라벨 포함)을 좌표로 표시하는 추적 지도. 지오코딩하지 않고 좌표만 받는다.
- * pickup/dropoff는 정적 핀(변경 시 갱신), driver는 좌표가 바뀔 때마다 이동한다(보간 없음).
+ * pickup/dropoff는 정적 핀이고, driver는 공통 설정에 따라 즉시 이동하거나 픽셀 기반으로 부드럽게 이동한다.
  * VITE_KAKAO_MAP_KEY가 없으면 좌표 텍스트로 폴백한다.
  */
 export function DeliveryRouteMap({
@@ -146,6 +314,7 @@ export function DeliveryRouteMap({
   });
   const routeLineRef = useRef<unknown>(null);
   const didFitRef = useRef(false);
+  const driverMotionRef = useRef<DriverMotionState>({});
   const [status, setStatus] = useState<"loading" | "ready" | "disabled">(
     "loading",
   );
@@ -181,6 +350,7 @@ export function DeliveryRouteMap({
       storeRef.current = { pickup: {}, dropoff: {}, driver: {} };
       routeLineRef.current = null;
       didFitRef.current = false;
+      driverMotionRef.current = {};
     };
   }, []);
 
@@ -192,8 +362,8 @@ export function DeliveryRouteMap({
     const entries: [Role, Coords | undefined][] = [
       ["pickup", pickup],
       ["dropoff", dropoff],
-      ["driver", driver],
     ];
+    if (!DELIVERY_MAP_SMOOTH_MODE) entries.push(["driver", driver]);
     entries.forEach(([role, coords]) => {
       if (coords) {
         const label = role === "driver" ? driverLabel : ROLE[role].label;
@@ -201,6 +371,51 @@ export function DeliveryRouteMap({
       }
     });
   }, [status, pickup, dropoff, driver, driverLabel]);
+
+  // SMOOTH 모드에서는 원본 좌표와 분리된 표시 좌표만 보간한다. 서버 전송·SSE 좌표는 건드리지 않는다.
+  useEffect(() => {
+    const motion = driverMotionRef.current;
+    if (!DELIVERY_MAP_SMOOTH_MODE) return;
+    if (!driver) return;
+    const kakao = kakaoRef.current;
+    const map = mapRef.current;
+    if (status !== "ready" || !kakao || !map) return;
+
+    const receivedAt = performance.now();
+    if (!motion.target || motion.targetReceivedAt == null) {
+      motion.target = driver;
+      motion.targetReceivedAt = receivedAt;
+      upsertSmoothDriver(
+        kakao,
+        map,
+        storeRef.current.driver,
+        driver,
+        driverLabel,
+      );
+      return;
+    }
+
+    const plan = planDriverMotion({
+      previousTarget: motion.target,
+      previousReceivedAt: motion.targetReceivedAt,
+      previousAverageSpeedMps: motion.averageSpeedMps,
+      nextTarget: driver,
+      receivedAt,
+    });
+    if (!plan) return;
+
+    motion.target = driver;
+    motion.targetReceivedAt = receivedAt;
+    motion.averageSpeedMps = plan.averageSpeedMps;
+    upsertSmoothDriver(
+      kakao,
+      map,
+      storeRef.current.driver,
+      driver,
+      driverLabel,
+      plan.durationMs,
+    );
+  }, [status, driver, driverLabel]);
 
   // 추천 이동경로를 폴리라인으로 그린다(좌표가 바뀌면 다시 그림). 핀처럼 ref에 보관해 중복 생성을 막는다.
   useEffect(() => {
