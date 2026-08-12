@@ -31,6 +31,7 @@ import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.OrderService;
+import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
@@ -86,9 +87,11 @@ public class DeliveryService {
     private final DreamiRepository dreamiRepository;
     private final BoormiRepository boormiRepository;
     private final S3PresignService s3PresignService;
+    private final PaymentService paymentService;
     private final DirectionsService directionsService;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final DreamiOfflineDetector dreamiOfflineDetector;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -123,8 +126,12 @@ public class DeliveryService {
         }
 
         // 픽업 후 지도용 픽업지→도착지 경로(Orders)와 픽업 전 지도용 드리미→픽업지 경로(Delivery)를 함께 내려준다.
+        // 드리미 연결 상태도 함께 담는다 — 화면을 다시 열었을 때 SSE 이벤트를 기다리지 않고 즉시 복원하기 위함이며,
+        // 부르미가 끊긴 동안 유실된 오프라인 통보를 되찾는 경로이기도 하다.
         return DeliveryDetailResponseDto.from(delivery, order,
-                parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()));
+                parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()),
+                dreamiOfflineDetector.isOffline(delivery),
+                dreamiOfflineDetector.secondsSinceLastLocationOrNull(delivery));
     }
 
     // 배달 완료 화면용 요약 조회. 위치·경로 없이 완료 후에만 의미 있는 정산·담당 드리미·소요시간만 담는다.
@@ -485,6 +492,8 @@ public class DeliveryService {
 
         delivery.markDelivered(); // 배달_완료
         orderService.complete(delivery.getOrderId()); // 주문도 완료 상태로 전이
+        // 배달이 끝나야 지급이 확정된다: 결제 거래를 PAID 로 전이하고 드리미 머니 지갑에 정산을 쌓는다
+        paymentService.settleOrder(delivery.getOrderId(), dreamiId);
         // 비대면 배달 인증 행 저장 (submittedDtm은 markDelivered가 기록한 deliveryEndDtm 재사용)
         deliveryCertificationRepository.save(
                 DeliveryCertification.create(photoKey, delivery.getDeliveryEndDtm(), delivery.getDeliveryId()));

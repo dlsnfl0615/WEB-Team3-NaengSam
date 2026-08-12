@@ -35,6 +35,7 @@ import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.dto.UserDto;
 import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
+import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
@@ -78,8 +79,10 @@ class DeliveryServiceTest {
     private DreamiRepository dreamiRepository;
     private BoormiRepository boormiRepository;
     private S3PresignService s3PresignService;
+    private PaymentService paymentService;
     private DirectionsService directionsService;
     private ApplicationEventPublisher eventPublisher;
+    private DreamiOfflineDetector dreamiOfflineDetector;
     private DeliveryService deliveryService;
 
     // findByOrderId가 같은 Delivery 인스턴스를 돌려주도록 등록해 둔다(서비스가 이 객체를 변경하면 테스트에서 바로 관찰된다).
@@ -97,12 +100,14 @@ class DeliveryServiceTest {
         dreamiRepository = mock(DreamiRepository.class);
         boormiRepository = mock(BoormiRepository.class);
         s3PresignService = mock(S3PresignService.class);
+        paymentService = mock(PaymentService.class);
         directionsService = mock(DirectionsService.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
+        dreamiOfflineDetector = mock(DreamiOfflineDetector.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, sseService, uploadSessionService,
-                userService, orderService, dreamiRepository, boormiRepository, s3PresignService, directionsService,
-                eventPublisher, new ObjectMapper());
+                userService, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
+                directionsService, eventPublisher, new ObjectMapper(), dreamiOfflineDetector);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
@@ -800,6 +805,25 @@ class DeliveryServiceTest {
         finish(orderId);
 
         verify(orderService).complete(orderId);
+    }
+
+    @Test
+    void 배달완료되면_배정된_드리미에게_정산한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DELIVERING, dreamiId, UUID.randomUUID());
+
+        finish(orderId);
+
+        verify(paymentService).settleOrder(orderId, dreamiId);
+    }
+
+    @Test
+    void 픽업완료는_정산하지_않는다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        pickupFinish(orderId);
+
+        verify(paymentService, never()).settleOrder(any(), any());
     }
 
     @Test

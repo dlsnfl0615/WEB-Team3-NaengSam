@@ -30,7 +30,12 @@ public enum DeliveryEventType implements SseEventType {
     /**
      * 드리미: 매칭이 확정돼 배달이 시작됨 → 배달 추적 화면으로 이동
      */
-    DELIVERY_STARTED_DREAMI;
+    DELIVERY_STARTED_DREAMI,
+    /**
+     * 부르미: 드리미 위치가 일정 시간 이상 들어오지 않음(GPS 권한 차단·브라우저 종료·네트워크 단절).
+     * payload는 DreamiOfflineDto. 복구는 별도 이벤트 없이 {@link #DELIVERY_LOCATION} 재개로 알린다.
+     */
+    DELIVERY_DREAMI_OFFLINE;
 
     @Override
     public String eventName() {
