@@ -4,10 +4,11 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { ReviewDto } from './reviewDto';
 
-export type Get200 = {
+export type GetReceivedReview200 = {
   isSuccess?: boolean;
   code?: string;
   message?: string;
-  result?: string;
+  result?: ReviewDto;
 };
