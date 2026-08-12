@@ -56,4 +56,15 @@ class SseServiceTest {
         assertThat(result).isSameAs(emitter);
         verify(registry).connect(userId);
     }
+
+    @Test
+    void isConnected는_사용자의_연결_상태_조회를_레지스트리에_위임한다() {
+        UUID userId = UUID.randomUUID();
+        given(registry.isConnected(userId)).willReturn(true);
+
+        boolean connected = sseService.isConnected(userId);
+
+        assertThat(connected).isTrue();
+        verify(registry).isConnected(userId);
+    }
 }
