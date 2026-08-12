@@ -28,9 +28,7 @@ export function DeliveryProofScreen() {
     (intent === "pickup" || intent === "finish") && Boolean(orderId);
 
   if (isRealProof && orderId) {
-    return (
-      <RealDeliveryProof orderId={orderId} intent={intent as ProofIntent} />
-    );
+    return <RealDeliveryProof orderId={orderId} intent={intent as ProofIntent} />;
   }
 
   return (
@@ -116,8 +114,7 @@ const PROOF_CONFIG: Record<
     endpoint: (orderId) => `/api/v1/delivery/orders/${orderId}/finish`,
     button: "전달 완료 · 사진 첨부",
     // 드리미가 전달 완료 → 부르미를 평가하는 리뷰 화면으로.
-    next: (orderId) =>
-      `${ROUTES.deliveryComplete}?reviewee=boormi&orderId=${orderId}`,
+    next: (orderId) => `${ROUTES.deliveryComplete}?reviewee=boormi&orderId=${orderId}`,
   },
 };
 
@@ -145,8 +142,7 @@ function RealDeliveryProof({
     setError(null);
     try {
       // 1) presign 발급 — 인증 용도 + 해당 주문(resourceId=orderId) 으로 스코프 지정.
-      const fileName =
-        file.name.replace(/[\\/.]{2,}|[\\/]/g, "_") || "proof.jpg";
+      const fileName = file.name.replace(/[\\/.]{2,}|[\\/]/g, "_") || "proof.jpg";
       const presign = await axiosInstance.get("/api/v1/upload/url", {
         params: { fileName, purpose: cfg.purpose, resourceId: orderId },
       });

@@ -240,7 +240,7 @@ export function DeliveryTrackScreen() {
         // 이미 배달 완료 → 리뷰(드리미가 부르미를 평가) 페이지로.
         setConfirmOpen(false);
         navigate(
-          `${ROUTES.deliveryComplete}?reviewee=boormi&orderId=${orderId}`,
+          `${ROUTES.deliveryComplete}?reviewee=boormi${orderId ? `&orderId=${orderId}` : ""}`,
           { replace: true },
         );
         return;

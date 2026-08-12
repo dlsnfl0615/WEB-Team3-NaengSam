@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.delivery.service;
 import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.service.DirectionsService;
+import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
@@ -17,12 +18,19 @@ import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.repository.DeliveryCertificationRepository;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.delivery.repository.PickupCertificationRepository;
+import com.naengsam.quick.domain.boormi.entity.Boormi;
+import com.naengsam.quick.domain.boormi.entity.ItemCd;
+import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.dreami.entity.Dreami;
+import com.naengsam.quick.domain.user.exception.UserErrorCode;
+import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
+import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.dto.UserDto;
 import com.naengsam.quick.domain.user.service.UserService;
@@ -38,6 +46,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.function.Function;
@@ -66,6 +75,9 @@ class DeliveryServiceTest {
     private UploadSessionService uploadSessionService;
     private UserService userService;
     private OrderService orderService;
+    private DreamiRepository dreamiRepository;
+    private BoormiRepository boormiRepository;
+    private S3PresignService s3PresignService;
     private DirectionsService directionsService;
     private ApplicationEventPublisher eventPublisher;
     private DeliveryService deliveryService;
@@ -82,15 +94,27 @@ class DeliveryServiceTest {
         uploadSessionService = mock(UploadSessionService.class);
         userService = mock(UserService.class);
         orderService = mock(OrderService.class);
+        dreamiRepository = mock(DreamiRepository.class);
+        boormiRepository = mock(BoormiRepository.class);
+        s3PresignService = mock(S3PresignService.class);
         directionsService = mock(DirectionsService.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, sseService, uploadSessionService,
-                userService, orderService, directionsService, eventPublisher, new ObjectMapper());
+                userService, orderService, dreamiRepository, boormiRepository, s3PresignService, directionsService,
+                eventPublisher, new ObjectMapper());
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+        given(deliveryCertificationRepository.findByDeliveryId(any())).willReturn(Optional.empty());
         given(uploadSessionService.checkUpload(any(), any(), any(), any())).willReturn(true);
+        // getDeliveryDetail이 담당 드리미 이름·평점을 조회할 때 쓰는 기본값(dreamiId == boormiId).
+        Dreami defaultDreami = Dreami.create(UUID.randomUUID(), "idCardKey", "criminalRecordKey");
+        ReflectionTestUtils.setField(defaultDreami, "dreamiAvgScore", new BigDecimal("4.80"));
+        Boormi defaultDreamiAsBoormi = Boormi.create("dreami@test.com", "pass123", "김드림", "01099998888",
+                LocalDate.of(1995, 5, 5));
+        given(dreamiRepository.findById(any())).willReturn(Optional.of(defaultDreami));
+        given(boormiRepository.findById(any())).willReturn(Optional.of(defaultDreamiAsBoormi));
         // 기본값: 위치 갱신 때 도는 '드리미→픽업지' 계산이 다른 테스트를 깨지 않도록, 주문은 좌표 있는 목을,
         // 카카오는 정상 경로를 돌려준다(실제 HTTP 미호출). 계산·실패를 검증하는 테스트에서만 getRoute를 개별 스텁한다.
         Orders defaultOrder = orderWithPickup("37.40000000", "127.00000000", 20);
@@ -327,6 +351,136 @@ class DeliveryServiceTest {
         assertThat(result.deliveryRoutePath()).hasSize(2);
         assertThat(result.deliveryRoutePath().getFirst().latitude()).isEqualTo(37.4);
         assertThat(result.estimatedCompletionTime()).isEqualTo(completion);
+    }
+
+    // ===== 배달 완료 조회 =====
+
+    @Test
+    void 배달완료조회하면_물품명_담당드리미_결제금액_소요시간을_담아_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        ReflectionTestUtils.setField(delivery, "deliveryStartDtm", LocalDateTime.of(2026, 1, 1, 10, 0));
+        ReflectionTestUtils.setField(delivery, "deliveryEndDtm", LocalDateTime.of(2026, 1, 1, 10, 8));
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(order.getItemName()).willReturn("서류봉투");
+        given(order.getItemCd()).willReturn(ItemCd.DOCUMENT);
+        given(order.getDeliveryAmount()).willReturn(8000L);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        Boormi boormi = Boormi.create("boormi@test.com", "pass123", "이부름", "01011112222",
+                LocalDate.of(1990, 1, 1));
+        given(boormiRepository.findById(boormiId)).willReturn(Optional.of(boormi));
+        DeliveryCertification certification = DeliveryCertification.create(PHOTO_KEY,
+                LocalDateTime.of(2026, 1, 1, 10, 8), delivery.getDeliveryId());
+        given(deliveryCertificationRepository.findByDeliveryId(delivery.getDeliveryId()))
+                .willReturn(Optional.of(certification));
+        given(s3PresignService.resolveDownloadUrl(PHOTO_KEY)).willReturn("https://s3/uploads/dreami/photo.png");
+
+        DeliveryCompletionDto result = deliveryService.getDeliveryCompletion(orderId, boormiId);
+
+        assertThat(result.itemName()).isEqualTo("서류봉투");
+        assertThat(result.itemCd()).isEqualTo(ItemCd.DOCUMENT);
+        assertThat(result.dreamiName()).isEqualTo("김드림"); // setUp 기본 mock
+        assertThat(result.dreamiAvgScore()).isEqualByComparingTo("4.80");
+        assertThat(result.boormiName()).isEqualTo("이부름");
+        assertThat(result.deliveryAmount()).isEqualTo(8000L);
+        assertThat(result.durationMinutes()).isEqualTo(8L);
+        assertThat(result.deliveryPhotoUrl()).isEqualTo("https://s3/uploads/dreami/photo.png");
+        assertThat(result.viewerIsDreami()).isFalse(); // 조회자가 부르미
+    }
+
+    @Test
+    void 배달완료조회시_조회자가_드리미면_viewerIsDreami는_true다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        DeliveryCompletionDto result = deliveryService.getDeliveryCompletion(orderId, dreamiId);
+
+        assertThat(result.viewerIsDreami()).isTrue();
+    }
+
+    @Test
+    void 배달완료조회시_인증사진이_없으면_사진URL은_null이다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        DeliveryCompletionDto result = deliveryService.getDeliveryCompletion(orderId, boormiId);
+
+        assertThat(result.deliveryPhotoUrl()).isNull();
+    }
+
+    @Test
+    void 배달완료조회시_인증사진_URL_조회에_실패해도_나머지_정보는_정상_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(order.getItemName()).willReturn("서류봉투");
+        given(orderService.getOrder(orderId)).willReturn(order);
+        DeliveryCertification certification = DeliveryCertification.create(PHOTO_KEY,
+                LocalDateTime.of(2026, 1, 1, 10, 8), delivery.getDeliveryId());
+        given(deliveryCertificationRepository.findByDeliveryId(delivery.getDeliveryId()))
+                .willReturn(Optional.of(certification));
+        // S3 객체가 실제로는 없거나(보존 정책 삭제) 스토리지 장애 등으로 URL 조회가 실패하는 상황을 재현한다.
+        // (resolveDownloadUrl 자체의 degrade 로직은 S3PresignServiceTest에서 검증하므로, 여기서는 그 결과인
+        // null을 그대로 스텁한다.)
+        given(s3PresignService.resolveDownloadUrl(PHOTO_KEY)).willReturn(null);
+
+        DeliveryCompletionDto result = deliveryService.getDeliveryCompletion(orderId, boormiId);
+
+        assertThat(result.deliveryPhotoUrl()).isNull();
+        assertThat(result.itemName()).isEqualTo("서류봉투"); // 사진 조회 실패가 나머지 응답을 막지 않는다
+    }
+
+    @Test
+    void 배달완료조회시_시작_종료시각이_없으면_소요시간은_null이다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(orderService.getOrder(orderId)).willReturn(order);
+
+        DeliveryCompletionDto result = deliveryService.getDeliveryCompletion(orderId, boormiId);
+
+        assertThat(result.durationMinutes()).isNull();
+    }
+
+    @Test
+    void 배달완료조회시_담당드리미_정보를_찾을_수_없으면_NOT_FOUND_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Orders order = mock(Orders.class);
+        given(order.getOrderId()).willReturn(orderId);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> deliveryService.getDeliveryCompletion(orderId, boormiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(UserErrorCode.USER_NOT_FOUND);
     }
 
     // ===== 첫 위치 전송 시 '드리미→픽업지' 경로·배송완료예상시간 계산 =====
