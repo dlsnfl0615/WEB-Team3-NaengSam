@@ -35,7 +35,7 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
@@ -60,7 +60,7 @@ class MatchingServiceTest {
 
     private MatchingService matchingService;
     private MatchingEngine matchingEngine;
-    private SseService sseService;
+    private NotificationService notificationService;
     private MatchingActionScheduler matchingActionScheduler;
     private MatchingBatchDispatcher matchingBatchDispatcher;
     private DeliveryService deliveryService;
@@ -73,7 +73,7 @@ class MatchingServiceTest {
     @BeforeEach
     void setUp() {
         matchingEngine = mock(MatchingEngine.class);
-        sseService = mock(SseService.class);
+        notificationService = mock(NotificationService.class);
         matchingActionScheduler = mock(MatchingActionScheduler.class);
         matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         deliveryService = mock(DeliveryService.class);
@@ -83,7 +83,7 @@ class MatchingServiceTest {
         matchingPolicyProperties = mock(MatchingPolicyProperties.class);
         geoDistanceCalculator = new GeoDistanceCalculator();
         matchingService = new MatchingService(
-                matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
+                matchingEngine, notificationService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
                 Clock.systemDefaultZone(),
                 matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
                 geoDistanceCalculator);
@@ -818,8 +818,8 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<UUID> target = ArgumentCaptor.forClass(UUID.class);
-        verify(sseService, times(3))
-                .send(target.capture(), eq(MatchingEventType.OFFER_POPUP), any());
+        verify(notificationService, times(3))
+                .notify(target.capture(), eq(MatchingEventType.OFFER_POPUP), any());
         assertThat(target.getAllValues())
                 .containsExactlyInAnyOrder(dreamiId1, dreamiId2, dreamiId3);
     }
@@ -844,7 +844,7 @@ class MatchingServiceTest {
         matchingService.applyAcceptByDreami(offer.offerId());
 
         // then
-        verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), any());
+        verify(notificationService).notify(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), any());
     }
 
     @Test
@@ -869,7 +869,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
+        verify(notificationService).notify(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
         DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
         assertThat(payload.pickupEtaMinutes()).isNotNull().isPositive();
     }
@@ -894,7 +894,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
+        verify(notificationService).notify(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
         DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
         assertThat(payload.pickupEtaMinutes()).isNull();
     }
@@ -919,7 +919,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(sseService).send(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
+        verify(notificationService).notify(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
         DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
         assertThat(payload.acceptedAt()).isNotNull();
         assertThat(payload.expiresAt()).isEqualTo(payload.acceptedAt().plusSeconds(30));
@@ -946,7 +946,7 @@ class MatchingServiceTest {
         matchingService.applyAcceptByDreami(accepted.offerId());
 
         // then
-        verify(sseService).send(eq(loser.dreamiId()), eq(MatchingEventType.OFFER_CLOSED), any());
+        verify(notificationService).notify(eq(loser.dreamiId()), eq(MatchingEventType.OFFER_CLOSED), any());
     }
 
     @Test
@@ -968,7 +968,7 @@ class MatchingServiceTest {
         matchingService.applyRejectByBoormi(offer.offerId());
 
         // then
-        verify(sseService).send(eq(offer.dreamiId()), eq(MatchingEventType.BOORMI_REJECTED), any());
+        verify(notificationService).notify(eq(offer.dreamiId()), eq(MatchingEventType.BOORMI_REJECTED), any());
     }
 
     @Test
@@ -1006,7 +1006,7 @@ class MatchingServiceTest {
                 .containsExactly(newDreamiId);
         assertThat(getDreamiMap().get(newDreamiId).status())
                 .isEqualTo(WaitingDreamiStatus.PROPOSED);
-        verify(sseService).send(eq(newDreamiId), eq(MatchingEventType.OFFER_POPUP), any());
+        verify(notificationService).notify(eq(newDreamiId), eq(MatchingEventType.OFFER_POPUP), any());
     }
 
     @Test
@@ -1470,7 +1470,7 @@ class MatchingServiceTest {
         assertThat(group.offers()).isEmpty();
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         verify(matchingBatchDispatcher).markDirty();
-        verify(sseService, never()).send(any(), eq(MatchingEventType.OFFER_POPUP), any());
+        verify(notificationService, never()).notify(any(), eq(MatchingEventType.OFFER_POPUP), any());
     }
 
     @Test
@@ -1497,7 +1497,7 @@ class MatchingServiceTest {
         assertThat(group.offers())
                 .extracting(MatchOffer::dreamiId)
                 .containsExactly(dreamiId);
-        verify(sseService).send(eq(dreamiId), eq(MatchingEventType.OFFER_POPUP), any());
+        verify(notificationService).notify(eq(dreamiId), eq(MatchingEventType.OFFER_POPUP), any());
     }
 
     @Test
@@ -1529,7 +1529,7 @@ class MatchingServiceTest {
 
         // then
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
-        verify(sseService).send(eq(dreamiId), eq(MatchingEventType.OFFER_POPUP), captor.capture());
+        verify(notificationService).notify(eq(dreamiId), eq(MatchingEventType.OFFER_POPUP), captor.capture());
 
         assertThat(captor.getValue()).isInstanceOf(OfferPopupPayload.class);
         OfferPopupPayload payload = (OfferPopupPayload) captor.getValue();

@@ -28,7 +28,7 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -87,7 +87,7 @@ public class MatchingService {
     // ────────────────────────────── 저장소 ──────────────────────────────
     private final Map<UUID, WaitingDreami> dreamiMap = new ConcurrentHashMap<>();
     private final MatchingEngine matchingEngine;
-    private final SseService sseService;
+    private final NotificationService notificationService;
     private final MatchingActionScheduler matchingActionScheduler;
     private final MatchingBatchDispatcher matchingBatchDispatcher;
     private final DeliveryService deliveryService;
@@ -134,7 +134,7 @@ public class MatchingService {
      */
     public boolean registerDreami(UUID dreamiId, GeoPoint location) {
         if (dreamiMap.containsKey(dreamiId)) {
-            sseService.send(dreamiId, MatchingEventType.OFFER_ERROR,
+            notificationService.notify(dreamiId, MatchingEventType.OFFER_ERROR,
                     new NotificationErrorPayload("이미 등록된 드리미입니다."));
             return false;
         }
@@ -150,7 +150,7 @@ public class MatchingService {
      */
     public boolean removeDreami(UUID dreamiId) {
         if (!dreamiMap.containsKey(dreamiId)) {
-            sseService.send(dreamiId, MatchingEventType.OFFER_ERROR,
+            notificationService.notify(dreamiId, MatchingEventType.OFFER_ERROR,
                     new NotificationErrorPayload("등록되지 않은 드리미입니다."));
             return false;
         }
@@ -191,7 +191,7 @@ public class MatchingService {
         OrderOfferGroup group = orderOfferGroupsByOrderId.get(orderId);
         if (group == null || !group.isActive()) {
             if (group != null) {
-                sseService.send(group.boormiId(), MatchingEventType.OFFER_ERROR,
+                notificationService.notify(group.boormiId(), MatchingEventType.OFFER_ERROR,
                         new NotificationErrorPayload("이미 종료된 주문입니다."));
             }
             return false;
@@ -394,7 +394,7 @@ public class MatchingService {
 
         // 제안받은 드리미 각각에게 제안 팝업을 띄운다.
         for (MatchOffer offer : newOffers) {
-            sseService.send(offer.dreamiId(), MatchingEventType.OFFER_POPUP,
+            notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_POPUP,
                     OfferPopupPayload.from(offer, group.orderSummary(), OFFER_TTL));
         }
     }
@@ -418,12 +418,12 @@ public class MatchingService {
             if (offer.status() == MatchOfferStatus.OFFERED) {
                 offer.withdraw(now);
                 dreamiReleased |= releaseDreami(offer.dreamiId());
-                sseService.send(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
+                notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
                         new OfferClosedPayload(offer.offerId(), "부르미가 주문을 취소함"));
             } else if (offer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION) {
                 offer.rejectByBoormi(now);
                 dreamiReleased |= releaseDreami(offer.dreamiId());
-                sseService.send(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
+                notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
                         new OfferClosedPayload(offer.offerId(), "부르미가 주문을 취소함"));
             }
         }
@@ -445,7 +445,7 @@ public class MatchingService {
         MatchOffer matchOffer = optionalMatchOffer.get();
         OrderOfferGroup group = orderOfferGroupsByOrderId.get(matchOffer.orderId());
         if (group == null) {
-            sseService.send(matchOffer.dreamiId(), MatchingEventType.OFFER_ERROR,
+            notificationService.notify(matchOffer.dreamiId(), MatchingEventType.OFFER_ERROR,
                     new NotificationErrorPayload("존재하지 않는 주문입니다."));
             return;
         }
@@ -462,7 +462,7 @@ public class MatchingService {
                 offer.acceptByDreami(now);
                 matchingActionScheduler.scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
-                sseService.send(group.boormiId(), MatchingEventType.DREAMI_INFO,
+                notificationService.notify(group.boormiId(), MatchingEventType.DREAMI_INFO,
                         DreamiInfoPayload.from(offer, pickupEtaMinutesForOffer(offer), BOORMI_OFFER_TTL));
             } else if (offer.status() == MatchOfferStatus.OFFERED) {
                 // 아직 응답 대기중(OFFERED)인 오퍼만 회수한다.
@@ -470,7 +470,7 @@ public class MatchingService {
                 offer.withdraw(now);
                 // 선착순에서 패배한 드리미를 다시 매칭 수락가능한 상태로 돌려, 다른 대기 주문의 배치 후보가 되게 한다.
                 dreamiReleased |= releaseDreami(offer.dreamiId());
-                sseService.send(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
+                notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
                         new OfferClosedPayload(offer.offerId(), "선착순 마감"));
             }
         }
@@ -489,7 +489,7 @@ public class MatchingService {
                         offer -> {
                             boolean released = releaseDreami(offer.dreamiId());
                             offer.rejectByDreami(LocalDateTime.now(clock));
-                            sseService.send(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
+                            notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
                                     new OfferClosedPayload(offer.offerId(), "거절 완료"));
                             moveGroupToWaitingIfExhausted(offer.orderId());
                             if (released) {
@@ -532,7 +532,7 @@ public class MatchingService {
                             matchOffer.rejectByBoormi(LocalDateTime.now(clock));
 
                             // 거절당한 드리미에게 부르미가 거절했음을 알리고, 다시 배달가능 상태로 변경
-                            sseService.send(matchOffer.dreamiId(), MatchingEventType.BOORMI_REJECTED,
+                            notificationService.notify(matchOffer.dreamiId(), MatchingEventType.BOORMI_REJECTED,
                                     new BoormiRejectedPayload(matchOffer.offerId(), matchOffer.orderId()));
                             boolean released = releaseDreami(matchOffer.dreamiId());
 
@@ -746,13 +746,13 @@ public class MatchingService {
         }
         // 이미 자신 matchOffer상태가 WITHDRAWN이면? -> 실패메시지
         if (offer.status() == MatchOfferStatus.WITHDRAWN) {
-            sseService.send(offer.dreamiId(), MatchingEventType.OFFER_ERROR,
+            notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_ERROR,
                     new NotificationErrorPayload("이미 다른 드리미가 수락한 주문입니다."));
             return Optional.empty();
         }
         // 정상적으로 수락 가능한 상태는 OFFERED 뿐. (거절/만료된 제안은 수락 불가)
         if (offer.status() != MatchOfferStatus.OFFERED) {
-            sseService.send(offer.dreamiId(), MatchingEventType.OFFER_ERROR,
+            notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_ERROR,
                     new NotificationErrorPayload("이미 종료된 제안입니다."));
             return Optional.empty();
         }

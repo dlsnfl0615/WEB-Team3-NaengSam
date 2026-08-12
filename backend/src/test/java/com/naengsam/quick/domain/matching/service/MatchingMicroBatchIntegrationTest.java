@@ -24,7 +24,7 @@ import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
@@ -62,7 +62,7 @@ class MatchingMicroBatchIntegrationTest {
 
     private MatchingService newMatchingService(int maxConcurrentOffers) {
         MatchingEngine matchingEngine = mock(MatchingEngine.class);
-        SseService sseService = mock(SseService.class);
+        NotificationService notificationService = mock(NotificationService.class);
         MatchingActionScheduler matchingActionScheduler = mock(MatchingActionScheduler.class);
         MatchingBatchDispatcher matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         DeliveryService deliveryService = mock(DeliveryService.class);
@@ -74,14 +74,15 @@ class MatchingMicroBatchIntegrationTest {
         MatchingPolicyProperties properties = matchingPolicyProperties(maxConcurrentOffers);
         MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
         MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
-                new MatchingPlanValidator(new LegacyOfferPolicy()), matchingActionScheduler, sseService, OFFER_TTL);
+                new MatchingPlanValidator(new LegacyOfferPolicy()), matchingActionScheduler,
+                notificationService, OFFER_TTL);
 
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
                 properties, clock);
 
         return new MatchingService(
-                matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
+                matchingEngine, notificationService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
                 clock,
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator);
     }

@@ -17,7 +17,7 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPr
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
@@ -50,7 +50,8 @@ class MatchingServiceConcurrencyTest {
     void setUp() {
         matchingEngine = new MatchingEngine();
         matchingEngine.start();
-        matchingService = new MatchingService(matchingEngine, mock(SseService.class), mock(MatchingActionScheduler.class),
+        matchingService = new MatchingService(matchingEngine, mock(NotificationService.class),
+                mock(MatchingActionScheduler.class),
                 mock(MatchingBatchDispatcher.class), mock(DeliveryService.class),
                 Clock.systemDefaultZone(),
                 mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),

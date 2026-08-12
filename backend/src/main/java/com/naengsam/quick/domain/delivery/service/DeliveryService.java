@@ -30,7 +30,7 @@ import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -55,8 +55,8 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
  * 서로 다른 주문은 서로 다른 행이라 완전히 병렬로 처리된다.
  *
  * <p>알림(SSE)은 전이와 같은 트랜잭션 안에서 불변 스냅샷(DeliveryStatusResponseDto)을 담은 {@link DeliveryNotificationEvent}만
- * 발행한다. 실제 SseService.send 호출은 트랜잭션이 커밋된 뒤에만({@code sendAfterCommit}, AFTER_COMMIT) 일어나므로,
- * 롤백된 전이에 대해서는 알림이 나가지 않는다. SseService가 단일 가상 스레드로 async 오프로딩하므로
+ * 발행한다. 실제 NotificationService.notify 호출은 트랜잭션이 커밋된 뒤에만({@code sendAfterCommit}, AFTER_COMMIT) 일어나므로,
+ * 롤백된 전이에 대해서는 알림이 나가지 않는다. IN_APP 채널은 SseService가 단일 가상 스레드로 async 오프로딩하므로
  * "처리 순서 == 알림 순서"가 보장되고 호출 스레드는 막히지 않는다.
  *
  * <p>부르미·드리미 모두 상태 변경은 SSE로 전달받는다. updateDreamiLocation은 드리미가 5~10초마다 호출해
@@ -72,7 +72,7 @@ public class DeliveryService {
     private final DeliveryRepository deliveryRepository;
     private final PickupCertificationRepository pickupCertificationRepository;
     private final DeliveryCertificationRepository deliveryCertificationRepository;
-    private final SseService sseService;
+    private final NotificationService notificationService;
     private final UploadSessionService uploadSessionService;
     private final UserService userService;
     private final OrderService orderService;
@@ -502,10 +502,10 @@ public class DeliveryService {
         eventPublisher.publishEvent(new DeliveryNotificationEvent(userId, eventType, payload));
     }
 
-    // 트랜잭션 커밋 후에만 실제로 SSE를 보낸다(커밋 전 발행된 이벤트는 롤백 시 자동으로 버려진다).
+    // 트랜잭션 커밋 후에만 실제 알림을 보낸다(커밋 전 발행된 이벤트는 롤백 시 자동으로 버려진다).
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void sendAfterCommit(DeliveryNotificationEvent event) {
-        sseService.send(event.userId(), event.eventType(), event.payload());
+        notificationService.notify(event.userId(), event.eventType(), event.payload());
     }
 
 }
