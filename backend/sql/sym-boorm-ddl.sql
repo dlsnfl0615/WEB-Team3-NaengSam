@@ -405,6 +405,13 @@ ALTER TABLE `RETURN_DELIVERY` ADD CONSTRAINT `FK_DELIVERY_TO_RETURN_DELIVERY_1` 
 
 ALTER TABLE `MONEY_WALLET` ADD CONSTRAINT `FK_WALLET_TO_MONEY_WALLET_1` FOREIGN KEY (`wallet_id`) REFERENCES `WALLET` (`wallet_id`);
 
+-- 활동 내역 커서 페이지네이션(OrderRepository.findFirstPageByRole / findPageByRoleAfterCursor)이
+-- boormi_id/dreami_id로 필터링한 뒤 delivery_request_dtm DESC, order_id DESC로 정렬 후 LIMIT하는
+-- 쿼리라, 이 순서로 복합 인덱스를 만들어 filesort 없이 인덱스만으로 필터+정렬이 끝나게 한다.
+-- FK보다 먼저 생성해 MySQL이 이 인덱스를 재사용하도록 한다(중복 인덱스 방지).
+CREATE INDEX `IX_ORDERS_BOORMI_ID_DELIVERY_REQUEST_DTM` ON `ORDERS` (`boormi_id`, `delivery_request_dtm` DESC, `order_id` DESC);
+CREATE INDEX `IX_ORDERS_DREAMI_ID_DELIVERY_REQUEST_DTM` ON `ORDERS` (`dreami_id`, `delivery_request_dtm` DESC, `order_id` DESC);
+
 ALTER TABLE `ORDERS` ADD CONSTRAINT `FK_BOORMI_TO_ORDERS_1` FOREIGN KEY (`boormi_id`) REFERENCES `BOORMI` (`boormi_id`);
 
 ALTER TABLE `ORDERS` ADD CONSTRAINT `FK_DREAMI_TO_ORDERS_1` FOREIGN KEY (`dreami_id`) REFERENCES `DREAMI` (`dreami_id`);
