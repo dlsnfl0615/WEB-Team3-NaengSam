@@ -7,6 +7,11 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 
+import com.naengsam.quick.domain.payment.entity.MoneyLedger;
+import com.naengsam.quick.domain.payment.entity.MoneyTx;
+import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
+import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
+import com.naengsam.quick.domain.payment.entity.MoneyWallet;
 import com.naengsam.quick.domain.payment.entity.PointLedger;
 import com.naengsam.quick.domain.payment.entity.PointTx;
 import com.naengsam.quick.domain.payment.entity.PointTxStatusCd;
@@ -14,6 +19,9 @@ import com.naengsam.quick.domain.payment.entity.PointTxTypeCd;
 import com.naengsam.quick.domain.payment.entity.PointWallet;
 import com.naengsam.quick.domain.payment.entity.Wallet;
 import com.naengsam.quick.domain.payment.exception.PaymentErrorCode;
+import com.naengsam.quick.domain.payment.repository.MoneyLedgerRepository;
+import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
+import com.naengsam.quick.domain.payment.repository.MoneyWalletRepository;
 import com.naengsam.quick.domain.payment.repository.PointLedgerRepository;
 import com.naengsam.quick.domain.payment.repository.PointTxRepository;
 import com.naengsam.quick.domain.payment.repository.PointWalletRepository;
@@ -30,7 +38,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * 포인트 결제·환불 로직 단위 테스트. 거래 기록(POINT_TX)·지갑 잔액·원장(POINT_LEDGERS) 세 가지가 함께 맞물려 움직이는지 검증한다.
+ * 포인트 결제·환불·정산 로직 단위 테스트. 거래 기록(POINT_TX)·지갑 잔액·원장(POINT_LEDGERS) 세 가지가 함께 맞물려 움직이는지, 배달 완료 시 드리미 머니까지 이어지는지
+ * 검증한다.
  */
 @ExtendWith(MockitoExtension.class)
 class PaymentServiceTest {
@@ -47,6 +56,15 @@ class PaymentServiceTest {
     @Mock
     private PointLedgerRepository pointLedgerRepository;
 
+    @Mock
+    private MoneyWalletRepository moneyWalletRepository;
+
+    @Mock
+    private MoneyTxRepository moneyTxRepository;
+
+    @Mock
+    private MoneyLedgerRepository moneyLedgerRepository;
+
     @InjectMocks
     private PaymentService paymentService;
 
@@ -56,8 +74,14 @@ class PaymentServiceTest {
         return pointWallet;
     }
 
-    private static PointTx paidTx(UUID walletId, UUID orderId, long amount) {
-        return PointTx.create(walletId, PointTxTypeCd.PAYMENT, amount, null, orderId);
+    private static MoneyWallet moneyWallet(UUID walletId, long amount) {
+        MoneyWallet moneyWallet = MoneyWallet.create(walletId);
+        ReflectionTestUtils.setField(moneyWallet, "amount", amount);
+        return moneyWallet;
+    }
+
+    private static PointTx pendingTx(UUID walletId, UUID orderId, long amount) {
+        return PointTx.createPending(walletId, PointTxTypeCd.PAYMENT, amount, null, orderId);
     }
 
     /**
@@ -71,8 +95,19 @@ class PaymentServiceTest {
                 .willReturn(Optional.of(pointWallet));
     }
 
+    /**
+     * dreamiId → Wallet → MoneyWallet(비관적 락) 조회 경로를 세팅한다.
+     */
+    private void givenMoneyWallet(UUID dreamiId, MoneyWallet moneyWallet) {
+        Wallet wallet = Wallet.create(dreamiId);
+        ReflectionTestUtils.setField(wallet, "walletId", moneyWallet.getWalletId());
+        given(walletRepository.findByBoormiId(dreamiId)).willReturn(Optional.of(wallet));
+        given(moneyWalletRepository.findByIdForUpdate(moneyWallet.getWalletId()))
+                .willReturn(Optional.of(moneyWallet));
+    }
+
     @Test
-    void 결제하면_잔액을_차감하고_거래와_원장을_기록한다() {
+    void 결제하면_잔액을_차감하고_PENDING_거래와_원장을_기록한다() {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         UUID walletId = UUID.randomUUID();
@@ -88,7 +123,8 @@ class PaymentServiceTest {
         then(pointTxRepository).should().save(txCaptor.capture());
         PointTx savedTx = txCaptor.getValue();
         assertThat(savedTx.getType()).isEqualTo(PointTxTypeCd.PAYMENT);
-        assertThat(savedTx.getStatus()).isEqualTo(PointTxStatusCd.PAID);
+        // 포인트는 지금 빠지지만 배달이 끝나기 전이라 지급은 아직 확정되지 않았다
+        assertThat(savedTx.getStatus()).isEqualTo(PointTxStatusCd.PENDING);
         assertThat(savedTx.getAmount()).isEqualTo(4000L);
         assertThat(savedTx.getOrderId()).isEqualTo(orderId);
         assertThat(savedTx.getWalletId()).isEqualTo(walletId);
@@ -143,7 +179,7 @@ class PaymentServiceTest {
         PointWallet wallet = pointWallet(walletId, 10000L);
         givenWallet(boormiId, wallet);
         given(pointTxRepository.findByOrderIdAndType(orderId, PointTxTypeCd.PAYMENT))
-                .willReturn(Optional.of(paidTx(walletId, orderId, 4000L)));
+                .willReturn(Optional.of(pendingTx(walletId, orderId, 4000L)));
 
         Throwable thrown = catchThrowable(() -> paymentService.payWithPoint(boormiId, orderId, 4000L));
 
@@ -159,7 +195,7 @@ class PaymentServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID walletId = UUID.randomUUID();
         PointWallet wallet = pointWallet(walletId, 6000L);
-        PointTx tx = paidTx(walletId, orderId, 4000L);
+        PointTx tx = pendingTx(walletId, orderId, 4000L);
         given(pointTxRepository.findByOrderIdAndType(orderId, PointTxTypeCd.PAYMENT))
                 .willReturn(Optional.of(tx));
         given(pointWalletRepository.findByIdForUpdate(walletId)).willReturn(Optional.of(wallet));
@@ -183,7 +219,7 @@ class PaymentServiceTest {
     void 이미_환불된_주문을_다시_환불해도_잔액이_변하지_않는다() {
         UUID orderId = UUID.randomUUID();
         UUID walletId = UUID.randomUUID();
-        PointTx tx = paidTx(walletId, orderId, 4000L);
+        PointTx tx = pendingTx(walletId, orderId, 4000L);
         tx.markRefundedFull();
         given(pointTxRepository.findByOrderIdAndType(orderId, PointTxTypeCd.PAYMENT))
                 .willReturn(Optional.of(tx));
@@ -205,5 +241,88 @@ class PaymentServiceTest {
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(PaymentErrorCode.PAYMENT_NOT_FOUND);
         then(pointLedgerRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 정산하면_결제거래가_PAID로_전이하고_드리미_머니와_원장이_쌓인다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID pointWalletId = UUID.randomUUID();
+        UUID moneyWalletId = UUID.randomUUID();
+        PointTx tx = pendingTx(pointWalletId, orderId, 4000L);
+        MoneyWallet wallet = moneyWallet(moneyWalletId, 6000L);
+        given(pointTxRepository.findByOrderIdAndType(orderId, PointTxTypeCd.PAYMENT))
+                .willReturn(Optional.of(tx));
+        givenMoneyWallet(dreamiId, wallet);
+        given(moneyTxRepository.save(any(MoneyTx.class))).willAnswer(i -> i.getArgument(0));
+
+        paymentService.settleOrder(orderId, dreamiId);
+
+        // 결제 거래는 새 행을 쌓지 않고 원본이 확정 상태로 전이한다
+        assertThat(tx.getStatus()).isEqualTo(PointTxStatusCd.PAID);
+        assertThat(tx.getUpdatedDtm()).isNotNull();
+        then(pointTxRepository).should(never()).save(any());
+
+        assertThat(wallet.getAmount()).isEqualTo(10000L);
+
+        ArgumentCaptor<MoneyTx> txCaptor = ArgumentCaptor.forClass(MoneyTx.class);
+        then(moneyTxRepository).should().save(txCaptor.capture());
+        MoneyTx savedTx = txCaptor.getValue();
+        assertThat(savedTx.getType()).isEqualTo(MoneyTxTypeCd.SETTLEMENT);
+        assertThat(savedTx.getStatus()).isEqualTo(MoneyTxStatusCd.SETTLED);
+        assertThat(savedTx.getAmount()).isEqualTo(4000L); // 수수료 없이 결제 금액 전액
+        assertThat(savedTx.getOrderId()).isEqualTo(orderId);
+        assertThat(savedTx.getWalletId()).isEqualTo(moneyWalletId);
+
+        ArgumentCaptor<MoneyLedger> ledgerCaptor = ArgumentCaptor.forClass(MoneyLedger.class);
+        then(moneyLedgerRepository).should().save(ledgerCaptor.capture());
+        assertThat(ledgerCaptor.getValue().getAmount()).isEqualTo(4000L);
+        assertThat(ledgerCaptor.getValue().getBalanceAfter()).isEqualTo(10000L);
+        assertThat(ledgerCaptor.getValue().getMoneyTxId()).isEqualTo(savedTx.getMoneyTxId());
+    }
+
+    @Test
+    void 이미_정산된_주문을_다시_정산해도_머니가_늘지_않는다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        PointTx tx = pendingTx(UUID.randomUUID(), orderId, 4000L);
+        tx.markPaid();
+        given(pointTxRepository.findByOrderIdAndType(orderId, PointTxTypeCd.PAYMENT))
+                .willReturn(Optional.of(tx));
+
+        paymentService.settleOrder(orderId, dreamiId);
+
+        then(moneyWalletRepository).should(never()).findByIdForUpdate(any());
+        then(moneyTxRepository).should(never()).save(any());
+        then(moneyLedgerRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 환불된_주문은_정산해도_머니가_늘지_않는다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        PointTx tx = pendingTx(UUID.randomUUID(), orderId, 4000L);
+        tx.markRefundedFull();
+        given(pointTxRepository.findByOrderIdAndType(orderId, PointTxTypeCd.PAYMENT))
+                .willReturn(Optional.of(tx));
+
+        paymentService.settleOrder(orderId, dreamiId);
+
+        assertThat(tx.getStatus()).isEqualTo(PointTxStatusCd.REFUNDED_FULL);
+        then(moneyTxRepository).should(never()).save(any());
+        then(moneyLedgerRepository).should(never()).save(any());
+    }
+
+    @Test
+    void 결제내역이_없는_주문을_정산하면_PAYMENT_NOT_FOUND_예외() {
+        UUID orderId = UUID.randomUUID();
+        given(pointTxRepository.findByOrderIdAndType(orderId, PointTxTypeCd.PAYMENT))
+                .willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> paymentService.settleOrder(orderId, UUID.randomUUID()));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(PaymentErrorCode.PAYMENT_NOT_FOUND);
+        then(moneyTxRepository).should(never()).save(any());
     }
 }

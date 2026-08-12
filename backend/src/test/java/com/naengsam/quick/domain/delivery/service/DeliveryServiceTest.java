@@ -27,6 +27,7 @@ import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.dto.UserDto;
 import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
+import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
@@ -66,6 +67,7 @@ class DeliveryServiceTest {
     private UploadSessionService uploadSessionService;
     private UserService userService;
     private OrderService orderService;
+    private PaymentService paymentService;
     private DirectionsService directionsService;
     private ApplicationEventPublisher eventPublisher;
     private DeliveryService deliveryService;
@@ -82,11 +84,13 @@ class DeliveryServiceTest {
         uploadSessionService = mock(UploadSessionService.class);
         userService = mock(UserService.class);
         orderService = mock(OrderService.class);
+        paymentService = mock(PaymentService.class);
         directionsService = mock(DirectionsService.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, sseService, uploadSessionService,
-                userService, orderService, directionsService, eventPublisher, new ObjectMapper());
+                userService, orderService, paymentService, directionsService, eventPublisher,
+                new ObjectMapper());
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
@@ -646,6 +650,25 @@ class DeliveryServiceTest {
         finish(orderId);
 
         verify(orderService).complete(orderId);
+    }
+
+    @Test
+    void 배달완료되면_배정된_드리미에게_정산한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DELIVERING, dreamiId, UUID.randomUUID());
+
+        finish(orderId);
+
+        verify(paymentService).settleOrder(orderId, dreamiId);
+    }
+
+    @Test
+    void 픽업완료는_정산하지_않는다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        pickupFinish(orderId);
+
+        verify(paymentService, never()).settleOrder(any(), any());
     }
 
     @Test
