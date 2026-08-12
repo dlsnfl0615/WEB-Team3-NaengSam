@@ -25,4 +25,6 @@ export interface DeliveryCompletionDto {
   durationMinutes?: number;
   /** 배송 완료 인증 사진 다운로드 URL. 인증 사진이 없으면 null */
   deliveryPhotoUrl?: string;
+  /** 조회한 사용자가 이 배달의 드리미인지 여부(false면 부르미). 평가 대상 문구 분기용 */
+  viewerIsDreami?: boolean;
 }

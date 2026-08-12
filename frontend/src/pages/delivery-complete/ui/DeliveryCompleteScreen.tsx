@@ -57,8 +57,10 @@ export function DeliveryCompleteScreen() {
     };
   }, [orderId]);
 
-  // 평가 대상: 기본은 드리미(부르미가 드리미를 평가), `?reviewee=boormi`면 드리미가 부르미를 평가.
-  const reviewsBoormi = searchParams.get("reviewee") === "boormi";
+  // 평가 대상: 로그인 세션 기반으로 서버가 내려준 viewerIsDreami로 판단한다(URL 파라미터는 조작 가능해 신뢰 불가).
+  // 실 데이터가 없는 mock 미리보기 모드에서만 `?reviewee=boormi` 쿼리로 폴백한다.
+  const reviewsBoormi =
+    detail?.viewerIsDreami ?? searchParams.get("reviewee") === "boormi";
   const driverName = detail?.dreamiName ?? active?.driverName ?? "핀";
   const boormiName = detail?.boormiName ?? "부르미";
   const reviewPrompt = reviewsBoormi
