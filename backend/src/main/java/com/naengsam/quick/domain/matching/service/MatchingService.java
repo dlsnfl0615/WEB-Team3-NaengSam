@@ -96,6 +96,7 @@ public class MatchingService {
     private final MatchingAssignmentPolicy matchingAssignmentPolicy;
     private final MatchingPlanApplier matchingPlanApplier;
     private final MatchingPolicyProperties matchingPolicyProperties;
+    private final GeoDistanceCalculator geoDistanceCalculator;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -226,8 +227,8 @@ public class MatchingService {
     }
 
     /**
-     * 드리미가 제안(팝업)을 거절한다. 거절한 드리미는 다시 매칭 대기(MATCHING) 상태로 돌아가고, 방에 더 이상 진행 중인 오퍼가 없으면 WAITING으로 전환되며
-     * 배치 디스패처에 dirty가 표시되어 다음 batch에서 재평가된다.
+     * 드리미가 제안(팝업)을 거절한다. 거절한 드리미는 다시 매칭 대기(MATCHING) 상태로 돌아가고, 방에 더 이상 진행 중인 오퍼가 없으면 WAITING으로 전환되며 배치 디스패처에 dirty가
+     * 표시되어 다음 batch에서 재평가된다.
      *
      * @param offerId 거절할 제안 UUID
      */
@@ -254,8 +255,8 @@ public class MatchingService {
     }
 
     /**
-     * 부르미가 드리미의 수락을 거절한다. 거절당한 드리미는 다시 매칭 대기(MATCHING) 상태로 돌아가고, 방은 WAITING으로 전환되며 배치 디스패처에 dirty가
-     * 표시되어 다음 batch에서 재평가된다.
+     * 부르미가 드리미의 수락을 거절한다. 거절당한 드리미는 다시 매칭 대기(MATCHING) 상태로 돌아가고, 방은 WAITING으로 전환되며 배치 디스패처에 dirty가 표시되어 다음 batch에서
+     * 재평가된다.
      *
      * @param offerId 거절할 제안 UUID
      */
@@ -355,12 +356,12 @@ public class MatchingService {
     }
 
     /**
-     * 방에 아직 제안받지 않은 대기 드리미가 있으면 다음 오퍼 라운드를 진행하고, 없으면 재매칭 대기(WAITING)로 둔다. 최초 매칭 시작·소진 후 재매칭은 이제
-     * dirty 표시 후 배치 사이클({@link #applyRunMatchingAssignmentCycle()})로 처리되므로, 이 메서드는 주기적 fallback 스캔
+     * 방에 아직 제안받지 않은 대기 드리미가 있으면 다음 오퍼 라운드를 진행하고, 없으면 재매칭 대기(WAITING)로 둔다. 최초 매칭 시작·소진 후 재매칭은 이제 dirty 표시 후 배치
+     * 사이클({@link #applyRunMatchingAssignmentCycle()})로 처리되므로, 이 메서드는 주기적 fallback 스캔
      * ({@link #retryRematchWaitingGroups()}, {@link #scheduleRematchWaitingGroups()})에서만 쓰인다. 이미 취소(CANCELLED)되었거나
-     * 확정(MATCHED)된 그룹은 다시 열리면 안 되므로 아무 것도 하지 않는다. {@link MatchOffer#shouldExcludeFromRematch()}에 따라, 명시적으로
-     * 거절했거나 드리미 응답 timeout(DREAMI_EXPIRED)인 드리미는 재제안 대상에서 제외하고 타의로 회수됐거나(WITHDRAWN) 부르미 응답
-     * timeout(BOORMI_EXPIRED)인 드리미는 다시 후보에 포함한다.
+     * 확정(MATCHED)된 그룹은 다시 열리면 안 되므로 아무 것도 하지 않는다. {@link MatchOffer#shouldExcludeFromRematch()}에 따라, 명시적으로 거절했거나 드리미 응답
+     * timeout(DREAMI_EXPIRED)인 드리미는 재제안 대상에서 제외하고 타의로 회수됐거나(WITHDRAWN) 부르미 응답 timeout(BOORMI_EXPIRED)인 드리미는 다시 후보에
+     * 포함한다.
      */
     private void attemptOfferRound(OrderOfferGroup group) {
         if (!group.isActive()) {
@@ -469,7 +470,8 @@ public class MatchingService {
                 offer.acceptByDreami(now);
                 scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
-                sseService.send(group.boormiId(), MatchingEventType.DREAMI_INFO, DreamiInfoPayload.from(offer));
+                sseService.send(group.boormiId(), MatchingEventType.DREAMI_INFO,
+                        DreamiInfoPayload.from(offer, pickupEtaMinutesForOffer(offer), BOORMI_OFFER_TTL));
             } else if (offer.status() == MatchOfferStatus.OFFERED) {
                 // 아직 응답 대기중(OFFERED)인 오퍼만 회수한다.
                 // 이미 거절/만료됐거나 다른 방으로 넘어간 드리미의 상태는 건드리지 않는다.
@@ -667,13 +669,26 @@ public class MatchingService {
     }
 
     /**
-     * 해당 드리미가 응답 대기 중(OFFERED)인 제안을 조회한다. 한 드리미는 동시에 하나의 오퍼만 응답 대기 상태로 가질 수 있으므로 첫 건만 반환한다. 거절/만료 등으로 종료된
-     * 제안은 대상이 아니다.
+     * 해당 드리미가 응답 대기 중(OFFERED)인 제안을 조회한다. 한 드리미는 동시에 하나의 오퍼만 응답 대기 상태로 가질 수 있으므로 첫 건만 반환한다. 거절/만료 등으로 종료된 제안은 대상이 아니다.
      */
     public Optional<MatchOffer> findPendingOfferForDreami(UUID dreamiId) {
         return offersById.values().stream()
                 .filter(offer -> offer.dreamiId().equals(dreamiId) && offer.status() == MatchOfferStatus.OFFERED)
                 .findFirst();
+    }
+
+    /**
+     * 드리미 응답 대기 오퍼의 TTL. 컨트롤러가 {@code PendingOfferDto}의 expiresAt을 복원할 때 팝업 발송 시와 같은 값을 쓰기 위해 노출한다.
+     */
+    public Duration offerTtl() {
+        return OFFER_TTL;
+    }
+
+    /**
+     * 부르미 확인 대기 오퍼의 TTL. 컨트롤러가 {@code DreamiInfoPayload}의 expiresAt을 복원할 때 팝업 발송 시와 같은 값을 쓰기 위해 노출한다.
+     */
+    public Duration boormiOfferTtl() {
+        return BOORMI_OFFER_TTL;
     }
 
     /**
@@ -685,6 +700,24 @@ public class MatchingService {
                 .flatMap(group -> group.offers().stream())
                 .filter(offer -> offer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION)
                 .findFirst();
+    }
+
+    /**
+     * 오퍼의 드리미-픽업지 간 직선거리를 도보 속도로 환산한 예상 픽업 시간(분). 실시간 경로가 아닌 추정치이며, 방/드리미 위치를
+     * 알 수 없으면(이미 정리되었거나 위치 정보가 없으면) null을 반환한다.
+     */
+    public Integer pickupEtaMinutesForOffer(MatchOffer offer) {
+        OrderOfferGroup group = orderOfferGroupsByOrderId.get(offer.orderId());
+        WaitingDreami dreami = dreamiMap.get(offer.dreamiId());
+        if (group == null || dreami == null || !hasCoordinates(group.location()) || !hasCoordinates(dreami.location())) {
+            return null;
+        }
+        double distanceMeters = geoDistanceCalculator.distanceMeters(group.location(), dreami.location());
+        return PickupEtaCalculator.minutesFromDistance(distanceMeters);
+    }
+
+    private boolean hasCoordinates(GeoPoint point) {
+        return point != null && point.latitude() != null && point.longitude() != null;
     }
 
     /**
@@ -702,8 +735,8 @@ public class MatchingService {
     }
 
     /**
-     * 방 안의 모든 오퍼가 거절/만료/철회로 끝나 더 이상 진행 중인 오퍼가 없으면, 다음 batch를 기다리는 WAITING 상태로 되돌린다. 그룹이 존재하지 않거나 이미
-     * OPEN이 아니거나(WAITING/MATCHED/CANCELLED) 아직 살아 있는 오퍼가 남아 있으면 아무 것도 바뀌지 않는다.
+     * 방 안의 모든 오퍼가 거절/만료/철회로 끝나 더 이상 진행 중인 오퍼가 없으면, 다음 batch를 기다리는 WAITING 상태로 되돌린다. 그룹이 존재하지 않거나 이미 OPEN이
+     * 아니거나(WAITING/MATCHED/CANCELLED) 아직 살아 있는 오퍼가 남아 있으면 아무 것도 바뀌지 않는다.
      *
      * @return 실제로 WAITING으로 전이됐으면 true
      */
