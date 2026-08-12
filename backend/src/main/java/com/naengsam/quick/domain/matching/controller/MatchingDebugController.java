@@ -167,7 +167,7 @@ public class MatchingDebugController {
     @Operation(summary = "서버 폴백용 모든 요청 재매칭")
     @PostMapping("/orders/rematch")
     public void rematchWaitingGroups() {
-        matchingService.scheduleRematchWaitingGroups();
+        matchingService.runMatchingAssignmentCycle();
     }
 
     record DreamiView(UUID dreamiId, GeoPoint location,

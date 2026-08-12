@@ -9,6 +9,7 @@ import {
   Modal,
   ScreenShell,
   DeliveryRouteMap,
+  Toast,
 } from "@/shared/ui";
 import { api, isApiError, DeliveryStatusResponseDtoStatus } from "@/shared/api";
 import type {
@@ -91,11 +92,14 @@ export function DeliveryTrackScreen() {
   // 실 모드(드리미)에서만 현재 GPS 위치를 5초 주기로 백엔드에 전송한다(픽업중·배송중 모두 커버).
   // 반환된 최신 좌표는 이 화면 지도에도 표시하고, 전송 응답(경로·배송완료예상시간)은 위 콜백으로 받아 화면에 반영한다.
   // 이 position은 서버에서 반환하는게 아니라, 브라우저에서 측정한 GPS 값임
-  const { position } = useDreamiLocationBroadcast(orderId, {
-    enabled: isRealMode && detailReady,
-    includeRoute,
-    onResult: handleLocationResult,
-  });
+  const { error: locationError, position } = useDreamiLocationBroadcast(
+    orderId,
+    {
+      enabled: isRealMode && detailReady,
+      includeRoute,
+      onResult: handleLocationResult,
+    },
+  );
   const active = useActiveDelivery();
   const advance = useDeliveryStore((s) => s.advance);
   const complete = useDeliveryStore((s) => s.complete);
@@ -239,9 +243,10 @@ export function DeliveryTrackScreen() {
       if (isApiError(e) && e.code === "DELIVERY_013") {
         // 이미 배달 완료 → 리뷰(드리미가 부르미를 평가) 페이지로.
         setConfirmOpen(false);
-        navigate(`${ROUTES.deliveryComplete}?reviewee=boormi`, {
-          replace: true,
-        });
+        navigate(
+          `${ROUTES.deliveryComplete}?reviewee=boormi${orderId ? `&orderId=${orderId}` : ""}`,
+          { replace: true },
+        );
         return;
       }
       if (isApiError(e) && e.code === "DELIVERY_012") {
@@ -265,6 +270,16 @@ export function DeliveryTrackScreen() {
 
   return (
     <ScreenShell>
+      {locationError && (
+        <div className="fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
+          <Toast
+            icon="pin"
+            title="GPS를 허용해주세요."
+            description="배달을 계속하려면 기기의 위치 권한을 켜 주세요."
+          />
+        </div>
+      )}
+
       {/* 풀블리드 지도 + 지도 위 뒤로가기 */}
       <div className="relative -mx-4 -mt-6">
         <MapCard

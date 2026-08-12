@@ -25,7 +25,8 @@ import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.scheduler.MatchingScheduler;
 import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
@@ -63,7 +64,9 @@ class MatchingMicroBatchIntegrationTest {
 
     private MatchingService newMatchingService(int maxConcurrentOffers) {
         MatchingScheduler matchingScheduler = mock(MatchingScheduler.class);
-        SseService sseService = mock(SseService.class);
+        NotificationService notificationService = mock(NotificationService.class);
+        // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 이 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
+        when(notificationService.isReachableNow(any())).thenReturn(true);
         MatchingBatchDispatcher matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         DeliveryService deliveryService = mock(DeliveryService.class);
         Clock clock = Clock.systemDefaultZone();
@@ -74,15 +77,17 @@ class MatchingMicroBatchIntegrationTest {
         MatchingPolicyProperties properties = matchingPolicyProperties(maxConcurrentOffers);
         MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
         MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
-                new MatchingPlanValidator(new LegacyOfferPolicy()), mock(MatchingService.class), sseService, OFFER_TTL);
+                new MatchingPlanValidator(new LegacyOfferPolicy()), mock(MatchingService.class),
+                notificationService, OFFER_TTL);
 
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
                 properties, clock);
 
         return new MatchingService(
-                matchingScheduler, sseService, matchingBatchDispatcher, deliveryService, clock,
-                assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator);
+                matchingScheduler, notificationService, matchingBatchDispatcher, deliveryService, clock,
+                assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
+                new SimpleMeterRegistry());
     }
 
     @Test

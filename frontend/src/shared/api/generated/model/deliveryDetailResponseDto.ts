@@ -35,4 +35,8 @@ export interface DeliveryDetailResponseDto {
   deliveryRoutePath?: RoutePointDto[];
   /** 배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta). 아직 계산 전이면 null */
   estimatedCompletionTime?: string;
+  /** 드리미 위치가 끊긴 상태인지(true면 화면에 안내 필요) */
+  dreamiOffline?: boolean;
+  /** 마지막으로 드리미 위치를 받은 뒤 흐른 시간(초). 위치를 한 번도 못 받았으면 null */
+  secondsSinceLastLocation?: number;
 }

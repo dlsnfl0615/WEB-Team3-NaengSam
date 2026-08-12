@@ -1,6 +1,7 @@
 /** shared/lib 공개 API. */
 export { cn } from './cn'
 export { formatArrivalTime } from './formatArrivalTime'
+export { formatLastSeen } from './formatLastSeen'
 export { useSse, type UseSseOptions } from './sse/useSse'
 export {
   useSseReconnectSync,
@@ -14,6 +15,7 @@ export { loadKakaoMaps, loadDaumPostcode, KAKAO_MAP_KEY } from './kakao'
 export {
   useDreamiLocationBroadcast,
   LOCATION_BROADCAST_INTERVAL_MS,
+  STALE_FIX_MS,
   type UseDreamiLocationBroadcastOptions,
   type DreamiLocationBroadcastState,
 } from './geo/useDreamiLocationBroadcast'

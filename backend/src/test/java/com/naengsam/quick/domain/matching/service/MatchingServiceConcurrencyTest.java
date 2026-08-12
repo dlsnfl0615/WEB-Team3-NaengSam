@@ -2,6 +2,7 @@ package com.naengsam.quick.domain.matching.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -12,13 +13,23 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
+import com.naengsam.quick.domain.matching.policy.assignment.LegacyOrderFirstAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemFactory;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanValidator;
+import com.naengsam.quick.domain.matching.policy.config.AssignmentPolicyType;
+import com.naengsam.quick.domain.matching.policy.config.EligibilityPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
+import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.scheduler.MatchingScheduler;
 import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
@@ -43,6 +54,10 @@ import org.springframework.test.util.ReflectionTestUtils;
  */
 class MatchingServiceConcurrencyTest {
 
+    private static final Duration OFFER_TTL = Duration.ofSeconds(30);
+    // 배정 파이프라인이 거리를 실제로 계산하므로, 좌표 없는 mock(GeoPoint.class) 대신 실제 좌표를 쓴다.
+    private static final GeoPoint LOCATION = new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0));
+
     private MatchingScheduler matchingScheduler;
     private MatchingService matchingService;
     private ExecutorService requestThreads;
@@ -51,10 +66,32 @@ class MatchingServiceConcurrencyTest {
     void setUp() {
         matchingScheduler = new MatchingScheduler();
         matchingScheduler.start();
-        matchingService = new MatchingService(matchingScheduler, mock(SseService.class),
+        NotificationService notificationService = mock(NotificationService.class);
+        // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 이 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
+        when(notificationService.isReachableNow(any())).thenReturn(true);
+
+        GeoDistanceCalculator geoDistanceCalculator = new GeoDistanceCalculator();
+        MatchingPolicyProperties properties = new MatchingPolicyProperties(
+                Duration.ofMillis(200), 3, AssignmentPolicyType.LEGACY_ORDER_FIRST,
+                ScoringPolicyType.ORDER_WAIT, EligibilityPolicyType.LEGACY,
+                new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10),
+                        Duration.ofMinutes(3)),
+                new MatchingPolicyProperties.BalancedWeights(
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+        MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+        // MatchingPlanApplier의 오퍼 timeout 예약은 실제 오퍼 생성/타이머 경로가 아니라 매칭 액션(expireDreamiOffer 등)으로
+        // 직접 검증하므로, scheduleDreamiOfferTimeout 호출 대상은 mock으로 충분하다.
+        MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
+                new MatchingPlanValidator(new LegacyOfferPolicy()), mock(MatchingService.class),
+                notificationService, OFFER_TTL);
+        MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
+                geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
+                properties, Clock.systemDefaultZone());
+
+        matchingService = new MatchingService(matchingScheduler, notificationService,
                 mock(MatchingBatchDispatcher.class), mock(DeliveryService.class), Clock.systemDefaultZone(),
-                mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),
-                mock(MatchingPlanApplier.class), mock(MatchingPolicyProperties.class), new GeoDistanceCalculator());
+                assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
+                new SimpleMeterRegistry());
         requestThreads = Executors.newFixedThreadPool(16);
     }
 
@@ -70,7 +107,7 @@ class MatchingServiceConcurrencyTest {
         List<UUID> dreamiIds = IntStream.range(0, dreamiCount)
                 .mapToObj(i -> UUID.randomUUID())
                 .toList();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         CountDownLatch submitted = new CountDownLatch(dreamiCount);
         for (UUID dreamiId : dreamiIds) {
@@ -90,16 +127,18 @@ class MatchingServiceConcurrencyTest {
     void 동시에_같은_제안을_여러번_수락해도_단_한번만_상태가_전이된다() throws InterruptedException {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        when(order.getOriginLatitude()).thenReturn(LOCATION.latitude());
+        when(order.getOriginLongitude()).thenReturn(LOCATION.longitude());
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
-        matchingService.scheduleRematchWaitingGroups();
+        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 배정 사이클을 직접 실행해 첫 오퍼 라운드를 유도한다.
+        matchingService.runMatchingAssignmentCycle();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
@@ -135,9 +174,11 @@ class MatchingServiceConcurrencyTest {
     void 동시에_같은_주문에_매칭을_시작해도_그룹은_단_하나만_생성된다() throws InterruptedException {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        when(order.getOriginLatitude()).thenReturn(LOCATION.latitude());
+        when(order.getOriginLongitude()).thenReturn(LOCATION.longitude());
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
@@ -177,16 +218,18 @@ class MatchingServiceConcurrencyTest {
     void 수락이_취소보다_먼저_큐에_들어오면_수락된_오퍼는_부르미_거절로_반영된다() throws InterruptedException {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        when(order.getOriginLatitude()).thenReturn(LOCATION.latitude());
+        when(order.getOriginLongitude()).thenReturn(LOCATION.longitude());
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
-        matchingService.scheduleRematchWaitingGroups();
+        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 배정 사이클을 직접 실행해 첫 오퍼 라운드를 유도한다.
+        matchingService.runMatchingAssignmentCycle();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
@@ -215,16 +258,18 @@ class MatchingServiceConcurrencyTest {
     void 취소가_수락보다_먼저_큐에_들어오면_뒤늦은_수락은_반영되지_않는다() throws InterruptedException {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        when(order.getOriginLatitude()).thenReturn(LOCATION.latitude());
+        when(order.getOriginLongitude()).thenReturn(LOCATION.longitude());
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
-        matchingService.scheduleRematchWaitingGroups();
+        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 배정 사이클을 직접 실행해 첫 오퍼 라운드를 유도한다.
+        matchingService.runMatchingAssignmentCycle();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
@@ -258,16 +303,18 @@ class MatchingServiceConcurrencyTest {
     void timeout과_사용자_응답이_거의_동시에_들어와도_큐_처리_순서대로_단_한번만_유효하게_전이된다() throws InterruptedException {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        when(order.getOriginLatitude()).thenReturn(LOCATION.latitude());
+        when(order.getOriginLongitude()).thenReturn(LOCATION.longitude());
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
-        matchingService.scheduleRematchWaitingGroups();
+        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 배정 사이클을 직접 실행해 첫 오퍼 라운드를 유도한다.
+        matchingService.runMatchingAssignmentCycle();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()

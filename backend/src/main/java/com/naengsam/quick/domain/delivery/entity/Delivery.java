@@ -49,6 +49,9 @@ public class Delivery {
     @Column(name = "current_longitude", precision = 11, scale = 8)
     private BigDecimal currentLongitude;
 
+    @Column(name = "last_location_dtm")
+    private LocalDateTime lastLocationDtm; // 드리미가 마지막으로 위치를 전송한 시각 — GPS 끊김(무소식) 판정 기준
+
     @Column(name = "picked_up_dtm")
     private LocalDateTime pickedUpDtm;
 
@@ -78,9 +81,12 @@ public class Delivery {
         return delivery;
     }
 
+    // 좌표와 함께 '마지막으로 위치를 받은 시각'을 남긴다. 좌표가 그대로여도 이 시각은 갱신되므로,
+    // 드리미가 멈춰 있는 것(정상)과 위치 전송이 끊긴 것(비정상)을 구분할 수 있다.
     public void updateLocation(BigDecimal latitude, BigDecimal longitude) {
         this.currentLatitude = latitude;
         this.currentLongitude = longitude;
+        this.lastLocationDtm = LocalDateTime.now();
     }
 
     // 드리미의 첫 위치가 잡힌 뒤 계산한 '드리미→픽업지' 경로와 배송완료예상시간을 한 번에 기록한다(최초 1회만 채운다).

@@ -18,7 +18,8 @@ import org.hibernate.type.SqlTypes;
  * 포인트 지갑의 거래 1건. 충전(CHARGE)은 {@code payment_id} 를, 배달 콜 결제(PAYMENT)는 {@code order_id} 를 근거로 갖고, 머니→포인트
  * 전환(EXCHANGE_IN)은 둘 다 비어 있다.
  * <p>
- * 이 행은 거래 건의 <b>현재 상태</b>를 나타낸다. 환불은 새 행을 만들지 않고 원본 결제 행의 {@code status} 를 REFUNDED_FULL 로 전이시키므로, 4000원을 결제한 뒤
+ * 이 행은 거래 건의 <b>현재 상태</b>를 나타낸다. 배달 콜 결제는 PENDING 으로 시작해 배달이 끝나야 PAID 로 확정되고, 충전·전환은 처음부터 PAID 다. 환불은 새 행을
+ * 만들지 않고 원본 결제 행의 {@code status} 를 REFUNDED_FULL 로 전이시키므로, 4000원을 결제한 뒤
  * 환불하면 이 테이블에는 net 0 인 행 하나만 남는다. 개별 잔액 변동(-4000, +4000)은 {@link PointLedger} 가 로그로 남긴다.
  */
 @Entity
@@ -62,21 +63,45 @@ public class PointTx {
     private UUID walletId;
 
     /**
-     * 포인트 거래를 생성한다. 상태는 항상 PAID 로 시작하며, 환불 전이는 이후 별도로 처리한다. {@code paymentId} / {@code orderId} 는 거래 유형에 해당하지 않으면
-     * null 이다.
+     * 포인트 거래를 확정(PAID) 상태로 생성한다. 충전(CHARGE)·전환(EXCHANGE_IN)은 받는 순간 거래가 끝나므로 대기 상태를 거치지 않는다.
+     * {@code paymentId} / {@code orderId} 는 거래 유형에 해당하지 않으면 null 이다.
      */
     public static PointTx create(UUID walletId, PointTxTypeCd type, Long amount,
+            UUID paymentId, UUID orderId) {
+        PointTx pointTx = createPending(walletId, type, amount, paymentId, orderId);
+        pointTx.status = PointTxStatusCd.PAID;
+        return pointTx;
+    }
+
+    /**
+     * 포인트 거래를 대기(PENDING) 상태로 생성한다. 배달 콜 결제(PAYMENT)는 포인트를 먼저 차감해도 배달이 끝나기 전까지는 지급이 확정된 게 아니라 이 상태로 남는다.
+     */
+    public static PointTx createPending(UUID walletId, PointTxTypeCd type, Long amount,
             UUID paymentId, UUID orderId) {
         PointTx pointTx = new PointTx();
         pointTx.pointTxId = UUID.randomUUID();
         pointTx.walletId = walletId;
         pointTx.type = type;
-        pointTx.status = PointTxStatusCd.PAID;
+        pointTx.status = PointTxStatusCd.PENDING;
         pointTx.amount = amount;
         pointTx.paymentId = paymentId;
         pointTx.orderId = orderId;
         pointTx.createdDtm = LocalDateTime.now();
         return pointTx;
+    }
+
+    /**
+     * 대기 중인 거래를 지급 확정 상태로 전이한다. 이미 확정됐거나 환불된 거래면 아무것도 하지 않아 같은 요청이 두 번 들어와도 결과가 같다.
+     *
+     * @return 이번 호출로 실제 전이가 일어났으면 true
+     */
+    public boolean markPaid() {
+        if (this.status != PointTxStatusCd.PENDING) {
+            return false;
+        }
+        this.status = PointTxStatusCd.PAID;
+        this.updatedDtm = LocalDateTime.now();
+        return true;
     }
 
     /**

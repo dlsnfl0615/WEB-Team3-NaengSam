@@ -26,7 +26,8 @@ import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.scheduler.MatchingScheduler;
 import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
@@ -59,7 +60,9 @@ class MatchingSchedulerIntegrationTest {
         matchingScheduler = new MatchingScheduler();
         matchingScheduler.start();
 
-        SseService sseService = mock(SseService.class);
+        NotificationService notificationService = mock(NotificationService.class);
+        // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 이 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
+        when(notificationService.isReachableNow(any())).thenReturn(true);
         DeliveryService deliveryService = mock(DeliveryService.class);
         Clock clock = Clock.systemDefaultZone();
 
@@ -81,10 +84,10 @@ class MatchingSchedulerIntegrationTest {
                 new MatchingBatchDispatcher(matchingScheduler, properties, null);
 
         matchingService = new MatchingService(
-                matchingScheduler, sseService, matchingBatchDispatcher, deliveryService, clock,
-                assembler, assignmentPolicy, null, properties, geoDistanceCalculator);
+                matchingScheduler, notificationService, matchingBatchDispatcher, deliveryService, clock,
+                assembler, assignmentPolicy, null, properties, geoDistanceCalculator, new SimpleMeterRegistry());
         MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
-                new MatchingPlanValidator(new LegacyOfferPolicy()), matchingService, sseService, OFFER_TTL);
+                new MatchingPlanValidator(new LegacyOfferPolicy()), matchingService, notificationService, OFFER_TTL);
         setPlanApplier(matchingBatchDispatcher, matchingService, matchingPlanApplier);
     }
 

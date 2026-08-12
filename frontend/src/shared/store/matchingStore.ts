@@ -17,6 +17,11 @@ const GEOLOCATION_TIMEOUT_MS = 10_000;
 /** SSE 장애 중 매칭 상태를 되찾기 위한 polling 주기(ms). */
 export const MATCHING_POLL_INTERVAL_MS = 3_000;
 
+type NearbyCallsLoadResult = "loaded" | "location-unavailable" | "failed";
+
+/** 위치 권한 거부·브라우저 미지원처럼 드리미 화면을 사용할 수 없는 오류. */
+class LocationAccessError extends Error {}
+
 /** 백엔드 SSE `offer_popup` payload. */
 interface OfferPopupPayload {
   offerId: string;
@@ -92,7 +97,7 @@ interface MatchingState {
   /** 부르미 확인 카운트다운 만료(로컬). offerId가 다르면 무시한다. */
   expireIncomingDreami: (offerId: string) => void;
   /** 드리미 화면 진입 시(및 폴링 시) 실행: 좌표를 구해 주변 콜을 조회한다. 온라인 여부와 무관하게 항상 동작한다. */
-  loadNearbyCalls: () => Promise<void>;
+  loadNearbyCalls: () => Promise<NearbyCallsLoadResult>;
   /** 드리미 온라인 전환. myLocation이 있으면 재사용하고, 없으면 새로 조회한다. */
   goOnline: () => Promise<void>;
   goOffline: () => Promise<void>;
@@ -134,13 +139,18 @@ function geolocationMessage(error: GeolocationPositionError): string {
 function getCurrentCoords(): Promise<Coords> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error("이 브라우저에서는 위치를 사용할 수 없어요."));
+      reject(new LocationAccessError("이 브라우저에서는 위치를 사용할 수 없어요."));
       return;
     }
     navigator.geolocation.getCurrentPosition(
       ({ coords }) =>
         resolve({ latitude: coords.latitude, longitude: coords.longitude }),
-      (error) => reject(new Error(geolocationMessage(error))),
+      (error) =>
+        reject(
+          error.code === error.PERMISSION_DENIED
+            ? new LocationAccessError(geolocationMessage(error))
+            : new Error(geolocationMessage(error)),
+        ),
       {
         enableHighAccuracy: true,
         timeout: GEOLOCATION_TIMEOUT_MS,
@@ -323,8 +333,12 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
         count: NEARBY_COUNT,
       });
       set({ nearbyCalls: result ?? [], nearbyCallsError: null });
+      return "loaded";
     } catch (e) {
       set({ nearbyCallsError: toMessage(e, "주변 콜을 불러오지 못했어요.") });
+      return e instanceof LocationAccessError
+        ? "location-unavailable"
+        : "failed";
     }
   },
 

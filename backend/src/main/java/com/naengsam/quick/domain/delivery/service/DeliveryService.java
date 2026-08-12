@@ -1,11 +1,13 @@
 package com.naengsam.quick.domain.delivery.service;
 
+import com.naengsam.quick.domain.user.exception.UserErrorCode;
 import tools.jackson.core.JacksonException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.service.DirectionsService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
@@ -21,16 +23,22 @@ import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.repository.DeliveryCertificationRepository;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.delivery.repository.PickupCertificationRepository;
+import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.dreami.entity.Dreami;
+import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
+import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.OrderService;
+import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
+import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -55,8 +63,8 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
  * 서로 다른 주문은 서로 다른 행이라 완전히 병렬로 처리된다.
  *
  * <p>알림(SSE)은 전이와 같은 트랜잭션 안에서 불변 스냅샷(DeliveryStatusResponseDto)을 담은 {@link DeliveryNotificationEvent}만
- * 발행한다. 실제 SseService.send 호출은 트랜잭션이 커밋된 뒤에만({@code sendAfterCommit}, AFTER_COMMIT) 일어나므로,
- * 롤백된 전이에 대해서는 알림이 나가지 않는다. SseService가 단일 가상 스레드로 async 오프로딩하므로
+ * 발행한다. 실제 NotificationService.notify 호출은 트랜잭션이 커밋된 뒤에만({@code sendAfterCommit}, AFTER_COMMIT) 일어나므로,
+ * 롤백된 전이에 대해서는 알림이 나가지 않는다. IN_APP 채널은 SseService가 단일 가상 스레드로 async 오프로딩하므로
  * "처리 순서 == 알림 순서"가 보장되고 호출 스레드는 막히지 않는다.
  *
  * <p>부르미·드리미 모두 상태 변경은 SSE로 전달받는다. updateDreamiLocation은 드리미가 5~10초마다 호출해
@@ -72,13 +80,18 @@ public class DeliveryService {
     private final DeliveryRepository deliveryRepository;
     private final PickupCertificationRepository pickupCertificationRepository;
     private final DeliveryCertificationRepository deliveryCertificationRepository;
-    private final SseService sseService;
+    private final NotificationService notificationService;
     private final UploadSessionService uploadSessionService;
     private final UserService userService;
     private final OrderService orderService;
+    private final DreamiRepository dreamiRepository;
+    private final BoormiRepository boormiRepository;
+    private final S3PresignService s3PresignService;
+    private final PaymentService paymentService;
     private final DirectionsService directionsService;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final DreamiOfflineDetector dreamiOfflineDetector;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -113,8 +126,50 @@ public class DeliveryService {
         }
 
         // 픽업 후 지도용 픽업지→도착지 경로(Orders)와 픽업 전 지도용 드리미→픽업지 경로(Delivery)를 함께 내려준다.
+        // 드리미 연결 상태도 함께 담는다 — 화면을 다시 열었을 때 SSE 이벤트를 기다리지 않고 즉시 복원하기 위함이며,
+        // 부르미가 끊긴 동안 유실된 오프라인 통보를 되찾는 경로이기도 하다.
         return DeliveryDetailResponseDto.from(delivery, order,
-                parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()));
+                parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()),
+                dreamiOfflineDetector.isOffline(delivery),
+                dreamiOfflineDetector.secondsSinceLastLocationOrNull(delivery));
+    }
+
+    // 배달 완료 화면용 요약 조회. 위치·경로 없이 완료 후에만 의미 있는 정산·담당 드리미·소요시간만 담는다.
+    // 소유권 검증은 getDeliveryDetail과 동일하다(이 주문의 부르미 또는 배정된 드리미만 조회 가능).
+    @Transactional(readOnly = true)
+    public DeliveryCompletionDto getDeliveryCompletion(UUID orderId, UUID userId) {
+        Delivery delivery = deliveryRepository.findByOrderIdWithoutLock(orderId)
+                .orElseThrow(() -> new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+        Orders order = orderService.getOrder(orderId);
+
+        if (!userId.equals(delivery.getBoormiId()) && !userId.equals(delivery.getDreamiId())) {
+            throw new BusinessException(AuthErrorCode.NOT_RESOURCE_OWNER);
+        }
+
+        // 담당 드리미 이름은 BOORMI 테이블에서, 평점은 DREAMI 테이블에서 가져온다(dreamiId == boormiId).
+        Dreami dreami = dreamiRepository.findById(delivery.getDreamiId())
+                .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
+        String dreamiName = boormiRepository.findById(delivery.getDreamiId())
+                .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND))
+                .getName();
+        String boormiName = boormiRepository.findById(delivery.getBoormiId())
+                .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND))
+                .getName();
+        String deliveryPhotoUrl = resolveDeliveryPhotoUrl(delivery.getDeliveryId());
+        // 평가 대상 문구는 클라이언트가 URL로 정하게 두면 조작 가능하므로, 로그인 세션 기반으로 서버가 판정해 내려준다.
+        boolean viewerIsDreami = userId.equals(delivery.getDreamiId());
+
+        return DeliveryCompletionDto.from(delivery, order, dreamiName, dreami.getDreamiAvgScore(), boormiName,
+                deliveryPhotoUrl, viewerIsDreami);
+    }
+
+    // 배송 완료 인증 사진 URL을 조회한다. 완료 전이라 인증 사진이 아직 없으면(레코드 없음) 조회하지 않고,
+    // 있어도 S3 조회 자체가 실패하면(보존 정책 삭제, 스토리지 장애 등) resolveDownloadUrl이 null로 degrade해
+    // 완료 요약 전체를 실패시키지 않는다.
+    private String resolveDeliveryPhotoUrl(UUID deliveryId) {
+        return deliveryCertificationRepository.findByDeliveryId(deliveryId)
+                .map(certification -> s3PresignService.resolveDownloadUrl(certification.getImageKey()))
+                .orElse(null);
     }
 
     // 주문에 저장된 추천 이동경로 JSON을 좌표 목록으로 복원한다. 값이 없거나 손상됐으면 빈 목록(지도는 핀만 표시).
@@ -437,6 +492,8 @@ public class DeliveryService {
 
         delivery.markDelivered(); // 배달_완료
         orderService.complete(delivery.getOrderId()); // 주문도 완료 상태로 전이
+        // 배달이 끝나야 지급이 확정된다: 결제 거래를 PAID 로 전이하고 드리미 머니 지갑에 정산을 쌓는다
+        paymentService.settleOrder(delivery.getOrderId(), dreamiId);
         // 비대면 배달 인증 행 저장 (submittedDtm은 markDelivered가 기록한 deliveryEndDtm 재사용)
         deliveryCertificationRepository.save(
                 DeliveryCertification.create(photoKey, delivery.getDeliveryEndDtm(), delivery.getDeliveryId()));
@@ -497,10 +554,10 @@ public class DeliveryService {
         eventPublisher.publishEvent(new DeliveryNotificationEvent(userId, eventType, payload));
     }
 
-    // 트랜잭션 커밋 후에만 실제로 SSE를 보낸다(커밋 전 발행된 이벤트는 롤백 시 자동으로 버려진다).
+    // 트랜잭션 커밋 후에만 실제 알림을 보낸다(커밋 전 발행된 이벤트는 롤백 시 자동으로 버려진다).
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void sendAfterCommit(DeliveryNotificationEvent event) {
-        sseService.send(event.userId(), event.eventType(), event.payload());
+        notificationService.notify(event.userId(), event.eventType(), event.payload());
     }
 
 }

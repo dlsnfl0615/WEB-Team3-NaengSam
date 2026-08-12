@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { loadKakaoMaps } from "@/shared/lib";
 import { cn } from "@/shared/lib/cn";
-import { pinImage } from "../DeliveryRouteMap/pinImage";
+import { makePinOverlay } from "../DeliveryRouteMap/pinOverlay";
+import type { PinOverlayHandle } from "../DeliveryRouteMap/pinOverlay";
 import type { Coords } from "../DeliveryRouteMap/DeliveryRouteMap";
 
 export interface NearbyCall {
@@ -33,8 +34,9 @@ export interface NearbyCallsMapProps {
   flat?: boolean;
 }
 
-const MY_LOCATION_COLOR = "#0d1b3d"; // navy-900
-const CALL_COLOR = "#00b7a7"; // teal-500
+// DeliveryRouteMap의 pickup/dropoff 색·라벨 배경 토큰을 그대로 재사용한다(같은 의미의 핀이므로).
+const MY_LOCATION_STYLE = { color: "#0d1b3d", label: "드리미", bg: "bg-navy-900" }; // navy-900
+const CALL_STYLE = { color: "#00b7a7", label: "픽업 장소", bg: "bg-teal-500" }; // teal-500
 
 /**
  * 내 위치 핀 1개 + 주변 콜 핀 N개를 보여주는 지도. goOnline 여부와 무관하게
@@ -52,8 +54,8 @@ export function NearbyCallsMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const kakaoRef = useRef<typeof window.kakao | null>(null);
   const mapRef = useRef<ReturnType<typeof window.kakao.maps.Map> | null>(null);
-  const myMarkerRef = useRef<unknown>(null);
-  const callMarkersRef = useRef<Map<string, unknown>>(new Map());
+  const myMarkerRef = useRef<PinOverlayHandle | null>(null);
+  const callMarkersRef = useRef<Map<string, PinOverlayHandle>>(new Map());
   const [status, setStatus] = useState<"loading" | "ready" | "disabled">(
     "loading",
   );
@@ -95,15 +97,9 @@ export function NearbyCallsMap({
     if (status !== "ready" || !kakao || !map || !center) return;
     const pos = new kakao.maps.LatLng(center.latitude, center.longitude);
     if (myMarkerRef.current) {
-      (myMarkerRef.current as ReturnType<typeof kakao.maps.Marker>).setPosition(
-        pos,
-      );
+      myMarkerRef.current.setPosition(pos);
     } else {
-      myMarkerRef.current = new kakao.maps.Marker({
-        map,
-        position: pos,
-        image: pinImage(kakao, MY_LOCATION_COLOR),
-      });
+      myMarkerRef.current = makePinOverlay(kakao, map, pos, MY_LOCATION_STYLE);
       map.setCenter(pos);
     }
   }, [status, center]);
@@ -114,7 +110,7 @@ export function NearbyCallsMap({
     const map = mapRef.current;
     if (status !== "ready" || !kakao || !map) return;
 
-    const next = new Map<string, unknown>();
+    const next = new Map<string, PinOverlayHandle>();
     calls.forEach((call) => {
       const pos = new kakao.maps.LatLng(
         call.location.latitude,
@@ -122,23 +118,20 @@ export function NearbyCallsMap({
       );
       const existing = callMarkersRef.current.get(call.id);
       if (existing) {
-        (existing as ReturnType<typeof kakao.maps.Marker>).setPosition(pos);
+        existing.setPosition(pos);
         next.set(call.id, existing);
         return;
       }
-      const marker = new kakao.maps.Marker({
-        map,
-        position: pos,
-        image: pinImage(kakao, CALL_COLOR),
-      });
-      kakao.maps.event.addListener(marker, "click", () => onCallClick?.(call));
+      const marker = makePinOverlay(kakao, map, pos, CALL_STYLE, () =>
+        onCallClick?.(call),
+      );
       next.set(call.id, marker);
     });
 
     // 이번 목록에 없는 기존 마커는 지도에서 제거한다.
     callMarkersRef.current.forEach((marker, id) => {
       if (!next.has(id)) {
-        (marker as ReturnType<typeof kakao.maps.Marker>).setMap(null);
+        marker.setMap(null);
       }
     });
     callMarkersRef.current = next;

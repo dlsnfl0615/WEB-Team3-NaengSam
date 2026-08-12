@@ -126,6 +126,7 @@ import { Icon } from './components'
 | `TopBar`            | `title` `onBack` `actions`                 | 화면 헤더                                                                 |
 | `BottomNav`         | `items`                                    | 하단 탭 바(현재 경로가 활성=teal, 누르면 이동)                            |
 | `Toast`             | `icon` `title` `description` `action`      | 알림 토스트(네이비)                                                       |
+| `ToastViewport`     | —                                          | 전역 토스트를 화면 상단에 최대 3개까지 쌓아 표시                          |
 | `RouteCard`         | `origin` `destination`                     | 출발지 → 도착지 경로 카드                                                 |
 | `InfoRow`           | `label` `children`                         | 상세 정보 카드의 라벨-값 한 줄                                            |
 | `StarRating`        | `value` `onChange`                         | 별 5개 평점 입력(radiogroup)                                              |
