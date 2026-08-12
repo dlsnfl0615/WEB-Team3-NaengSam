@@ -53,6 +53,23 @@ public class S3PresignService {
     }
 
     /**
+     * key로 다운로드 URL 발급을 시도하되, 실패해도 예외를 던지지 않고 null로 degrade한다. 업로드 시점에 이미 존재를
+     * 검증한 파일이 조회 시점엔 없을 수 있고(보존 정책 삭제, 개발 환경 인메모리 스토리지 재시작 등), 존재 확인
+     * 자체가 스토리지 장애로 실패할 수도 있다({@link #generateDownloadUrl}이 둘 다 BusinessException으로 던짐).
+     * 이때 전체 요청을 실패시키면 안 되고 "사진 없음"처럼 조회 실패를 그냥 보여주면 되는 화면(완료 요약, 관리자
+     * 심사 목록 등)에서 사용한다. 업로드 여부를 검증해서 실제로 막아야 하는 곳({@code UploadSessionService})은
+     * 이 메서드가 아니라 {@link #generateDownloadUrl}을 그대로 써야 한다.
+     */
+    public String resolveDownloadUrl(String key) {
+        try {
+            return generateDownloadUrl(key);
+        } catch (BusinessException e) {
+            log.warn("다운로드 URL 조회 실패 — null로 대체한다. key={}", key, e);
+            return null;
+        }
+    }
+
+    /**
      * key의 확장자로 content type을 추론한다. 지원하지 않는 확장자면 예외를 던진다.
      */
     private String resolveContentType(String key) {
