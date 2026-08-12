@@ -81,8 +81,9 @@ class MatchingMicroBatchIntegrationTest {
                 properties, clock);
 
         return new MatchingService(
-                matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService, clock,
-                assembler, assignmentPolicy, matchingPlanApplier, properties);
+                matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
+                clock,
+                assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator);
     }
 
     @Test

@@ -51,9 +51,10 @@ class MatchingServiceConcurrencyTest {
         matchingEngine = new MatchingEngine();
         matchingEngine.start();
         matchingService = new MatchingService(matchingEngine, mock(SseService.class), mock(MatchingActionScheduler.class),
-                mock(MatchingBatchDispatcher.class), mock(DeliveryService.class), Clock.systemDefaultZone(),
+                mock(MatchingBatchDispatcher.class), mock(DeliveryService.class),
+                Clock.systemDefaultZone(),
                 mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),
-                mock(MatchingPlanApplier.class), mock(MatchingPolicyProperties.class));
+                mock(MatchingPlanApplier.class), mock(MatchingPolicyProperties.class), new GeoDistanceCalculator());
         requestThreads = Executors.newFixedThreadPool(16);
     }
 

@@ -17,6 +17,7 @@ import type {
   DreamiAuthRequestDto,
   DreamiLocationRequest,
   DreamiOnlineRequest,
+  DreamiReviewRejectRequest,
   ExchangeMoneyToPoint200,
   ExchangeRequest,
   ExpectedValue200,
@@ -52,6 +53,7 @@ import type {
   OrderAndStart200,
   OrderAndStartParams,
   OrderRequest,
+  Pending200,
   PickupFinishByDreami200,
   PointChargeRequest,
   PutParams,
@@ -350,7 +352,7 @@ const finishDelivery = (
     }
 
 /**
- * 드리미가 5~10초마다 호출해 현재 위치만 전달한다. 성공 시 ack만 응답하고, 상태 변경은 SSE로 전달된다. 이미 취소/완료된 주문이면 폴링 중단 신호로 에러를 응답한다.
+ * 드리미가 5~10초마다 호출해 현재 위치를 전달한다. 첫 위치가 도착하면 서버가 계산한 '드리미→픽업지' 경로와 배송완료예상시간을 함께 응답한다(아직 계산 전이면 빈 목록/null). 상태 변경은 SSE로 전달된다. 이미 취소/완료된 주문이면 폴링 중단 신호로 에러를 응답한다.
  * @summary 드리미 위치 갱신
  */
 const updateDreamiLocation = (
@@ -568,6 +570,33 @@ const findNearbyDreamis = (
       {url: `/api/v1/debug/matching/dreamis/nearby`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
       data: nearbyDreamiRequest
+    },
+      options);
+    }
+
+/**
+ * @summary 드리미 인증 신청 반려
+ */
+const reject = (
+    dreamiId: string,
+    dreamiReviewRejectRequest: DreamiReviewRejectRequest,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/debug/dreami-review/${dreamiId}/reject`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: dreamiReviewRejectRequest
+    },
+      options);
+    }
+
+/**
+ * @summary 드리미 인증 신청 승인
+ */
+const approve = (
+    dreamiId: string,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/debug/dreami-review/${dreamiId}/approve`, method: 'POST'
     },
       options);
     }
@@ -887,6 +916,18 @@ const waitingOrders = (
     }
 
 /**
+ * @summary 검수 대기 중인 드리미 인증 신청 목록 조회
+ */
+const pending = (
+
+ options?: SecondParameter<typeof customInstance<Pending200>>,) => {
+      return customInstance<Pending200>(
+      {url: `/api/v1/debug/dreami-review/pending`, method: 'GET'
+    },
+      options);
+    }
+
+/**
  * @summary 드리미 제거
  */
 const removeDreami = (
@@ -911,7 +952,7 @@ const unsubscribeOrder = (
       options);
     }
 
-return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
+return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,pending,removeDreami,unsubscribeOrder}};
 export type GetResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['get']>>>
 export type PutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['put']>>>
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
@@ -948,6 +989,8 @@ export type AcceptByBoormiResult = NonNullable<Awaited<ReturnType<ReturnType<typ
 export type WaitingDreamisResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['waitingDreamis']>>>
 export type RegisterDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['registerDreami']>>>
 export type FindNearbyDreamisResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findNearbyDreamis']>>>
+export type RejectResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['reject']>>>
+export type ApproveResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['approve']>>>
 export type ExpectedValueResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['expectedValue']>>>
 export type GetBoormiOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiOrders']>>>
 export type SubscribeOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['subscribeOrder']>>>
@@ -971,5 +1014,6 @@ export type DevSubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeo
 export type GetDeliveryDetailResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDeliveryDetail']>>>
 export type GetOrderOfferGroupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getOrderOfferGroup']>>>
 export type WaitingOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['waitingOrders']>>>
+export type PendingResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['pending']>>>
 export type RemoveDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['removeDreami']>>>
 export type UnsubscribeOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['unsubscribeOrder']>>>
