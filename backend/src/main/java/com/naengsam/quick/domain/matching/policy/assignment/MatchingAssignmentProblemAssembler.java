@@ -126,6 +126,6 @@ public class MatchingAssignmentProblemAssembler {
         }
 
         long quota = ((long) dreamiCount + orderCount - 1) / orderCount;
-        return (int) Math.clamp(quota, 1, 5);
+        return Math.clamp(quota, 1, 5);
     }
 }
