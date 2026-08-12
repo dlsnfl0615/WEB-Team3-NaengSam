@@ -377,7 +377,7 @@ class DeliveryServiceTest {
                 LocalDateTime.of(2026, 1, 1, 10, 8), delivery.getDeliveryId());
         given(deliveryCertificationRepository.findByDeliveryId(delivery.getDeliveryId()))
                 .willReturn(Optional.of(certification));
-        given(s3PresignService.generateDownloadUrl(PHOTO_KEY)).willReturn("https://s3/uploads/dreami/photo.png");
+        given(s3PresignService.resolveDownloadUrl(PHOTO_KEY)).willReturn("https://s3/uploads/dreami/photo.png");
 
         DeliveryCompletionDto result = deliveryService.getDeliveryCompletion(orderId, boormiId);
 
@@ -439,9 +439,10 @@ class DeliveryServiceTest {
                 LocalDateTime.of(2026, 1, 1, 10, 8), delivery.getDeliveryId());
         given(deliveryCertificationRepository.findByDeliveryId(delivery.getDeliveryId()))
                 .willReturn(Optional.of(certification));
-        // S3 객체가 실제로는 없거나(보존 정책 삭제) 스토리지 장애 등으로 URL 발급이 실패하는 상황을 재현한다.
-        given(s3PresignService.generateDownloadUrl(PHOTO_KEY))
-                .willThrow(new BusinessException(UploadErrorCode.FILE_NOT_FOUND));
+        // S3 객체가 실제로는 없거나(보존 정책 삭제) 스토리지 장애 등으로 URL 조회가 실패하는 상황을 재현한다.
+        // (resolveDownloadUrl 자체의 degrade 로직은 S3PresignServiceTest에서 검증하므로, 여기서는 그 결과인
+        // null을 그대로 스텁한다.)
+        given(s3PresignService.resolveDownloadUrl(PHOTO_KEY)).willReturn(null);
 
         DeliveryCompletionDto result = deliveryService.getDeliveryCompletion(orderId, boormiId);
 
