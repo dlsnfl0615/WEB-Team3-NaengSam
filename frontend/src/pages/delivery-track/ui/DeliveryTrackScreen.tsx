@@ -331,8 +331,10 @@ export function DeliveryTrackScreen() {
       <footer className="flex flex-col items-center gap-2 pt-4">
         <div className="flex w-full gap-2">
           {/* mock 흐름(orderId 없음)에서는 조회할 배달이 없어 비활성. */}
+          {/* shrink-0: 옆의 액션 버튼(w-full)에 밀려 폭이 눌리면 라벨이 두 줄로 접힌다. */}
           <Button
             variant="outline"
+            className="shrink-0"
             disabled={!orderId}
             onClick={() => setContactOpen(true)}
           >

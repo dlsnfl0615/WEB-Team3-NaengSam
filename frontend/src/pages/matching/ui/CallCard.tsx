@@ -105,7 +105,7 @@ export function CallCard({
       <div className="flex gap-2">
         <Button
           variant="outline"
-          className="border-transparent bg-line"
+          className="shrink-0 border-transparent bg-line"
           onClick={onReject}
         >
           거절
