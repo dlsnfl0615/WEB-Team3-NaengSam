@@ -35,7 +35,6 @@ import org.springframework.stereotype.Service;
 public class MatchingAssignmentProblemAssembler {
 
     private static final int MIN_OFFER_COUNT = 1;
-    private static final int MAX_OFFER_COUNT = 5;
     private final GeoDistanceCalculator geoDistanceCalculator;
     private final MatchingAssignmentProblemFactory matchingAssignmentProblemFactory;
     private final MatchingPolicyProperties matchingPolicyProperties;
@@ -119,8 +118,8 @@ public class MatchingAssignmentProblemAssembler {
     }
 
     /**
-     * 대기 드리미를 대기 주문 수만큼 나눠, 주문 하나가 받을 수 있는 오퍼 수를 올림 계산한다. 주문이 없으면(0으로 나누기 방지) 1을 반환하고, 결과는 선착순 경쟁이 과열되지 않도록 [1, 5] 범위로
-     * 자른다.
+     * 대기 드리미를 대기 주문 수만큼 나눠, 주문 하나가 받을 수 있는 오퍼 수를 올림 계산한다. 주문이 없으면(0으로 나누기 방지) 1을 반환하고, 결과는 선착순 경쟁이 과열되지 않도록
+     * [1, {@code matching.dynamic-quota-max}] 범위로 자른다.
      */
     private int calculateDynamicQuota(int orderCount, int dreamiCount) {
         if (orderCount == 0) {
@@ -128,6 +127,6 @@ public class MatchingAssignmentProblemAssembler {
         }
 
         int quota = Math.ceilDiv(dreamiCount, orderCount);
-        return Math.clamp(quota, MIN_OFFER_COUNT, MAX_OFFER_COUNT);
+        return Math.clamp(quota, MIN_OFFER_COUNT, matchingPolicyProperties.dynamicQuotaMax());
     }
 }

@@ -220,7 +220,7 @@
                 아래 표의 <b>D만료</b>/<b>B만료</b> 버튼으로 <code>ExpireDreamiOffer</code>/<code>ExpireBoormiOffer</code>를
                 즉시 트리거해 재매칭 로직을 테스트할 수 있습니다. 이미 종료된 오퍼에 뒤늦게 눌러도(stale timeout 재현) 서버가
                 무시하거나 상태 전이 예외만 로그로 남기고 무시합니다.<br/>
-                👉 등록/거절/취소/만료 등으로 드리미나 주문이 풀리면, <code>matching.batch-window</code>(기본 1s)
+                👉 등록/거절/취소/만료 등으로 드리미나 주문이 풀리면, <code>matching.batch-interval</code>(기본 1s)
                 주기로 반복 실행되는 <b>배치 매칭 사이클</b>이 다음 회차에서 자동으로 재배정을 시도하므로, 별도 트리거 없이
                 <b>방(offers) 조회</b>를 잠깐 뒤에 다시 눌러보는 것만으로 재매칭 결과를 확인할 수 있습니다.
             </div>

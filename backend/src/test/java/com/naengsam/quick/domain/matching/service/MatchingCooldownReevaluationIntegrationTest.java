@@ -64,6 +64,7 @@ class MatchingCooldownReevaluationIntegrationTest {
                 Duration.ofSeconds(1),
                 maxConcurrentOffers,
                 OfferQuotaMode.FIXED,
+                5,
                 AssignmentPolicyType.SCORE_BASED_GREEDY,
                 ScoringPolicyType.ORDER_WAIT,
                 EligibilityPolicyType.OUTCOME_COOLDOWN,

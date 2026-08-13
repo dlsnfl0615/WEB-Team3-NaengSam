@@ -77,10 +77,15 @@ class MatchingAssignmentProblemAssemblerTest {
     }
 
     private static MatchingPolicyProperties matchingPolicyProperties(OfferQuotaMode offerQuotaMode) {
+        return matchingPolicyProperties(offerQuotaMode, 5);
+    }
+
+    private static MatchingPolicyProperties matchingPolicyProperties(OfferQuotaMode offerQuotaMode, int dynamicQuotaMax) {
         return new MatchingPolicyProperties(
                 Duration.ofSeconds(1),
                 3,
                 offerQuotaMode,
+                dynamicQuotaMax,
                 AssignmentPolicyType.LEGACY_ORDER_FIRST,
                 ScoringPolicyType.ORDER_WAIT,
                 EligibilityPolicyType.LEGACY,
@@ -265,13 +270,23 @@ class MatchingAssignmentProblemAssemblerTest {
     }
 
     @Test
-    void DYNAMIC_모드에서_비율이_5를_넘어도_quota는_최대_5이다() {
+    void DYNAMIC_모드에서_비율이_기본_상한_5를_넘어도_quota는_최대_5이다() {
         orderOfferGroups = waitingGroups(1);
         waitingDreamis = matchingDreamis(20);
 
         MatchingAssignmentProblem problem = assemble(matchingPolicyProperties(OfferQuotaMode.DYNAMIC));
 
         assertThat(problem.orders()).extracting(MatchingOrderInput::maxConcurrentOffers).containsOnly(5);
+    }
+
+    @Test
+    void DYNAMIC_모드의_quota_상한은_matching_dynamic_quota_max_설정값을_따른다() {
+        orderOfferGroups = waitingGroups(1);
+        waitingDreamis = matchingDreamis(20);
+
+        MatchingAssignmentProblem problem = assemble(matchingPolicyProperties(OfferQuotaMode.DYNAMIC, 8));
+
+        assertThat(problem.orders()).extracting(MatchingOrderInput::maxConcurrentOffers).containsOnly(8);
     }
 
     @Test

@@ -38,13 +38,13 @@ import org.junit.jupiter.api.Test;
 
 /**
  * {@link PeriodicMatchingBatchScheduler}가 실제 {@link MatchingEngine} 위에서 반복 배치를 구동할 때, 등록/거절/timeout 같은
- * 개별 이벤트가 배치를 별도로 깨우지 않아도 다음 반복 사이클에서 자동으로 반영되는지 실제 시간 흐름으로 검증한다. 빠르게 끝나도록 batchWindow는
+ * 개별 이벤트가 배치를 별도로 깨우지 않아도 다음 반복 사이클에서 자동으로 반영되는지 실제 시간 흐름으로 검증한다. 빠르게 끝나도록 batchInterval은
  * 짧은 밀리초 단위로 둔다.
  */
 class PeriodicMatchingBatchIntegrationTest {
 
     private static final Duration OFFER_TTL = Duration.ofSeconds(30);
-    private static final Duration BATCH_WINDOW = Duration.ofMillis(30);
+    private static final Duration BATCH_INTERVAL = Duration.ofMillis(30);
 
     private MatchingEngine matchingEngine;
 
@@ -55,9 +55,10 @@ class PeriodicMatchingBatchIntegrationTest {
 
     private static MatchingPolicyProperties matchingPolicyProperties(int maxConcurrentOffers) {
         return new MatchingPolicyProperties(
-                BATCH_WINDOW,
+                BATCH_INTERVAL,
                 maxConcurrentOffers,
                 OfferQuotaMode.FIXED,
+                5,
                 AssignmentPolicyType.LEGACY_ORDER_FIRST,
                 ScoringPolicyType.ORDER_WAIT,
                 EligibilityPolicyType.LEGACY,
@@ -133,7 +134,7 @@ class PeriodicMatchingBatchIntegrationTest {
         MatchingService matchingService = newRunningMatchingService(3);
 
         // given (아무 것도 등록하지 않은 채로 몇 차례의 빈 배치가 흘러가게 둔다)
-        sleep(BATCH_WINDOW.multipliedBy(5));
+        sleep(BATCH_INTERVAL.multipliedBy(5));
 
         // when (그 뒤에야 실제 매칭 대상이 등록된다)
         UUID orderId = UUID.randomUUID();

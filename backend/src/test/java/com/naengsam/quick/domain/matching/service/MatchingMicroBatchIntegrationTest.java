@@ -49,6 +49,7 @@ class MatchingMicroBatchIntegrationTest {
                 Duration.ofMillis(500),
                 maxConcurrentOffers,
                 OfferQuotaMode.FIXED,
+                5,
                 AssignmentPolicyType.LEGACY_ORDER_FIRST,
                 ScoringPolicyType.ORDER_WAIT,
                 EligibilityPolicyType.LEGACY,

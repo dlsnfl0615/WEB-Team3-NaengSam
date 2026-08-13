@@ -15,27 +15,27 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 /**
- * 애플리케이션 준비 후 배치 매칭 사이클이 {@code matching.batch-window} 주기로 반복 예약되는지 검증한다.
+ * 애플리케이션 준비 후 배치 매칭 사이클이 {@code matching.batch-interval} 주기로 반복 예약되는지 검증한다.
  */
 class PeriodicMatchingBatchSchedulerTest {
 
     private MatchingEngine matchingEngine;
     private MatchingService matchingService;
     private PeriodicMatchingBatchScheduler scheduler;
-    private Duration batchWindow;
+    private Duration batchInterval;
 
     @BeforeEach
     void setUp() {
         matchingEngine = mock(MatchingEngine.class);
         matchingService = mock(MatchingService.class);
         MatchingPolicyProperties matchingPolicyProperties = mock(MatchingPolicyProperties.class);
-        batchWindow = Duration.ofSeconds(5);
-        given(matchingPolicyProperties.batchWindow()).willReturn(batchWindow);
+        batchInterval = Duration.ofSeconds(5);
+        given(matchingPolicyProperties.batchInterval()).willReturn(batchInterval);
         scheduler = new PeriodicMatchingBatchScheduler(matchingEngine, matchingPolicyProperties, matchingService);
     }
 
     @Test
-    void 애플리케이션_준비_이벤트가_오면_배치_사이클을_batchWindow_주기로_반복_예약한다() {
+    void 애플리케이션_준비_이벤트가_오면_배치_사이클을_batchInterval_주기로_반복_예약한다() {
         scheduler.start();
 
         ArgumentCaptor<Action> actionCaptor = ArgumentCaptor.forClass(Action.class);
@@ -44,6 +44,6 @@ class PeriodicMatchingBatchSchedulerTest {
 
         ArgumentCaptor<Duration> intervalCaptor = ArgumentCaptor.forClass(Duration.class);
         verify(matchingEngine).scheduleRepeating(any(Action.class), intervalCaptor.capture());
-        assertThat(intervalCaptor.getValue()).isEqualTo(batchWindow);
+        assertThat(intervalCaptor.getValue()).isEqualTo(batchInterval);
     }
 }
