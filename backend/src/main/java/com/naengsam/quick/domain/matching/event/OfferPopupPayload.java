@@ -27,6 +27,7 @@ public record OfferPopupPayload(
         String destinationAlias,         // 도착지 별칭
         String destinationAddressLine1,  // 도착지 기본주소
         String imageKey,
+        String deliveryRequest,          // 부르미가 작성한 요청 사항
         LocalDateTime offeredAt,         // 제안이 생성된 시각
         LocalDateTime expiresAt          // 응답 마감 시각(offeredAt + ttl)
 ) {
@@ -49,6 +50,7 @@ public record OfferPopupPayload(
                 summary.destinationAlias(),
                 summary.destinationAddressLine1(),
                 summary.imageKey(),
+                summary.deliveryRequest(),
                 offeredAt,
                 offeredAt.plus(ttl));
     }
