@@ -398,6 +398,11 @@ export function RealDeliveryTracking({
             pickup={pickup}
             dropoff={dropoff}
             driver={driver}
+            driverPinImage={
+              isPickup
+                ? "/dreami-pin-main-no-pickup.png"
+                : "/dreami-pin-main-pickup.png"
+            }
             route={routePath}
             height={340}
           />

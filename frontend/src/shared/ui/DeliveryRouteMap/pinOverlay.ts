@@ -10,6 +10,7 @@ export interface PinOverlayHandle {
   setMap(map: KakaoMap | null): void;
   setPosition(position: KakaoLatLng): void;
   setSmoothPosition(position: KakaoLatLng, durationMs: number): void;
+  setImageSrc(imageSrc?: string): void;
   removeSmoothly(): void;
 }
 
@@ -20,6 +21,7 @@ export interface PinStyle {
   bg: string;
   variant?: "pin" | "glow-dot";
   pinSize?: "default" | "small";
+  imageSrc?: string;
 }
 
 interface PinAnimation {
@@ -77,12 +79,24 @@ export function makePinOverlay(
 
   const pin = document.createElement("span");
   pin.setAttribute("aria-hidden", "true");
-  pin.style.width = style.pinSize === "small" ? "24px" : "30px";
-  pin.style.height = style.pinSize === "small" ? "32px" : "40px";
-  pin.style.backgroundImage = `url("${pinImageSrc(style.color)}")`;
   pin.style.backgroundPosition = "center";
   pin.style.backgroundRepeat = "no-repeat";
   pin.style.backgroundSize = "contain";
+
+  const setPinImage = (imageSrc?: string) => {
+    pin.style.width = imageSrc
+      ? "60px"
+      : style.pinSize === "small"
+        ? "24px"
+        : "30px";
+    pin.style.height = imageSrc
+      ? "60px"
+      : style.pinSize === "small"
+        ? "32px"
+        : "40px";
+    pin.style.backgroundImage = `url("${imageSrc ?? pinImageSrc(style.color)}")`;
+  };
+  setPinImage(style.imageSrc);
 
   if (!isGlowDot) {
     content.append(labelElement, pin);
@@ -235,6 +249,10 @@ export function makePinOverlay(
       };
       this.renderPoint(fromPoint);
       this.animation.frame = requestAnimationFrame(this.animate);
+    }
+
+    setImageSrc(imageSrc?: string) {
+      setPinImage(imageSrc);
     }
 
     removeSmoothly() {
