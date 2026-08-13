@@ -19,6 +19,7 @@ import {
   rememberDeliveryStage,
   getUntrackableDeliveryNotice,
   useDeliveryDetailGate,
+  ContactSheet,
   useSse,
   useSseReconnectSync,
   formatArrivalTime,
@@ -158,6 +159,7 @@ export function RealDeliveryTracking({
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [contactOpen, setContactOpen] = useState(false);
 
   // 상태 전이는 항상 스냅샷에 남긴다(재진입 시 픽업중으로 되돌아가지 않도록).
   const applyStatus = (next: DeliveryStatusResponseDtoStatus) => {
@@ -177,9 +179,7 @@ export function RealDeliveryTracking({
     blockDeliveryDetail({
       title: notice?.title ?? "배달이 종료됐어요",
       message:
-        message ??
-        notice?.message ??
-        "종료된 배달은 더 이상 추적할 수 없어요.",
+        message ?? notice?.message ?? "종료된 배달은 더 이상 추적할 수 없어요.",
     });
   };
 
@@ -233,7 +233,9 @@ export function RealDeliveryTracking({
         dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERED;
       clearToasts();
       applyStatus(completedStatus);
-      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, { replace: true });
+      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
+        replace: true,
+      });
     },
     delivery_cancelled: (data) => {
       const dto = forThisOrder(data);
@@ -315,7 +317,9 @@ export function RealDeliveryTracking({
       if (isApiError(e) && e.code === "DELIVERY_013") {
         // 이미 배달 완료 → 리뷰(드리미 평가) 페이지로.
         setConfirmOpen(false);
-        navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, { replace: true });
+        navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
+          replace: true,
+        });
         return;
       }
       if (isApiError(e) && e.code === "DELIVERY_012") {
@@ -392,8 +396,8 @@ export function RealDeliveryTracking({
       </main>
 
       <footer className="flex flex-col items-center gap-2 pt-4">
-        <Button block variant="outline">
-          연락하기
+        <Button block variant="outline" onClick={() => setContactOpen(true)}>
+          연락
         </Button>
         {detailReady && isPickup && (
           <button
@@ -408,6 +412,12 @@ export function RealDeliveryTracking({
           </button>
         )}
       </footer>
+
+      <ContactSheet
+        open={contactOpen}
+        orderId={orderId}
+        onClose={() => setContactOpen(false)}
+      />
 
       <Modal
         open={confirmOpen}
