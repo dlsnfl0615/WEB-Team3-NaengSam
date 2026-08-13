@@ -29,6 +29,7 @@ import type {
   FindNearbyOrders200,
   FinishDelivery200,
   GeoPoint,
+  GetBoormiOrder200,
   GetBoormiOrders200,
   GetBoormiOrdersParams,
   GetCoordinates200,
@@ -36,6 +37,7 @@ import type {
   GetDashboard200,
   GetDeliveryCompletion200,
   GetDeliveryDetail200,
+  GetDreamiOrder200,
   GetDreamiOrders200,
   GetDreamiOrdersParams,
   GetMyReview200,
@@ -912,6 +914,19 @@ const getDreamiOrders = (
     }
 
 /**
+ * 배달 하나를 주문 id로 직접 조회한다. 활동 내역 상세 화면이 목록 페이지네이션을 거치지 않고 딥링크/새로고침으로 바로 들어왔을 때 쓴다.
+ * @summary 내 배달 단건 조회
+ */
+const getDreamiOrder = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetDreamiOrder200>>,) => {
+      return customInstance<GetDreamiOrder200>(
+      {url: `/api/v1/dreami/deliveries/${orderId}`, method: 'GET'
+    },
+      options);
+    }
+
+/**
  * 드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다. 진행 중인 배달이 없으면 result가 null이다.
  * @summary 현재 수행 중인 배달 카드 조회
  */
@@ -1026,13 +1041,14 @@ const pending = (
     }
 
 /**
- * @summary 드리미 제거
+ * 주문 하나를 id로 직접 조회한다. 활동 내역 상세 화면이 목록 페이지네이션을 거치지 않고 딥링크/새로고침으로 바로 들어왔을 때 쓴다.
+ * @summary 내 주문 단건 조회
  */
-const removeDreami = (
-    dreamiId: string,
- options?: SecondParameter<typeof customInstance<void>>,) => {
-      return customInstance<void>(
-      {url: `/api/v1/debug/matching/dreamis/${dreamiId}`, method: 'DELETE'
+const getBoormiOrder = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetBoormiOrder200>>,) => {
+      return customInstance<GetBoormiOrder200>(
+      {url: `/api/v1/boormi/calls/${orderId}`, method: 'GET'
     },
       options);
     }
@@ -1050,7 +1066,19 @@ const unsubscribeOrder = (
       options);
     }
 
-return {chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getReceivedReview,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,removeDreami,unsubscribeOrder}};
+/**
+ * @summary 드리미 제거
+ */
+const removeDreami = (
+    dreamiId: string,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/debug/matching/dreamis/${dreamiId}`, method: 'DELETE'
+    },
+      options);
+    }
+
+return {chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getReceivedReview,getCurrentStatus,getProfile,getDreamiOrders,getDreamiOrder,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,getBoormiOrder,unsubscribeOrder,removeDreami}};
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
 export type ExchangeMoneyToPointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['exchangeMoneyToPoint']>>>
 export type SendVerificationCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['sendVerificationCode']>>>
@@ -1110,6 +1138,7 @@ export type GetReceivedReviewResult = NonNullable<Awaited<ReturnType<ReturnType<
 export type GetCurrentStatusResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getCurrentStatus']>>>
 export type GetProfileResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getProfile']>>>
 export type GetDreamiOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrders']>>>
+export type GetDreamiOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrder']>>>
 export type FindCurrentDeliveryCardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findCurrentDeliveryCard']>>>
 export type GetDashboardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDashboard']>>>
 export type GetTodayStatsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getTodayStats']>>>
@@ -1119,5 +1148,6 @@ export type GetDeliveryCompletionResult = NonNullable<Awaited<ReturnType<ReturnT
 export type GetOrderOfferGroupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getOrderOfferGroup']>>>
 export type WaitingOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['waitingOrders']>>>
 export type PendingResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['pending']>>>
-export type RemoveDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['removeDreami']>>>
+export type GetBoormiOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiOrder']>>>
 export type UnsubscribeOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['unsubscribeOrder']>>>
+export type RemoveDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['removeDreami']>>>
