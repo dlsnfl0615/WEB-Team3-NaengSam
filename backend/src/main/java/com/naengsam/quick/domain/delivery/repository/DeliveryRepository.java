@@ -35,6 +35,13 @@ public interface DeliveryRepository extends JpaRepository<Delivery, UUID> {
     long countDeliveredBetween(@Param("dreamiId") UUID dreamiId,
             @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
+    // 부르미 대시보드의 "이번 달 이용 건수" 집계용. 주문에는 완료 시각이 없어서 배달 완료 시각(deliveryEndDtm)을 기준으로 센다.
+    @Query("SELECT COUNT(d) FROM Delivery d "
+            + "WHERE d.boormiId = :boormiId AND d.deliveryCd = com.naengsam.quick.domain.delivery.entity.DeliveryCd.DELIVERED "
+            + "AND d.deliveryEndDtm >= :start AND d.deliveryEndDtm < :end")
+    long countDeliveredByBoormiBetween(@Param("boormiId") UUID boormiId,
+            @Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+
     // 드리미 활동 내역처럼 여러 주문의 배달 상태·완료 시각을 한 번에 조회할 때 쓰는 배치 조회(락 없음).
     List<Delivery> findAllByOrderIdIn(List<UUID> orderIds);
 

@@ -97,4 +97,11 @@ public class BoormiController {
                              @Valid @RequestBody RejectDreamiRequest request) {
         boormiService.rejectDreami(boormiId, orderId, request.offerId());
     }
+
+    @Operation(summary = "부르미 대시보드 조회", description = "홈 화면의 누적 이용 건수·절감 금액과 이번 달 이용 건수를 집계해 반환한다.")
+    @GetMapping("/dashboard")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    public BoormiDashboardDto getDashboard(@LoginUser UUID boormiId) {
+        return boormiService.getDashboard(boormiId);
+    }
 }

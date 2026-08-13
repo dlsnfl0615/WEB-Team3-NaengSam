@@ -5,12 +5,14 @@ import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.service.CoordinatesService;
 import com.naengsam.quick.domain.address.service.DirectionsService;
+import com.naengsam.quick.domain.boormi.dto.BoormiDashboardDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.Charge;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.delivery.dto.RoutePointDto;
+import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.entity.Matching;
 import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
@@ -35,6 +37,7 @@ import com.naengsam.quick.global.exception.BusinessException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -57,6 +60,7 @@ public class BoormiService {
     private static final int OVER_RATE = 160;       // 초과 구간 100m당 요금(원)
     private static final int MAX_ACTIVE_ORDERS = 5; // 동시 진행 가능한 요청 수(정책값)
     private static final int TOO_CLOSE_DISTANCE = 50;   // 출발지-도착지 최소 직선거리(m)
+    private static final long MARKET_UNIT_PRICE = 5800; // 시장 퀵서비스 건당 평균 단가(절감액 비교 기준)
 
     private final CoordinatesService coordinatesService;
     private final DirectionsService directionsService;
@@ -64,6 +68,7 @@ public class BoormiService {
     private final MatchingService matchingService;
     private final OrderService orderService;
     private final OrderRepository orderRepository;
+    private final DeliveryRepository deliveryRepository;
     private final MatchingRepository matchingRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
@@ -219,6 +224,23 @@ public class BoormiService {
         Charge charge = calculatePrice(route, request.itemCd());
 
         return new ExpectedValueDto(charge.amount(), charge.eta(), charge.distance());
+    }
+
+    /**
+     * 부르미 대시보드 — 누적 완료 건수, 시장 퀵서비스 대비 절감 금액, 이번 달 이용 건수를 조회한다. 절감액은 완료 건수를 시장 평균 단가로 환산한 값에서 실제 결제액을 뺀 값이며, 실제 결제액이 더 크면
+     * 0으로 둔다. 주문에는 완료 시각이 없으므로 이번 달 건수는 배달 완료 시각(DELIVERY.delivery_end_dtm) 기준으로 센다.
+     */
+    @Transactional(readOnly = true)
+    public BoormiDashboardDto getDashboard(UUID boormiId) {
+        long completedCount = orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED);
+        long paidAmount = orderRepository.sumCompletedDeliveryAmount(boormiId);
+        long totalSavedAmount = Math.max(0, completedCount * MARKET_UNIT_PRICE - paidAmount);
+
+        YearMonth thisMonth = YearMonth.now();
+        long thisMonthCount = deliveryRepository.countDeliveredByBoormiBetween(boormiId,
+                thisMonth.atDay(1).atStartOfDay(), thisMonth.plusMonths(1).atDay(1).atStartOfDay());
+
+        return BoormiDashboardDto.of(completedCount, totalSavedAmount, thisMonthCount);
     }
 
     /**

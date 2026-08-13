@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
@@ -17,7 +18,9 @@ import com.naengsam.quick.domain.boormi.dto.ExpectedValueDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
+import com.naengsam.quick.domain.boormi.dto.BoormiDashboardDto;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
 import com.naengsam.quick.domain.matching.event.BoormiRejectedDreamiEvent;
@@ -31,6 +34,7 @@ import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
+import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
@@ -78,6 +82,12 @@ BoormiServiceTest {
 
     @Mock
     private MatchingRepository matchingRepository;
+
+    @Mock
+    private OrderRepository orderRepository;
+
+    @Mock
+    private DeliveryRepository deliveryRepository;
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
@@ -582,5 +592,46 @@ BoormiServiceTest {
                 .isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
         assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
         then(eventPublisher).should(never()).publishEvent(any(BoormiRejectedDreamiEvent.class));
+    }
+
+    @Test
+    void 대시보드는_완료_건수와_절감액과_이번달_건수를_반환한다() {
+        UUID boormiId = UUID.randomUUID();
+        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(4L);
+        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(14000L);
+        given(deliveryRepository.countDeliveredByBoormiBetween(eq(boormiId), any(), any())).willReturn(2L);
+
+        BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
+
+        // 시장 단가 5800원 × 4건 = 23200원, 실제 결제 14000원 → 9200원 절감
+        assertThat(dashboard.completedCount()).isEqualTo(4);
+        assertThat(dashboard.totalSavedAmount()).isEqualTo(9200);
+        assertThat(dashboard.thisMonthCount()).isEqualTo(2);
+    }
+
+    @Test
+    void 실제_결제액이_시장단가보다_크면_절감액은_0이다() {
+        UUID boormiId = UUID.randomUUID();
+        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(1L);
+        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(9000L);
+        given(deliveryRepository.countDeliveredByBoormiBetween(eq(boormiId), any(), any())).willReturn(1L);
+
+        BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
+
+        assertThat(dashboard.totalSavedAmount()).isZero();
+    }
+
+    @Test
+    void 완료_주문이_없으면_모두_0이다() {
+        UUID boormiId = UUID.randomUUID();
+        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(0L);
+        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(0L);
+        given(deliveryRepository.countDeliveredByBoormiBetween(eq(boormiId), any(), any())).willReturn(0L);
+
+        BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
+
+        assertThat(dashboard.completedCount()).isZero();
+        assertThat(dashboard.totalSavedAmount()).isZero();
+        assertThat(dashboard.thisMonthCount()).isZero();
     }
 }
