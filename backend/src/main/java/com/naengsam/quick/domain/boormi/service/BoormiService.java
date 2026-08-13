@@ -65,7 +65,10 @@ public class BoormiService {
     private static final int OVER_RATE = 160;       // 초과 구간 100m당 요금(원)
     private static final int MAX_ACTIVE_ORDERS = 5; // 동시 진행 가능한 요청 수(정책값)
     private static final int TOO_CLOSE_DISTANCE = 50;   // 출발지-도착지 최소 직선거리(m)
-    private static final long MARKET_UNIT_PRICE = 5800; // 시장 퀵서비스 건당 평균 단가(절감액 비교 기준)
+    // 시장 퀵서비스 건당 기준 단가(절감액 비교 기준).
+    // 서울 오토바이 퀵의 3km 이내 기본요금 8,000~12,000원(2026-08 조사)의 중앙값을 쓴다.
+    // 참고: gosuquick.com, 1600-7324.com, ssanquick.com, silverquick.kr
+    private static final long MARKET_UNIT_PRICE = 10000;
 
     private final CoordinatesService coordinatesService;
     private final DirectionsService directionsService;
@@ -234,7 +237,7 @@ public class BoormiService {
     /**
      * 부르미 대시보드 — 누적 완료 건수, 시장 퀵서비스 대비 절감 금액, 이번 달 이용 건수·절감액, 지난달 대비 증감률, 최근 6개월 절감액 추이를 조회한다. 절감액은 완료 건수를 시장 평균 단가로 환산한 값에서
      * 실제 결제액을 뺀 값이며, 실제 결제액이 더 크면 0으로 둔다. 증감률은 지난달 절감액이 0이면 0%로 처리하고 반올림해 소수점 없이 반환한다. 주문에는 완료 시각이 없으므로 월별 집계는 배달 완료
-     * 시각(DELIVERY.delivery_end_dtm) 기준이다.
+     * 시각(DELIVERY.delivery_end_dtm) 기준이다. 화면이 산술식을 그대로 보여주므로 기준 단가와 이번 달 실제 결제액도 함께 반환한다.
      */
     @Transactional(readOnly = true)
     public BoormiDashboardDto getDashboard(UUID boormiId) {
@@ -251,6 +254,7 @@ public class BoormiService {
                 .collect(Collectors.toMap(MonthlySavingAggregate::yearMonth, aggregate -> aggregate));
 
         long thisMonthCount = countOf(byMonth, thisMonth);
+        long thisMonthPaidAmount = paidOf(byMonth, thisMonth);
         long thisMonthSavedAmount = savingOf(byMonth, thisMonth);
         long lastMonthSavedAmount = savingOf(byMonth, thisMonth.minusMonths(1));
         long growthPercent = lastMonthSavedAmount == 0 ? 0
@@ -262,8 +266,8 @@ public class BoormiService {
                 .map(month -> new MonthlySavingDto(month, savingOf(byMonth, month)))
                 .toList();
 
-        return BoormiDashboardDto.of(completedCount, totalSavedAmount, thisMonthCount, thisMonthSavedAmount,
-                growthPercent, recentSixMonths);
+        return BoormiDashboardDto.of(completedCount, totalSavedAmount, thisMonthCount, thisMonthPaidAmount,
+                thisMonthSavedAmount, MARKET_UNIT_PRICE, growthPercent, recentSixMonths);
     }
 
     // 해당 월의 절감액. 완료 건수를 시장 평균 단가로 환산한 값에서 실제 결제액을 뺀다(누적 절감액과 같은 규칙으로 음수는 0).
@@ -275,6 +279,12 @@ public class BoormiService {
     private long countOf(Map<YearMonth, MonthlySavingAggregate> byMonth, YearMonth month) {
         MonthlySavingAggregate aggregate = byMonth.get(month);
         return aggregate == null ? 0 : aggregate.count();
+    }
+
+    // 해당 월에 부르미가 실제로 결제한 금액. 절감액 산술식의 빼는 값이다.
+    private long paidOf(Map<YearMonth, MonthlySavingAggregate> byMonth, YearMonth month) {
+        MonthlySavingAggregate aggregate = byMonth.get(month);
+        return aggregate == null ? 0 : aggregate.paidAmount();
     }
 
     /**

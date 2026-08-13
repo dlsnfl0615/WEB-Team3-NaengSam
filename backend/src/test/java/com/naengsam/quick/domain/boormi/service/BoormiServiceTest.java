@@ -608,12 +608,30 @@ BoormiServiceTest {
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
-        // 누적: 시장 단가 5800원 × 4건 = 23200원, 실제 결제 14000원 → 9200원 절감
+        // 누적: 시장 단가 10000원 × 4건 = 40000원, 실제 결제 14000원 → 26000원 절감
         assertThat(dashboard.completedCount()).isEqualTo(4);
-        assertThat(dashboard.totalSavedAmount()).isEqualTo(9200);
-        // 이번 달: 5800원 × 2건 = 11600원, 실제 결제 6000원 → 5600원 절감
+        assertThat(dashboard.totalSavedAmount()).isEqualTo(26000);
+        // 이번 달: 10000원 × 2건 = 20000원, 실제 결제 6000원 → 14000원 절감
         assertThat(dashboard.thisMonthCount()).isEqualTo(2);
-        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(5600);
+        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(14000);
+    }
+
+    @Test
+    void 대시보드는_산술식에_쓸_기준단가와_이번달_결제액을_함께_반환한다() {
+        UUID boormiId = UUID.randomUUID();
+        YearMonth thisMonth = YearMonth.now();
+        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(2L);
+        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(6000L);
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any()))
+                .willReturn(List.of(savingAggregate(thisMonth, 2, 6000)));
+
+        BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
+
+        // 화면이 "2건 × 10000원 − 6000원 = 14000원"을 그대로 그릴 수 있어야 한다
+        assertThat(dashboard.marketUnitPrice()).isEqualTo(10000);
+        assertThat(dashboard.thisMonthPaidAmount()).isEqualTo(6000);
+        assertThat(dashboard.thisMonthCount() * dashboard.marketUnitPrice() - dashboard.thisMonthPaidAmount())
+                .isEqualTo(dashboard.thisMonthSavedAmount());
     }
 
     @Test
@@ -621,9 +639,9 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         YearMonth thisMonth = YearMonth.now();
         given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(1L);
-        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(9000L);
+        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(12000L);
         given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any()))
-                .willReturn(List.of(savingAggregate(thisMonth, 1, 9000)));
+                .willReturn(List.of(savingAggregate(thisMonth, 1, 12000)));
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
@@ -643,6 +661,7 @@ BoormiServiceTest {
         assertThat(dashboard.completedCount()).isZero();
         assertThat(dashboard.totalSavedAmount()).isZero();
         assertThat(dashboard.thisMonthCount()).isZero();
+        assertThat(dashboard.thisMonthPaidAmount()).isZero();
         assertThat(dashboard.thisMonthSavedAmount()).isZero();
         assertThat(dashboard.monthOverMonthGrowthPercent()).isZero();
         assertThat(dashboard.recentSixMonths()).hasSize(6)
@@ -665,10 +684,10 @@ BoormiServiceTest {
         assertThat(dashboard.recentSixMonths()).extracting(MonthlySavingDto::month)
                 .containsExactly(thisMonth.minusMonths(5), thisMonth.minusMonths(4), thisMonth.minusMonths(3),
                         thisMonth.minusMonths(2), lastMonth, thisMonth);
-        // 기록이 있는 달만 값이 차고 나머지는 0 — 지난달 2800원(5800 − 3000), 이번 달 5600원
+        // 기록이 있는 달만 값이 차고 나머지는 0 — 지난달 7000원(10000 − 3000), 이번 달 14000원
         assertThat(dashboard.recentSixMonths()).extracting(MonthlySavingDto::savedAmount)
-                .containsExactly(0L, 0L, 0L, 0L, 2800L, 5600L);
-        // 2800원 → 5600원이므로 +100%
+                .containsExactly(0L, 0L, 0L, 0L, 7000L, 14000L);
+        // 7000원 → 14000원이므로 +100%
         assertThat(dashboard.monthOverMonthGrowthPercent()).isEqualTo(100);
     }
 
@@ -683,7 +702,7 @@ BoormiServiceTest {
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
-        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(5600);
+        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(14000);
         assertThat(dashboard.monthOverMonthGrowthPercent()).isZero();
     }
 
