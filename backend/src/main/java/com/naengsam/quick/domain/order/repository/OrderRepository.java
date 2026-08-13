@@ -3,7 +3,6 @@ package com.naengsam.quick.domain.order.repository;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import jakarta.persistence.LockModeType;
-import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -74,35 +73,14 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
     long countActiveOrders(@Param("userId") UUID userId);
 
     /**
-     * 주문 목록 첫 페이지. role이 BOORMI면 boormi_id, DREAMI면 dreami_id로 필터링한다. 최신순(delivery_request_dtm DESC, 동일 시각은
-     * order_id DESC) 정렬. status 가 null 이면 전체 상태를 조회한다.
+     * 주문 목록 전체. role이 BOORMI면 boormi_id, DREAMI면 dreami_id로 필터링한다. 최신순(delivery_request_dtm DESC, 동일 시각은
+     * order_id DESC) 정렬.
      */
     @Query(value = """
             SELECT * FROM ORDERS o
-            WHERE ((:role = 'BOORMI' AND o.boormi_id = :userId)
-                OR (:role = 'DREAMI' AND o.dreami_id = :userId))
-              AND (:status IS NULL OR o.order_cd = :status)
+            WHERE (:role = 'BOORMI' AND o.boormi_id = :userId)
+               OR (:role = 'DREAMI' AND o.dreami_id = :userId)
             ORDER BY o.delivery_request_dtm DESC, o.order_id DESC
-            LIMIT :limit
             """, nativeQuery = true)
-    List<Orders> findFirstPageByRole(@Param("userId") UUID userId, @Param("role") String role,
-                                     @Param("status") String status, @Param("limit") int limit);
-
-    /**
-     * 주문 목록 커서 이후 페이지. keyset 조건으로 (dtm, order_id) 가 커서보다 작은 행만 이어서 조회한다. status 가 null 이면 전체 상태를 조회한다.
-     */
-    @Query(value = """
-            SELECT * FROM ORDERS o
-            WHERE ((:role = 'BOORMI' AND o.boormi_id = :userId)
-                OR (:role = 'DREAMI' AND o.dreami_id = :userId))
-              AND (:status IS NULL OR o.order_cd = :status)
-              AND (o.delivery_request_dtm < :cursorDtm
-                   OR (o.delivery_request_dtm = :cursorDtm AND o.order_id < :cursorId))
-            ORDER BY o.delivery_request_dtm DESC, o.order_id DESC
-            LIMIT :limit
-            """, nativeQuery = true)
-    List<Orders> findPageByRoleAfterCursor(@Param("userId") UUID userId, @Param("role") String role,
-                                           @Param("status") String status,
-                                           @Param("cursorDtm") LocalDateTime cursorDtm,
-                                           @Param("cursorId") UUID cursorId, @Param("limit") int limit);
+    List<Orders> findAllByRole(@Param("userId") UUID userId, @Param("role") String role);
 }
