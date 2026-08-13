@@ -26,12 +26,21 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
+import com.naengsam.quick.domain.matching.policy.assignment.LegacyOrderFirstAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblem;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemFactory;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlan;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanValidator;
+import com.naengsam.quick.domain.matching.policy.config.AssignmentPolicyType;
+import com.naengsam.quick.domain.matching.policy.config.EligibilityPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
+import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
+import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.Action;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
@@ -40,6 +49,7 @@ import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -52,6 +62,8 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
 
 class MatchingServiceTest {
+
+    private static final Duration OFFER_TTL = Duration.ofSeconds(30);
 
     // 오퍼 팝업 payload 생성에만 쓰이는 주문 표시 스냅샷. 값 자체는 대부분의 테스트에서 검증 대상이 아니다.
     private static final OrderSummaryDto ORDER_SUMMARY = new OrderSummaryDto(
@@ -70,18 +82,44 @@ class MatchingServiceTest {
     private MatchingPolicyProperties matchingPolicyProperties;
     private GeoDistanceCalculator geoDistanceCalculator;
 
+    /**
+     * 예전 legacy attemptOfferRound(top-3, 오래_대기한_순)와 가장 가까운 조합. 이 조합으로 배치 매칭 사이클을 실행하면 이 파일의 기존
+     * legacy 기반 테스트 기대값(오퍼 3건, 대기 오래한 순 우선 등)이 그대로 유지된다.
+     */
+    private static MatchingPolicyProperties matchingPolicyProperties() {
+        return new MatchingPolicyProperties(
+                Duration.ofMillis(500),
+                3,
+                OfferQuotaMode.FIXED,
+                AssignmentPolicyType.LEGACY_ORDER_FIRST,
+                ScoringPolicyType.ORDER_WAIT,
+                EligibilityPolicyType.LEGACY,
+                new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10),
+                        Duration.ofMinutes(3)),
+                new MatchingPolicyProperties.BalancedWeights(
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+    }
+
     @BeforeEach
     void setUp() {
         matchingEngine = mock(MatchingEngine.class);
         notificationService = mock(NotificationService.class);
         deliveryService = mock(DeliveryService.class);
-        matchingAssignmentProblemAssembler = mock(MatchingAssignmentProblemAssembler.class);
-        matchingAssignmentPolicy = mock(MatchingAssignmentPolicy.class);
-        matchingPlanApplier = mock(MatchingPlanApplier.class);
-        matchingPolicyProperties = mock(MatchingPolicyProperties.class);
-        geoDistanceCalculator = new GeoDistanceCalculator();
+        geoDistanceCalculator = mock(GeoDistanceCalculator.class);
+        // 대부분의 테스트가 좌표 없는 mock GeoPoint를 쓰므로, assembler의 후보별 거리 계산이 실제 좌표를 요구하지 않도록 고정값을 반환한다.
+        when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(500.0);
         // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 별도 명시가 없는 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
         when(notificationService.isReachableNow(any())).thenReturn(true);
+
+        matchingPolicyProperties = matchingPolicyProperties();
+        matchingAssignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+        matchingPlanApplier = new MatchingPlanApplier(
+                new MatchingPlanValidator(new LegacyOfferPolicy()), mock(MatchingService.class),
+                notificationService, OFFER_TTL);
+        matchingAssignmentProblemAssembler = new MatchingAssignmentProblemAssembler(
+                geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
+                matchingPolicyProperties, Clock.systemDefaultZone());
+
         matchingService = new MatchingService(
                 matchingEngine, notificationService, deliveryService,
                 Clock.systemDefaultZone(),
@@ -111,7 +149,7 @@ class MatchingServiceTest {
 
         // when (매칭 시작은 이제 오퍼를 즉시 만들지 않고 dirty만 표시하므로, 배치 사이클 대신 재매칭 스캔으로 첫 오퍼 라운드를 재현한다)
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         Map<UUID, OrderOfferGroup> orderOfferGroups =
@@ -162,7 +200,7 @@ class MatchingServiceTest {
 
         // when
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         List<MatchOffer> offers = getOrderOfferGroups().get(orderId).offers();
@@ -176,7 +214,16 @@ class MatchingServiceTest {
 
     @Test
     void 배치_사이클은_SSE_연결이_없는_드리미를_할당_문제_입력에서_제외한다() {
-        // given
+        // given (이 테스트만 assembler와의 상호작용 자체를 검증해야 하므로, 공유 인스턴스 대신 mock assembler로 별도 조립한다)
+        MatchingAssignmentProblemAssembler mockAssembler = mock(MatchingAssignmentProblemAssembler.class);
+        when(mockAssembler.assemble(any(), any()))
+                .thenReturn(new MatchingAssignmentProblem(LocalDateTime.now(), List.of(), List.of(), List.of()));
+        MatchingService localMatchingService = new MatchingService(
+                matchingEngine, notificationService, deliveryService,
+                Clock.systemDefaultZone(),
+                mockAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
+                geoDistanceCalculator, new SimpleMeterRegistry());
+
         UUID connectedDreamiId = UUID.randomUUID();
         UUID ghostDreamiId = UUID.randomUUID();
 
@@ -184,15 +231,15 @@ class MatchingServiceTest {
 
         when(notificationService.isReachableNow(ghostDreamiId)).thenReturn(false);
 
-        matchingService.applyRegisterDreami(connectedDreamiId, location);
-        matchingService.applyRegisterDreami(ghostDreamiId, location);
+        localMatchingService.applyRegisterDreami(connectedDreamiId, location);
+        localMatchingService.applyRegisterDreami(ghostDreamiId, location);
 
         // when
-        matchingService.applyRunMatchingAssignmentCycle();
+        localMatchingService.applyRunMatchingAssignmentCycle();
 
         // then (걸러진 드리미가 problem에 아예 등장하지 않아야 정책·validator가 일관되게 동작한다)
         ArgumentCaptor<List<WaitingDreami>> dreamisCaptor = ArgumentCaptor.captor();
-        verify(matchingAssignmentProblemAssembler).assemble(any(), dreamisCaptor.capture());
+        verify(mockAssembler).assemble(any(), dreamisCaptor.capture());
 
         assertThat(dreamisCaptor.getValue())
                 .extracting(WaitingDreami::dreamiId)
@@ -214,7 +261,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
 
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         List<MatchOffer> offers =
                 getOrderOfferGroups().get(orderId).offers();
@@ -268,7 +315,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -297,7 +344,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
         MatchOffer offer = group.offers().getFirst();
@@ -388,7 +435,7 @@ class MatchingServiceTest {
 
         // when (매칭 시작 직후에는 dirty만 표시되고, 재매칭 스캔이 실제 오퍼 라운드를 만든다)
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -419,7 +466,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderA);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // 원래라면 PROPOSED 상태라 다음 매칭 후보에서 제외되지만, 드리미 상태 제한이 아직 없다는 것을 보여주기 위해
         // 공개 API(markMatching)로 다시 MATCHING 상태로 되돌린다.
@@ -428,7 +475,7 @@ class MatchingServiceTest {
 
         // when
         matchingService.applyStartMatching(orderB);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         List<MatchOffer> offersA = getOrderOfferGroups().get(orderIdA).offers();
@@ -451,7 +498,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
 
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer acceptedOffer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -482,7 +529,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -510,7 +557,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -540,7 +587,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(dreamiId1, location);
         matchingService.applyRegisterDreami(dreamiId2, location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         List<MatchOffer> offers = getOrderOfferGroups().get(orderId).offers();
         MatchOffer acceptedOffer = offers.getFirst();
@@ -551,7 +598,7 @@ class MatchingServiceTest {
 
         // when (부르미가 수락자를 거절 -> 그룹은 WAITING으로 dirty만 표시되고, 재매칭 스캔이 남은 후보로 재오퍼한다)
         matchingService.applyRejectByBoormi(acceptedOffer.offerId());
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -577,7 +624,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
 
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         List<MatchOffer> offers =
                 getOrderOfferGroups().get(orderId).offers();
@@ -605,7 +652,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -634,7 +681,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId1, location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer firstOffer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -644,7 +691,7 @@ class MatchingServiceTest {
 
         // when (드리미1이 응답하지 않아 제한시간 만료 -> 그룹은 WAITING으로 dirty만 표시되고, 재매칭 스캔이 재오퍼한다)
         matchingService.applyExpireDreamiOffer(firstOffer.offerId());
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         assertThat(firstOffer.status()).isEqualTo(MatchOfferStatus.DREAMI_EXPIRED);
@@ -668,7 +715,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -676,7 +723,7 @@ class MatchingServiceTest {
 
         // when (부르미 응답시간 만료 -> 드리미 본인 잘못이 아니므로 재매칭 후보에 다시 포함되어야 한다)
         matchingService.applyExpireBoormiOffer(offer.offerId());
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -697,7 +744,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -712,7 +759,7 @@ class MatchingServiceTest {
 
         // when (부르미 응답시간 만료 -> 드리미는 MATCHING으로 돌아가지만, 대기 시간이 더 긴 다른 3명이 우선 제안받는다)
         matchingService.applyExpireBoormiOffer(offer.offerId());
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         assertThat(getDreamiMap().get(dreamiId).status())
@@ -735,7 +782,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -758,7 +805,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -783,7 +830,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -799,7 +846,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 매칭이_완료되어_정리된_그룹은_스케줄된_재매칭_스캔으로_되살아나지_않는다() {
+    void 매칭이_완료되어_정리된_그룹은_배치_매칭_사이클로_되살아나지_않는다() {
         // given
         UUID orderId = UUID.randomUUID();
         GeoPoint location = mock(GeoPoint.class);
@@ -808,7 +855,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
         matchingService.applyAcceptByDreami(offer.offerId());
@@ -817,7 +864,7 @@ class MatchingServiceTest {
         assertThat(getOrderOfferGroups()).doesNotContainKey(orderId);
 
         // when
-        Throwable thrown = catchThrowable(() -> matchingService.applyRematchWaitingGroups());
+        Throwable thrown = catchThrowable(() -> matchingService.applyRunMatchingAssignmentCycle());
 
         // then
         assertThat(thrown).isNull();
@@ -825,7 +872,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 주문_취소로_CANCELLED된_그룹은_스케줄된_재매칭_스캔으로_다시_열리지_않는다() {
+    void 주문_취소로_CANCELLED된_그룹은_배치_매칭_사이클로_다시_열리지_않는다() {
         // given
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
@@ -835,7 +882,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
         matchingService.applyCancelOrderByBoormi(orderId);
 
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -844,7 +891,7 @@ class MatchingServiceTest {
         int offersBeforeScan = group.offers().size();
 
         // when (fallback 스케줄 재매칭 실행)
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then (rematchRequired가 false이므로 취소된 그룹은 스캔 대상에서 제외되어야 한다)
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.CANCELLED);
@@ -870,7 +917,7 @@ class MatchingServiceTest {
 
         // when (매칭 시작 후 재매칭 스캔이 첫 오퍼 라운드를 만든다)
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         ArgumentCaptor<UUID> target = ArgumentCaptor.forClass(UUID.class);
@@ -892,7 +939,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
 
@@ -917,7 +964,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), dreamiLocation);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
         MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
 
         // when
@@ -942,7 +989,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), dreamiLocation);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
         MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
 
         // when
@@ -967,7 +1014,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
         MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
 
         // when
@@ -992,7 +1039,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
         List<MatchOffer> offers =
                 getOrderOfferGroups().get(orderId).offers();
         MatchOffer accepted = offers.getFirst();
@@ -1015,7 +1062,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
         matchingService.applyAcceptByDreami(offer.offerId());
@@ -1039,7 +1086,7 @@ class MatchingServiceTest {
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         for (MatchOffer offer : getOrderOfferGroups().get(orderId).offers()) {
             matchingService.applyRejectByDreami(offer.offerId());
@@ -1051,7 +1098,7 @@ class MatchingServiceTest {
 
         // when (새 드리미 등록은 dirty만 표시하고, 재매칭 스캔이 실제 오퍼를 만든다)
         matchingService.applyRegisterDreami(newDreamiId, location);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -1066,7 +1113,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 오퍼가_소진되면_WAITING이_되고_재매칭_스캔이_대기_드리미에게_재오퍼한다() {
+    void 오퍼가_소진되면_WAITING이_되고_배치_매칭_사이클이_대기_드리미에게_재오퍼한다() {
         // given (드리미 5명 중 3명만 오퍼받고 2명은 대기로 남는다)
         UUID orderId = UUID.randomUUID();
         GeoPoint location = mock(GeoPoint.class);
@@ -1077,7 +1124,7 @@ class MatchingServiceTest {
             matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         }
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         List<UUID> firstRoundDreamis = getOrderOfferGroups().get(orderId).offers().stream()
                 .map(MatchOffer::dreamiId)
@@ -1089,7 +1136,7 @@ class MatchingServiceTest {
         }
         assertThat(getOrderOfferGroups().get(orderId).status()).isEqualTo(OrderOfferGroupStatus.WAITING);
 
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
@@ -1114,7 +1161,7 @@ class MatchingServiceTest {
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         MatchOffer firstOffer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
@@ -1445,17 +1492,6 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 스케줄된_재매칭_트리거는_엔진_큐에_RematchWaitingGroups_액션을_제출한다() {
-        // when
-        matchingService.scheduleRematchWaitingGroups();
-
-        // then
-        ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
-        verify(matchingEngine).submit(captor.capture());
-        assertThat(captor.getValue()).isInstanceOf(RematchWaitingGroups.class);
-    }
-
-    @Test
     void 배치_매칭_사이클_실행_요청은_엔진_큐에_RunMatchingAssignmentCycle_액션을_제출한다() {
         // given
         when(matchingEngine.submit(any())).thenReturn(true);
@@ -1472,28 +1508,37 @@ class MatchingServiceTest {
 
     @Test
     void 배치_매칭_사이클_액션은_스냅샷_조립_배정안_산출_적용을_한번에_수행한다() {
-        // given
+        // given (이 테스트만 조립/배정/적용 각 단계로의 위임 자체를 검증해야 하므로, 공유 인스턴스 대신 mock 협력자로 별도 조립한다)
+        MatchingAssignmentProblemAssembler mockAssembler = mock(MatchingAssignmentProblemAssembler.class);
+        MatchingAssignmentPolicy mockAssignmentPolicy = mock(MatchingAssignmentPolicy.class);
+        MatchingPlanApplier mockPlanApplier = mock(MatchingPlanApplier.class);
+        MatchingService localMatchingService = new MatchingService(
+                matchingEngine, notificationService, deliveryService,
+                Clock.systemDefaultZone(),
+                mockAssembler, mockAssignmentPolicy, mockPlanApplier, matchingPolicyProperties,
+                geoDistanceCalculator, new SimpleMeterRegistry());
+
         MatchingAssignmentProblem problem = new MatchingAssignmentProblem(LocalDateTime.now(), List.of(), List.of(), List.of());
         MatchingPlan plan = new MatchingPlan(List.of());
-        when(matchingAssignmentProblemAssembler.assemble(any(), any())).thenReturn(problem);
-        when(matchingAssignmentPolicy.createPlan(problem)).thenReturn(plan);
+        when(mockAssembler.assemble(any(), any())).thenReturn(problem);
+        when(mockAssignmentPolicy.createPlan(problem)).thenReturn(plan);
 
         // when
-        matchingService.applyRunMatchingAssignmentCycle();
+        localMatchingService.applyRunMatchingAssignmentCycle();
 
         // then
         ArgumentCaptor<Map<UUID, OrderOfferGroup>> groupsCaptor = ArgumentCaptor.forClass(Map.class);
         ArgumentCaptor<Map<UUID, WaitingDreami>> dreamiMapCaptor = ArgumentCaptor.forClass(Map.class);
         ArgumentCaptor<Map<UUID, MatchOffer>> offersCaptor = ArgumentCaptor.forClass(Map.class);
         ArgumentCaptor<Map<UUID, Set<UUID>>> offerIdsCaptor = ArgumentCaptor.forClass(Map.class);
-        verify(matchingPlanApplier).apply(
+        verify(mockPlanApplier).apply(
                 eq(problem), eq(plan), any(LocalDateTime.class),
                 groupsCaptor.capture(), dreamiMapCaptor.capture(), offersCaptor.capture(), offerIdsCaptor.capture());
         // 배정 검증(validate)과 실제 적용(apply)이 같은 엔진 상태를 봐야 원자성이 보장되므로, 스냅샷이 아니라 살아있는 맵 참조 그대로 전달돼야 한다.
-        assertThat(groupsCaptor.getValue()).isSameAs(getOrderOfferGroups());
-        assertThat(dreamiMapCaptor.getValue()).isSameAs(getDreamiMap());
-        assertThat(offersCaptor.getValue()).isSameAs(getOffersById());
-        assertThat(offerIdsCaptor.getValue()).isSameAs(getOfferIdsByDreamiId());
+        assertThat(groupsCaptor.getValue()).isSameAs(ReflectionTestUtils.getField(localMatchingService, "orderOfferGroupsByOrderId"));
+        assertThat(dreamiMapCaptor.getValue()).isSameAs(ReflectionTestUtils.getField(localMatchingService, "dreamiMap"));
+        assertThat(offersCaptor.getValue()).isSameAs(ReflectionTestUtils.getField(localMatchingService, "offersById"));
+        assertThat(offerIdsCaptor.getValue()).isSameAs(ReflectionTestUtils.getField(localMatchingService, "offerIdsByDreamiId"));
     }
 
     @Test
@@ -1514,7 +1559,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 재매칭_대상_그룹이_있으면_스케줄된_재매칭_실행시_대기중인_드리미에게_오퍼가_간다() {
+    void 재매칭_대상_그룹이_있으면_배치_매칭_사이클_실행시_대기중인_드리미에게_오퍼가_간다() {
         // given
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
@@ -1529,7 +1574,7 @@ class MatchingServiceTest {
         getOrderOfferGroups().put(orderId, group);
 
         // when
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
@@ -1565,7 +1610,7 @@ class MatchingServiceTest {
 
         // when (매칭 시작 후 재매칭 스캔이 첫 오퍼 라운드를 만든다)
         matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
@@ -1592,7 +1637,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 재매칭_대상_그룹이_없으면_스케줄된_재매칭_실행시_아무일도_일어나지_않는다() {
+    void 재매칭_대상_그룹이_없으면_배치_매칭_사이클_실행시_아무일도_일어나지_않는다() {
         // given (이미 오퍼가 나가 OPEN 상태인 그룹 - WAITING이 아니므로 재매칭 대상이 아니다)
         UUID orderId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
@@ -1603,7 +1648,7 @@ class MatchingServiceTest {
         getOrderOfferGroups().put(orderId, group);
 
         // when
-        matchingService.applyRematchWaitingGroups();
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then (대기 대상이 아니므로 상태가 그대로 보존된다)
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.OPEN);

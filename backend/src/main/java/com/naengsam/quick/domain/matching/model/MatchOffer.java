@@ -45,19 +45,6 @@ public final class MatchOffer {
         return statusUpdatedAt;
     }
 
-    /**
-     * 재제안(같은 드리미에게 다시 제안) 대상에서 제외해야 하는지 여부. 드리미가 명시적으로 거절했거나 응답 timeout(DREAMI_EXPIRED)인 경우는 다시 제안하지 않는다. 타의로
-     * 회수됐거나(WITHDRAWN) 부르미 응답 timeout(BOORMI_EXPIRED)인 경우는 드리미 본인의 잘못이 아니므로 재제안을 허용한다. 아직 진행 중이거나 이미 확정된 오퍼는 당연히
-     * 제외한다.
-     */
-    public boolean shouldExcludeFromRematch() {
-        return switch (status) {
-            case DREAMI_REJECTED, BOORMI_REJECTED, DREAMI_EXPIRED -> true;
-            case WITHDRAWN, BOORMI_EXPIRED -> false;
-            case OFFERED, PENDING_BOORMI_CONFIRMATION, MATCHED -> true;
-        };
-    }
-
     public void acceptByDreami(LocalDateTime occurredAt) {
         transition(MatchOfferStatus.OFFERED, MatchOfferStatus.PENDING_BOORMI_CONFIRMATION, occurredAt);
     }
