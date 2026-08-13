@@ -69,7 +69,7 @@ class MatchingMicroBatchIntegrationTest {
         NotificationService notificationService = mock(NotificationService.class);
         // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 이 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
         when(notificationService.isReachableNow(any())).thenReturn(true);
-        MatchingActionScheduler matchingActionScheduler = mock(MatchingActionScheduler.class);
+        OfferTimeoutScheduler offerTimeoutScheduler = mock(OfferTimeoutScheduler.class);
         MatchingBatchDispatcher matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         DeliveryService deliveryService = mock(DeliveryService.class);
         Clock clock = Clock.systemDefaultZone();
@@ -80,7 +80,7 @@ class MatchingMicroBatchIntegrationTest {
         MatchingPolicyProperties properties = matchingPolicyProperties(maxConcurrentOffers);
         MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
         MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
-                new MatchingPlanValidator(new LegacyOfferPolicy()), matchingActionScheduler,
+                new MatchingPlanValidator(new LegacyOfferPolicy()), offerTimeoutScheduler,
                 notificationService, OFFER_TTL);
 
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
@@ -88,7 +88,7 @@ class MatchingMicroBatchIntegrationTest {
                 properties, clock);
 
         return new MatchingService(
-                matchingEngine, notificationService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
+                matchingEngine, notificationService, offerTimeoutScheduler, matchingBatchDispatcher, deliveryService,
                 clock,
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
                 new SimpleMeterRegistry());

@@ -90,7 +90,7 @@ public class MatchingService {
     private final Map<UUID, WaitingDreami> dreamiMap = new ConcurrentHashMap<>();
     private final MatchingEngine matchingEngine;
     private final NotificationService notificationService;
-    private final MatchingActionScheduler matchingActionScheduler;
+    private final OfferTimeoutScheduler offerTimeoutScheduler;
     private final MatchingBatchDispatcher matchingBatchDispatcher;
     private final DeliveryService deliveryService;
     private final Clock clock;
@@ -421,7 +421,7 @@ public class MatchingService {
             offersById.put(offerId, offer);
             offerIdsByDreamiId.computeIfAbsent(dreami.dreamiId(), k -> new HashSet<>()).add(offerId);
             dreami.markProposed();
-            matchingActionScheduler.scheduleDreamiOfferTimeout(offerId, OFFER_TTL);
+            offerTimeoutScheduler.scheduleDreamiOfferTimeout(offerId, OFFER_TTL);
         }
         group.addOffersAndOpen(newOffers);
 
@@ -493,7 +493,7 @@ public class MatchingService {
             // 나머지 사람은 WITHDRAWN
             if (offer.dreamiId().equals(acceptedDreamiId)) {
                 offer.acceptByDreami(now);
-                matchingActionScheduler.scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
+                offerTimeoutScheduler.scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
                 notificationService.notify(group.boormiId(), MatchingEventType.DREAMI_INFO,
                         DreamiInfoPayload.from(offer, pickupEtaMinutesForOffer(offer), BOORMI_OFFER_TTL));

@@ -9,7 +9,7 @@ import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
-import com.naengsam.quick.domain.matching.service.MatchingActionScheduler;
+import com.naengsam.quick.domain.matching.service.OfferTimeoutScheduler;
 import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -198,8 +198,8 @@ class MatchingPolicyConfigurationTest {
     static class PropertiesConfig {
 
         @Bean
-        MatchingActionScheduler matchingActionScheduler() {
-            return mock(MatchingActionScheduler.class);
+        OfferTimeoutScheduler offerTimeoutScheduler() {
+            return mock(OfferTimeoutScheduler.class);
         }
 
         @Bean

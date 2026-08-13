@@ -64,7 +64,7 @@ class MatchingServiceTest {
     private MatchingService matchingService;
     private MatchingEngine matchingEngine;
     private NotificationService notificationService;
-    private MatchingActionScheduler matchingActionScheduler;
+    private OfferTimeoutScheduler offerTimeoutScheduler;
     private MatchingBatchDispatcher matchingBatchDispatcher;
     private DeliveryService deliveryService;
     private MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
@@ -77,7 +77,7 @@ class MatchingServiceTest {
     void setUp() {
         matchingEngine = mock(MatchingEngine.class);
         notificationService = mock(NotificationService.class);
-        matchingActionScheduler = mock(MatchingActionScheduler.class);
+        offerTimeoutScheduler = mock(OfferTimeoutScheduler.class);
         matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         deliveryService = mock(DeliveryService.class);
         matchingAssignmentProblemAssembler = mock(MatchingAssignmentProblemAssembler.class);
@@ -88,7 +88,7 @@ class MatchingServiceTest {
         // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 별도 명시가 없는 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
         when(notificationService.isReachableNow(any())).thenReturn(true);
         matchingService = new MatchingService(
-                matchingEngine, notificationService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
+                matchingEngine, notificationService, offerTimeoutScheduler, matchingBatchDispatcher, deliveryService,
                 Clock.systemDefaultZone(),
                 matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
                 geoDistanceCalculator, new SimpleMeterRegistry());
