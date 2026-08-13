@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -64,7 +63,6 @@ class MatchingServiceTest {
     private MatchingService matchingService;
     private MatchingEngine matchingEngine;
     private NotificationService notificationService;
-    private MatchingBatchDispatcher matchingBatchDispatcher;
     private DeliveryService deliveryService;
     private MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
     private MatchingAssignmentPolicy matchingAssignmentPolicy;
@@ -76,7 +74,6 @@ class MatchingServiceTest {
     void setUp() {
         matchingEngine = mock(MatchingEngine.class);
         notificationService = mock(NotificationService.class);
-        matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         deliveryService = mock(DeliveryService.class);
         matchingAssignmentProblemAssembler = mock(MatchingAssignmentProblemAssembler.class);
         matchingAssignmentPolicy = mock(MatchingAssignmentPolicy.class);
@@ -86,7 +83,7 @@ class MatchingServiceTest {
         // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 별도 명시가 없는 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
         when(notificationService.isReachableNow(any())).thenReturn(true);
         matchingService = new MatchingService(
-                matchingEngine, notificationService, matchingBatchDispatcher, deliveryService,
+                matchingEngine, notificationService, deliveryService,
                 Clock.systemDefaultZone(),
                 matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
                 geoDistanceCalculator, new SimpleMeterRegistry());
@@ -1500,22 +1497,7 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 배치_매칭_사이클_액션은_실행_전에_디스패처의_dirty_상태를_초기화한다() {
-        // given
-        MatchingAssignmentProblem problem = new MatchingAssignmentProblem(LocalDateTime.now(), List.of(), List.of(), List.of());
-        MatchingPlan plan = new MatchingPlan(List.of());
-        when(matchingAssignmentProblemAssembler.assemble(any(), any())).thenReturn(problem);
-        when(matchingAssignmentPolicy.createPlan(problem)).thenReturn(plan);
-
-        // when
-        matchingService.applyRunMatchingAssignmentCycle();
-
-        // then (다음 dirty 이벤트가 새 window를 열 수 있도록 reset이 호출돼야 한다)
-        verify(matchingBatchDispatcher).reset();
-    }
-
-    @Test
-    void 매칭을_시작하면_즉시_오퍼를_만들지_않고_배치_디스패처에_dirty를_표시한다() {
+    void 매칭을_시작하면_즉시_오퍼를_만들지_않는다() {
         // given
         UUID orderId = UUID.randomUUID();
         Orders order = mock(Orders.class);
@@ -1528,7 +1510,6 @@ class MatchingServiceTest {
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
         assertThat(group.offers()).isEmpty();
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
-        verify(matchingBatchDispatcher).markDirty();
         verify(notificationService, never()).notify(any(), eq(MatchingEventType.OFFER_POPUP), any());
     }
 
@@ -1761,195 +1742,6 @@ class MatchingServiceTest {
                         LocalDateTime.now()));
 
         assertThat(matchingService.findIncomingDreamiOffer(UUID.randomUUID())).isEmpty();
-    }
-
-    // ────────────────────────────── 배치 디스패처 dirty 표시 ──────────────────────────────
-
-    @Test
-    void 신규_드리미_등록은_배치_디스패처에_dirty를_표시한다() {
-        matchingService.applyRegisterDreami(UUID.randomUUID(), mock(GeoPoint.class));
-
-        verify(matchingBatchDispatcher).markDirty();
-    }
-
-    @Test
-    void 선착순_수락으로_여러_드리미가_회수되어도_dirty_표시는_한_번만_이루어진다() {
-        UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
-        when(order.getOrderId()).thenReturn(orderId);
-
-        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
-        clearInvocations(matchingBatchDispatcher);
-
-        MatchOffer accepted = getOrderOfferGroups().get(orderId).offers().getFirst();
-
-        // when (수락되지 않은 나머지 2명이 함께 회수된다)
-        matchingService.applyAcceptByDreami(accepted.offerId());
-
-        // then
-        verify(matchingBatchDispatcher, times(1)).markDirty();
-    }
-
-    @Test
-    void 주문_취소로_드리미가_반환되면_배치_디스패처에_dirty를_표시한다() {
-        UUID orderId = UUID.randomUUID();
-        UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
-        when(order.getOrderId()).thenReturn(orderId);
-
-        matchingService.applyRegisterDreami(dreamiId, location);
-        matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
-        clearInvocations(matchingBatchDispatcher);
-
-        matchingService.applyCancelOrderByBoormi(orderId);
-
-        verify(matchingBatchDispatcher).markDirty();
-    }
-
-    @Test
-    void 반환된_드리미가_없으면_주문을_취소해도_dirty를_표시하지_않는다() {
-        UUID orderId = UUID.randomUUID();
-        OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(), LocalDateTime.now());
-        getOrderOfferGroups().put(orderId, group);
-
-        matchingService.applyCancelOrderByBoormi(orderId);
-
-        verify(matchingBatchDispatcher, never()).markDirty();
-    }
-
-    @Test
-    void 다른_오퍼가_살아있으면_거절해도_그룹은_OPEN을_유지하지만_dirty는_표시된다() {
-        UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
-        when(order.getOrderId()).thenReturn(orderId);
-
-        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
-        clearInvocations(matchingBatchDispatcher);
-
-        MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
-
-        // when (2명 중 1명만 거절 -> 나머지 오퍼가 살아 있음)
-        matchingService.applyRejectByDreami(offer.offerId());
-
-        // then (그룹은 계속 OPEN이지만, 거절한 드리미는 다른 대기 주문의 후보가 될 수 있어야 하므로 dirty는 표시된다)
-        assertThat(getOrderOfferGroups().get(orderId).status()).isEqualTo(OrderOfferGroupStatus.OPEN);
-        verify(matchingBatchDispatcher).markDirty();
-    }
-
-    @Test
-    void 마지막_오퍼_거절시_그룹은_WAITING이_되고_dirty가_표시된다() {
-        UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
-        when(order.getOrderId()).thenReturn(orderId);
-
-        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
-        clearInvocations(matchingBatchDispatcher);
-
-        MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
-
-        matchingService.applyRejectByDreami(offer.offerId());
-
-        assertThat(getOrderOfferGroups().get(orderId).status()).isEqualTo(OrderOfferGroupStatus.WAITING);
-        verify(matchingBatchDispatcher).markDirty();
-    }
-
-    @Test
-    void 부르미가_거절하면_그룹은_WAITING이_되고_dirty가_표시된다() {
-        UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
-        when(order.getOrderId()).thenReturn(orderId);
-
-        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
-        MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
-        matchingService.applyAcceptByDreami(offer.offerId());
-        clearInvocations(matchingBatchDispatcher);
-
-        matchingService.applyRejectByBoormi(offer.offerId());
-
-        assertThat(getOrderOfferGroups().get(orderId).status()).isEqualTo(OrderOfferGroupStatus.WAITING);
-        verify(matchingBatchDispatcher).markDirty();
-    }
-
-    @Test
-    void 부르미_응답_timeout이_발생하면_그룹은_WAITING이_되고_dirty가_표시된다() {
-        UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
-        when(order.getOrderId()).thenReturn(orderId);
-
-        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
-        MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
-        matchingService.applyAcceptByDreami(offer.offerId());
-        clearInvocations(matchingBatchDispatcher);
-
-        matchingService.applyExpireBoormiOffer(offer.offerId());
-
-        assertThat(getOrderOfferGroups().get(orderId).status()).isEqualTo(OrderOfferGroupStatus.WAITING);
-        verify(matchingBatchDispatcher).markDirty();
-    }
-
-    @Test
-    void 이미_수락된_오퍼에_뒤늦은_드리미_timeout이_도착하면_dirty를_표시하지_않는다() {
-        UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
-        when(order.getOrderId()).thenReturn(orderId);
-
-        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
-        MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
-        matchingService.applyAcceptByDreami(offer.offerId());
-        clearInvocations(matchingBatchDispatcher);
-
-        // when (이미 PENDING_BOORMI_CONFIRMATION 상태라 OFFERED가 아니므로 뒤늦은 timeout은 무시되어야 한다)
-        matchingService.applyExpireDreamiOffer(offer.offerId());
-
-        // then
-        verify(matchingBatchDispatcher, never()).markDirty();
-    }
-
-    @Test
-    void 중복_거절은_dirty를_한_번만_표시한다() {
-        UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
-        when(order.getOrderId()).thenReturn(orderId);
-
-        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
-        matchingService.applyStartMatching(order);
-        matchingService.applyRematchWaitingGroups();
-        clearInvocations(matchingBatchDispatcher);
-
-        MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
-        matchingService.applyRejectByDreami(offer.offerId());
-
-        // when (같은 오퍼를 다시 거절 -> 이미 DREAMI_REJECTED라 무시되어야 한다)
-        Throwable thrown = catchThrowable(() -> matchingService.applyRejectByDreami(offer.offerId()));
-
-        // then
-        assertThat(thrown).isNull();
-        verify(matchingBatchDispatcher, times(1)).markDirty();
     }
 
     @SuppressWarnings("unchecked")

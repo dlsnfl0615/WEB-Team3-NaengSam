@@ -57,7 +57,7 @@ class MatchingServiceConcurrencyTest {
         // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 이 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
         when(notificationService.isReachableNow(any())).thenReturn(true);
         matchingService = new MatchingService(matchingEngine, notificationService,
-                mock(MatchingBatchDispatcher.class), mock(DeliveryService.class),
+                mock(DeliveryService.class),
                 Clock.systemDefaultZone(),
                 mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),
                 mock(MatchingPlanApplier.class), mock(MatchingPolicyProperties.class), new GeoDistanceCalculator(),

@@ -78,7 +78,7 @@ class MatchingAssignmentProblemAssemblerTest {
 
     private static MatchingPolicyProperties matchingPolicyProperties(OfferQuotaMode offerQuotaMode) {
         return new MatchingPolicyProperties(
-                Duration.ofMillis(200),
+                Duration.ofSeconds(1),
                 3,
                 offerQuotaMode,
                 AssignmentPolicyType.LEGACY_ORDER_FIRST,

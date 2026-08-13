@@ -46,7 +46,7 @@ class MatchingMicroBatchIntegrationTest {
 
     private static MatchingPolicyProperties matchingPolicyProperties(int maxConcurrentOffers) {
         return new MatchingPolicyProperties(
-                Duration.ofMillis(200),
+                Duration.ofMillis(500),
                 maxConcurrentOffers,
                 OfferQuotaMode.FIXED,
                 AssignmentPolicyType.LEGACY_ORDER_FIRST,
@@ -69,7 +69,6 @@ class MatchingMicroBatchIntegrationTest {
         NotificationService notificationService = mock(NotificationService.class);
         // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 이 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
         when(notificationService.isReachableNow(any())).thenReturn(true);
-        MatchingBatchDispatcher matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         DeliveryService deliveryService = mock(DeliveryService.class);
         Clock clock = Clock.systemDefaultZone();
 
@@ -87,7 +86,7 @@ class MatchingMicroBatchIntegrationTest {
                 properties, clock);
 
         return new MatchingService(
-                matchingEngine, notificationService, matchingBatchDispatcher, deliveryService,
+                matchingEngine, notificationService, deliveryService,
                 clock,
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
                 new SimpleMeterRegistry());
