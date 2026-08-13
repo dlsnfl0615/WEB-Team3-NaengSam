@@ -70,15 +70,6 @@ export function CompletedDetail({ delivery }: CompletedDetailProps) {
           평가 남기기
         </Button>
       </Card>
-
-      <div className="flex gap-3">
-        <Button variant="outline" block className="border-transparent bg-track">
-          영수증
-        </Button>
-        <Button variant="outline" block className="border-transparent bg-track">
-          문의하기
-        </Button>
-      </div>
     </>
   );
 }
