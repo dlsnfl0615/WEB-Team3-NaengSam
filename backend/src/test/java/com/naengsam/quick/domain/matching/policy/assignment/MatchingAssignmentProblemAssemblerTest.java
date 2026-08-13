@@ -18,6 +18,7 @@ import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.policy.config.AssignmentPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.EligibilityPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
@@ -29,6 +30,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -71,9 +73,19 @@ class MatchingAssignmentProblemAssemblerTest {
     }
 
     private static MatchingPolicyProperties matchingPolicyProperties() {
+        return matchingPolicyProperties(OfferQuotaMode.FIXED);
+    }
+
+    private static MatchingPolicyProperties matchingPolicyProperties(OfferQuotaMode offerQuotaMode) {
+        return matchingPolicyProperties(offerQuotaMode, 5);
+    }
+
+    private static MatchingPolicyProperties matchingPolicyProperties(OfferQuotaMode offerQuotaMode, int dynamicQuotaMax) {
         return new MatchingPolicyProperties(
-                Duration.ofMillis(200),
+                Duration.ofSeconds(1),
                 3,
+                offerQuotaMode,
+                dynamicQuotaMax,
                 AssignmentPolicyType.LEGACY_ORDER_FIRST,
                 ScoringPolicyType.ORDER_WAIT,
                 EligibilityPolicyType.LEGACY,
@@ -97,6 +109,27 @@ class MatchingAssignmentProblemAssemblerTest {
 
     private MatchingAssignmentProblem assemble() {
         return assembler.assemble(orderOfferGroups, waitingDreamis);
+    }
+
+    private MatchingAssignmentProblem assemble(MatchingPolicyProperties properties) {
+        GeoDistanceCalculator geoDistanceCalculator = mock(GeoDistanceCalculator.class);
+        when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(DISTANCE_METERS);
+        MatchingAssignmentProblemFactory factory = new MatchingAssignmentProblemFactory(new LegacyOfferPolicy());
+        MatchingAssignmentProblemAssembler dynamicAssembler =
+                new MatchingAssignmentProblemAssembler(geoDistanceCalculator, factory, properties, CLOCK);
+        return dynamicAssembler.assemble(orderOfferGroups, waitingDreamis);
+    }
+
+    private static List<OrderOfferGroup> waitingGroups(int count) {
+        return IntStream.range(0, count)
+                .mapToObj(i -> group(UUID.randomUUID(), OrderOfferGroupStatus.WAITING))
+                .toList();
+    }
+
+    private static List<WaitingDreami> matchingDreamis(int count) {
+        return IntStream.range(0, count)
+                .mapToObj(i -> dreami(UUID.randomUUID(), WaitingDreamiStatus.MATCHING))
+                .toList();
     }
 
     @Test
@@ -190,6 +223,82 @@ class MatchingAssignmentProblemAssemblerTest {
         assertThat(problem.orders()).isEmpty();
         assertThat(problem.dreamis()).isEmpty();
         assertThat(problem.candidates()).isEmpty();
+    }
+
+    @Test
+    void 모든_주문에_동일한_고정_maxConcurrentOffers가_적용된다() {
+        orderOfferGroups = List.of(
+                group(UUID.randomUUID(), OrderOfferGroupStatus.WAITING),
+                group(UUID.randomUUID(), OrderOfferGroupStatus.WAITING)
+        );
+
+        MatchingAssignmentProblem problem = assemble();
+
+        assertThat(problem.orders())
+                .extracting(MatchingOrderInput::maxConcurrentOffers)
+                .containsOnly(matchingPolicyProperties().maxConcurrentOffers());
+    }
+
+    @Test
+    void DYNAMIC_모드는_대기_드리미를_대기_주문_수로_나눠_올림한_값을_quota로_쓴다() {
+        orderOfferGroups = waitingGroups(3);
+        waitingDreamis = matchingDreamis(7);
+
+        MatchingAssignmentProblem problem = assemble(matchingPolicyProperties(OfferQuotaMode.DYNAMIC));
+
+        assertThat(problem.orders()).extracting(MatchingOrderInput::maxConcurrentOffers).containsOnly(3);
+    }
+
+    @Test
+    void DYNAMIC_모드에서_드리미와_주문_수가_같으면_quota는_1이다() {
+        orderOfferGroups = waitingGroups(3);
+        waitingDreamis = matchingDreamis(3);
+
+        MatchingAssignmentProblem problem = assemble(matchingPolicyProperties(OfferQuotaMode.DYNAMIC));
+
+        assertThat(problem.orders()).extracting(MatchingOrderInput::maxConcurrentOffers).containsOnly(1);
+    }
+
+    @Test
+    void DYNAMIC_모드에서_대기_드리미가_없어도_quota는_최소_1이다() {
+        orderOfferGroups = waitingGroups(3);
+        waitingDreamis = matchingDreamis(0);
+
+        MatchingAssignmentProblem problem = assemble(matchingPolicyProperties(OfferQuotaMode.DYNAMIC));
+
+        assertThat(problem.orders()).extracting(MatchingOrderInput::maxConcurrentOffers).containsOnly(1);
+    }
+
+    @Test
+    void DYNAMIC_모드에서_비율이_기본_상한_5를_넘어도_quota는_최대_5이다() {
+        orderOfferGroups = waitingGroups(1);
+        waitingDreamis = matchingDreamis(20);
+
+        MatchingAssignmentProblem problem = assemble(matchingPolicyProperties(OfferQuotaMode.DYNAMIC));
+
+        assertThat(problem.orders()).extracting(MatchingOrderInput::maxConcurrentOffers).containsOnly(5);
+    }
+
+    @Test
+    void DYNAMIC_모드의_quota_상한은_matching_dynamic_quota_max_설정값을_따른다() {
+        orderOfferGroups = waitingGroups(1);
+        waitingDreamis = matchingDreamis(20);
+
+        MatchingAssignmentProblem problem = assemble(matchingPolicyProperties(OfferQuotaMode.DYNAMIC, 8));
+
+        assertThat(problem.orders()).extracting(MatchingOrderInput::maxConcurrentOffers).containsOnly(8);
+    }
+
+    @Test
+    void FIXED_모드는_대기_드리미_수와_무관하게_설정값을_그대로_쓴다() {
+        orderOfferGroups = waitingGroups(1);
+        waitingDreamis = matchingDreamis(20);
+
+        MatchingAssignmentProblem problem = assemble(matchingPolicyProperties(OfferQuotaMode.FIXED));
+
+        assertThat(problem.orders())
+                .extracting(MatchingOrderInput::maxConcurrentOffers)
+                .containsOnly(matchingPolicyProperties().maxConcurrentOffers());
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import jakarta.persistence.LockModeType;
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -19,6 +20,19 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
      */
     Optional<Orders> findByDreamiIdAndOrderCd(UUID dreamiId, OrderCd orderCd);
 
+    /**
+     * 드리미로서 진행 중인 건을 찾는다. 부르미 확인 대기(PENDING_BOORMI_CONFIRMATION)까지 포함해야
+     * "수락은 했지만 아직 배달은 시작되지 않은" 구간이 빠지지 않는다. 드리미는 동시 1건이므로 단건이다.
+     */
+    Optional<Orders> findByDreamiIdAndOrderCdIn(UUID dreamiId, Collection<OrderCd> orderCds);
+
+    /**
+     * 부르미로서 진행 중인 건 중 가장 최근 것을 찾는다. 부르미는 동시에 여러 주문을 가질 수 있어(MAX_ACTIVE_ORDERS)
+     * 최신 1건만 화면 복귀용으로 쓴다.
+     */
+    Optional<Orders> findFirstByBoormiIdAndOrderCdInOrderByDeliveryRequestDtmDesc(
+            UUID boormiId, Collection<OrderCd> orderCds);
+
     // 드리미의 제안 수락 check-then-act를 직렬화하기 위해 비관적 쓰기 락으로 조회한다(트랜잭션 안에서만 사용).
     // 여러 드리미가 동시에 같은 주문을 수락해도, 먼저 락을 잡은 트랜잭션이 끝날 때까지 나머지는 대기했다가
     // 최신 상태(이미 MATCHING이 아님)를 다시 읽게 되므로 read-check-write 레이스가 닫힌다.
@@ -29,6 +43,28 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
      * 드리미 대시보드의 완료 건수 집계용.
      */
     long countByDreamiIdAndOrderCd(UUID dreamiId, OrderCd orderCd);
+
+    /**
+     * 부르미 대시보드의 완료 건수 집계용.
+     */
+    long countByBoormiIdAndOrderCd(UUID boormiId, OrderCd orderCd);
+
+    /**
+     * 부르미 대시보드의 절감액 계산용. 완료된 주문의 실제 결제 금액 합계이며, 완료 건이 없으면 0을 돌려준다.
+     */
+    @Query("SELECT COALESCE(SUM(o.deliveryAmount), 0) FROM Orders o "
+            + "WHERE o.boormiId = :boormiId AND o.orderCd = com.naengsam.quick.domain.order.entity.OrderCd.COMPLETED")
+    long sumCompletedDeliveryAmount(@Param("boormiId") UUID boormiId);
+
+    /**
+     * 드리미 활동 내역 화면의 전체 건수 집계용(상태 무관).
+     */
+    long countByDreamiId(UUID dreamiId);
+
+    /**
+     * 부르미 활동 내역 화면의 전체 건수 집계용(상태 무관).
+     */
+    long countByBoormiId(UUID boormiId);
 
     @Query(value = """
             SELECT COUNT(*) FROM ORDERS o

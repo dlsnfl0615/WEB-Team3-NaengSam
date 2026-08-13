@@ -4,6 +4,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.service.DirectionsService;
 import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
+import com.naengsam.quick.domain.delivery.dto.DeliveryContactDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
@@ -32,8 +33,7 @@ import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
-import com.naengsam.quick.domain.user.dto.UserDto;
-import com.naengsam.quick.domain.user.service.UserService;
+import com.naengsam.quick.domain.dreami.service.DreamiActivationChecker;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.BaseErrorCode;
@@ -74,7 +74,7 @@ class DeliveryServiceTest {
     private DeliveryCertificationRepository deliveryCertificationRepository;
     private NotificationService notificationService;
     private UploadSessionService uploadSessionService;
-    private UserService userService;
+    private DreamiActivationChecker dreamiActivationChecker;
     private OrderService orderService;
     private DreamiRepository dreamiRepository;
     private BoormiRepository boormiRepository;
@@ -95,7 +95,7 @@ class DeliveryServiceTest {
         deliveryCertificationRepository = mock(DeliveryCertificationRepository.class);
         notificationService = mock(NotificationService.class);
         uploadSessionService = mock(UploadSessionService.class);
-        userService = mock(UserService.class);
+        dreamiActivationChecker = mock(DreamiActivationChecker.class);
         orderService = mock(OrderService.class);
         dreamiRepository = mock(DreamiRepository.class);
         boormiRepository = mock(BoormiRepository.class);
@@ -106,7 +106,7 @@ class DeliveryServiceTest {
         dreamiOfflineDetector = mock(DreamiOfflineDetector.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, notificationService, uploadSessionService,
-                userService, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
+                dreamiActivationChecker, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
                 directionsService, eventPublisher, new ObjectMapper(), dreamiOfflineDetector);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
@@ -224,12 +224,9 @@ class DeliveryServiceTest {
 
     // ===== 배달 시작 =====
 
-    // 주문자는 활성 드리미가 아니고(false), 배달자는 활성 드리미(true)인 정상 역할 상태를 스텁한다.
+    // 배달자는 활성 드리미(true)인 정상 상태를 스텁한다.
     private void stubValidRoles(UUID boormiId, UUID dreamiId) {
-        given(userService.getUserInfo(boormiId))
-                .willReturn(new UserDto(boormiId, "b@t.com", "부르미", false, null, null));
-        given(userService.getUserInfo(dreamiId))
-                .willReturn(new UserDto(dreamiId, "d@t.com", "드리미", true, null, null));
+        given(dreamiActivationChecker.isActivatedDreami(dreamiId)).willReturn(true);
     }
 
     private void stubOrderStatus(UUID orderId, OrderCd orderCd) {
@@ -488,6 +485,69 @@ class DeliveryServiceTest {
         assertThat(errorCodeOf(thrown)).isEqualTo(UserErrorCode.USER_NOT_FOUND);
     }
 
+    // ===== 상대방 연락처 조회 =====
+
+    @Test
+    void 부르미가_연락처를_조회하면_드리미의_이름과_전화번호를_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+        DeliveryContactDto result = deliveryService.getDeliveryContact(orderId, boormiId);
+
+        assertThat(result.counterpartName()).isEqualTo("김드림"); // setUp 기본 mock(드리미)
+        assertThat(result.counterpartPhoneNumber()).isEqualTo("01099998888");
+        assertThat(result.viewerIsDreami()).isFalse();
+    }
+
+    @Test
+    void 드리미가_연락처를_조회하면_부르미의_이름과_전화번호를_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Boormi boormi = Boormi.create("boormi@test.com", "pass123", "이부름", "01011112222",
+                LocalDate.of(1990, 1, 1));
+        given(boormiRepository.findById(boormiId)).willReturn(Optional.of(boormi));
+
+        DeliveryContactDto result = deliveryService.getDeliveryContact(orderId, dreamiId);
+
+        assertThat(result.counterpartName()).isEqualTo("이부름");
+        assertThat(result.counterpartPhoneNumber()).isEqualTo("01011112222");
+        assertThat(result.viewerIsDreami()).isTrue();
+    }
+
+    @Test
+    void 당사자가_아닌_사용자가_연락처를_조회하면_NOT_RESOURCE_OWNER_예외() {
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, UUID.randomUUID(), UUID.randomUUID());
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+        Throwable thrown = catchThrowable(() -> deliveryService.getDeliveryContact(orderId, UUID.randomUUID()));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(AuthErrorCode.NOT_RESOURCE_OWNER);
+    }
+
+    @Test
+    void 종료된_배달의_연락처를_조회하면_CONTACT_NOT_AVAILABLE_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        for (DeliveryCd closed : List.of(DELIVERED, PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI,
+                PICKUP_CANCELLED_BY_ADMIN, RETURNED, TERMINATED)) {
+            UUID orderId = UUID.randomUUID();
+            Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+            ReflectionTestUtils.setField(delivery, "deliveryCd", closed);
+            given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+            Throwable thrown = catchThrowable(() -> deliveryService.getDeliveryContact(orderId, boormiId));
+
+            assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.CONTACT_NOT_AVAILABLE);
+        }
+    }
+
     // ===== 첫 위치 전송 시 '드리미→픽업지' 경로·배송완료예상시간 계산 =====
 
     @Test
@@ -599,10 +659,7 @@ class DeliveryServiceTest {
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
         stubOrderStatus(orderId, OrderCd.IN_PROGRESS);
-        given(userService.getUserInfo(boormiId))
-                .willReturn(new UserDto(boormiId, "b@t.com", "부르미", false, null, null));
-        given(userService.getUserInfo(dreamiId))
-                .willReturn(new UserDto(dreamiId, "d@t.com", "드리미", false, null, null));
+        given(dreamiActivationChecker.isActivatedDreami(dreamiId)).willReturn(false);
 
         Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
 
@@ -620,7 +677,7 @@ class DeliveryServiceTest {
         Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_START_NOT_ALLOWED);
-        verify(userService, never()).getUserInfo(any());
+        verify(dreamiActivationChecker, never()).isActivatedDreami(any());
         verify(deliveryRepository, never()).save(any());
     }
 
@@ -861,6 +918,46 @@ class DeliveryServiceTest {
         deliveryService.cancelByAdmin(orderId);
 
         verify(orderService).cancel(orderId, CancelerCd.ADMIN);
+    }
+
+    @Test
+    void 드리미취소되면_결제포인트를_전액_환불한다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        cancelByDreami(orderId);
+
+        verify(paymentService).refundByPoint(orderId);
+    }
+
+    @Test
+    void 부르미취소되면_결제포인트를_전액_환불한다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        cancelByBoormi(orderId);
+
+        verify(paymentService).refundByPoint(orderId);
+    }
+
+    @Test
+    void 관리자취소되면_결제포인트를_전액_환불한다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        deliveryService.cancelByAdmin(orderId);
+
+        verify(paymentService).refundByPoint(orderId);
+    }
+
+    @Test
+    void 취소가_거부되면_환불하지_않는다() {
+        for (Function<UUID, DeliveryStatusResponseDto> cancelOperation : cancelOperations()) {
+            UUID orderId = registerDelivery(DELIVERING); // 배달중이면 취소 불가
+
+            Throwable thrown = catchThrowable(() -> cancelOperation.apply(orderId));
+
+            assertThat(errorCodeOf(thrown))
+                    .isEqualTo(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
+            verify(paymentService, never()).refundByPoint(orderId);
+        }
     }
 
     @Test

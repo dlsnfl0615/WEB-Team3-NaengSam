@@ -34,6 +34,9 @@ import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
+import com.naengsam.quick.domain.user.dto.ActiveContext;
+import com.naengsam.quick.domain.user.dto.ActiveRole;
+import com.naengsam.quick.domain.user.service.UserActivityResolver;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.entity.Role;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
@@ -96,6 +99,9 @@ class DreamiServiceTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private UserActivityResolver userActivityResolver;
 
     @InjectMocks
     private DreamiService dreamiService;
@@ -327,7 +333,8 @@ class DreamiServiceTest {
         Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
         ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
         given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
-        given(orderRepository.countActiveOrders(dreamiId)).willReturn(1L);
+        given(userActivityResolver.resolve(dreamiId))
+                .willReturn(ActiveContext.of(ActiveRole.DREAMI, UUID.randomUUID(), OrderCd.IN_PROGRESS));
 
         Throwable thrown = catchThrowable(() -> dreamiService.goOnline(dreamiId, location));
 
@@ -342,7 +349,22 @@ class DreamiServiceTest {
         Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
         ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
         given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
-        given(orderRepository.countActiveOrders(dreamiId)).willReturn(0L);
+        given(userActivityResolver.resolve(dreamiId)).willReturn(ActiveContext.idle());
+
+        dreamiService.goOnline(dreamiId, location);
+
+        verify(matchingService).registerDreami(dreamiId, location);
+    }
+
+    @Test
+    void 온라인전환_이미_매칭_대기중이어도_거절하지_않는다() {
+        // 클라이언트 온라인 상태는 메모리에만 있어 새로고침하면 사라진다. 여기서 거절하면 화면이 오프라인으로 굳어 되돌릴 수 없다.
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+        given(userActivityResolver.resolve(dreamiId)).willReturn(ActiveContext.dreamiWaiting());
 
         dreamiService.goOnline(dreamiId, location);
 

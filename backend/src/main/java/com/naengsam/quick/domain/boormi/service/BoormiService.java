@@ -5,12 +5,17 @@ import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.service.CoordinatesService;
 import com.naengsam.quick.domain.address.service.DirectionsService;
+import com.naengsam.quick.domain.boormi.dto.BoormiDashboardDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
+import com.naengsam.quick.domain.boormi.dto.MonthlySavingDto;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.Charge;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
+import com.naengsam.quick.domain.boormi.entity.ItemSizeCd;
+import com.naengsam.quick.domain.delivery.dto.MonthlySavingAggregate;
 import com.naengsam.quick.domain.delivery.dto.RoutePointDto;
+import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.entity.Matching;
 import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
@@ -22,6 +27,8 @@ import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderCountDto;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -35,8 +42,12 @@ import com.naengsam.quick.global.exception.BusinessException;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.time.YearMonth;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -57,6 +68,10 @@ public class BoormiService {
     private static final int OVER_RATE = 160;       // 초과 구간 100m당 요금(원)
     private static final int MAX_ACTIVE_ORDERS = 5; // 동시 진행 가능한 요청 수(정책값)
     private static final int TOO_CLOSE_DISTANCE = 50;   // 출발지-도착지 최소 직선거리(m)
+    // 시장 퀵서비스 건당 기준 단가(절감액 비교 기준).
+    // 서울 오토바이 퀵의 3km 이내 기본요금 8,000~12,000원(2026-08 조사)의 중앙값을 쓴다.
+    // 참고: gosuquick.com, 1600-7324.com, ssanquick.com, silverquick.kr
+    private static final long MARKET_UNIT_PRICE = 10000;
 
     private final CoordinatesService coordinatesService;
     private final DirectionsService directionsService;
@@ -64,6 +79,7 @@ public class BoormiService {
     private final MatchingService matchingService;
     private final OrderService orderService;
     private final OrderRepository orderRepository;
+    private final DeliveryRepository deliveryRepository;
     private final MatchingRepository matchingRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
@@ -86,7 +102,7 @@ public class BoormiService {
         // 요금·예상시간은 클라이언트 전송값을 신뢰하지 않고 견적과 동일한 로직으로 서버가 재계산한다.
         // 같은 카카오 응답에서 추천 이동경로 좌표도 함께 받아 주문에 저장한다(추적 지도 폴리라인용).
         KakaoDirectionsResponseDto.Route route = directionsService.getRoute(originCoordinate, destinationCoordinate);
-        Charge charge = calculatePrice(route, orderRequest.itemCd());
+        Charge charge = calculatePrice(route, orderRequest.itemCd(), orderRequest.itemSizeCd());
         String routePath = toRoutePathJson(route);
 
         UUID orderId = UUID.randomUUID();
@@ -206,7 +222,29 @@ public class BoormiService {
     }
 
     /**
-     * 출발지/도착지 도로명주소를 좌표로 변환한 뒤 카카오 길찾기로 실제 거리·소요시간을 구하고, 물건 유형 배율을 반영한 예상 가격/시간/거리를 반환한다.
+     * 주문 하나를 id로 직접 조회한다. 활동 내역 상세 화면이 딥링크/새로고침으로 바로 들어왔을 때,
+     * 목록 페이지네이션(getMyOrders)과 무관하게 그 주문 하나만 정확히 찾기 위해 쓴다.
+     */
+    @Transactional(readOnly = true)
+    public OrderSummaryDto getMyOrder(UUID boormiId, UUID orderId) {
+        Orders order = orderService.getOrder(orderId);
+        if (!order.getBoormiId().equals(boormiId)) {
+            throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
+        }
+        return OrderSummaryDto.from(order);
+    }
+
+    /**
+     * 활동 내역 화면의 "총 N건" 표시용 전체 주문 건수(상태 무관). 목록은 페이지네이션으로 일부만 들고 있어
+     * records.length 로는 실제 총 건수를 알 수 없어서 별도로 집계한다.
+     */
+    @Transactional(readOnly = true)
+    public OrderCountDto getMyOrderCount(UUID boormiId) {
+        return OrderCountDto.of(orderRepository.countByBoormiId(boormiId));
+    }
+
+    /**
+     * 출발지/도착지 도로명주소를 좌표로 변환한 뒤 카카오 길찾기로 실제 거리·소요시간을 구하고, 물건 유형·크기 배율을 반영한 예상 가격/시간/거리를 반환한다.
      */
     @Transactional(readOnly = true)
     public ExpectedValueDto expectedValue(ExpectedValueRequest request) {
@@ -216,16 +254,69 @@ public class BoormiService {
         requireDifferentLocation(origin, destination);
 
         KakaoDirectionsResponseDto.Route route = directionsService.getRoute(origin, destination);
-        Charge charge = calculatePrice(route, request.itemCd());
+        Charge charge = calculatePrice(route, request.itemCd(), request.itemSizeCd());
 
         return new ExpectedValueDto(charge.amount(), charge.eta(), charge.distance());
     }
 
     /**
-     * 두 좌표의 실제 도보 거리·소요시간을 카카오 길찾기로 조회한 뒤 요금과 예상시간(분)을 계산한다. 견적 조회와 주문 접수가 같은 요금을 산출하도록 공유한다. 기본 1.5km까지는 100m당 100원,
-     * 초과 구간은 100m당 160원으로 과금하고 물건 유형 배율을 곱한다.
+     * 부르미 대시보드 — 누적 완료 건수, 시장 퀵서비스 대비 절감 금액, 이번 달 이용 건수·절감액, 지난달 대비 증감률, 최근 6개월 절감액 추이를 조회한다. 절감액은 완료 건수를 시장 평균 단가로 환산한 값에서
+     * 실제 결제액을 뺀 값이며, 실제 결제액이 더 크면 0으로 둔다. 증감률은 지난달 절감액이 0이면 0%로 처리하고 반올림해 소수점 없이 반환한다. 주문에는 완료 시각이 없으므로 월별 집계는 배달 완료
+     * 시각(DELIVERY.delivery_end_dtm) 기준이다. 화면이 산술식을 그대로 보여주므로 기준 단가와 이번 달 실제 결제액도 함께 반환한다.
      */
-    private Charge calculatePrice(KakaoDirectionsResponseDto.Route route, ItemCd itemCd) {
+    @Transactional(readOnly = true)
+    public BoormiDashboardDto getDashboard(UUID boormiId) {
+        long completedCount = orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED);
+        long paidAmount = orderRepository.sumCompletedDeliveryAmount(boormiId);
+        long totalSavedAmount = Math.max(0, completedCount * MARKET_UNIT_PRICE - paidAmount);
+
+        YearMonth thisMonth = YearMonth.now();
+        YearMonth rangeStart = thisMonth.minusMonths(5);
+        Map<YearMonth, MonthlySavingAggregate> byMonth = deliveryRepository
+                .aggregateSavingByBoormiBetween(boormiId, rangeStart.atDay(1).atStartOfDay(),
+                        thisMonth.plusMonths(1).atDay(1).atStartOfDay())
+                .stream()
+                .collect(Collectors.toMap(MonthlySavingAggregate::yearMonth, aggregate -> aggregate));
+
+        long thisMonthCount = countOf(byMonth, thisMonth);
+        long thisMonthPaidAmount = paidOf(byMonth, thisMonth);
+        long thisMonthSavedAmount = savingOf(byMonth, thisMonth);
+        long lastMonthSavedAmount = savingOf(byMonth, thisMonth.minusMonths(1));
+        long growthPercent = lastMonthSavedAmount == 0 ? 0
+                : Math.round((thisMonthSavedAmount - lastMonthSavedAmount) * 100.0 / lastMonthSavedAmount);
+
+        List<MonthlySavingDto> recentSixMonths = IntStream.rangeClosed(0, 5)
+                .mapToObj(thisMonth::minusMonths)
+                .sorted()
+                .map(month -> new MonthlySavingDto(month, savingOf(byMonth, month)))
+                .toList();
+
+        return BoormiDashboardDto.of(completedCount, totalSavedAmount, thisMonthCount, thisMonthPaidAmount,
+                thisMonthSavedAmount, MARKET_UNIT_PRICE, growthPercent, recentSixMonths);
+    }
+
+    // 해당 월의 절감액. 완료 건수를 시장 평균 단가로 환산한 값에서 실제 결제액을 뺀다(누적 절감액과 같은 규칙으로 음수는 0).
+    private long savingOf(Map<YearMonth, MonthlySavingAggregate> byMonth, YearMonth month) {
+        MonthlySavingAggregate aggregate = byMonth.get(month);
+        return aggregate == null ? 0 : Math.max(0, aggregate.count() * MARKET_UNIT_PRICE - aggregate.paidAmount());
+    }
+
+    private long countOf(Map<YearMonth, MonthlySavingAggregate> byMonth, YearMonth month) {
+        MonthlySavingAggregate aggregate = byMonth.get(month);
+        return aggregate == null ? 0 : aggregate.count();
+    }
+
+    // 해당 월에 부르미가 실제로 결제한 금액. 절감액 산술식의 빼는 값이다.
+    private long paidOf(Map<YearMonth, MonthlySavingAggregate> byMonth, YearMonth month) {
+        MonthlySavingAggregate aggregate = byMonth.get(month);
+        return aggregate == null ? 0 : aggregate.paidAmount();
+    }
+
+    /**
+     * 두 좌표의 실제 도보 거리·소요시간을 카카오 길찾기로 조회한 뒤 요금과 예상시간(분)을 계산한다. 견적 조회와 주문 접수가 같은 요금을 산출하도록 공유한다. 기본 1.5km까지는 100m당 100원,
+     * 초과 구간은 100m당 160원으로 과금하고 물건 유형 배율과 물건 크기 배율을 곱한다.
+     */
+    private Charge calculatePrice(KakaoDirectionsResponseDto.Route route, ItemCd itemCd, ItemSizeCd itemSizeCd) {
         KakaoDirectionsResponseDto.Properties properties = route.properties();
 
         //비용 계산
@@ -237,7 +328,8 @@ public class BoormiService {
 
         //예상 시간
         int eta = (int) Math.ceil(properties.totalTime() / 60.0);
-        return new Charge(properties.totalDistance(), (int) Math.round(price * ItemCd.multiplier(itemCd)), eta);
+        int amount = (int) Math.round(price * ItemCd.multiplier(itemCd) * ItemSizeCd.multiplier(itemSizeCd));
+        return new Charge(properties.totalDistance(), amount, eta);
     }
 
     /**

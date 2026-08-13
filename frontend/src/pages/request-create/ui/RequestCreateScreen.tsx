@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import { Button, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { api, isApiError, type ExpectedValueDto } from "@/shared/api";
@@ -9,7 +10,7 @@ import { StepLocation } from "./StepLocation";
 import { StepItem } from "./StepItem";
 import { StepPhoto } from "./StepPhoto";
 import { StepPayment } from "./StepPayment";
-import { itemTypeToCd, toOrderRequest } from "./orderRequest";
+import { itemSizeToCd, itemTypeToCd, toOrderRequest } from "./orderRequest";
 import type { RequestForm } from "./types";
 
 const INITIAL_FORM: RequestForm = {
@@ -34,6 +35,7 @@ const INITIAL_FORM: RequestForm = {
  * 주소·예상요금·이미지 업로드·콜 등록을 실제 부르미 API로 연동한다.
  */
 export function RequestCreateScreen() {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate();
   const createOrder = useBoormiOrderStore((s) => s.createOrder);
   const [step, setStep] = useState(1);
@@ -48,7 +50,8 @@ export function RequestCreateScreen() {
     if (
       patch.pickup !== undefined ||
       patch.dropoff !== undefined ||
-      patch.itemType !== undefined
+      patch.itemType !== undefined ||
+      patch.itemSize !== undefined
     ) {
       setEstimate(null);
     }
@@ -57,9 +60,9 @@ export function RequestCreateScreen() {
 
   const next = () => setStep((s) => Math.min(4, s + 1));
   const prev = () => setStep((s) => Math.max(1, s - 1));
-  const back = () => (step > 1 ? prev() : navigate(-1));
+  const back = () => (step > 1 ? prev() : backOrHome());
 
-  // 출발·도착지와 물품 유형이 준비되면 예상 요금을 실시간 조회.
+  // 출발·도착지와 물품 유형·크기가 준비되면 예상 요금을 실시간 조회.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -73,12 +76,11 @@ export function RequestCreateScreen() {
           originAddressLine1: form.pickup.trim(),
           destinationAddressLine1: form.dropoff.trim(),
           itemCd: itemTypeToCd(form.itemType),
+          itemSizeCd: itemSizeToCd(form.itemSize),
         });
         if (!cancelled) {
           setEstimate(result ?? null);
-          setError(
-            result ? null : "예상 배송 요금을 확인하지 못했어요.",
-          );
+          setError(result ? null : "예상 배송 요금을 확인하지 못했어요.");
         }
       } catch (e) {
         if (!cancelled) {
@@ -97,7 +99,7 @@ export function RequestCreateScreen() {
     return () => {
       cancelled = true;
     };
-  }, [form.pickup, form.dropoff, form.itemType]);
+  }, [form.pickup, form.dropoff, form.itemType, form.itemSize]);
 
   // 스텝별 필수값과 견적 조회 성공 여부를 검증한다.
   const hasValidEstimate = estimate !== null && !estimating;

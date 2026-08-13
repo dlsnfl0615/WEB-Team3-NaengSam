@@ -22,7 +22,10 @@ type NearbyCallsLoadResult = "loaded" | "location-unavailable" | "failed";
 /** 위치 권한 거부·브라우저 미지원처럼 드리미 화면을 사용할 수 없는 오류. */
 class LocationAccessError extends Error {}
 
-/** 백엔드 SSE `offer_popup` payload. */
+/**
+ * 백엔드 SSE `offer_popup` payload. 물품 사진은 여기 안 실려온다 — 콜 카드에서 물품사진 버튼을
+ * 누른 시점에 `api.getOfferItemPhoto(offerId)`로 그때 조회한다(자세한 이유는 백엔드 OfferPopupPayload 참고).
+ */
 interface OfferPopupPayload {
   offerId: string;
   orderId: string;
@@ -38,7 +41,8 @@ interface OfferPopupPayload {
   destinationLongitude: number | null;
   destinationAlias: string | null;
   destinationAddressLine1: string | null;
-  imageKey: string | null;
+  /** 부르미가 작성한 요청 사항. 없으면 null. */
+  deliveryRequest: string | null;
   /** 제안이 생성된 시각. 응답 마감(expiresAt)과 함께 카운트다운 계산에 쓴다. */
   offeredAt: string;
   /** 응답 마감 절대 시각. */
@@ -200,7 +204,7 @@ function pendingOfferFromSnapshot(
     destinationLongitude: num(summary.destinationLongitude),
     destinationAlias: str(summary.destinationAlias),
     destinationAddressLine1: str(summary.destinationAddressLine1),
-    imageKey: str(summary.imageKey),
+    deliveryRequest: str(summary.deliveryRequest),
     offeredAt: dto.offeredAt ?? "",
     expiresAt: dto.expiresAt ?? "",
     distanceMeters: nearbyCalls.find((c) => c.orderId === orderId)?.distanceMeters,
@@ -213,6 +217,12 @@ function pendingOfferFromSnapshot(
  */
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let syncing = false;
+
+/**
+ * 온라인/오프라인 전환이 서버 응답을 기다리는 중인지. 그 사이 도착한 동기화 응답은 전환 이전 상태를
+ * 담고 있어, 방금 누른 시작하기/종료를 되돌려버린다.
+ */
+let togglingOnline = false;
 
 /**
  * 실 매칭 상태 전역 스토어. 수락·거절·최종 확정을 실제 매칭 API로 처리한다.
@@ -348,6 +358,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
 
     // loadNearbyCalls가 이미 구해둔 좌표를 재사용한다(위치를 다시 물어 실패하는 경로를 없앤다).
     let coords = get().myLocation;
+    togglingOnline = true;
     try {
       if (!coords) {
         coords = await getCurrentCoords();
@@ -360,15 +371,20 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
         online: false,
         message: toMessage(e, "온라인 전환에 실패했어요."),
       });
+    } finally {
+      togglingOnline = false;
     }
   },
 
   goOffline: async () => {
+    togglingOnline = true;
     try {
       await api.goOffline();
       set({ online: false, pendingOffer: null });
     } catch (e) {
       set({ message: toMessage(e, "오프라인 전환에 실패했어요.") });
+    } finally {
+      togglingOnline = false;
     }
   },
 
@@ -447,6 +463,18 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
       return;
     } finally {
       syncing = false;
+    }
+
+    // 드리미 온라인 여부는 서버(매칭엔진 등록 상태)가 진실 소스다. 이 스토어는 메모리에만 있어
+    // 새로고침하면 online이 false로 돌아가는데 서버 등록은 살아 있다. 그대로 두면 화면은 오프라인인데
+    // 오퍼는 계속 오고, 종료 버튼이 online에 묶여 있어 빠져나갈 수도 없다.
+    // 전환 요청이 날아가 있는 동안에는 방금 누른 조작을 되돌리게 되므로 건너뛴다.
+    if (
+      data.dreamiOnline !== undefined &&
+      !togglingOnline &&
+      get().online !== data.dreamiOnline
+    ) {
+      set({ online: data.dreamiOnline });
     }
 
     // 수락·거절 요청이 진행 중이면 사용자의 조작과 충돌하지 않도록 스냅샷을 덮어쓰지 않는다.

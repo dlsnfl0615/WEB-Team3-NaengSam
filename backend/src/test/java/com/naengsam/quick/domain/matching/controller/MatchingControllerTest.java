@@ -5,14 +5,18 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.matching.dto.NearbyDreamiDto;
+import com.naengsam.quick.domain.matching.dto.NearbyDreamiRequest;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.matching.service.NearbyDreamiFinder;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.global.session.LoginUserArgumentResolver;
 import com.naengsam.quick.global.session.SessionConst;
@@ -24,6 +28,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -36,15 +41,17 @@ class MatchingControllerTest {
             UUID.randomUUID(), "품목", null, null, 5000L, 20, 1200L,
             BigDecimal.valueOf(37.1), BigDecimal.valueOf(127.1), "픽업별칭", "픽업주소",
             BigDecimal.valueOf(37.2), BigDecimal.valueOf(127.2), "도착별칭", "도착주소",
-            "img", LocalDateTime.now());
+            "img", "문 앞에 놓아주세요", LocalDateTime.now());
 
     private MatchingService matchingService;
+    private NearbyDreamiFinder nearbyDreamiFinder;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         matchingService = mock(MatchingService.class);
-        mockMvc = MockMvcBuilders.standaloneSetup(new MatchingController(matchingService))
+        nearbyDreamiFinder = mock(NearbyDreamiFinder.class);
+        mockMvc = MockMvcBuilders.standaloneSetup(new MatchingController(matchingService, nearbyDreamiFinder))
                 .setCustomArgumentResolvers(new LoginUserArgumentResolver())
                 .build();
     }
@@ -105,6 +112,30 @@ class MatchingControllerTest {
     }
 
     @Test
+    void 드리미가_매칭엔진에_등록돼_있으면_dreamiOnline이_true다() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(matchingService.findPendingOfferForDreami(userId)).thenReturn(Optional.empty());
+        when(matchingService.findIncomingDreamiOffer(userId)).thenReturn(Optional.empty());
+        when(matchingService.isDreamiWaiting(userId)).thenReturn(true);
+
+        mockMvc.perform(get("/api/v1/matching/current").sessionAttr(SessionConst.LOGIN_USER, userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dreamiOnline").value(true));
+    }
+
+    @Test
+    void 드리미가_등록돼_있지_않으면_dreamiOnline이_false다() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(matchingService.findPendingOfferForDreami(userId)).thenReturn(Optional.empty());
+        when(matchingService.findIncomingDreamiOffer(userId)).thenReturn(Optional.empty());
+        when(matchingService.isDreamiWaiting(userId)).thenReturn(false);
+
+        mockMvc.perform(get("/api/v1/matching/current").sessionAttr(SessionConst.LOGIN_USER, userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dreamiOnline").value(false));
+    }
+
+    @Test
     void 로그인한_본인의_id로만_조회하고_다른_사용자의_id로는_조회하지_않는다() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID otherUserId = UUID.randomUUID();
@@ -118,5 +149,26 @@ class MatchingControllerTest {
         verify(matchingService).findIncomingDreamiOffer(userId);
         verify(matchingService, never()).findPendingOfferForDreami(otherUserId);
         verify(matchingService, never()).findIncomingDreamiOffer(otherUserId);
+    }
+
+    @Test
+    void 주변_대기_드리미를_요청한_반경과_개수로_조회한다() throws Exception {
+        UUID dreamiId = UUID.randomUUID();
+        NearbyDreamiRequest request = new NearbyDreamiRequest(
+                BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0), 3000.0, 10);
+        when(nearbyDreamiFinder.find(request)).thenReturn(List.of(
+                new NearbyDreamiDto(dreamiId,
+                        new GeoPoint(BigDecimal.valueOf(37.501), BigDecimal.valueOf(127.001)), 142.0)));
+
+        mockMvc.perform(post("/api/v1/matching/dreamis/nearby")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"lat": 37.5, "lng": 127.0, "radius": 3000, "count": 10}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].dreamiId").value(dreamiId.toString()))
+                .andExpect(jsonPath("$[0].location.latitude").value(37.501));
+
+        verify(nearbyDreamiFinder).find(request);
     }
 }

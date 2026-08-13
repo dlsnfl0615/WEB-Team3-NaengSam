@@ -11,7 +11,6 @@ import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
 import com.naengsam.quick.domain.matching.event.NotificationErrorPayload;
 import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
-import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
 import com.naengsam.quick.domain.matching.event.OrderCancelledByBoormiEvent;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
@@ -26,6 +25,7 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPr
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlan;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.notification.NotificationService;
@@ -34,18 +34,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -66,15 +62,6 @@ public class MatchingService {
      * 부르미 응답 제한시간. 제한은 30초 기준.
      */
     private static final Duration BOORMI_OFFER_TTL = Duration.ofSeconds(30);
-    /**
-     * 한 주문에 동시에 제안할 최대 드리미 수
-     */
-    private static final int MAX_OFFER_COUNT = 3;
-    /**
-     * 재매칭 대기 방을 스캔하는 스케줄 주기. Fallback이기 때문에 10분으로.
-     */
-    private static final Duration REMATCH_SCAN_INTERVAL = Duration.ofMinutes(10);
-
     // ────────────────────────────── 도메인 타입 ──────────────────────────────
     // 모든 mutation은 엔진 스레드 하나에서만 일어나지만, 조회(findOrderOfferGroup 등)는 호출 스레드에서 직접 일어난다.
     // 맵 자체의 내부 구조 변경(put에 의한 리사이즈 등)이 다른 스레드의 읽기와 겹치면 HashMap은 안전하지 않으므로
@@ -89,8 +76,6 @@ public class MatchingService {
     private final Map<UUID, WaitingDreami> dreamiMap = new ConcurrentHashMap<>();
     private final MatchingEngine matchingEngine;
     private final NotificationService notificationService;
-    private final MatchingActionScheduler matchingActionScheduler;
-    private final MatchingBatchDispatcher matchingBatchDispatcher;
     private final DeliveryService deliveryService;
     private final Clock clock;
     private final MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
@@ -108,9 +93,8 @@ public class MatchingService {
      * 지금 실시간 채널로 닿을 수 있는(= SSE 연결이 살아 있는) 대기 드리미만 남긴다.
      *
      * <p>{@code goOffline}을 호출하지 못하고 브라우저가 죽은 드리미(앱 스와이프 종료, 탭 메모리 회수 등)는 여전히
-     * {@code dreamiMap}에 MATCHING으로 남아 있다. 이 유령에게 오퍼 슬롯이 가면 주문은 30초 TTL을 그대로 태우고
-     * 재매칭 대기로 되돌아가며, 그 뒤 쿨다운 정책까지 적용된다. 웹푸시로 깨우더라도 30초 안에 알림 확인 → 잠금해제 →
-     * 앱 로딩 → 수락까지 끝내는 것은 사실상 불가능하므로, 판정 기준은 "푸시 구독 보유"가 아니라 "살아 있는 SSE 연결"이다.
+     * {@code dreamiMap}에 MATCHING으로 남아 있다. 이 유령에게 오퍼 슬롯이 가면 주문은 30초 TTL을 그대로 태우고 재매칭 대기로 되돌아가며, 그 뒤 쿨다운 정책까지 적용된다. 웹푸시로
+     * 깨우더라도 30초 안에 알림 확인 → 잠금해제 → 앱 로딩 → 수락까지 끝내는 것은 사실상 불가능하므로, 판정 기준은 "푸시 구독 보유"가 아니라 "살아 있는 SSE 연결"이다.
      *
      * <p>엔진 스레드에서 호출되지만 판정은 {@code ConcurrentHashMap} 조회 한 번이라 블로킹이 없다.
      */
@@ -122,8 +106,8 @@ public class MatchingService {
     }
 
     /**
-     * 드리미에게 실시간으로 닿을 수 있는지 판정하고, 걸러낸 경우 그 사실을 지표로 남긴다. 필터가 실제로 몇 명의 유령을
-     * 막았는지는 {@code matching.candidates.filtered{reason=not_connected}}로 Grafana에서 확인한다.
+     * 드리미에게 실시간으로 닿을 수 있는지 판정하고, 걸러낸 경우 그 사실을 지표로 남긴다. 필터가 실제로 몇 명의 유령을 막았는지는
+     * {@code matching.candidates.filtered{reason=not_connected}}로 Grafana에서 확인한다.
      */
     private boolean isReachable(WaitingDreami dreami) {
         if (notificationService.isReachableNow(dreami.dreamiId())) {
@@ -163,6 +147,14 @@ public class MatchingService {
      * @param location 드리미의 현재 위치
      * @return 드리미 등록 액션이 큐에 제출되었으면 true, 이미 등록되어 있거나 큐 제출에 실패했을 경우 false
      */
+    /**
+     * 드리미가 매칭 엔진에 온라인 등록되어 오퍼를 기다리는 중인지. 이 상태는 DB에 흔적이 없어 주문 테이블만으로는 알 수 없다. 인메모리 상태이므로 서버가 재시작하면 false가 되며, 그때는 실제로도
+     * 오프라인이 맞다.
+     */
+    public boolean isDreamiWaiting(UUID dreamiId) {
+        return dreamiMap.containsKey(dreamiId);
+    }
+
     public boolean registerDreami(UUID dreamiId, GeoPoint location) {
         if (dreamiMap.containsKey(dreamiId)) {
             notificationService.notify(dreamiId, MatchingEventType.OFFER_ERROR,
@@ -309,26 +301,11 @@ public class MatchingService {
         dreamiMap.put(dreamiId,
                 new WaitingDreami(dreamiId, location, WaitingDreamiStatus.MATCHING, LocalDateTime.now(clock)));
         log.debug("드리미 등록 처리 완료: dreamiId={}, location={}", dreamiId, location);
-        // 즉시 오퍼를 만들지 않고, 다음 배치 사이클에서 대기 중인 주문들과 함께 평가되도록 dirty만 표시한다.
-        matchingBatchDispatcher.markDirty();
     }
 
     void applyRemoveDreami(UUID dreamiId) {
         dreamiMap.remove(dreamiId);
         log.debug("드리미 제거 처리 완료: dreamiId={}", dreamiId);
-    }
-
-    /**
-     * 드리미 등록 없이도 재매칭 대기 방이 방치되지 않도록, 주기적으로 재매칭을 시도한다. 엔진의 단일 기록자 스레드가 아닌 스케줄러 스레드에서 실행되므로, 상태를 직접 건드리지 않고 다른 액션들과 동일하게
-     * 큐에 제출만 한다.
-     */
-    @Scheduled(fixedRate = 600_000L) // REMATCH_SCAN_INTERVAL과 동일한 값(ms) — @Scheduled는 상수 표현식만 허용
-    public void scheduleRematchWaitingGroups() {
-        matchingEngine.submit(new RematchWaitingGroups(this));
-    }
-
-    void applyRematchWaitingGroups() {
-        retryRematchWaitingGroups();
     }
 
     /**
@@ -342,24 +319,11 @@ public class MatchingService {
     }
 
     void applyRunMatchingAssignmentCycle() {
-        matchingBatchDispatcher.reset();
         MatchingAssignmentProblem problem = matchingAssignmentProblemAssembler.assemble(
                 orderOfferGroups(), reachableWaitingDreamis());
         MatchingPlan plan = matchingAssignmentPolicy.createPlan(problem);
         matchingPlanApplier.apply(problem, plan, LocalDateTime.now(clock),
                 orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
-    }
-
-    /**
-     * 재매칭 대기(WAITING) 상태의 방들에 대해 오퍼 라운드를 다시 시도한다. {@link #attemptOfferRound}는 그룹 맵의 키를 추가/삭제하지 않으므로 스냅샷 순회로 안전하다.
-     */
-    private void retryRematchWaitingGroups() {
-        List<OrderOfferGroup> waitingGroups = orderOfferGroupsByOrderId.values().stream()
-                .filter(group -> group.status() == OrderOfferGroupStatus.WAITING)
-                .toList();
-        for (OrderOfferGroup group : waitingGroups) {
-            attemptOfferRound(group);
-        }
     }
 
     void applyStartMatching(Orders order) {
@@ -375,60 +339,6 @@ public class MatchingService {
         OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), boormiLocation,
                 OrderSummaryDto.from(order), new ArrayList<>(), LocalDateTime.now(clock));
         orderOfferGroupsByOrderId.put(order.getOrderId(), group);
-        matchingBatchDispatcher.markDirty();
-    }
-
-    /**
-     * 방에 아직 제안받지 않은 대기 드리미가 있으면 다음 오퍼 라운드를 진행하고, 없으면 재매칭 대기(WAITING)로 둔다. 최초 매칭 시작·소진 후 재매칭은 이제 dirty 표시 후 배치
-     * 사이클({@link #applyRunMatchingAssignmentCycle()})로 처리되므로, 이 메서드는 주기적 fallback 스캔
-     * ({@link #retryRematchWaitingGroups()}, {@link #scheduleRematchWaitingGroups()})에서만 쓰인다. 이미 취소(CANCELLED)되었거나
-     * 확정(MATCHED)된 그룹은 다시 열리면 안 되므로 아무 것도 하지 않는다. {@link MatchOffer#shouldExcludeFromRematch()}에 따라, 명시적으로 거절했거나 드리미 응답
-     * timeout(DREAMI_EXPIRED)인 드리미는 재제안 대상에서 제외하고 타의로 회수됐거나(WITHDRAWN) 부르미 응답 timeout(BOORMI_EXPIRED)인 드리미는 다시 후보에
-     * 포함한다. 후보는 {@link #isReachable}로 한 번 더 걸러, SSE 연결이 끊긴 드리미가 오퍼 슬롯을 차지하지 않게 한다.
-     */
-    private void attemptOfferRound(OrderOfferGroup group) {
-        if (!group.isActive()) {
-            return;
-        }
-
-        Set<UUID> excludedDreamiIds = group.offers().stream()
-                .filter(MatchOffer::shouldExcludeFromRematch)
-                .map(MatchOffer::dreamiId)
-                .collect(Collectors.toSet());
-
-        List<WaitingDreami> candidates = dreamiMap.values().stream()
-                .filter(dreami -> dreami.status() == WaitingDreamiStatus.MATCHING)
-                .filter(dreami -> !excludedDreamiIds.contains(dreami.dreamiId()))
-                .filter(this::isReachable)
-                .sorted(orderingComparator())
-                .limit(MAX_OFFER_COUNT)
-                .toList();
-
-        if (candidates.isEmpty()) {
-            // 아직 붙일 드리미가 없으면 재매칭 대기 상태로 남긴다. (드리미 등록/소진 시 재시도)
-            group.closeForRematch();
-            return;
-        }
-
-        List<MatchOffer> newOffers = new ArrayList<>();
-        for (WaitingDreami dreami : candidates) {
-            UUID offerId = UUID.randomUUID(); // 제안UUID (드리미 1명당 1개)
-            MatchOffer offer = new MatchOffer(
-                    offerId, group.orderId(), dreami.dreamiId(), MatchOfferStatus.OFFERED, LocalDateTime.now(clock));
-            newOffers.add(offer);
-
-            offersById.put(offerId, offer);
-            offerIdsByDreamiId.computeIfAbsent(dreami.dreamiId(), k -> new HashSet<>()).add(offerId);
-            dreami.markProposed();
-            matchingActionScheduler.scheduleDreamiOfferTimeout(offerId, OFFER_TTL);
-        }
-        group.addOffersAndOpen(newOffers);
-
-        // 제안받은 드리미 각각에게 제안 팝업을 띄운다.
-        for (MatchOffer offer : newOffers) {
-            notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_POPUP,
-                    OfferPopupPayload.from(offer, group.orderSummary(), OFFER_TTL));
-        }
     }
 
     void applyCancelOrderByBoormi(UUID orderId) {
@@ -445,26 +355,20 @@ public class MatchingService {
         }
 
         LocalDateTime now = LocalDateTime.now(clock);
-        boolean dreamiReleased = false;
         for (MatchOffer offer : group.offers()) {
             if (offer.status() == MatchOfferStatus.OFFERED) {
                 offer.withdraw(now);
-                dreamiReleased |= releaseDreami(offer.dreamiId());
+                releaseDreami(offer.dreamiId());
                 notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
                         new OfferClosedPayload(offer.offerId(), "부르미가 주문을 취소함"));
             } else if (offer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION) {
                 offer.rejectByBoormi(now);
-                dreamiReleased |= releaseDreami(offer.dreamiId());
+                releaseDreami(offer.dreamiId());
                 notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
                         new OfferClosedPayload(offer.offerId(), "부르미가 주문을 취소함"));
             }
         }
         group.cancel();
-
-        // 취소된 그룹 자체는 CANCELLED라 다시 배정되지 않지만, 반환된 드리미는 다른 대기 주문의 배치 후보가 될 수 있다.
-        if (dreamiReleased) {
-            matchingBatchDispatcher.markDirty();
-        }
     }
 
     void applyAcceptByDreami(UUID offerId) {
@@ -483,7 +387,6 @@ public class MatchingService {
         }
         UUID acceptedDreamiId = matchOffer.dreamiId();
         LocalDateTime now = LocalDateTime.now(clock);
-        boolean dreamiReleased = false;
 
         // 수락한 사람의 상태를 PENDING_BOORMI_CONFIRMATION로 변경
         // 나머지 매칭오퍼 상태를 WITHDRAW로 변경
@@ -492,7 +395,7 @@ public class MatchingService {
             // 나머지 사람은 WITHDRAWN
             if (offer.dreamiId().equals(acceptedDreamiId)) {
                 offer.acceptByDreami(now);
-                matchingActionScheduler.scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
+                matchingEngine.schedule(new ExpireBoormiOffer(this, offer.offerId()), BOORMI_OFFER_TTL);
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
                 notificationService.notify(group.boormiId(), MatchingEventType.DREAMI_INFO,
                         DreamiInfoPayload.from(offer, pickupEtaMinutesForOffer(offer), BOORMI_OFFER_TTL));
@@ -501,14 +404,10 @@ public class MatchingService {
                 // 이미 거절/만료됐거나 다른 방으로 넘어간 드리미의 상태는 건드리지 않는다.
                 offer.withdraw(now);
                 // 선착순에서 패배한 드리미를 다시 매칭 수락가능한 상태로 돌려, 다른 대기 주문의 배치 후보가 되게 한다.
-                dreamiReleased |= releaseDreami(offer.dreamiId());
+                releaseDreami(offer.dreamiId());
                 notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
                         new OfferClosedPayload(offer.offerId(), "선착순 마감"));
             }
-        }
-
-        if (dreamiReleased) {
-            matchingBatchDispatcher.markDirty();
         }
     }
 
@@ -519,14 +418,11 @@ public class MatchingService {
                 .filter(offer -> offer.status() == MatchOfferStatus.OFFERED)
                 .ifPresentOrElse(
                         offer -> {
-                            boolean released = releaseDreami(offer.dreamiId());
+                            releaseDreami(offer.dreamiId());
                             offer.rejectByDreami(LocalDateTime.now(clock));
                             notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_CLOSED,
                                     new OfferClosedPayload(offer.offerId(), "거절 완료"));
                             moveGroupToWaitingIfExhausted(offer.orderId());
-                            if (released) {
-                                matchingBatchDispatcher.markDirty();
-                            }
                         },
                         () -> log.debug("거절 가능한 상태가 아닌 제안 거절 요청, 무시: offerId={}", offerId)
                 );
@@ -566,12 +462,9 @@ public class MatchingService {
                             // 거절당한 드리미에게 부르미가 거절했음을 알리고, 다시 배달가능 상태로 변경
                             notificationService.notify(matchOffer.dreamiId(), MatchingEventType.BOORMI_REJECTED,
                                     new BoormiRejectedPayload(matchOffer.offerId(), matchOffer.orderId()));
-                            boolean released = releaseDreami(matchOffer.dreamiId());
+                            releaseDreami(matchOffer.dreamiId());
 
                             moveGroupToWaitingIfExhausted(matchOffer.orderId());
-                            if (released) {
-                                matchingBatchDispatcher.markDirty();
-                            }
                         },
                         () -> log.debug("거절 가능한 상태가 아닌 제안 부르미 거절 요청, 무시: offerId={}", offerId)
                 );
@@ -579,6 +472,14 @@ public class MatchingService {
 
     public void expireDreamiOffer(UUID offerId) {
         matchingEngine.submit(new ExpireDreamiOffer(this, offerId));
+    }
+
+    /**
+     * 지정한 시간(ttl) 뒤에 드리미 응답 timeout을 한 번 예약한다. {@link ExpireDreamiOffer}가 이 패키지 안에서만 접근 가능한 record이므로, 다른
+     * 패키지({@link MatchingPlanApplier})가 오퍼 timeout을 예약하려면 이 메서드를 거쳐야 한다.
+     */
+    public void scheduleDreamiOfferTimeout(UUID offerId, Duration ttl) {
+        matchingEngine.schedule(new ExpireDreamiOffer(this, offerId), ttl);
     }
 
     void applyExpireDreamiOffer(UUID offerId) {
@@ -589,11 +490,8 @@ public class MatchingService {
                 .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.OFFERED)
                 .ifPresent(matchOffer -> {
                     matchOffer.expireByDreami(LocalDateTime.now(clock));
-                    boolean released = releaseDreami(matchOffer.dreamiId());
+                    releaseDreami(matchOffer.dreamiId());
                     moveGroupToWaitingIfExhausted(matchOffer.orderId());
-                    if (released) {
-                        matchingBatchDispatcher.markDirty();
-                    }
                 });
     }
 
@@ -610,19 +508,9 @@ public class MatchingService {
                 .ifPresent(matchOffer -> {
                     // 드리미가 다시 배달이 가능하게 바꿔야함
                     matchOffer.expireByBoormi(LocalDateTime.now(clock));
-                    boolean released = releaseDreami(matchOffer.dreamiId());
+                    releaseDreami(matchOffer.dreamiId());
                     moveGroupToWaitingIfExhausted(matchOffer.orderId());
-                    if (released) {
-                        matchingBatchDispatcher.markDirty();
-                    }
                 });
-    }
-
-    /**
-     * TODO: 거리순 등 실제 정렬 기준 확정 전까지는 대기 오래한 순
-     */
-    private Comparator<WaitingDreami> orderingComparator() {
-        return Comparator.comparing(WaitingDreami::updatedAt);
     }
 
     /**
@@ -715,13 +603,14 @@ public class MatchingService {
     }
 
     /**
-     * 오퍼의 드리미-픽업지 간 직선거리를 도보 속도로 환산한 예상 픽업 시간(분). 실시간 경로가 아닌 추정치이며, 방/드리미 위치를
-     * 알 수 없으면(이미 정리되었거나 위치 정보가 없으면) null을 반환한다.
+     * 오퍼의 드리미-픽업지 간 직선거리를 도보 속도로 환산한 예상 픽업 시간(분). 실시간 경로가 아닌 추정치이며, 방/드리미 위치를 알 수 없으면(이미 정리되었거나 위치 정보가 없으면) null을
+     * 반환한다.
      */
     public Integer pickupEtaMinutesForOffer(MatchOffer offer) {
         OrderOfferGroup group = orderOfferGroupsByOrderId.get(offer.orderId());
         WaitingDreami dreami = dreamiMap.get(offer.dreamiId());
-        if (group == null || dreami == null || !hasCoordinates(group.location()) || !hasCoordinates(dreami.location())) {
+        if (group == null || dreami == null || !hasCoordinates(group.location()) || !hasCoordinates(
+                dreami.location())) {
             return null;
         }
         double distanceMeters = geoDistanceCalculator.distanceMeters(group.location(), dreami.location());
@@ -734,16 +623,13 @@ public class MatchingService {
 
     /**
      * 드리미를 다시 매칭 대기(MATCHING) 상태로 되돌린다. 이미 등록이 해제됐거나 이미 MATCHING이면(중복 처리) 아무 것도 바뀌지 않는다.
-     *
-     * @return 실제로 상태가 바뀌었으면(즉, 다른 대기 주문의 배치 후보가 될 수 있게 됐으면) true
      */
-    private boolean releaseDreami(UUID dreamiId) {
+    private void releaseDreami(UUID dreamiId) {
         WaitingDreami dreami = dreamiMap.get(dreamiId);
         if (dreami == null || dreami.status() == WaitingDreamiStatus.MATCHING) {
-            return false;
+            return;
         }
         dreami.markMatching();
-        return true;
     }
 
     /**

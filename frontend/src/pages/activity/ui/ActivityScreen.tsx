@@ -10,7 +10,8 @@ import {
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useRoleSwitch } from "@/shared/lib/role/useRoleSwitch";
-import { useRoleLocked } from "@/shared/store/deliveryStore";
+import { useRoleLocked } from "@/shared/lib/role/useRoleLocked";
+import { useSessionStore } from "@/shared/store/sessionStore";
 import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
 import { useDreamiOrderStore } from "@/shared/store/dreamiOrderStore";
 import { ActivityItem } from "./ActivityItem";
@@ -31,7 +32,13 @@ export function ActivityScreen() {
   const { role } = useRole();
   const { onRoleChange, pending, error: roleError } = useRoleSwitch();
   const [filter, setFilter] = useState<ActivityFilter>("전체");
-  const roleLocked = useRoleLocked();
+  const { locked: roleLocked, reason: roleLockReason } = useRoleLocked();
+  const refreshUser = useSessionStore((s) => s.refreshUser);
+
+  // 토글이 보이는 화면에 들어올 때마다 수행 중인 역할을 최신화해 잠금 상태를 맞춘다.
+  useEffect(() => {
+    void refreshUser();
+  }, [refreshUser]);
   const isDriver = role === "드리미";
 
   // 드리미(실제 API) 소스
@@ -40,8 +47,10 @@ export function ActivityScreen() {
   const dreamiLoadingMore = useDreamiOrderStore((s) => s.loadingMore);
   const dreamiError = useDreamiOrderStore((s) => s.error);
   const dreamiHasNext = useDreamiOrderStore((s) => s.hasNext);
+  const dreamiTotalCount = useDreamiOrderStore((s) => s.totalCount);
   const loadDreami = useDreamiOrderStore((s) => s.load);
   const loadMoreDreami = useDreamiOrderStore((s) => s.loadMore);
+  const loadDreamiCount = useDreamiOrderStore((s) => s.loadCount);
 
   // 부르미(실제 API) 소스
   const orders = useBoormiOrderStore((s) => s.orders);
@@ -49,14 +58,21 @@ export function ActivityScreen() {
   const loadingMore = useBoormiOrderStore((s) => s.loadingMore);
   const boormiError = useBoormiOrderStore((s) => s.error);
   const hasNext = useBoormiOrderStore((s) => s.hasNext);
+  const boormiTotalCount = useBoormiOrderStore((s) => s.totalCount);
   const load = useBoormiOrderStore((s) => s.load);
   const loadMore = useBoormiOrderStore((s) => s.loadMore);
+  const loadBoormiCount = useBoormiOrderStore((s) => s.loadCount);
 
-  // 역할 탭 진입 시 각자의 목록 조회.
+  // 역할 탭 진입 시 각자의 목록과 전체 건수를 조회.
   useEffect(() => {
-    if (isDriver) loadDreami();
-    else load();
-  }, [isDriver, load, loadDreami]);
+    if (isDriver) {
+      loadDreami();
+      loadDreamiCount();
+    } else {
+      load();
+      loadBoormiCount();
+    }
+  }, [isDriver, load, loadDreami, loadBoormiCount, loadDreamiCount]);
 
   const records: ActivityRecord[] = useMemo(
     () =>
@@ -71,13 +87,13 @@ export function ActivityScreen() {
 
   /**
    * 진행 중인 건은 실시간 상세로 보낸다(드리미는 실 추적 페이지, 부르미는 mock 상세).
-   * 드리미의 완료/취소 건은 페이지 연결하지 않는다(null 반환).
+   * 드리미의 완료/취소 건은 드림상세(activityDetailDriver)로 보낸다.
    */
   const detailPath = (record: ActivityRecord): string | null => {
     if (isDriver) {
       return record.filter === "진행중"
         ? `${ROUTES.deliveryTrack}?orderId=${record.id}`
-        : null;
+        : `${ROUTES.activityDetailDriver}?id=${record.id}`;
     }
     if (record.filter === "진행중")
       return `${ROUTES.activityDetail}?status=진행중&id=${record.id}`;
@@ -99,11 +115,15 @@ export function ActivityScreen() {
         {roleError && (
           <p className="text-2xs text-status-danger">{roleError}</p>
         )}
+        {!roleError && roleLocked && roleLockReason && (
+          <p className="text-2xs text-navy-500">{roleLockReason}</p>
+        )}
 
         <FilterChips value={filter} onChange={setFilter} />
 
         <p className="text-xs text-muted">
-          {isDriver ? "수행한 배달" : "요청한 배달"} · 총 {records.length}건
+          {isDriver ? "수행한 배달" : "요청한 배달"} · 총{" "}
+          {isDriver ? dreamiTotalCount : boormiTotalCount}건
         </p>
 
         {isDriver && dreamiLoading && records.length === 0 ? (

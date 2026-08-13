@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.user.controller;
 
+import com.naengsam.quick.domain.user.dto.ActiveRole;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
 import com.naengsam.quick.domain.user.dto.SendVerificationCodeRequest;
 import com.naengsam.quick.domain.user.dto.SignUpRequest;
@@ -29,6 +30,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 @Slf4j
@@ -116,8 +118,13 @@ public class UserController {
     }
 
     @GetMapping("/role")
-    @Operation(summary = "부르미/드리미 전환", description = "로그인 한 사용자가 부르미/드리미 전환 가능한지 확인한다.")
-    public void changeRole(@LoginUser UUID boormiId) {
-        userService.changeRole(boormiId);
+    @Operation(summary = "부르미/드리미 전환", description = """
+            로그인 한 사용자가 target 역할로 전환 가능한지 확인한다.
+            매칭·배달이 진행 중이면 어느 방향으로도 전환할 수 없다.""")
+    @ApiErrorCodes(enumClass = UserErrorCode.class,
+            codes = {"DREAMI_NOT_REGISTERED", "DREAMI_NOT_APPROVED",
+                    "CANNOT_CHANGE_ROLE_WITH_ACTIVE_ORDER", "CANNOT_CHANGE_ROLE_WHILE_MATCHING"})
+    public void changeRole(@LoginUser UUID boormiId, @RequestParam ActiveRole target) {
+        userService.changeRole(boormiId, target);
     }
 }

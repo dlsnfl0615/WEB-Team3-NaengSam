@@ -10,4 +10,5 @@ import type { PendingOfferDto } from './pendingOfferDto';
 export interface CurrentMatchingStatusDto {
   pendingOffer?: PendingOfferDto;
   incomingDreami?: DreamiInfoPayload;
+  dreamiOnline?: boolean;
 }
