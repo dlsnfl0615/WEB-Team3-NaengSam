@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { api, isApiError } from "@/shared/api";
 import { toBoormiOrder, type BoormiOrder } from "./boormiOrderAdapter";
@@ -77,22 +77,42 @@ export const useDreamiOrderStore = create<DreamiOrderState>((set, get) => ({
   },
 }));
 
+export interface DreamiOrderByIdResult {
+  order: BoormiOrder | null;
+  loading: boolean;
+}
+
 /**
- * id로 활동 내역 상세를 찾는다. 활동 목록을 거치지 않고 상세 URL로 바로 들어온 경우(새로고침 등)
- * 스토어가 비어있을 수 있어, 그럴 때만 한 번 load()로 채운다.
+ * 배달 하나를 주문 id로 직접 조회한다(전용 API: getDreamiOrder). 목록 스토어의 deliveries 배열은
+ * 커서 페이지네이션으로 최근 것부터 일부만 들고 있어서, 활동 내역 상세 화면이 목록을 거치지 않고
+ * 새로고침/딥링크로 바로 들어오면 그 시점에 스토어가 비어있거나(또는 최근 20건 안에 이 배달이
+ * 없어서) 못 찾을 수 있었다 — 그래서 스토어를 아예 안 보고 항상 이 API로 그 배달 하나만 조회한다.
  */
-export function useDreamiOrderById(id: string | null): BoormiOrder | null {
-  const deliveries = useDreamiOrderStore((s) => s.deliveries);
-  const loading = useDreamiOrderStore((s) => s.loading);
-  const load = useDreamiOrderStore((s) => s.load);
-  const attemptedRef = useRef(false);
+export function useDreamiOrderById(id: string | null): DreamiOrderByIdResult {
+  // id를 상태에 같이 들고 있다가, 조회 중인 id와 다르면(아직 응답 전이면) loading으로 취급한다 —
+  // effect 본문에서 동기적으로 setState해 로딩 플래그를 켜지 않고도 이전 배달 데이터가
+  // 새 id에 잠깐 노출되는 걸 막는다(useDeliveryCompletion과 동일한 패턴).
+  const [state, setState] = useState<{ id: string | null; order: BoormiOrder | null }>(
+    { id: null, order: null },
+  );
 
   useEffect(() => {
-    if (deliveries.length > 0 || loading || attemptedRef.current) return;
-    attemptedRef.current = true;
-    load();
-  }, [deliveries.length, loading, load]);
+    if (!id) return;
+    let cancelled = false;
+    api
+      .getDreamiOrder(id)
+      .then(({ result }) => {
+        if (!cancelled) setState({ id, order: result ? toBoormiOrder(result) : null });
+      })
+      .catch(() => {
+        if (!cancelled) setState({ id, order: null });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id]);
 
-  if (!id) return null;
-  return deliveries.find((d) => d.id === id) ?? null;
+  if (!id) return { order: null, loading: false };
+  const loading = state.id !== id;
+  return { order: loading ? null : state.order, loading };
 }
