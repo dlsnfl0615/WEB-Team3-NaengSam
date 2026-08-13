@@ -9,6 +9,7 @@ import com.naengsam.quick.domain.dreami.dto.DreamiTodayStatsDto;
 import com.naengsam.quick.domain.dreami.dto.MonthlyRevenueDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiReviewDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
+import com.naengsam.quick.domain.dreami.dto.OfferItemPhotoDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.entity.DreamiRequestDeniedDetails;
@@ -152,6 +153,24 @@ public class DreamiService {
             throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
         }
         matchingService.rejectByDreami(offerId);
+    }
+
+    /**
+     * 오퍼(수락 전 콜)의 물품 사진 URL을 조회한다. 아직 수락 전이라 주문의 dreami_id가 비어있어
+     * "이 주문의 드리미"로는 검증할 수 없으므로, 이 오퍼를 받은 드리미 본인인지로 검증한다.
+     * 매칭 엔진의 SSE 발송 경로(단일 스레드로 직렬화됨)에 S3 조회를 얹지 않기 위해, URL은 이렇게
+     * 드리미가 사진 버튼을 눌러 필요할 때만 호출하는 별도 API로 뗀다. 사진이 없거나 조회 실패 시 null.
+     */
+    @Transactional(readOnly = true)
+    public OfferItemPhotoDto getOfferItemPhoto(UUID offerId, UUID dreamiId) {
+        if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
+            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
+        }
+        UUID orderId = matchingService.findOrderIdByOfferId(offerId)
+                .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
+        String imageKey = orderService.getOrder(orderId).getImageKey();
+        String itemPhotoUrl = imageKey == null ? null : s3PresignService.resolveDownloadUrl(imageKey);
+        return new OfferItemPhotoDto(itemPhotoUrl);
     }
 
     /**

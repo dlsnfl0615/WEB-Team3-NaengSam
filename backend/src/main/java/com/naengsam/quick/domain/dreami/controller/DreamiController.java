@@ -5,6 +5,7 @@ import com.naengsam.quick.domain.dreami.dto.DreamiOnlineRequest;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiTodayStatsDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
+import com.naengsam.quick.domain.dreami.dto.OfferItemPhotoDto;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.service.DreamiService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
@@ -81,6 +82,16 @@ public class DreamiController {
     @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
     public void rejectOffer(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
         dreamiService.rejectOffer(offerId, dreamiId);
+    }
+
+    @Operation(summary = "오퍼 물품 사진 조회",
+            description = "수락 전 콜(오퍼)에서 부르미가 등록한 물품 사진 URL을 조회한다. 이 오퍼를 받은 드리미 본인만 조회할 수 있다.")
+    @GetMapping("/offers/{offerId}/item-photo")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
+    public OfferItemPhotoDto getOfferItemPhoto(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
+        return dreamiService.getOfferItemPhoto(offerId, dreamiId);
     }
 
     @Operation(summary = "주변 콜 리스트 조회",

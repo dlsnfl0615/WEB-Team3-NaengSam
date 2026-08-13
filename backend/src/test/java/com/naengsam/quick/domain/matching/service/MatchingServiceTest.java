@@ -59,7 +59,7 @@ class MatchingServiceTest {
             UUID.randomUUID(), "품목", null, null, 5000L, 20, 1200L,
             BigDecimal.valueOf(37.1), BigDecimal.valueOf(127.1), "픽업별칭", "픽업주소",
             BigDecimal.valueOf(37.2), BigDecimal.valueOf(127.2), "도착별칭", "도착주소",
-            "img", LocalDateTime.now());
+            "img", "문 앞에 놓아주세요", LocalDateTime.now());
 
     private MatchingService matchingService;
     private MatchingEngine matchingEngine;
@@ -1605,7 +1605,6 @@ class MatchingServiceTest {
         assertThat(payload.destinationLongitude()).isEqualByComparingTo(BigDecimal.valueOf(127.0559));
         assertThat(payload.destinationAlias()).isEqualTo("회사");
         assertThat(payload.destinationAddressLine1()).isEqualTo("서울시 성동구");
-        assertThat(payload.imageKey()).isEqualTo("img-key");
         assertThat(payload.offeredAt()).isNotNull();
         assertThat(payload.expiresAt()).isEqualTo(payload.offeredAt().plusSeconds(30));
     }

@@ -10,6 +10,7 @@ import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryContactDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
+import com.naengsam.quick.domain.delivery.dto.PickupPhotoDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationResponseDto;
@@ -138,9 +139,25 @@ public class DeliveryService {
         // 드리미 연결 상태도 함께 담는다 — 화면을 다시 열었을 때 SSE 이벤트를 기다리지 않고 즉시 복원하기 위함이며,
         // 부르미가 끊긴 동안 유실된 오프라인 통보를 되찾는 경로이기도 하다.
         return DeliveryDetailResponseDto.from(delivery, order,
+                resolveItemPhotoUrl(order.getImageKey()),
                 parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()),
                 dreamiOfflineDetector.isOffline(delivery),
                 dreamiOfflineDetector.secondsSinceLastLocationOrNull(delivery));
+    }
+
+    // 배달 추적 화면의 픽업사진 버튼용 조회. 픽업 인증 사진은 배달 도중(픽업 완료 시점)에야 생기는 값이라
+    // getDeliveryDetail의 스냅샷에 실어두면 SSE로 픽업 완료를 알린 뒤에도 화면이 새로고침 전까지 stale하게 "사진 없음"을
+    // 보여준다. 그래서 버튼을 누른 시점에 이 메서드로 그때그때 조회한다. 소유권 검증은 getDeliveryDetail과 동일하다.
+    @Transactional(readOnly = true)
+    public PickupPhotoDto getPickupPhoto(UUID orderId, UUID userId) {
+        Delivery delivery = deliveryRepository.findByOrderIdWithoutLock(orderId)
+                .orElseThrow(() -> new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+
+        if (!userId.equals(delivery.getBoormiId()) && !userId.equals(delivery.getDreamiId())) {
+            throw new BusinessException(AuthErrorCode.NOT_RESOURCE_OWNER);
+        }
+
+        return new PickupPhotoDto(resolvePickupPhotoUrl(orderId));
     }
 
     // 배달 완료 화면용 요약 조회. 위치·경로 없이 완료 후에만 의미 있는 정산·담당 드리미·소요시간만 담는다.
@@ -202,6 +219,19 @@ public class DeliveryService {
     // 완료 요약 전체를 실패시키지 않는다.
     private String resolveDeliveryPhotoUrl(UUID deliveryId) {
         return deliveryCertificationRepository.findByDeliveryId(deliveryId)
+                .map(certification -> s3PresignService.resolveDownloadUrl(certification.getImageKey()))
+                .orElse(null);
+    }
+
+    // 부르미가 주문 접수 시 등록한 물품 사진 URL을 조회한다. 사진을 안 올렸으면(imageKey 없음) 조회하지 않는다.
+    // 부르미가 주문 접수 시 물품 사진을 등록하지 않아도 되므로 image key가 null일 수 있음
+    private String resolveItemPhotoUrl(String imageKey) {
+        return imageKey == null ? null : s3PresignService.resolveDownloadUrl(imageKey);
+    }
+
+    // 드리미가 찍은 픽업 인증 사진 URL을 조회한다. 픽업 전이라 아직 없으면(레코드 없음) 조회하지 않는다.
+    private String resolvePickupPhotoUrl(UUID orderId) {
+        return pickupCertificationRepository.findByOrderId(orderId)
                 .map(certification -> s3PresignService.resolveDownloadUrl(certification.getImageKey()))
                 .orElse(null);
     }

@@ -7,6 +7,7 @@ import {
   Icon,
   MapCard,
   Modal,
+  PhotoLightboxModal,
   ScreenShell,
   DeliveryRouteMap,
   Toast,
@@ -132,6 +133,10 @@ export function DeliveryTrackScreen() {
     () => onlyValidCoords(livePickupRoute ?? detail?.deliveryRoutePath),
     [livePickupRoute, detail?.deliveryRoutePath],
   );
+
+  // 요청 사항 모달 · 물품 사진 라이트박스 상태
+  const [requestNoteOpen, setRequestNoteOpen] = useState(false);
+  const [itemPhotoOpen, setItemPhotoOpen] = useState(false);
 
   // 픽업 취소 확인 모달 상태
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -309,9 +314,27 @@ export function DeliveryTrackScreen() {
       </div>
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
-        <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
-          {title}
-        </h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
+            {title}
+          </h1>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setRequestNoteOpen(true)}
+            >
+              요청사항
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setItemPhotoOpen(true)}
+            >
+              물품사진
+            </Button>
+          </div>
+        </div>
 
         <Card className="flex items-center gap-3">
           <span className="flex size-9 items-center justify-center rounded-pill bg-teal-50 text-teal-700">
@@ -399,6 +422,37 @@ export function DeliveryTrackScreen() {
         canRetry={blockingModal.canRetry}
         onRetry={retryDeliveryDetail}
         onExit={() => navigate(ROUTES.home, { replace: true })}
+      />
+
+      <Modal
+        open={requestNoteOpen}
+        label="요청 사항"
+        onClose={() => setRequestNoteOpen(false)}
+      >
+        <Card className="flex flex-col gap-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-md font-bold text-navy-900">요청 사항</h2>
+            <button
+              type="button"
+              aria-label="닫기"
+              onClick={() => setRequestNoteOpen(false)}
+              className="text-muted"
+            >
+              <Icon name="close" size={18} />
+            </button>
+          </div>
+          <p className="text-sm text-navy-900">
+            {detail?.deliveryRequest || "요청 사항이 없어요."}
+          </p>
+        </Card>
+      </Modal>
+
+      <PhotoLightboxModal
+        open={itemPhotoOpen}
+        label="물품 사진"
+        photoUrl={detail?.itemPhotoUrl}
+        emptyMessage="등록된 물품 사진이 없어요."
+        onClose={() => setItemPhotoOpen(false)}
       />
     </ScreenShell>
   );
