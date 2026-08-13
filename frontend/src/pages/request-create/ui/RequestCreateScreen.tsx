@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import { Button, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { api, isApiError, type ExpectedValueDto } from "@/shared/api";
@@ -34,6 +35,7 @@ const INITIAL_FORM: RequestForm = {
  * 주소·예상요금·이미지 업로드·콜 등록을 실제 부르미 API로 연동한다.
  */
 export function RequestCreateScreen() {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate();
   const createOrder = useBoormiOrderStore((s) => s.createOrder);
   const [step, setStep] = useState(1);
@@ -57,7 +59,7 @@ export function RequestCreateScreen() {
 
   const next = () => setStep((s) => Math.min(4, s + 1));
   const prev = () => setStep((s) => Math.max(1, s - 1));
-  const back = () => (step > 1 ? prev() : navigate(-1));
+  const back = () => (step > 1 ? prev() : backOrHome());
 
   // 출발·도착지와 물품 유형이 준비되면 예상 요금을 실시간 조회.
   useEffect(() => {

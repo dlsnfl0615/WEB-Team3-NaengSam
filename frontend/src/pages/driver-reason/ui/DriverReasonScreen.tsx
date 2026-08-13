@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import { Button, RadioOption, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useDeliveryStore } from "@/shared/store/deliveryStore";
@@ -16,6 +17,7 @@ const REASONS = [
  * 배송 중 발생한 사고·지연 사유를 골라 제출하면 활성 배달을 사고/취소 처리합니다.
  */
 export function DriverReasonScreen() {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate();
   const cancel = useDeliveryStore((s) => s.cancel);
   const [reason, setReason] = useState<(typeof REASONS)[number]>(REASONS[0]);
@@ -34,7 +36,7 @@ export function DriverReasonScreen() {
 
   return (
     <ScreenShell>
-      <TopBar title="사유 선택" onBack={() => navigate(-1)} actions={[]} />
+      <TopBar title="사유 선택" onBack={backOrHome} actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <h1 className="border-b border-line pb-4 text-lg font-bold tracking-[-0.4px] text-navy-900">

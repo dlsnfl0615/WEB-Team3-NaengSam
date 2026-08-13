@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import { ScreenShell, SegmentedToggle, TopBar } from "@/shared/ui";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useRoleSwitch } from "@/shared/lib/role/useRoleSwitch";
@@ -14,7 +14,7 @@ import { SenderSavings } from "./SenderSavings";
  * 탭 화면이 아니라 내 지갑에서 열리는 별도 화면이라 하단 탭 바가 없습니다.
  */
 export function EarningsScreen() {
-  const navigate = useNavigate();
+  const backOrHome = useBackOrHome();
   const { role } = useRole();
   const { onRoleChange, pending, error } = useRoleSwitch();
   const { locked: roleLocked, reason: roleLockReason } = useRoleLocked();
@@ -31,7 +31,7 @@ export function EarningsScreen() {
     <ScreenShell>
       <TopBar
         title={isDriver ? "수익" : "절감 리포트"}
-        onBack={() => navigate(-1)}
+        onBack={backOrHome}
         actions={["document", "profile"]}
       />
 

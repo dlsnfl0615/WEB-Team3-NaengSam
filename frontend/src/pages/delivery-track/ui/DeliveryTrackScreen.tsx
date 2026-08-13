@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   Button,
   BlockingLoadErrorModal,
@@ -55,6 +56,7 @@ import { TrackOverlay } from "./TrackOverlay";
  * `?status=DELIVERING` 이면 pickup-finish 후 배송중으로 돌아온 상태다. orderId 가 없으면 기존 mock 흐름.
  */
 export function DeliveryTrackScreen() {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const orderId = params.get("orderId");
@@ -298,7 +300,7 @@ export function DeliveryTrackScreen() {
         </MapCard>
         <button
           type="button"
-          onClick={() => navigate(-1)}
+          onClick={backOrHome}
           aria-label="뒤로가기"
           className="absolute left-4 top-5 text-navy-900"
         >

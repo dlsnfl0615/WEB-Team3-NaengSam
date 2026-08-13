@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   BlockingLoadErrorModal,
   Button,
@@ -58,6 +59,7 @@ function fullAddress(line1?: string, line2?: string): string | null {
  * 오퍼/콜 팝업은 전역 `MatchingPopup`이 담당하므로 다른 화면으로 이동해도 이어서 뜬다.
  */
 export function MatchingScreen() {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { role } = useRole();
@@ -251,7 +253,7 @@ export function MatchingScreen() {
     <ScreenShell>
       <TopBar
         title={`${counterpart}를 찾는 중`}
-        onBack={() => navigate(-1)}
+        onBack={backOrHome}
         actions={[]}
       />
 

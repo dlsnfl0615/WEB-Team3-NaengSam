@@ -1,4 +1,5 @@
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import { ScreenShell, TopBar } from "@/shared/ui";
 import { useDeliveryById } from "@/shared/store/deliveryStore";
 import { CompletedDetail } from "./CompletedDetail";
@@ -10,7 +11,7 @@ import { OngoingDetail } from "./OngoingDetail";
  * ?id=<배달 id>로 특정 배달을 구독합니다.
  */
 export function ActivityDetailScreen() {
-  const navigate = useNavigate();
+  const backOrHome = useBackOrHome();
   const [params] = useSearchParams();
   const ongoing = params.get("status") === "진행중";
   const delivery = useDeliveryById(params.get("id"));
@@ -19,13 +20,13 @@ export function ActivityDetailScreen() {
     <ScreenShell>
       <TopBar
         title="배달 상세"
-        onBack={() => navigate(-1)}
+        onBack={backOrHome}
         actions={ongoing ? [] : ["more"]}
       />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         {ongoing ? (
-          <OngoingDetail delivery={delivery} onCancel={() => navigate(-1)} />
+          <OngoingDetail delivery={delivery} onCancel={backOrHome} />
         ) : (
           <CompletedDetail delivery={delivery} />
         )}

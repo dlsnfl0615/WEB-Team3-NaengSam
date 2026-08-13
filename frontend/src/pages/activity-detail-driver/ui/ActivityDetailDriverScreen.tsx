@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   Badge,
   Button,
@@ -19,7 +20,7 @@ import { ProofCarousel } from "./ProofCarousel";
  * ?id=<배달 id>로 특정 배달을 구독합니다.
  */
 export function ActivityDetailDriverScreen() {
-  const navigate = useNavigate();
+  const backOrHome = useBackOrHome();
   const [params] = useSearchParams();
   const [rating, setRating] = useState(0);
   const delivery = useDeliveryById(params.get("id"));
@@ -33,7 +34,7 @@ export function ActivityDetailDriverScreen() {
 
   return (
     <ScreenShell>
-      <TopBar title="드림상세" onBack={() => navigate(-1)} actions={["more"]} />
+      <TopBar title="드림상세" onBack={backOrHome} actions={["more"]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <div className="flex items-center gap-3">
