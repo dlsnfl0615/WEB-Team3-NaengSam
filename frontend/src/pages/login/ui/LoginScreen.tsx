@@ -47,9 +47,11 @@ export function LoginScreen() {
       <main className="flex flex-1 flex-col pt-8">
         {/* 로고 + 타이틀 */}
         <div className="flex flex-col items-center">
-          <div className="flex h-[82px] w-[106px] items-center justify-center rounded-md border border-dashed border-line text-sm text-muted">
-            LOGO
-          </div>
+          <img
+            src="/symboorm-logo.png"
+            alt="쉼부름"
+            className="h-[100px] w-[100px] object-contain"
+          />
           <h1 className="mt-4 text-xl font-bold tracking-[-0.4px] text-navy-900">
             쉼, 부름
           </h1>
