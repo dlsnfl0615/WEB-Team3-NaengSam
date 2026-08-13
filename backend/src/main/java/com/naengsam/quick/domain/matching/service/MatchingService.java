@@ -90,7 +90,6 @@ public class MatchingService {
     private final Map<UUID, WaitingDreami> dreamiMap = new ConcurrentHashMap<>();
     private final MatchingEngine matchingEngine;
     private final NotificationService notificationService;
-    private final OfferTimeoutScheduler offerTimeoutScheduler;
     private final MatchingBatchDispatcher matchingBatchDispatcher;
     private final DeliveryService deliveryService;
     private final Clock clock;
@@ -109,9 +108,8 @@ public class MatchingService {
      * 지금 실시간 채널로 닿을 수 있는(= SSE 연결이 살아 있는) 대기 드리미만 남긴다.
      *
      * <p>{@code goOffline}을 호출하지 못하고 브라우저가 죽은 드리미(앱 스와이프 종료, 탭 메모리 회수 등)는 여전히
-     * {@code dreamiMap}에 MATCHING으로 남아 있다. 이 유령에게 오퍼 슬롯이 가면 주문은 30초 TTL을 그대로 태우고
-     * 재매칭 대기로 되돌아가며, 그 뒤 쿨다운 정책까지 적용된다. 웹푸시로 깨우더라도 30초 안에 알림 확인 → 잠금해제 →
-     * 앱 로딩 → 수락까지 끝내는 것은 사실상 불가능하므로, 판정 기준은 "푸시 구독 보유"가 아니라 "살아 있는 SSE 연결"이다.
+     * {@code dreamiMap}에 MATCHING으로 남아 있다. 이 유령에게 오퍼 슬롯이 가면 주문은 30초 TTL을 그대로 태우고 재매칭 대기로 되돌아가며, 그 뒤 쿨다운 정책까지 적용된다. 웹푸시로
+     * 깨우더라도 30초 안에 알림 확인 → 잠금해제 → 앱 로딩 → 수락까지 끝내는 것은 사실상 불가능하므로, 판정 기준은 "푸시 구독 보유"가 아니라 "살아 있는 SSE 연결"이다.
      *
      * <p>엔진 스레드에서 호출되지만 판정은 {@code ConcurrentHashMap} 조회 한 번이라 블로킹이 없다.
      */
@@ -123,8 +121,8 @@ public class MatchingService {
     }
 
     /**
-     * 드리미에게 실시간으로 닿을 수 있는지 판정하고, 걸러낸 경우 그 사실을 지표로 남긴다. 필터가 실제로 몇 명의 유령을
-     * 막았는지는 {@code matching.candidates.filtered{reason=not_connected}}로 Grafana에서 확인한다.
+     * 드리미에게 실시간으로 닿을 수 있는지 판정하고, 걸러낸 경우 그 사실을 지표로 남긴다. 필터가 실제로 몇 명의 유령을 막았는지는
+     * {@code matching.candidates.filtered{reason=not_connected}}로 Grafana에서 확인한다.
      */
     private boolean isReachable(WaitingDreami dreami) {
         if (notificationService.isReachableNow(dreami.dreamiId())) {
@@ -421,7 +419,7 @@ public class MatchingService {
             offersById.put(offerId, offer);
             offerIdsByDreamiId.computeIfAbsent(dreami.dreamiId(), k -> new HashSet<>()).add(offerId);
             dreami.markProposed();
-            offerTimeoutScheduler.scheduleDreamiOfferTimeout(offerId, OFFER_TTL);
+            scheduleDreamiOfferTimeout(offerId, OFFER_TTL);
         }
         group.addOffersAndOpen(newOffers);
 
@@ -493,7 +491,7 @@ public class MatchingService {
             // 나머지 사람은 WITHDRAWN
             if (offer.dreamiId().equals(acceptedDreamiId)) {
                 offer.acceptByDreami(now);
-                offerTimeoutScheduler.scheduleBoormiOfferTimeout(offer.offerId(), BOORMI_OFFER_TTL);
+                matchingEngine.schedule(new ExpireBoormiOffer(this, offer.offerId()), BOORMI_OFFER_TTL);
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
                 notificationService.notify(group.boormiId(), MatchingEventType.DREAMI_INFO,
                         DreamiInfoPayload.from(offer, pickupEtaMinutesForOffer(offer), BOORMI_OFFER_TTL));
@@ -580,6 +578,14 @@ public class MatchingService {
 
     public void expireDreamiOffer(UUID offerId) {
         matchingEngine.submit(new ExpireDreamiOffer(this, offerId));
+    }
+
+    /**
+     * 지정한 시간(ttl) 뒤에 드리미 응답 timeout을 한 번 예약한다. {@link ExpireDreamiOffer}가 이 패키지 안에서만 접근 가능한 record이므로, 다른
+     * 패키지({@link MatchingPlanApplier})가 오퍼 timeout을 예약하려면 이 메서드를 거쳐야 한다.
+     */
+    public void scheduleDreamiOfferTimeout(UUID offerId, Duration ttl) {
+        matchingEngine.schedule(new ExpireDreamiOffer(this, offerId), ttl);
     }
 
     void applyExpireDreamiOffer(UUID offerId) {
@@ -716,13 +722,14 @@ public class MatchingService {
     }
 
     /**
-     * 오퍼의 드리미-픽업지 간 직선거리를 도보 속도로 환산한 예상 픽업 시간(분). 실시간 경로가 아닌 추정치이며, 방/드리미 위치를
-     * 알 수 없으면(이미 정리되었거나 위치 정보가 없으면) null을 반환한다.
+     * 오퍼의 드리미-픽업지 간 직선거리를 도보 속도로 환산한 예상 픽업 시간(분). 실시간 경로가 아닌 추정치이며, 방/드리미 위치를 알 수 없으면(이미 정리되었거나 위치 정보가 없으면) null을
+     * 반환한다.
      */
     public Integer pickupEtaMinutesForOffer(MatchOffer offer) {
         OrderOfferGroup group = orderOfferGroupsByOrderId.get(offer.orderId());
         WaitingDreami dreami = dreamiMap.get(offer.dreamiId());
-        if (group == null || dreami == null || !hasCoordinates(group.location()) || !hasCoordinates(dreami.location())) {
+        if (group == null || dreami == null || !hasCoordinates(group.location()) || !hasCoordinates(
+                dreami.location())) {
             return null;
         }
         double distanceMeters = geoDistanceCalculator.distanceMeters(group.location(), dreami.location());
