@@ -35,6 +35,7 @@ import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
 import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
+import com.naengsam.quick.domain.user.service.UserActivityResolver;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -64,6 +65,7 @@ public class DreamiService {
     private final S3PresignService s3PresignService;
     private final MoneyTxRepository moneyTxRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final UserActivityResolver userActivityResolver;
 
     /**
      * 저장 직전에 락 걸린 조회로 승인 여부를 다시 확인한다. {@code assertNotAlreadyApproved}로 미리 확인했더라도, 그 뒤 저장
@@ -93,6 +95,9 @@ public class DreamiService {
 
     /**
      * 드리미를 온라인 상태로 전환한다. 승인된 드리미만 가능하며, 본인이 드리미/부르미 어느 역할로든 수행 중인 주문이 있으면(dreami_id == boormi_id) 온라인 전환할 수 없다.
+     *
+     * <p>이미 온라인인 것은 막지 않는다 — 클라이언트의 온라인 상태는 메모리에만 있어 새로고침하면 사라지는데, 여기서 거절해버리면 화면이 오프라인으로 굳은 채 되돌릴 방법이 없어진다.
+     * 중복 등록 자체는 {@code registerDreami}가 무시한다.
      */
     @Transactional(readOnly = true)
     public void goOnline(UUID dreamiId, GeoPoint location) {
@@ -101,7 +106,7 @@ public class DreamiService {
         if (dreami.getRequestCd() != DreamiCd.APPROVED) {
             throw new BusinessException(DreamiErrorCode.NOT_APPROVED);
         }
-        if (orderRepository.countActiveOrders(dreamiId) > 0) {
+        if (userActivityResolver.resolve(dreamiId).orderId() != null) {
             throw new BusinessException(DreamiErrorCode.ALREADY_HAS_ACTIVE_ORDER);
         }
 

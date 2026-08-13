@@ -14,9 +14,8 @@ import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.order.entity.OrderCd;
-import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.domain.payment.service.WalletService;
+import com.naengsam.quick.domain.user.dto.ActiveContext;
 import com.naengsam.quick.domain.user.dto.ActiveRole;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
 import com.naengsam.quick.domain.user.dto.SignUpRequest;
@@ -50,13 +49,13 @@ class UserServiceTest {
     private DreamiRepository dreamiRepository;
 
     @Mock
-    private OrderRepository orderRepository;
-
-    @Mock
     private SmsVerificationService smsVerificationService;
 
     @Mock
     private WalletService walletService;
+
+    @Mock
+    private UserActivityResolver userActivityResolver;
 
     @InjectMocks
     private UserService userService;
@@ -224,6 +223,7 @@ class UserServiceTest {
         given(dreami.getRequestCd()).willReturn(DreamiCd.APPROVED);
         given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
         given(dreamiRepository.findById(id)).willReturn(Optional.of(dreami));
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
 
         UserDto result = userService.getUserInfo(id);
 
@@ -239,6 +239,7 @@ class UserServiceTest {
         given(dreami.getRequestCd()).willReturn(DreamiCd.REVIEWING);
         given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
         given(dreamiRepository.findById(id)).willReturn(Optional.of(dreami));
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
 
         UserDto result = userService.getUserInfo(id);
 
@@ -252,6 +253,7 @@ class UserServiceTest {
         UUID id = boormi.getBoormiId();
         given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
         given(dreamiRepository.findById(id)).willReturn(Optional.empty());
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
 
         UserDto result = userService.getUserInfo(id);
 
@@ -263,6 +265,7 @@ class UserServiceTest {
         Boormi boormi = activeBoormi();
         UUID id = boormi.getBoormiId();
         given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
 
         UserDto result = userService.getUserInfo(id);
 
@@ -275,32 +278,45 @@ class UserServiceTest {
         Boormi boormi = activeBoormi();
         UUID id = boormi.getBoormiId();
         UUID orderId = UUID.randomUUID();
-        Orders order = org.mockito.Mockito.mock(Orders.class);
-        given(order.getOrderId()).willReturn(orderId);
         given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
-        given(orderRepository.findByDreamiIdAndOrderCd(id, OrderCd.IN_PROGRESS))
-                .willReturn(Optional.of(order));
+        given(userActivityResolver.resolve(id))
+                .willReturn(ActiveContext.of(ActiveRole.DREAMI, orderId, OrderCd.IN_PROGRESS));
 
         UserDto result = userService.getUserInfo(id);
 
         assertThat(result.activeRole()).isEqualTo(ActiveRole.DREAMI);
         assertThat(result.activeOrderId()).isEqualTo(orderId);
-        verify(orderRepository, never()).countActiveOrders(any());
+        assertThat(result.activeOrderCd()).isEqualTo(OrderCd.IN_PROGRESS);
     }
 
     @Test
-    void 내정보_부르미로_활성주문이_있으면_부르미_활성역할을_반환한다() {
+    void 내정보_드리미가_부르미확인을_기다리는_중이면_부르미가_아니라_드리미로_반환한다() {
         Boormi boormi = activeBoormi();
         UUID id = boormi.getBoormiId();
+        UUID orderId = UUID.randomUUID();
         given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
-        given(orderRepository.findByDreamiIdAndOrderCd(id, OrderCd.IN_PROGRESS))
-                .willReturn(Optional.empty());
-        given(orderRepository.countActiveOrders(id)).willReturn(1L);
+        given(userActivityResolver.resolve(id)).willReturn(
+                ActiveContext.of(ActiveRole.DREAMI, orderId, OrderCd.PENDING_BOORMI_CONFIRMATION));
+
+        UserDto result = userService.getUserInfo(id);
+
+        assertThat(result.activeRole()).isEqualTo(ActiveRole.DREAMI);
+        assertThat(result.activeOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
+    }
+
+    @Test
+    void 내정보_부르미로_활성주문이_있으면_부르미_활성역할과_주문을_반환한다() {
+        Boormi boormi = activeBoormi();
+        UUID id = boormi.getBoormiId();
+        UUID orderId = UUID.randomUUID();
+        given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
+        given(userActivityResolver.resolve(id))
+                .willReturn(ActiveContext.of(ActiveRole.BOORMI, orderId, OrderCd.MATCHING));
 
         UserDto result = userService.getUserInfo(id);
 
         assertThat(result.activeRole()).isEqualTo(ActiveRole.BOORMI);
-        assertThat(result.activeOrderId()).isNull();
+        assertThat(result.activeOrderId()).isEqualTo(orderId);
     }
 
     @Test
@@ -308,14 +324,13 @@ class UserServiceTest {
         Boormi boormi = activeBoormi();
         UUID id = boormi.getBoormiId();
         given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
-        given(orderRepository.findByDreamiIdAndOrderCd(id, OrderCd.IN_PROGRESS))
-                .willReturn(Optional.empty());
-        given(orderRepository.countActiveOrders(id)).willReturn(0L);
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
 
         UserDto result = userService.getUserInfo(id);
 
         assertThat(result.activeRole()).isNull();
         assertThat(result.activeOrderId()).isNull();
+        assertThat(result.activeOrderCd()).isNull();
     }
 
     @Test
@@ -331,48 +346,101 @@ class UserServiceTest {
     // ---------- changeRole ----------
 
     @Test
-    void 역할전환_드리미_미등록이면_DREAMI_NOT_REGISTERED_예외() {
+    void 역할전환_드리미로_전환할_때_미등록이면_DREAMI_NOT_REGISTERED_예외() {
         UUID id = UUID.randomUUID();
         given(dreamiRepository.findById(id)).willReturn(Optional.empty());
 
-        Throwable thrown = catchThrowable(() -> userService.changeRole(id));
+        Throwable thrown = catchThrowable(() -> userService.changeRole(id, ActiveRole.DREAMI));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(UserErrorCode.DREAMI_NOT_REGISTERED);
     }
 
     @Test
-    void 역할전환_드리미가_미승인이면_DREAMI_NOT_APPROVED_예외() {
+    void 역할전환_드리미로_전환할_때_미승인이면_DREAMI_NOT_APPROVED_예외() {
         UUID id = UUID.randomUUID();
         Dreami dreami = org.mockito.Mockito.mock(Dreami.class);
         given(dreami.getRequestCd()).willReturn(DreamiCd.REVIEWING);
         given(dreamiRepository.findById(id)).willReturn(Optional.of(dreami));
 
-        Throwable thrown = catchThrowable(() -> userService.changeRole(id));
+        Throwable thrown = catchThrowable(() -> userService.changeRole(id, ActiveRole.DREAMI));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(UserErrorCode.DREAMI_NOT_APPROVED);
     }
 
     @Test
-    void 역할전환_진행중인_주문이_있으면_CANNOT_CHANGE_ROLE_예외() {
+    void 역할전환_부르미로_전환할_때는_드리미_승인여부를_보지_않는다() {
+        UUID id = UUID.randomUUID();
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
+
+        assertThatCode(() -> userService.changeRole(id, ActiveRole.BOORMI)).doesNotThrowAnyException();
+        verify(dreamiRepository, never()).findById(any());
+    }
+
+    @Test
+    void 역할전환_부르미로_진행중인_주문이_있으면_드리미_전환이_차단된다() {
         UUID id = UUID.randomUUID();
         Dreami dreami = org.mockito.Mockito.mock(Dreami.class);
         given(dreami.getRequestCd()).willReturn(DreamiCd.APPROVED);
         given(dreamiRepository.findById(id)).willReturn(Optional.of(dreami));
-        given(orderRepository.countActiveOrders(id)).willReturn(1L);
+        given(userActivityResolver.resolve(id))
+                .willReturn(ActiveContext.of(ActiveRole.BOORMI, UUID.randomUUID(), OrderCd.MATCHING));
 
-        Throwable thrown = catchThrowable(() -> userService.changeRole(id));
+        Throwable thrown = catchThrowable(() -> userService.changeRole(id, ActiveRole.DREAMI));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(UserErrorCode.CANNOT_CHANGE_ROLE_WITH_ACTIVE_ORDER);
     }
 
     @Test
-    void 역할전환_승인됐고_진행중_주문이_없으면_예외없이_통과() {
+    void 역할전환_드리미로_배달중이면_부르미_전환이_차단된다() {
+        UUID id = UUID.randomUUID();
+        given(userActivityResolver.resolve(id))
+                .willReturn(ActiveContext.of(ActiveRole.DREAMI, UUID.randomUUID(), OrderCd.IN_PROGRESS));
+
+        Throwable thrown = catchThrowable(() -> userService.changeRole(id, ActiveRole.BOORMI));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(UserErrorCode.CANNOT_CHANGE_ROLE_WITH_ACTIVE_ORDER);
+    }
+
+    @Test
+    void 역할전환_드리미가_부르미확인을_기다리는_중이면_부르미_전환이_차단된다() {
+        UUID id = UUID.randomUUID();
+        given(userActivityResolver.resolve(id)).willReturn(
+                ActiveContext.of(ActiveRole.DREAMI, UUID.randomUUID(), OrderCd.PENDING_BOORMI_CONFIRMATION));
+
+        Throwable thrown = catchThrowable(() -> userService.changeRole(id, ActiveRole.BOORMI));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(UserErrorCode.CANNOT_CHANGE_ROLE_WITH_ACTIVE_ORDER);
+    }
+
+    @Test
+    void 역할전환_드리미가_매칭_대기중이면_CANNOT_CHANGE_ROLE_WHILE_MATCHING_예외() {
+        UUID id = UUID.randomUUID();
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.dreamiWaiting());
+
+        Throwable thrown = catchThrowable(() -> userService.changeRole(id, ActiveRole.BOORMI));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(UserErrorCode.CANNOT_CHANGE_ROLE_WHILE_MATCHING);
+    }
+
+    @Test
+    void 역할전환_수행중인_역할과_같은_역할로의_전환은_통과() {
         UUID id = UUID.randomUUID();
         Dreami dreami = org.mockito.Mockito.mock(Dreami.class);
         given(dreami.getRequestCd()).willReturn(DreamiCd.APPROVED);
         given(dreamiRepository.findById(id)).willReturn(Optional.of(dreami));
-        given(orderRepository.countActiveOrders(id)).willReturn(0L);
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.dreamiWaiting());
 
-        assertThatCode(() -> userService.changeRole(id)).doesNotThrowAnyException();
+        assertThatCode(() -> userService.changeRole(id, ActiveRole.DREAMI)).doesNotThrowAnyException();
+    }
+
+    @Test
+    void 역할전환_승인됐고_수행중인_것이_없으면_예외없이_통과() {
+        UUID id = UUID.randomUUID();
+        Dreami dreami = org.mockito.Mockito.mock(Dreami.class);
+        given(dreami.getRequestCd()).willReturn(DreamiCd.APPROVED);
+        given(dreamiRepository.findById(id)).willReturn(Optional.of(dreami));
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
+
+        assertThatCode(() -> userService.changeRole(id, ActiveRole.DREAMI)).doesNotThrowAnyException();
     }
 }
