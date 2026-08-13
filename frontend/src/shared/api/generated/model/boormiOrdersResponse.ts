@@ -8,6 +8,4 @@ import type { OrderSummaryDto } from './orderSummaryDto';
 
 export interface BoormiOrdersResponse {
   orders?: OrderSummaryDto[];
-  nextCursor?: string;
-  hasNext?: boolean;
 }
