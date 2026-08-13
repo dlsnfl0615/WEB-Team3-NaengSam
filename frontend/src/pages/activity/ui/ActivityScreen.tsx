@@ -40,8 +40,10 @@ export function ActivityScreen() {
   const dreamiLoadingMore = useDreamiOrderStore((s) => s.loadingMore);
   const dreamiError = useDreamiOrderStore((s) => s.error);
   const dreamiHasNext = useDreamiOrderStore((s) => s.hasNext);
+  const dreamiTotalCount = useDreamiOrderStore((s) => s.totalCount);
   const loadDreami = useDreamiOrderStore((s) => s.load);
   const loadMoreDreami = useDreamiOrderStore((s) => s.loadMore);
+  const loadDreamiCount = useDreamiOrderStore((s) => s.loadCount);
 
   // 부르미(실제 API) 소스
   const orders = useBoormiOrderStore((s) => s.orders);
@@ -49,14 +51,21 @@ export function ActivityScreen() {
   const loadingMore = useBoormiOrderStore((s) => s.loadingMore);
   const boormiError = useBoormiOrderStore((s) => s.error);
   const hasNext = useBoormiOrderStore((s) => s.hasNext);
+  const boormiTotalCount = useBoormiOrderStore((s) => s.totalCount);
   const load = useBoormiOrderStore((s) => s.load);
   const loadMore = useBoormiOrderStore((s) => s.loadMore);
+  const loadBoormiCount = useBoormiOrderStore((s) => s.loadCount);
 
-  // 역할 탭 진입 시 각자의 목록 조회.
+  // 역할 탭 진입 시 각자의 목록과 전체 건수를 조회.
   useEffect(() => {
-    if (isDriver) loadDreami();
-    else load();
-  }, [isDriver, load, loadDreami]);
+    if (isDriver) {
+      loadDreami();
+      loadDreamiCount();
+    } else {
+      load();
+      loadBoormiCount();
+    }
+  }, [isDriver, load, loadDreami, loadBoormiCount, loadDreamiCount]);
 
   const records: ActivityRecord[] = useMemo(
     () =>
@@ -103,7 +112,8 @@ export function ActivityScreen() {
         <FilterChips value={filter} onChange={setFilter} />
 
         <p className="text-xs text-muted">
-          {isDriver ? "수행한 배달" : "요청한 배달"} · 총 {records.length}건
+          {isDriver ? "수행한 배달" : "요청한 배달"} · 총{" "}
+          {isDriver ? dreamiTotalCount : boormiTotalCount}건
         </p>
 
         {isDriver && dreamiLoading && records.length === 0 ? (
