@@ -20,6 +20,7 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanValidato
 import com.naengsam.quick.domain.matching.policy.config.AssignmentPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.EligibilityPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
@@ -46,6 +47,7 @@ class MatchingMicroBatchIntegrationTest {
         return new MatchingPolicyProperties(
                 Duration.ofMillis(200),
                 maxConcurrentOffers,
+                OfferQuotaMode.FIXED,
                 AssignmentPolicyType.LEGACY_ORDER_FIRST,
                 ScoringPolicyType.ORDER_WAIT,
                 EligibilityPolicyType.LEGACY,
