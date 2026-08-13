@@ -4,7 +4,7 @@ import { BottomNav, Icon, ScreenShell, SegmentedToggle } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useRoleSwitch } from "@/shared/lib/role/useRoleSwitch";
-import { useRoleLocked } from "@/shared/store/deliveryStore";
+import { useRoleLocked } from "@/shared/lib/role/useRoleLocked";
 import { useSessionStore } from "@/shared/store/sessionStore";
 import { useToastStore } from "@/shared/store/toastStore";
 import { DriverPanel } from "./DriverPanel";
@@ -16,7 +16,8 @@ import { SenderPanel } from "./SenderPanel";
  */
 export function HomeScreen() {
   const { role, setRole } = useRole();
-  const roleLocked = useRoleLocked();
+  const { locked: roleLocked, reason: lockReason } = useRoleLocked();
+  const refreshUser = useSessionStore((s) => s.refreshUser);
   const navigate = useNavigate();
   const location = useLocation();
   const showToast = useToastStore((state) => state.show);
@@ -28,6 +29,11 @@ export function HomeScreen() {
   // 드리미 전환은 서버 검증(승인 여부·수행 중인 주문)을 통과해야 반영된다.
   // 미등록·미승인이면 훅이 본인인증 화면으로 보낸다.
   const { onRoleChange, pending, error } = useRoleSwitch();
+
+  // 토글이 보이는 화면에 들어올 때마다 수행 중인 역할을 최신화해 잠금 상태를 맞춘다.
+  useEffect(() => {
+    void refreshUser();
+  }, [refreshUser]);
 
   // 계정 전환 등으로 드리미 상태가 남아있어도 미등록이면 부르미로 되돌린다.
   useEffect(() => {
@@ -74,6 +80,9 @@ export function HomeScreen() {
         />
 
         {error && <p className="text-2xs text-status-danger">{error}</p>}
+        {!error && roleLocked && lockReason && (
+          <p className="text-2xs text-navy-500">{lockReason}</p>
+        )}
 
         {role === "부르미" ? <SenderPanel /> : <DriverPanel />}
       </main>

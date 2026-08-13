@@ -10,6 +10,7 @@ import type {
   CancelByAdmin200,
   CancelByBoormi200,
   CancelByDreami200,
+  ChangeRoleParams,
   ChargePoint200,
   ConfirmDreamiRequest,
   DeliveryPhotoRequest,
@@ -818,14 +819,16 @@ const getWallet = (
     }
 
 /**
- * 로그인 한 사용자가 부르미/드리미 전환 가능한지 확인한다.
+ * 로그인 한 사용자가 target 역할로 전환 가능한지 확인한다.
+ * 매칭·배달이 진행 중이면 어느 방향으로도 전환할 수 없다.
  * @summary 부르미/드리미 전환
  */
 const changeRole = (
-
+    params: ChangeRoleParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/user/role`, method: 'GET'
+      {url: `/api/v1/user/role`, method: 'GET',
+        params
     },
       options);
     }
@@ -884,7 +887,7 @@ const vapidPublicKey = (
     }
 
 /**
- * 드리미로서 응답 대기 중인 제안(pendingOffer)과, 부르미로서 확인 대기 중인 드리미 수락 정보(incomingDreami)를 반환한다. 진행 중인 것이 없으면 해당 필드는 null이다.
+ * 드리미로서 응답 대기 중인 제안(pendingOffer)과, 부르미로서 확인 대기 중인 드리미 수락 정보(incomingDreami)를 반환한다. 진행 중인 것이 없으면 해당 필드는 null이다. dreamiOnline은 드리미가 매칭엔진에 등록돼 오퍼를 기다리는 중인지다(새로고침 후 온라인 상태 복원용).
  * @summary 현재 매칭 상태 조회
  */
 const getCurrentStatus = (

@@ -11,6 +11,8 @@ interface SessionState {
   hydrated: boolean;
   /** 쿠키 세션으로 /me를 조회해 로그인 상태를 복원한다(앱 시작 1회). */
   bootstrap: () => Promise<void>;
+  /** /me를 다시 조회해 activeRole·activeOrderId를 최신화한다(역할 토글 잠금 판정용). */
+  refreshUser: () => Promise<void>;
   login: (dto: LoginRequest) => Promise<AuthUser>;
   signup: (dto: SignupRequest) => Promise<AuthUser>;
   /** 로그인 유저의 본인인증(드리미 등록). 업로드 확인 실패는 예외로 던져진다(호출부에서 처리), 미로그인 시엔 null. */
@@ -28,6 +30,7 @@ function toAuthUser(dto: UserDto): AuthUser {
     roles: dto.isDreami ? ["부르미", "드리미"] : ["부르미"],
     activeRole: dto.activeRole,
     activeOrderId: dto.activeOrderId,
+    activeOrderCd: dto.activeOrderCd,
     // UserDto엔 평점이 없다. 평점 API 확정 전까지 0으로 둔다(마이페이지 표시용).
     rating: 0,
   };
@@ -63,6 +66,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       }
     } finally {
       set({ hydrated: true });
+    }
+  },
+  refreshUser: async () => {
+    // 로그인 상태에서만 의미가 있다. 실패는 조용히 무시한다 — 역할 토글은 서버가 전환 요청 때 다시 검사한다.
+    if (!get().isAuthenticated) return;
+    try {
+      const { result } = await api.me();
+      set({ user: toAuthUser(result ?? {}) });
+    } catch {
+      // 세션 만료는 인터셉터가 처리한다.
     }
   },
   login: async (dto) => {

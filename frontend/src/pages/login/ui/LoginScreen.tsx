@@ -4,6 +4,7 @@ import { Button, ScreenShell, TextField } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
 import { useSessionStore } from '@/shared/store/sessionStore'
 import { useRole } from '@/shared/lib/role/useRole'
+import { resolveLandingRoute } from '@/shared/lib/role/resolveLandingRoute'
 import { isApiError } from '@/shared/api'
 import { isEmail, VALIDATION_MESSAGE } from '@/shared/lib/validation'
 
@@ -30,7 +31,8 @@ export function LoginScreen() {
     try {
       const user = await login({ email, password })
       setRole(user.activeRole === 'DREAMI' ? '드리미' : '부르미')
-      navigate(ROUTES.home, { replace: true })
+      // 진행 중인 배달이 있으면 홈이 아니라 그 화면으로 곧바로 복귀시킨다.
+      navigate(resolveLandingRoute(user), { replace: true })
     } catch (e) {
       setError(
         isApiError(e) ? e.message : '로그인에 실패했어요. 다시 시도해주세요.',
