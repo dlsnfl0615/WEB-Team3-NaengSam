@@ -33,6 +33,8 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPr
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlan;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.service.engine.Action;
+import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.notification.NotificationService;
@@ -62,7 +64,6 @@ class MatchingServiceTest {
     private MatchingService matchingService;
     private MatchingEngine matchingEngine;
     private NotificationService notificationService;
-    private MatchingActionScheduler matchingActionScheduler;
     private MatchingBatchDispatcher matchingBatchDispatcher;
     private DeliveryService deliveryService;
     private MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
@@ -75,7 +76,6 @@ class MatchingServiceTest {
     void setUp() {
         matchingEngine = mock(MatchingEngine.class);
         notificationService = mock(NotificationService.class);
-        matchingActionScheduler = mock(MatchingActionScheduler.class);
         matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
         deliveryService = mock(DeliveryService.class);
         matchingAssignmentProblemAssembler = mock(MatchingAssignmentProblemAssembler.class);
@@ -86,7 +86,7 @@ class MatchingServiceTest {
         // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 별도 명시가 없는 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
         when(notificationService.isReachableNow(any())).thenReturn(true);
         matchingService = new MatchingService(
-                matchingEngine, notificationService, matchingActionScheduler, matchingBatchDispatcher, deliveryService,
+                matchingEngine, notificationService, matchingBatchDispatcher, deliveryService,
                 Clock.systemDefaultZone(),
                 matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
                 geoDistanceCalculator, new SimpleMeterRegistry());
