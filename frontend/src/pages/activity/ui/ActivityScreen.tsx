@@ -10,7 +10,8 @@ import {
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useRoleSwitch } from "@/shared/lib/role/useRoleSwitch";
-import { useRoleLocked } from "@/shared/store/deliveryStore";
+import { useRoleLocked } from "@/shared/lib/role/useRoleLocked";
+import { useSessionStore } from "@/shared/store/sessionStore";
 import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
 import { useDreamiOrderStore } from "@/shared/store/dreamiOrderStore";
 import { ActivityItem } from "./ActivityItem";
@@ -31,7 +32,13 @@ export function ActivityScreen() {
   const { role } = useRole();
   const { onRoleChange, pending, error: roleError } = useRoleSwitch();
   const [filter, setFilter] = useState<ActivityFilter>("전체");
-  const roleLocked = useRoleLocked();
+  const { locked: roleLocked, reason: roleLockReason } = useRoleLocked();
+  const refreshUser = useSessionStore((s) => s.refreshUser);
+
+  // 토글이 보이는 화면에 들어올 때마다 수행 중인 역할을 최신화해 잠금 상태를 맞춘다.
+  useEffect(() => {
+    void refreshUser();
+  }, [refreshUser]);
   const isDriver = role === "드리미";
 
   // 드리미(실제 API) 소스
@@ -107,6 +114,9 @@ export function ActivityScreen() {
 
         {roleError && (
           <p className="text-2xs text-status-danger">{roleError}</p>
+        )}
+        {!roleError && roleLocked && roleLockReason && (
+          <p className="text-2xs text-navy-500">{roleLockReason}</p>
         )}
 
         <FilterChips value={filter} onChange={setFilter} />

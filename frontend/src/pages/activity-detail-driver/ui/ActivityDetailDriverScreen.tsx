@@ -1,4 +1,5 @@
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   Badge,
   Button,
@@ -22,7 +23,7 @@ import { useReceivedReview } from "@/shared/lib/delivery/useReceivedReview";
  * (getDeliveryCompletion)로 보충한다.
  */
 export function ActivityDetailDriverScreen() {
-  const navigate = useNavigate();
+  const backOrHome = useBackOrHome();
   const [params] = useSearchParams();
   const id = params.get("id");
   const { order, loading: deliveriesLoading } = useDreamiOrderById(id);
@@ -43,7 +44,7 @@ export function ActivityDetailDriverScreen() {
 
   return (
     <ScreenShell>
-      <TopBar title="드림상세" onBack={() => navigate(-1)} actions={["more"]} />
+      <TopBar title="드림상세" onBack={backOrHome} actions={["more"]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         {order ? (

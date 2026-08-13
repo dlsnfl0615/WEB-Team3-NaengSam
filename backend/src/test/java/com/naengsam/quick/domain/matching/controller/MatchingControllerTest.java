@@ -105,6 +105,30 @@ class MatchingControllerTest {
     }
 
     @Test
+    void 드리미가_매칭엔진에_등록돼_있으면_dreamiOnline이_true다() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(matchingService.findPendingOfferForDreami(userId)).thenReturn(Optional.empty());
+        when(matchingService.findIncomingDreamiOffer(userId)).thenReturn(Optional.empty());
+        when(matchingService.isDreamiWaiting(userId)).thenReturn(true);
+
+        mockMvc.perform(get("/api/v1/matching/current").sessionAttr(SessionConst.LOGIN_USER, userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dreamiOnline").value(true));
+    }
+
+    @Test
+    void 드리미가_등록돼_있지_않으면_dreamiOnline이_false다() throws Exception {
+        UUID userId = UUID.randomUUID();
+        when(matchingService.findPendingOfferForDreami(userId)).thenReturn(Optional.empty());
+        when(matchingService.findIncomingDreamiOffer(userId)).thenReturn(Optional.empty());
+        when(matchingService.isDreamiWaiting(userId)).thenReturn(false);
+
+        mockMvc.perform(get("/api/v1/matching/current").sessionAttr(SessionConst.LOGIN_USER, userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dreamiOnline").value(false));
+    }
+
+    @Test
     void 로그인한_본인의_id로만_조회하고_다른_사용자의_id로는_조회하지_않는다() throws Exception {
         UUID userId = UUID.randomUUID();
         UUID otherUserId = UUID.randomUUID();

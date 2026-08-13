@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   Button,
   Card,
@@ -26,6 +27,7 @@ import { ProofUpload } from "./ProofUpload";
  * 순서대로 호출한다. pickup 은 배달중(track 배송중)으로, finish 는 배달 완료(complete)로 이어진다.
  */
 export function DeliveryProofScreen() {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [memo, setMemo] = useState("");
@@ -42,7 +44,7 @@ export function DeliveryProofScreen() {
 
   return (
     <ScreenShell>
-      <TopBar title="배송 완료 인증" onBack={() => navigate(-1)} actions={[]} />
+      <TopBar title="배송 완료 인증" onBack={backOrHome} actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <Card className="flex flex-col items-center gap-2">
@@ -142,6 +144,7 @@ function RealDeliveryProof({
   orderId: string;
   intent: ProofIntent;
 }) {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate();
   const cfg = PROOF_CONFIG[intent];
   const [file, setFile] = useState<File | null>(null);
@@ -206,7 +209,7 @@ function RealDeliveryProof({
 
   return (
     <ScreenShell>
-      <TopBar title={cfg.title} onBack={() => navigate(-1)} actions={[]} />
+      <TopBar title={cfg.title} onBack={backOrHome} actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <Card className="flex flex-col items-center gap-2">

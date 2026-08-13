@@ -100,6 +100,8 @@ export function SseProvider({ children }: SseProviderProps) {
       const matching = useMatchingStore.getState();
       matching.stopMatchingPolling();
       void matching.syncCurrentMatching();
+      // 수행 중인 역할도 함께 맞춘다(역할 토글 잠금 판정 근거).
+      void useSessionStore.getState().refreshUser();
     });
     source.onerror = () => {
       const matching = useMatchingStore.getState();

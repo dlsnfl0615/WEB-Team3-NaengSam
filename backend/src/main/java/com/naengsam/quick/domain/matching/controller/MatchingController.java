@@ -27,7 +27,8 @@ public class MatchingController {
 
     @Operation(summary = "현재 매칭 상태 조회",
             description = "드리미로서 응답 대기 중인 제안(pendingOffer)과, 부르미로서 확인 대기 중인 드리미 수락 정보(incomingDreami)를 반환한다. "
-                    + "진행 중인 것이 없으면 해당 필드는 null이다.")
+                    + "진행 중인 것이 없으면 해당 필드는 null이다. "
+                    + "dreamiOnline은 드리미가 매칭엔진에 등록돼 오퍼를 기다리는 중인지다(새로고침 후 온라인 상태 복원용).")
     @GetMapping("/current")
     public CurrentMatchingStatusDto getCurrentStatus(@LoginUser UUID userId) {
         PendingOfferDto pendingOffer = matchingService.findPendingOfferForDreami(userId)
@@ -38,6 +39,7 @@ public class MatchingController {
                 .map(offer -> DreamiInfoPayload.from(offer, matchingService.pickupEtaMinutesForOffer(offer),
                         matchingService.boormiOfferTtl()))
                 .orElse(null);
-        return new CurrentMatchingStatusDto(pendingOffer, incomingDreami);
+        return new CurrentMatchingStatusDto(pendingOffer, incomingDreami,
+                matchingService.isDreamiWaiting(userId));
     }
 }

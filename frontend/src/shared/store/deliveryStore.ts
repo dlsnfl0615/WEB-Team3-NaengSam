@@ -87,17 +87,6 @@ export function useActiveDelivery(): Delivery | null {
   );
 }
 
-/** 진행 중으로 간주하는 상태(역할 전환 잠금 기준). */
-const IN_PROGRESS = new Set<string>(["매칭중", "픽업중", "배송중"]);
-
-/** 활성 배달이 진행 중이면 true(역할 전환을 막는다). */
-export function useRoleLocked(): boolean {
-  return useDeliveryStore((s) => {
-    const active = s.deliveries.find((d) => d.id === s.activeId);
-    return !!active && IN_PROGRESS.has(active.status);
-  });
-}
-
 /** id로 배달 1건 조회(없으면 null). */
 export function useDeliveryById(id: string | null): Delivery | null {
   return useDeliveryStore((s) =>

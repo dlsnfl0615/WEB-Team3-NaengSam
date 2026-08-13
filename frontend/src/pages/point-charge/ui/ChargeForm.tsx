@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import { Button, Card, RadioOption, TextField } from "@/shared/ui";
 import { isApiError } from "@/shared/api";
 import { useWalletStore } from "@/shared/store/walletStore";
@@ -12,7 +12,7 @@ const MAX_AMOUNT = 1000000;
 
 /** 카드 결제로 포인트를 충전하는 본문. */
 export function ChargeForm() {
-  const navigate = useNavigate();
+  const backOrHome = useBackOrHome();
   const currentPoints = useWalletStore((s) => s.points);
   const charge = useWalletStore((s) => s.charge);
   const load = useWalletStore((s) => s.load);
@@ -35,7 +35,7 @@ export function ChargeForm() {
     setError(null);
     try {
       await charge(amount);
-      navigate(-1);
+      backOrHome();
     } catch (e) {
       // 충전에 실패하면 화면에 머물러 사유를 보여준다.
       setError(isApiError(e) ? e.message : "충전에 실패했어요.");

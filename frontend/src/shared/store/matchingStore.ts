@@ -219,6 +219,12 @@ let pollTimer: ReturnType<typeof setInterval> | null = null;
 let syncing = false;
 
 /**
+ * 온라인/오프라인 전환이 서버 응답을 기다리는 중인지. 그 사이 도착한 동기화 응답은 전환 이전 상태를
+ * 담고 있어, 방금 누른 시작하기/종료를 되돌려버린다.
+ */
+let togglingOnline = false;
+
+/**
  * 실 매칭 상태 전역 스토어. 수락·거절·최종 확정을 실제 매칭 API로 처리한다.
  *
  * SSE 연결 자체는 이 스토어가 관리하지 않는다 — `MatchingPopup`이 기존 `useSse` 훅으로
@@ -352,6 +358,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
 
     // loadNearbyCalls가 이미 구해둔 좌표를 재사용한다(위치를 다시 물어 실패하는 경로를 없앤다).
     let coords = get().myLocation;
+    togglingOnline = true;
     try {
       if (!coords) {
         coords = await getCurrentCoords();
@@ -364,15 +371,20 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
         online: false,
         message: toMessage(e, "온라인 전환에 실패했어요."),
       });
+    } finally {
+      togglingOnline = false;
     }
   },
 
   goOffline: async () => {
+    togglingOnline = true;
     try {
       await api.goOffline();
       set({ online: false, pendingOffer: null });
     } catch (e) {
       set({ message: toMessage(e, "오프라인 전환에 실패했어요.") });
+    } finally {
+      togglingOnline = false;
     }
   },
 
@@ -451,6 +463,18 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
       return;
     } finally {
       syncing = false;
+    }
+
+    // 드리미 온라인 여부는 서버(매칭엔진 등록 상태)가 진실 소스다. 이 스토어는 메모리에만 있어
+    // 새로고침하면 online이 false로 돌아가는데 서버 등록은 살아 있다. 그대로 두면 화면은 오프라인인데
+    // 오퍼는 계속 오고, 종료 버튼이 online에 묶여 있어 빠져나갈 수도 없다.
+    // 전환 요청이 날아가 있는 동안에는 방금 누른 조작을 되돌리게 되므로 건너뛴다.
+    if (
+      data.dreamiOnline !== undefined &&
+      !togglingOnline &&
+      get().online !== data.dreamiOnline
+    ) {
+      set({ online: data.dreamiOnline });
     }
 
     // 수락·거절 요청이 진행 중이면 사용자의 조작과 충돌하지 않도록 스냅샷을 덮어쓰지 않는다.

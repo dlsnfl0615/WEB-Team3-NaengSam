@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   Button,
   BlockingLoadErrorModal,
@@ -66,6 +67,7 @@ export function RealDeliveryTracking({
   orderId,
   initialStatus,
 }: RealDeliveryTrackingProps) {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate();
   const showToast = useToastStore((state) => state.show);
   const clearToasts = useToastStore((state) => state.clear);
@@ -357,7 +359,7 @@ export function RealDeliveryTracking({
 
   return (
     <ScreenShell>
-      <TopBar title="실시간 배송" onBack={() => navigate(-1)} actions={[]} />
+      <TopBar title="실시간 배송" onBack={backOrHome} actions={[]} />
 
       {topNotice && (
         <div className="pt-2">
