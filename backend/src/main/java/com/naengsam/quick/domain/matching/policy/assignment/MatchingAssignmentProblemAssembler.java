@@ -34,6 +34,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class MatchingAssignmentProblemAssembler {
 
+    private static final int MIN_OFFER_COUNT = 1;
+    private static final int MAX_OFFER_COUNT = 5;
     private final GeoDistanceCalculator geoDistanceCalculator;
     private final MatchingAssignmentProblemFactory matchingAssignmentProblemFactory;
     private final MatchingPolicyProperties matchingPolicyProperties;
@@ -122,10 +124,10 @@ public class MatchingAssignmentProblemAssembler {
      */
     private int calculateDynamicQuota(int orderCount, int dreamiCount) {
         if (orderCount == 0) {
-            return 1;
+            return MIN_OFFER_COUNT;
         }
 
-        long quota = ((long) dreamiCount + orderCount - 1) / orderCount;
-        return Math.clamp(quota, 1, 5);
+        int quota = Math.ceilDiv(dreamiCount, orderCount);
+        return Math.clamp(quota, MIN_OFFER_COUNT, MAX_OFFER_COUNT);
     }
 }
