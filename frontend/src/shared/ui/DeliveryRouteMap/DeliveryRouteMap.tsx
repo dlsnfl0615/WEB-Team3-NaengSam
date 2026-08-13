@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { DELIVERY_MAP_SMOOTH_MODE } from "@/shared/config";
 import { loadKakaoMaps } from "@/shared/lib";
 import { cn } from "@/shared/lib/cn";
+import { planDriverMotion } from "./driverMotion";
 import { makePinOverlay } from "./pinOverlay";
 import type { KakaoMap, PinOverlayHandle, PinStyle } from "./pinOverlay";
 
@@ -29,6 +31,12 @@ export interface DeliveryRouteMapProps {
 
 type Role = "pickup" | "dropoff" | "driver";
 
+interface DriverMotionState {
+  target?: Coords;
+  targetReceivedAt?: number;
+  averageSpeedMps?: number;
+}
+
 /** 역할별 핀 색(theme.css 토큰 hex 재사용)·라벨 텍스트·라벨 배경(토큰 유틸). */
 const ROLE: Record<Role, PinStyle> = {
   pickup: { color: "#0d1b3d", label: "픽업 장소", bg: "bg-navy-900" }, // navy-900
@@ -44,18 +52,54 @@ function upsertMarker(
   role: Role,
   coords: Coords,
   label: string,
+  smooth = false,
 ) {
   const pos = new kakao.maps.LatLng(coords.latitude, coords.longitude);
   if (store.overlay) {
     store.overlay.setPosition(pos);
     return;
   }
-  store.overlay = makePinOverlay(kakao, map, pos, { ...ROLE[role], label });
+  store.overlay = makePinOverlay(
+    kakao,
+    map,
+    pos,
+    { ...ROLE[role], label },
+    undefined,
+    smooth,
+  );
+}
+
+/** 드리미 핀을 처음이면 생성하고, 이미 있으면 픽셀 기반 애니메이션으로 옮긴다. */
+function upsertSmoothDriver(
+  kakao: typeof window.kakao,
+  map: KakaoMap,
+  store: { overlay?: PinOverlayHandle },
+  coords: Coords,
+  label: string,
+  durationMs?: number,
+) {
+  const position = new kakao.maps.LatLng(coords.latitude, coords.longitude);
+  if (store.overlay && durationMs != null) {
+    store.overlay.setSmoothPosition(position, durationMs);
+    return;
+  }
+  if (store.overlay) {
+    store.overlay.setPosition(position);
+    return;
+  }
+  store.overlay = makePinOverlay(
+    kakao,
+    map,
+    position,
+    { ...ROLE.driver, label },
+    undefined,
+    true,
+  );
 }
 
 /**
  * 출발지·도착지·드리미 세 핀(라벨 포함)을 좌표로 표시하는 추적 지도. 지오코딩하지 않고 좌표만 받는다.
- * pickup/dropoff는 정적 핀(변경 시 갱신), driver는 좌표가 바뀔 때마다 이동한다(보간 없음).
+ * pickup/dropoff는 정적 핀이고, driver는 공통 설정에 따라 즉시 이동하거나 픽셀 기반으로 부드럽게 이동한다.
  * VITE_KAKAO_MAP_KEY가 없으면 좌표 텍스트로 폴백한다.
  */
 export function DeliveryRouteMap({
@@ -77,6 +121,7 @@ export function DeliveryRouteMap({
   });
   const routeLineRef = useRef<unknown>(null);
   const didFitRef = useRef(false);
+  const driverMotionRef = useRef<DriverMotionState>({});
   const [status, setStatus] = useState<"loading" | "ready" | "disabled">(
     "loading",
   );
@@ -112,6 +157,7 @@ export function DeliveryRouteMap({
       storeRef.current = { pickup: {}, dropoff: {}, driver: {} };
       routeLineRef.current = null;
       didFitRef.current = false;
+      driverMotionRef.current = {};
     };
   }, []);
 
@@ -123,8 +169,8 @@ export function DeliveryRouteMap({
     const entries: [Role, Coords | undefined][] = [
       ["pickup", pickup],
       ["dropoff", dropoff],
-      ["driver", driver],
     ];
+    if (!DELIVERY_MAP_SMOOTH_MODE) entries.push(["driver", driver]);
     entries.forEach(([role, coords]) => {
       if (coords) {
         const label = role === "driver" ? driverLabel : ROLE[role].label;
@@ -132,6 +178,51 @@ export function DeliveryRouteMap({
       }
     });
   }, [status, pickup, dropoff, driver, driverLabel]);
+
+  // SMOOTH 모드에서는 원본 좌표와 분리된 표시 좌표만 보간한다. 서버 전송·SSE 좌표는 건드리지 않는다.
+  useEffect(() => {
+    const motion = driverMotionRef.current;
+    if (!DELIVERY_MAP_SMOOTH_MODE) return;
+    if (!driver) return;
+    const kakao = kakaoRef.current;
+    const map = mapRef.current;
+    if (status !== "ready" || !kakao || !map) return;
+
+    const receivedAt = performance.now();
+    if (!motion.target || motion.targetReceivedAt == null) {
+      motion.target = driver;
+      motion.targetReceivedAt = receivedAt;
+      upsertSmoothDriver(
+        kakao,
+        map,
+        storeRef.current.driver,
+        driver,
+        driverLabel,
+      );
+      return;
+    }
+
+    const plan = planDriverMotion({
+      previousTarget: motion.target,
+      previousReceivedAt: motion.targetReceivedAt,
+      previousAverageSpeedMps: motion.averageSpeedMps,
+      nextTarget: driver,
+      receivedAt,
+    });
+    if (!plan) return;
+
+    motion.target = driver;
+    motion.targetReceivedAt = receivedAt;
+    motion.averageSpeedMps = plan.averageSpeedMps;
+    upsertSmoothDriver(
+      kakao,
+      map,
+      storeRef.current.driver,
+      driver,
+      driverLabel,
+      plan.durationMs,
+    );
+  }, [status, driver, driverLabel]);
 
   // 추천 이동경로를 폴리라인으로 그린다(좌표가 바뀌면 다시 그림). 핀처럼 ref에 보관해 중복 생성을 막는다.
   useEffect(() => {

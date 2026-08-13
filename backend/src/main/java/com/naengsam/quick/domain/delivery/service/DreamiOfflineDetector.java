@@ -5,7 +5,7 @@ import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -43,16 +43,16 @@ public class DreamiOfflineDetector {
             EnumSet.of(DeliveryCd.PICKUP_NORMAL, DeliveryCd.PICKUP_DELAYED, DeliveryCd.DELIVERING);
 
     private final DeliveryRepository deliveryRepository;
-    private final SseService sseService;
+    private final NotificationService notificationService;
     private final Duration offlineThreshold;
 
     // 이미 알린 주문. 같은 끊김으로 매 tick마다 중복 알림이 가지 않게 막는다.
     private final Set<UUID> notifiedOrders = ConcurrentHashMap.newKeySet();
 
-    public DreamiOfflineDetector(DeliveryRepository deliveryRepository, SseService sseService,
+    public DreamiOfflineDetector(DeliveryRepository deliveryRepository, NotificationService notificationService,
             @Value("${delivery.dreami-offline-threshold}") Duration offlineThreshold) {
         this.deliveryRepository = deliveryRepository;
-        this.sseService = sseService;
+        this.notificationService = notificationService;
         this.offlineThreshold = offlineThreshold;
     }
 
@@ -91,7 +91,7 @@ public class DreamiOfflineDetector {
             }
             long elapsedSeconds = secondsSinceLastLocation(delivery);
             log.info("드리미 위치 끊김 감지 — orderId={}, {}초 무소식", delivery.getOrderId(), elapsedSeconds);
-            sseService.send(delivery.getBoormiId(), DeliveryEventType.DELIVERY_DREAMI_OFFLINE,
+            notificationService.notify(delivery.getBoormiId(), DeliveryEventType.DELIVERY_DREAMI_OFFLINE,
                     new DreamiOfflineDto(delivery.getOrderId(), elapsedSeconds));
         }
     }
