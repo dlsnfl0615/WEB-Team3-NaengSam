@@ -4,6 +4,7 @@
  *   npm run loadtest                             # config/.env.local 설정으로 전체 실행
  *   ENV_FILE=config/.env.prod npm run loadtest   # 다른 환경 대상
  *   node run.mjs --only=reset             # 단계 하나만
+ *   node run.mjs --only=cleanup           # 남은 활성 주문만 취소 (CLEANUP_CONFIRM=1 필요)
  *
  * 5단계를 순서대로 돌고 각 단계의 진행을 그대로 출력한다.
  *   1) 대상 확인  2) DB 초기화  3) 유저 세팅  4) 클라이언트 기동  5) 부하 + 검증
@@ -13,6 +14,7 @@
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 
 // ── .env 로드 (다른 모듈이 import 시점에 env를 읽으므로 반드시 먼저) ──
 const ENV_FILE = process.env.ENV_FILE ?? "./config/.env.local";
@@ -46,15 +48,37 @@ const config = {
   durationMs: num("DURATION_MS", 120_000),
   drainMs: num("DRAIN_MS", 20_000),
 
+  // 배달 단계. 픽업/완료 시각은 건별로 아래 범위 안에서 균등분포로 뽑는다.
+  delivery: bool("DELIVERY", "1"),
+  locationIntervalMs: num("LOCATION_INTERVAL_MS", 5_000),
+  pickupMsMin: num("PICKUP_MS_MIN", 20_000),
+  pickupMsMax: num("PICKUP_MS_MAX", 90_000),
+  deliverMsMin: num("DELIVER_MS_MIN", 30_000),
+  deliverMsMax: num("DELIVER_MS_MAX", 180_000),
+
   watch: bool("WATCH", "1"),
-  watchDreami: num("WATCH_DREAMI", 2),
-  watchBoormi: num("WATCH_BOORMI", 2),
+  watchDreami: num("WATCH_DREAMI", 10),
+  watchBoormi: num("WATCH_BOORMI", 10),
   headed: bool("HEADED", "0"),
   watchTimeoutMs: num("WATCH_TIMEOUT_MS", 60_000),
+  watchConcurrency: num("WATCH_CONCURRENCY", 4),
+  // 브라우저 창이 배달을 UI로 완주시킬 때의 시간들. 부하의 PICKUP_MS_*/DELIVER_MS_*와 별개다 —
+  // 이 창이 재는 것은 배달 소요 시간이 아니라 화면이 끝까지 동작하는지다.
+  watchPickupMs: num("WATCH_PICKUP_MS", 2_000),
+  watchDeliverMs: num("WATCH_DELIVER_MS", 2_000),
+  watchDeliveryTimeoutMs: num("WATCH_DELIVERY_TIMEOUT_MS", 300_000),
+
+  useExistingAccounts: bool("USE_EXISTING_ACCOUNTS", "0"),
+  existingEmailLike: process.env.EXISTING_EMAIL_LIKE ?? "",
+  existingPassword: process.env.EXISTING_PASSWORD ?? "",
+
+  cleanup: bool("CLEANUP", "1"),
+  cleanupConfirm: bool("CLEANUP_CONFIRM", "0"),
 
   resetDb: bool("RESET_DB", "1"),
   allowRemoteReset: bool("ALLOW_REMOTE_RESET", "0"),
   kakaoCheck: bool("KAKAO_CHECK", "1"),
+  corsCheck: bool("CORS_CHECK", "1"),
 
   resultDir: process.env.RESULT_DIR ?? "./result",
   videoDir: process.env.VIDEO_DIR ?? "./videos",
@@ -73,7 +97,9 @@ const runs = (stage) => only === null || only === stage;
 const db = await import("./modules/db.mjs");
 const { createLedger, reconcile, TIMEOUTS } = await import("./modules/ledger.mjs");
 const { buildSeed, writeSeed } = await import("./modules/seed.mjs");
+const { pullAgents } = await import("./modules/pull.mjs");
 const { runDrive, requestStop, createClient } = await import("./modules/drive.mjs");
+const { cleanupOrders } = await import("./modules/cleanup.mjs");
 const { buildReport } = await import("./modules/report.mjs");
 
 // ── 출력 ─────────────────────────────────────────────────────────────
@@ -113,7 +139,7 @@ async function checkTargets() {
   if (!apiOk) throw new Error(`API에 닿지 않습니다: ${config.apiBase} — 백엔드가 떠 있는지 확인하세요.`);
   if (config.watch) {
     await probe("WEB", config.webBase);
-    await checkCors();
+    if (config.corsCheck) await checkCors();
   }
 
   const tables = await db.ping();
@@ -129,6 +155,9 @@ async function checkTargets() {
  * 백엔드 기본 허용 오리진은 `http://localhost:5173` 하나뿐이라(`application.properties`의
  * `cors.allowed-origins`), 프론트를 다른 포트로 띄우면 모든 API가 403 "Invalid CORS request"로 막힌다.
  * 브라우저 안에서만 터지므로 로그에는 "준비 실패"로만 보인다 — 여기서 먼저 잡는다.
+ *
+ * 프론트와 API가 같은 오리진인 배포 환경(CDN이 /api를 백엔드로 프록시)에서는 서버가 CORS 헤더를 줄
+ * 이유가 없어 이 검사가 거짓 실패를 낸다. 그런 대상에는 CORS_CHECK=0을 준다.
  */
 async function checkCors() {
   const origin = new URL(config.webBase).origin;
@@ -193,17 +222,37 @@ async function seedUsers() {
   header("유저 세팅");
   const browserUsers = JSON.parse(await readFile(config.usersFile, "utf8"));
   const watchUsers = pickWatchUsers(browserUsers);
+  const center = {
+    lat: num("CENTER_LAT", 37.4979),
+    lng: num("CENTER_LNG", 127.0276),
+    spread: num("SPREAD_DEG", 0.01),
+  };
+
+  // 운영처럼 INSERT를 할 수 없는 대상. 계정을 만들지 않고 이미 있는 계정을 SELECT로 끌어다 쓴다.
+  if (config.useExistingAccounts) {
+    line(`수집  DB에 있는 계정 재사용 (INSERT 없음) — 패턴 ${config.existingEmailLike}`);
+    await checkLeftoverOrders();
+    const at = Date.now();
+    const agents = await pullAgents({
+      emailLike: config.existingEmailLike,
+      password: config.existingPassword,
+      dreamiCount: config.dreamiCount,
+      boormiCount: config.boormiCount,
+      center,
+      excludeEmails: browserUsers.map((u) => u.email),
+      hex: db.HEX(),
+    });
+    await writeFile(config.agentsFile, `${JSON.stringify(agents, null, 2)}\n`, "utf8");
+    line(`수집  드리미 ${agents.dreamis.length} / 부르미 ${agents.boormis.length} → ${config.agentsFile}   ✓ ${((Date.now() - at) / 1000).toFixed(1)}s`);
+    return { agents, watchUsers };
+  }
 
   line(`생성  드리미 ${config.dreamiCount} / 부르미 ${config.boormiCount} / 브라우저 계정 ${browserUsers.length}`);
   const { sql, agents } = buildSeed({
     dreamiCount: config.dreamiCount,
     boormiCount: config.boormiCount,
     browserUsers,
-    center: {
-      lat: num("CENTER_LAT", 37.4979),
-      lng: num("CENTER_LNG", 127.0276),
-      spread: num("SPREAD_DEG", 0.01),
-    },
+    center,
   });
   await writeSeed({ sqlOut: config.sqlFile, agentsOut: config.agentsFile, sql, agents });
 
@@ -269,10 +318,27 @@ async function checkKakaoStub(agents) {
 /** 외부 왕복은 최소 수십 ms(실측 190ms 안팎)라 로컬 인메모리 계산(한 자릿수 ms)과 이 선에서 확실히 갈린다. */
 const KAKAO_STUB_MAX_MS = 50;
 
+/**
+ * 요청한 수만큼 계정이 없으면 조용히 줄이지 않고 멈춘다.
+ * 예전에는 slice로 잘라서, users.json에 부르미가 없으면 부르미 화면 경로가 통째로 빠진 채
+ * "통과"가 나왔다.
+ */
 function pickWatchUsers(browserUsers) {
-  const dreamis = browserUsers.filter((u) => u.role === "dreami").slice(0, config.watchDreami);
-  const boormis = browserUsers.filter((u) => u.role === "boormi").slice(0, config.watchBoormi);
-  return [...dreamis, ...boormis];
+  const picked = [];
+  for (const [role, want] of [
+    ["dreami", config.watchDreami],
+    ["boormi", config.watchBoormi],
+  ]) {
+    const have = browserUsers.filter((u) => u.role === role);
+    if (have.length < want) {
+      throw new Error(
+        `실클라이언트 ${role} 요청 ${want}명 / ${config.usersFile}에 ${have.length}명.\n` +
+          `  ${config.usersFile}을 채우거나 WATCH_${role.toUpperCase()} 값을 낮추세요.`,
+      );
+    }
+    picked.push(...have.slice(0, want));
+  }
+  return picked;
 }
 
 // ── 4. 클라이언트 기동 ───────────────────────────────────────────────
@@ -289,6 +355,10 @@ async function startClients(watchUsers) {
       webBase: config.webBase,
       headed: config.headed,
       timeoutMs: config.watchTimeoutMs,
+      concurrency: config.watchConcurrency,
+      pickupHoldMs: config.watchPickupMs,
+      deliverHoldMs: config.watchDeliverMs,
+      deliveryTimeoutMs: config.watchDeliveryTimeoutMs,
       videoDir: config.videoDir,
       resultDir: config.resultDir,
       cols: config.cols,
@@ -308,6 +378,25 @@ async function startClients(watchUsers) {
 async function drive(agents, ledger) {
   header("부하 시작");
   line(`목표  주문 ${config.orderCount}건 (초당 ${config.orderRate}) · 완주 상한 ${Math.min(config.orderCount, config.dreamiCount)}건`);
+  if (config.delivery) {
+    const holdMin = (config.pickupMsMin + config.deliverMsMin) / 1000;
+    const holdMax = (config.pickupMsMax + config.deliverMsMax) / 1000;
+    // 동시 배달 ≈ 초당 주문 수 × 평균 배달 소요 시간. 규모를 잡을 때 이 값을 먼저 본다.
+    const expected = Math.round((config.orderRate * (holdMin + holdMax)) / 2);
+    line(`배달  1건당 ${holdMin}~${holdMax}초 유지 · 위치 전송 ${config.locationIntervalMs}ms 주기`);
+    line(`      예상 동시 배달 ≈ ${expected}건 (드리미 계정 ${config.dreamiCount}명이 상한)`);
+  }
+
+  // 브라우저 부르미도 주문을 하나씩 만들고 브라우저 드리미도 같은 풀에서 매칭된다.
+  // 수요(주문)와 공급(드리미)이 같으면 오퍼가 한 번만 만료돼도 남는 주문이 굶는다.
+  if (config.watch) {
+    const demand = config.orderCount + config.watchBoormi;
+    const supply = config.dreamiCount + config.watchDreami;
+    line(`      브라우저 포함 주문 ${demand} vs 드리미 ${supply}`);
+    if (demand >= supply) {
+      line(`      ⚠ 여유가 없다. 오퍼 만료 한 번에 주문이 굶는다 — ORDER_COUNT를 줄이거나 DREAMI_COUNT를 늘려라.`);
+    }
+  }
 
   let lastTick = 0;
   return runDrive({
@@ -322,25 +411,60 @@ async function drive(agents, ledger) {
       orderRate: config.orderRate,
       durationMs: config.durationMs,
       drainMs: config.drainMs,
+      delivery: config.delivery,
+      locationIntervalMs: config.locationIntervalMs,
+      pickupMsMin: config.pickupMsMin,
+      pickupMsMax: config.pickupMsMax,
+      deliverMsMin: config.deliverMsMin,
+      deliverMsMax: config.deliverMsMax,
     },
     log: line,
     tick: (s) => {
       if (Date.now() - lastTick < 2000) return;
       lastTick = Date.now();
-      const live = ledger.finalize({ finishedAt: Date.now(), dreamiCount: s.online });
-      const p95 = live.latency.offerToAccept.p95;
+      const live = ledger.finalize({
+        finishedAt: Date.now(),
+        dreamiCount: s.online,
+      });
+      const p95 = live.latency.server.createReqToOffer.p95;
+      // 배달을 켰으면 동시 배달 수가 이 테스트의 주 지표다. 매칭 지표 뒤에 붙여 같이 본다.
+      const deliveryPart = config.delivery
+        ? ` | 배달중 ${s.activeDeliveries}(피크 ${live.concurrency.peak}) | ` +
+          `픽업 ${s.pickupOk} 완료 ${s.finishOk} 실패 ${s.deliveryFail}`
+        : "";
       console.log(
         `  ${clock()}  주문 ${s.created}/${s.target} | 오퍼 ${s.offers} | ` +
           `수락제출 ${s.acceptSubmitted}(실패 ${s.acceptFail}) | 선착순승 ${live.won} | ` +
           `확정 ${s.confirmOk}(실패 ${s.confirmFail}) | ` +
-          `완주 ${live.completed} | 유실 ${live.missing.length} | 오퍼→수락 p95 ${p95 === null ? "-" : `${p95}ms`}`,
+          `완주 ${live.completed} | 유실 ${live.missing.length} | 주문요청→오퍼 p95 ${p95 === null ? "-" : `${p95}ms`}` +
+          deliveryPart,
       );
     },
   });
 }
 
 // ── 검증 + 리포트 ────────────────────────────────────────────────────
-async function verifyAndReport({ summary, agents, watchResults, startedAt }) {
+/** 이벤트 루프 지연 히스토그램을 밀리초 통계로 바꾼다. SSE 수신 시각이 밀린 크기의 상한이다. */
+function eventLoopStats(histogram) {
+  const toMs = (ns) => Math.round(ns / 1e5) / 10;
+  return {
+    p50: toMs(histogram.percentile(50)),
+    p95: toMs(histogram.percentile(95)),
+    p99: toMs(histogram.percentile(99)),
+    max: toMs(histogram.max),
+  };
+}
+
+/**
+ * 브라우저 창이 UI로 배달을 끝낸 주문. 원장은 이 전이를 보지 못하므로 DB 대조와 정리 단계가
+ * 이 목록으로 보정한다. 드리미 창은 자기가 완주시킨 주문을, 부르미 창은 완료 화면까지 본 자기
+ * 주문을 들고 있다 — 둘 다 "이미 종료된 주문"이라는 점에서 같다.
+ */
+function browserDeliveredOrderIds(watchResults) {
+  return (watchResults ?? []).filter((r) => r.delivered && r.orderId).map((r) => r.orderId);
+}
+
+async function verifyAndReport({ summary, agents, watchResults, startedAt, eventLoopLag }) {
   console.log(`\n━━ 검증  DB 대조 ${BAR}`);
   const dbRows = await db.verifyOrders(summary.orderIds);
   const duplicates = await db.duplicateAssignments(summary.orderIds);
@@ -352,6 +476,7 @@ async function verifyAndReport({ summary, agents, watchResults, startedAt }) {
     dbRows,
     dreamiIdByEmail,
     duplicates,
+    browserDeliveredOrderIds: browserDeliveredOrderIds(watchResults),
   });
 
   const finishedAt = Date.now();
@@ -362,6 +487,7 @@ async function verifyAndReport({ summary, agents, watchResults, startedAt }) {
     config: { ...config, timeouts: TIMEOUTS },
     startedAt,
     finishedAt,
+    eventLoopLag,
   });
 
   console.log(report.text);
@@ -375,6 +501,154 @@ async function verifyAndReport({ summary, agents, watchResults, startedAt }) {
   console.log(`  리포트  ${jsonPath}\n          ${mdPath}\n`);
 
   return report.passed;
+}
+
+// ── 정리 ─────────────────────────────────────────────────────────────
+/** 활성 주문을 `상태 n건` 문자열로 묶는다. 배달 단계까지 붙여야 어느 API로 치울지가 보인다. */
+function summarizeStates(rows) {
+  const counts = new Map();
+  for (const r of rows) {
+    const key = `${r.orderCd}${r.deliveryCd ? `/${r.deliveryCd}` : ""}`;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts].sort().map(([state, n]) => `${state} ${n}`);
+}
+
+/**
+ * 계정 수집 직전에 잔여 활성 주문을 세어 보여준다.
+ *
+ * 활성 주문 1건이 부르미 1명과 드리미 1명을 수집 대상에서 뺀다. 이걸 안 보여주면 계정이 모자랄 때
+ * "패턴에 맞는 계정이 없다"로만 보여서, 실제 원인(이전 런의 잔여 주문)에 닿는 데 한참 걸린다.
+ *
+ * 경고만 하고 멈추지 않는다 — 계정이 충분하면 잔여 주문이 있어도 실행에 지장이 없고,
+ * 취소는 되돌릴 수 없어서 부하 실행의 부작용으로 일어나면 안 된다.
+ */
+async function checkLeftoverOrders() {
+  const rows = await db.activeOrdersByEmail(config.existingEmailLike);
+  if (rows.length === 0) {
+    line("잔여  활성 주문 없음 ✓");
+    return;
+  }
+  line(`잔여  활성 주문 ${rows.length}건 — ${summarizeStates(rows).join(" · ")}`);
+  warn("이 주문들이 부르미·드리미 계정을 잠급니다. npm run cleanup 으로 확인하세요.");
+}
+
+/**
+ * 이번 런이 만든 주문을 전부 취소한다. 반드시 검증·리포트가 끝난 뒤에 부른다 —
+ * `duplicateAssignments()`가 `order_cd = 'IN_PROGRESS'`를 보기 때문에 먼저 취소하면 리포트가 거짓 실패를 낸다.
+ */
+async function cleanupStage({ summary, agents, watchResults, watchUsers }) {
+  console.log(`\n━━ 정리  주문 취소 ${BAR}`);
+
+  const passwordOf = new Map([
+    ...agents.boormis.map((b) => [b.email, b.password]),
+    ...watchUsers.map((u) => [u.email, u.password]),
+  ]);
+
+  // 배달이 끝난 주문은 COMPLETED라 계정을 잠그지 않는다 — 취소를 시도할 이유가 없다.
+  const finished = summary.records.filter((r) => r.finishOk === true);
+  // 픽업은 끝났는데 완료를 못 한 주문. cancel/boormi·dreami·admin 전부 DELIVERING에서는
+  // CANCELLATION_RESTRICTED_DURING_DELIVERY를 던지므로 API로 되돌릴 방법이 없다.
+  // 부르미와 드리미 계정이 그대로 잠긴 채 남으니 목록을 그대로 보여주고 사람 손에 맡긴다.
+  const stuckInDelivery = summary.records.filter((r) => r.pickupOk === true && r.finishOk !== true);
+  // 브라우저 창이 UI로 끝낸 주문도 COMPLETED다. 빼지 않으면 취소를 걸었다가 DELIVERY_013만 받는다.
+  const browserDelivered = browserDeliveredOrderIds(watchResults);
+  const untouchable = new Set([
+    ...[...finished, ...stuckInDelivery].map((r) => r.orderId),
+    ...browserDelivered,
+  ]);
+
+  if (finished.length > 0) line(`배달 완료 ${finished.length}건은 이미 종료 — 취소 대상 아님`);
+  if (browserDelivered.length > 0) {
+    line(`브라우저 창이 완주시킨 ${browserDelivered.length}건도 이미 종료 — 취소 대상 아님`);
+  }
+  if (stuckInDelivery.length > 0) {
+    warn(
+      `DELIVERING에 멈춘 주문 ${stuckInDelivery.length}건은 API로 취소할 수 없습니다 (수동 정리 필요).`,
+    );
+    for (const r of stuckInDelivery.slice(0, 20)) line(`  ${r.orderId}  ${r.boormiEmail}`);
+    if (stuckInDelivery.length > 20) line(`  … 외 ${stuckInDelivery.length - 20}건`);
+  }
+
+  const targets = [
+    // 확정까지 간 주문은 IN_PROGRESS라 배달 취소로 가야 한다. 원장이 이미 알고 있으니 힌트로 넘긴다.
+    ...summary.records
+      .filter((r) => r.boormiEmail && !untouchable.has(r.orderId))
+      .map((r) => ({
+        orderId: r.orderId,
+        email: r.boormiEmail,
+        orderCd: r.confirmOk ? "IN_PROGRESS" : undefined,
+      })),
+    // 브라우저 부르미가 만든 주문도 같은 방식으로 계정을 잠근다. 빼면 그 계정이 계속 묶인다.
+    // 드리미 창의 orderId는 남의 주문이라 취소 권한이 없다 — 역할로 갈라낸다.
+    ...(watchResults ?? [])
+      .filter((r) => r.role === "boormi" && r.orderId && !untouchable.has(r.orderId))
+      .map((r) => ({ orderId: r.orderId, email: r.email })),
+  ].map((t) => ({ ...t, password: passwordOf.get(t.email) }));
+
+  const unknown = targets.filter((t) => !t.password);
+  if (unknown.length) warn(`비밀번호를 모르는 계정의 주문 ${unknown.length}건은 건너뜁니다.`);
+
+  const known = targets.filter((t) => t.password);
+  if (known.length === 0) {
+    line("취소할 주문이 없습니다.");
+    return;
+  }
+
+  line(`대상 ${known.length}건`);
+  const result = await cleanupOrders({
+    apiBase: config.apiBase,
+    targets: known,
+    concurrency: config.loginConcurrency,
+    log: line,
+  });
+  for (const f of result.failed) line(`✗ ${f.orderId} (${f.email}) ${f.reason}`);
+}
+
+/**
+ * `--only=cleanup`. 이전 런들이 남기고 간 잔여 주문을 DB에서 찾아 치운다.
+ * 되돌릴 수 없으므로 `CLEANUP_CONFIRM=1` 없이는 목록만 보여주고 끝낸다.
+ */
+async function cleanupStandalone() {
+  console.log(`\n━━ 정리  잔여 주문 ${BAR}`);
+
+  if (!config.existingEmailLike) {
+    throw new Error("EXISTING_EMAIL_LIKE가 없습니다 — 어떤 계정의 주문을 치울지 정해야 합니다.");
+  }
+  if (!config.existingPassword) {
+    throw new Error("EXISTING_PASSWORD가 없습니다 — 부르미 본인 세션이 있어야 취소할 수 있습니다.");
+  }
+
+  const rows = await db.activeOrdersByEmail(config.existingEmailLike);
+  line(`패턴 ${config.existingEmailLike} — 활성 주문 ${rows.length}건`);
+
+  for (const state of summarizeStates(rows)) line(`  ${state}`);
+
+  if (rows.length === 0) return true;
+
+  // DELIVERING은 어떤 취소 API로도 되돌릴 수 없다. 시도해봐야 전부 실패로 쌓일 뿐이라 빼고 알린다.
+  const stuck = rows.filter((r) => r.deliveryCd === "DELIVERING");
+  const cancellable = rows.filter((r) => r.deliveryCd !== "DELIVERING");
+  if (stuck.length > 0) {
+    warn(`DELIVERING ${stuck.length}건은 API로 취소할 수 없습니다 (수동 정리 필요).`);
+    for (const r of stuck.slice(0, 20)) line(`  ${r.orderId}  ${r.email}`);
+    if (stuck.length > 20) line(`  … 외 ${stuck.length - 20}건`);
+  }
+  if (cancellable.length === 0) return stuck.length === 0;
+
+  if (!config.cleanupConfirm) {
+    warn("dry-run입니다. 실제로 취소하려면 CLEANUP_CONFIRM=1을 붙여 다시 실행하세요.");
+    return true;
+  }
+
+  const result = await cleanupOrders({
+    apiBase: config.apiBase,
+    targets: cancellable.map((r) => ({ ...r, password: config.existingPassword })),
+    concurrency: config.loginConcurrency,
+    log: line,
+  });
+  for (const f of result.failed) line(`✗ ${f.orderId} (${f.email}) ${f.reason}`);
+  return result.failed.length === 0;
 }
 
 // ── 실행 ─────────────────────────────────────────────────────────────
@@ -391,6 +665,9 @@ try {
 
   if (runs("reset")) await resetDb();
   if (only === "reset") process.exit(0);
+
+  // 잔여 주문 정리는 시드도 부하도 타지 않는다 — DB에서 대상을 직접 찾는다.
+  if (only === "cleanup") process.exit((await cleanupStandalone()) ? 0 : 1);
 
   let agents;
   let watchUsers = [];
@@ -409,11 +686,20 @@ try {
   if (only === "watch") {
     watchResults = (await watcher?.finish()) ?? null;
     console.log(`\n  브라우저 결과: ${JSON.stringify(watchResults, null, 2)}`);
-    process.exit(watchResults?.every((r) => r.matched) ? 0 : 1);
+    // 브라우저 부르미도 실주문을 만든다. 이 단계만 돌려도 계정이 잠기므로 똑같이 치운다.
+    if (config.cleanup) {
+      await cleanupStage({ summary: { records: [] }, agents, watchResults, watchUsers });
+    }
+    process.exit(watchResults?.every((r) => r.matched && r.delivered) ? 0 : 1);
   }
 
   const ledger = createLedger();
+  // SSE 수신 시각은 전부 이 프로세스의 이벤트 루프를 거친다. 루프가 밀리면 서버 지표가 그만큼 부풀어
+  // 보이므로, 부하가 도는 동안의 루프 지연을 함께 재서 지표의 신뢰 구간을 남긴다.
+  const loopLag = monitorEventLoopDelay({ resolution: 20 });
+  loopLag.enable();
   const driveResult = await drive(agents, ledger);
+  loopLag.disable();
 
   watchResults = (await watcher?.finish()) ?? null;
 
@@ -424,7 +710,17 @@ try {
     externalOrderIds: watcher?.orderIds ?? [],
   });
 
-  const passed = await verifyAndReport({ summary, agents, watchResults, startedAt });
+  const passed = await verifyAndReport({
+    summary,
+    agents,
+    watchResults,
+    startedAt,
+    eventLoopLag: eventLoopStats(loopLag),
+  });
+
+  // 리포트가 나온 뒤에만 취소한다. 순서가 바뀌면 검증이 취소된 주문을 보고 전부 유실로 센다.
+  if (config.cleanup) await cleanupStage({ summary, agents, watchResults, watchUsers });
+
   process.exit(passed ? 0 : 1);
 } catch (e) {
   console.error(`\n✗ 중단: ${e.message}\n`);

@@ -27,6 +27,7 @@ public record OrderSummaryDto(
         String destinationAlias,
         String destinationAddressLine1,
         String imageKey,
+        String deliveryRequest,
         LocalDateTime deliveryRequestDtm
 ) {
     public static OrderSummaryDto from(Orders order) {
@@ -47,6 +48,7 @@ public record OrderSummaryDto(
                 order.getDestinationAlias(),
                 order.getDestinationAddressLine1(),
                 order.getImageKey(),
+                order.getDeliveryRequest(),
                 order.getDeliveryRequestDtm()
         );
     }

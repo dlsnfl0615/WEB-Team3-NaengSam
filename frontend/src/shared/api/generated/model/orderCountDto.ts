@@ -5,6 +5,6 @@
  * OpenAPI spec version: v0
  */
 
-export type PutParams = {
-key: string;
-};
+export interface OrderCountDto {
+  count?: number;
+}

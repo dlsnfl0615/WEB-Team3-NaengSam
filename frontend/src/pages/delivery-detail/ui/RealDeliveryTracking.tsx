@@ -8,6 +8,7 @@ import {
   Icon,
   MapCard,
   Modal,
+  PhotoLightboxModal,
   ScreenShell,
   Toast,
   TopBar,
@@ -18,6 +19,8 @@ import {
   rememberDeliveryStage,
   getUntrackableDeliveryNotice,
   useDeliveryDetailGate,
+  usePresignedPhoto,
+  ContactSheet,
   useSse,
   useSseReconnectSync,
   formatArrivalTime,
@@ -152,10 +155,25 @@ export function RealDeliveryTracking({
   const routePath = isPickup ? deliveryRoutePath : orderRoutePath;
   const arrivalTime = formatArrivalTime(detail?.estimatedCompletionTime);
 
+  // 픽업 사진은 배달 도중(픽업 완료 시점)에야 생기는 값이라 detail 스냅샷에 실어두면 SSE로 픽업
+  // 완료를 알린 뒤에도 새로고침 전까지 stale하게 "사진 없음"으로 보일 수 있다. 그래서 버튼을 누른
+  // 시점에 별도 API로 그때그때 조회한다. 받아온 URL은 그 안에 박힌 만료 시각이 지나기 전까지만
+  // 재사용한다(usePresignedPhoto 참고).
+  const {
+    open: pickupPhotoOpen,
+    photoUrl: pickupPhotoUrl,
+    loading: pickupPhotoLoading,
+    openModal: openPickupPhoto,
+    closeModal: closePickupPhoto,
+  } = usePresignedPhoto(() =>
+    api.getPickupPhoto(orderId).then(({ result }) => result?.pickupPhotoUrl ?? null),
+  );
+
   // 부르미 취소(확인 모달) 상태.
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [contactOpen, setContactOpen] = useState(false);
 
   // 상태 전이는 항상 스냅샷에 남긴다(재진입 시 픽업중으로 되돌아가지 않도록).
   const applyStatus = (next: DeliveryStatusResponseDtoStatus) => {
@@ -175,9 +193,7 @@ export function RealDeliveryTracking({
     blockDeliveryDetail({
       title: notice?.title ?? "배달이 종료됐어요",
       message:
-        message ??
-        notice?.message ??
-        "종료된 배달은 더 이상 추적할 수 없어요.",
+        message ?? notice?.message ?? "종료된 배달은 더 이상 추적할 수 없어요.",
     });
   };
 
@@ -231,7 +247,9 @@ export function RealDeliveryTracking({
         dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERED;
       clearToasts();
       applyStatus(completedStatus);
-      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, { replace: true });
+      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
+        replace: true,
+      });
     },
     delivery_cancelled: (data) => {
       const dto = forThisOrder(data);
@@ -313,7 +331,9 @@ export function RealDeliveryTracking({
       if (isApiError(e) && e.code === "DELIVERY_013") {
         // 이미 배달 완료 → 리뷰(드리미 평가) 페이지로.
         setConfirmOpen(false);
-        navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, { replace: true });
+        navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
+          replace: true,
+        });
         return;
       }
       if (isApiError(e) && e.code === "DELIVERY_012") {
@@ -350,9 +370,14 @@ export function RealDeliveryTracking({
       )}
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
-        <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
-          {view.title}
-        </h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
+            {view.title}
+          </h1>
+          <Button size="sm" variant="outline" onClick={openPickupPhoto}>
+            픽업사진
+          </Button>
+        </div>
 
         <MapCard
           height={340}
@@ -390,8 +415,8 @@ export function RealDeliveryTracking({
       </main>
 
       <footer className="flex flex-col items-center gap-2 pt-4">
-        <Button block variant="outline">
-          연락하기
+        <Button block variant="outline" onClick={() => setContactOpen(true)}>
+          연락
         </Button>
         {detailReady && isPickup && (
           <button
@@ -406,6 +431,12 @@ export function RealDeliveryTracking({
           </button>
         )}
       </footer>
+
+      <ContactSheet
+        open={contactOpen}
+        orderId={orderId}
+        onClose={() => setContactOpen(false)}
+      />
 
       <Modal
         open={confirmOpen}
@@ -449,6 +480,16 @@ export function RealDeliveryTracking({
         canRetry={blockingModal.canRetry}
         onRetry={retryDeliveryDetail}
         onExit={() => navigate(ROUTES.home, { replace: true })}
+      />
+
+      <PhotoLightboxModal
+        open={pickupPhotoOpen}
+        label="픽업 사진"
+        photoUrl={pickupPhotoUrl}
+        emptyMessage={
+          pickupPhotoLoading ? "불러오는 중…" : "아직 픽업 사진이 없어요."
+        }
+        onClose={closePickupPhoto}
       />
     </ScreenShell>
   );

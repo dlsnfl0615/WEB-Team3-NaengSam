@@ -35,7 +35,14 @@ public enum DeliveryEventType implements SseEventType {
      * 부르미: 드리미 위치가 일정 시간 이상 들어오지 않음(GPS 권한 차단·브라우저 종료·네트워크 단절).
      * payload는 DreamiOfflineDto. 복구는 별도 이벤트 없이 {@link #DELIVERY_LOCATION} 재개로 알린다.
      */
-    DELIVERY_DREAMI_OFFLINE;
+    DELIVERY_DREAMI_OFFLINE,
+    /**
+     * 드리미 본인: 내 위치 전송이 끊겼음. {@link #DELIVERY_DREAMI_OFFLINE}과 같은 판정·같은 payload지만
+     * <b>이름이 따로 있는 이유는 채널이 다르기 때문</b>이다. 알림 채널 결정표가 이벤트 이름을 키로 쓰므로
+     * 한 이름에 수신자별로 다른 채널을 걸 수 없다. 부르미는 화면을 보고 있어 인앱으로 충분하지만, 드리미는
+     * 정의상 앱이 죽었거나 백그라운드라 웹푸시로 깨워야 한다.
+     */
+    DELIVERY_DREAMI_OFFLINE_SELF;
 
     @Override
     public String eventName() {

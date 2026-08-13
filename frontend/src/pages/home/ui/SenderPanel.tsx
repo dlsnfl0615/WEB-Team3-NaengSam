@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Button,
@@ -9,6 +9,8 @@ import {
   StatCard,
 } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
+import { api } from "@/shared/api";
+import { useCurrentAddress } from "@/shared/lib";
 import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
 import {
   MATCHING_ORDER_CDS,
@@ -19,20 +21,42 @@ import {
 /** 홈 화면의 부르미(발송인) 본문. 현재 진행 중인 부름을 실제 API로 조회한다. */
 export function SenderPanel() {
   const navigate = useNavigate();
+  const { address: currentAddress, error: currentAddressError } =
+    useCurrentAddress();
   const orders = useBoormiOrderStore((s) => s.orders);
   const loading = useBoormiOrderStore((s) => s.loading);
   const error = useBoormiOrderStore((s) => s.error);
   const load = useBoormiOrderStore((s) => s.load);
+  const [completedCount, setCompletedCount] = useState(0);
+  const [totalSavedAmount, setTotalSavedAmount] = useState(0);
 
   useEffect(() => {
     load();
   }, [load]);
 
+  // 누적 이용 건수 · 절감 금액. 보조 지표라 실패해도 화면을 막지 않고 0으로 둔다.
+  useEffect(() => {
+    let alive = true;
+    api
+      .getBoormiDashboard()
+      .then(({ result }) => {
+        if (!alive) return;
+        setCompletedCount(result?.completedCount ?? 0);
+        setTotalSavedAmount(result?.totalSavedAmount ?? 0);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const ongoing = orders.filter((o) => ONGOING_ORDER_CDS.has(o.orderCd));
 
   return (
     <>
-      <LocationBar location="Office Hub: Zone A" status="Connected" />
+      <LocationBar
+        location={currentAddress ?? currentAddressError ?? "위치 확인 중…"}
+      />
 
       <Card variant="hero" className="flex flex-col gap-3">
         <p className="text-xl font-bold tracking-[-0.4px]">물품 보내기</p>
@@ -87,8 +111,12 @@ export function SenderPanel() {
       )}
 
       <div className="grid grid-cols-2 gap-3">
-        <StatCard label="총 이용" value={`${orders.length}건`} />
-        <StatCard label="절감 금액" value="₩45,000" variant="accent" />
+        <StatCard label="총 이용" value={`${completedCount}건`} />
+        <StatCard
+          label="절감 금액"
+          value={`₩${totalSavedAmount.toLocaleString()}`}
+          variant="accent"
+        />
       </div>
     </>
   );

@@ -24,5 +24,6 @@ export interface OrderSummaryDto {
   destinationAlias?: string;
   destinationAddressLine1?: string;
   imageKey?: string;
+  deliveryRequest?: string;
   deliveryRequestDtm?: string;
 }
