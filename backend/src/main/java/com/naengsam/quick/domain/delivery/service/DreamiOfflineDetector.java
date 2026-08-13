@@ -22,7 +22,11 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 /**
- * 드리미 위치 전송이 끊겼는지 판정해 부르미에게 SSE로 알린다.
+ * 드리미 위치 전송이 끊겼는지 판정해 부르미와 드리미 본인에게 알린다.
+ *
+ * <p><b>왜 이벤트를 둘로 나눴는가.</b> 판정도 payload도 같지만 채널이 다르다. 부르미는 추적 화면을 보고 있어
+ * 인앱 배너면 되고, 드리미는 앱이 죽었거나 백그라운드라서 무소식인 것이므로 웹푸시로 깨워야 한다. 알림 채널
+ * 결정표가 이벤트 이름을 키로 쓰기 때문에, 한 이름으로는 수신자별로 다른 채널을 걸 수 없다.
  *
  * <p><b>왜 서버가 판정하는가.</b> 끊김은 세 구간(드리미→서버 / 서버→부르미 / 부르미→인터넷) 중 어디서든
  * 생길 수 있는데, 부르미 클라이언트는 첫 구간을 관측할 수 없다. 클라이언트가 "위치가 안 온다"만 보고 판정하면
@@ -91,8 +95,12 @@ public class DreamiOfflineDetector {
             }
             long elapsedSeconds = secondsSinceLastLocation(delivery);
             log.info("드리미 위치 끊김 감지 — orderId={}, {}초 무소식", delivery.getOrderId(), elapsedSeconds);
-            notificationService.notify(delivery.getBoormiId(), DeliveryEventType.DELIVERY_DREAMI_OFFLINE,
-                    new DreamiOfflineDto(delivery.getOrderId(), elapsedSeconds));
+            DreamiOfflineDto payload = new DreamiOfflineDto(delivery.getOrderId(), elapsedSeconds);
+
+            notificationService.notify(delivery.getBoormiId(), DeliveryEventType.DELIVERY_DREAMI_OFFLINE, payload);
+            // 드리미 본인에게도 알린다. 되돌릴 수 있는 유일한 사람이라서다 — 배너를 본 부르미는 할 수 있는 게 없다.
+            // 이벤트 이름을 나눈 덕에 이쪽만 웹푸시를 타므로, 앱이 백그라운드로 밀려 무소식이 된 흔한 경우에도 닿는다.
+            notificationService.notify(delivery.getDreamiId(), DeliveryEventType.DELIVERY_DREAMI_OFFLINE_SELF, payload);
         }
     }
 
