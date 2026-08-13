@@ -1,6 +1,7 @@
 package com.naengsam.quick.domain.matching.service;
 
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
 
@@ -17,13 +18,13 @@ import org.springframework.stereotype.Component;
 public class MatchingBatchDispatcher {
 
     private boolean scheduled = false;
-    private final MatchingActionScheduler matchingActionScheduler;
+    private final MatchingEngine matchingEngine;
     private final MatchingPolicyProperties matchingPolicyProperties;
     private final MatchingService matchingService;
 
-    public MatchingBatchDispatcher(MatchingActionScheduler matchingActionScheduler,
+    public MatchingBatchDispatcher(MatchingEngine matchingEngine,
             MatchingPolicyProperties matchingPolicyProperties, @Lazy MatchingService matchingService) {
-        this.matchingActionScheduler = matchingActionScheduler;
+        this.matchingEngine = matchingEngine;
         this.matchingPolicyProperties = matchingPolicyProperties;
         this.matchingService = matchingService;
     }
@@ -31,7 +32,7 @@ public class MatchingBatchDispatcher {
     void markDirty() {
         if (!scheduled) {
             scheduled = true;
-            matchingActionScheduler.schedule(new RunMatchingAssignmentCycle(matchingService),
+            matchingEngine.schedule(new RunMatchingAssignmentCycle(matchingService),
                     matchingPolicyProperties.batchWindow());
         }
     }
