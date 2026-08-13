@@ -36,6 +36,7 @@ beforeEach(() => {
   getProfile.mockResolvedValue({ result: {} } as never);
   getCurrentStatus.mockResolvedValue(snapshot({}) as never);
   useMatchingStore.setState({
+    online: false,
     pendingOffer: null,
     incomingDreami: null,
     submitting: false,
@@ -249,5 +250,52 @@ describe("matchingStore 카운트다운 만료(로컬)", () => {
 
     useMatchingStore.getState().expireIncomingDreami("offer-2");
     expect(useMatchingStore.getState().incomingDreami).toBeNull();
+  });
+});
+
+describe("matchingStore 드리미 온라인 상태 복원", () => {
+  it("새로고침으로 online이 false여도 서버가 등록됐다고 하면 true로 복원한다", async () => {
+    // 스토어는 메모리에만 있어 새로고침하면 false로 시작하지만 매칭엔진 등록은 살아 있다.
+    getCurrentStatus.mockResolvedValue(snapshot({ dreamiOnline: true }) as never);
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    expect(useMatchingStore.getState().online).toBe(true);
+  });
+
+  it("서버가 등록 해제됐다고 하면 online을 false로 되돌린다", async () => {
+    useMatchingStore.setState({ online: true });
+    getCurrentStatus.mockResolvedValue(snapshot({ dreamiOnline: false }) as never);
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    expect(useMatchingStore.getState().online).toBe(false);
+  });
+
+  it("dreamiOnline이 없는 응답은 online을 건드리지 않는다", async () => {
+    useMatchingStore.setState({ online: true });
+    getCurrentStatus.mockResolvedValue(snapshot({}) as never);
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    expect(useMatchingStore.getState().online).toBe(true);
+  });
+
+  it("부르미 거절 이벤트는 online을 끄지 않는다(서버 등록은 유지된다)", () => {
+    useMatchingStore.setState({
+      online: true,
+      pendingOffer: {
+        offerId: "offer-1", orderId: "order-1", deliveryAmount: null, itemName: null,
+        deliveryEta: 0, deliveryDistance: null, originLatitude: null, originLongitude: null,
+        originAlias: null, originAddressLine1: null, destinationLatitude: null,
+        destinationLongitude: null, destinationAlias: null, destinationAddressLine1: null,
+        imageKey: null, offeredAt: "2026-08-13T10:00:00", expiresAt: "2026-08-13T10:00:30",
+      },
+    });
+
+    useMatchingStore.getState().receiveBoormiRejected({ offerId: "offer-1" });
+
+    expect(useMatchingStore.getState().online).toBe(true);
+    expect(useMatchingStore.getState().pendingOffer).toBeNull();
   });
 });

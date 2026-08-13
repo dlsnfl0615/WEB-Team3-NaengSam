@@ -98,6 +98,12 @@ export function MatchingScreen() {
     [dismissToast],
   );
 
+  // 온라인 여부는 서버가 진실 소스다. 스토어는 메모리에만 있어 새로고침·새 탭이면 false로 시작하는데
+  // 서버 등록은 살아 있을 수 있다. 화면에 들어온 시점에 한 번 맞춰 버튼이 실제와 어긋나지 않게 한다.
+  useEffect(() => {
+    void useMatchingStore.getState().syncCurrentMatching();
+  }, []);
+
   // 드리미: 화면에 머무는 동안 주변 콜을 계속 갱신한다(시작하기 여부와 무관).
   // 오퍼 팝업 자체는 전역 `MatchingPopup`이 받으므로, 여기서는 지도용 목록만 폴링한다.
   useEffect(() => {
