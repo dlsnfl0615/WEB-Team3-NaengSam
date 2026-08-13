@@ -1,7 +1,9 @@
 package com.naengsam.quick.domain.matching.policy.config;
 
+import jakarta.validation.constraints.Min;
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.validation.annotation.Validated;
 
 /**
  * 매칭 정책 튜닝값. {@code matching.*} (application.properties) 로 바인딩된다.
@@ -16,12 +18,13 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  *   <li>balancedWeights : scoringPolicy=BALANCED 일 때만 사용되는 가중치·기준값</li>
  * </ul>
  */
+@Validated
 @ConfigurationProperties(prefix = "matching")
 public record MatchingPolicyProperties(
         Duration batchInterval,
         int maxConcurrentOffers,
         OfferQuotaMode offerQuotaMode,
-        int dynamicQuotaMax,
+        @Min(1) int dynamicQuotaMax,
         AssignmentPolicyType assignmentPolicy,
         ScoringPolicyType scoringPolicy,
         EligibilityPolicyType eligibilityPolicy,
