@@ -4,6 +4,8 @@ import { MemoryRouter } from "react-router-dom";
 import { api } from "@/shared/api";
 import type { DeliveryDetailResponseDto } from "@/shared/api";
 import { SseContext, type SseContextValue, type SseStatus } from "@/shared/lib/sse/SseContext";
+import { ToastViewport } from "@/shared/ui";
+import { useToastStore } from "@/shared/store/toastStore";
 import { RealDeliveryTracking } from "./RealDeliveryTracking";
 
 // 카카오 지도는 이 테스트의 대상이 아니라 렌더만 비운다.
@@ -60,10 +62,13 @@ function renderWithSse(status: SseStatus) {
     subscribe: () => () => {},
     reconnect: () => {},
   };
+  // 상단 안내는 화면 안이 아니라 전역 토스트 스택에 얹힌다(콘텐츠를 밀지 않기 위해).
+  // 실제 앱의 main.tsx가 그렇듯 ToastViewport를 함께 마운트해야 안내가 보인다.
   return render(
     <MemoryRouter initialEntries={["/delivery-detail"]}>
       <SseContext value={value}>
         <RealDeliveryTracking orderId={ORDER_ID} />
+        <ToastViewport />
       </SseContext>
     </MemoryRouter>,
   );
@@ -80,6 +85,8 @@ describe("RealDeliveryTracking 상단 알림", () => {
 
   afterEach(() => {
     cleanup();
+    // 토스트 스토어는 모듈 전역이라 비우지 않으면 다음 케이스로 안내가 새어 나간다.
+    useToastStore.getState().clear();
     vi.clearAllMocks();
   });
 

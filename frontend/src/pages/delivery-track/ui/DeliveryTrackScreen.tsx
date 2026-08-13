@@ -275,7 +275,7 @@ export function DeliveryTrackScreen() {
   return (
     <ScreenShell>
       {locationError && (
-        <div className="fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
+        <div className="ds-toast-down fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
           <Toast
             icon="pin"
             title="GPS를 허용해주세요."
