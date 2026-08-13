@@ -44,6 +44,17 @@ public record DeliveryDetailResponseDto(
         @Schema(description = "물건 이름", example = "서류봉투")
         String itemName,
 
+        @Schema(description = "부르미가 작성한 요청 사항. 없으면 null", example = "문 앞에 놓아주세요", nullable = true)
+        String deliveryRequest,
+
+        @Schema(description = "부르미가 등록한 물품 사진 다운로드 URL. 사진이 없거나 조회 실패 시 null",
+                example = "https://s3.ap-northeast-2.amazonaws.com/...", nullable = true)
+        String itemPhotoUrl,
+
+        @Schema(description = "드리미가 찍은 픽업 인증 사진 다운로드 URL. 픽업 전이거나 조회 실패 시 null",
+                example = "https://s3.ap-northeast-2.amazonaws.com/...", nullable = true)
+        String pickupPhotoUrl,
+
         @Schema(description = "픽업지→도착지 카카오 추천 도보 경로 좌표 목록(픽업 후 지도 폴리라인용). 경로 정보가 없으면 빈 배열")
         List<RoutePointDto> routePath,
 
@@ -61,6 +72,7 @@ public record DeliveryDetailResponseDto(
         Long secondsSinceLastLocation
 ) {
     public static DeliveryDetailResponseDto from(Delivery delivery, Orders order,
+            String itemPhotoUrl, String pickupPhotoUrl,
             List<RoutePointDto> routePath, List<RoutePointDto> deliveryRoutePath,
             boolean dreamiOffline, Long secondsSinceLastLocation) {
         DeliveryLocationDto currentLocation = delivery.getCurrentLatitude() == null
@@ -80,6 +92,9 @@ public record DeliveryDetailResponseDto(
                 order.getDestinationLongitude(),
                 order.getDestinationAddressLine1(),
                 order.getItemName(),
+                order.getDeliveryRequest(),
+                itemPhotoUrl,
+                pickupPhotoUrl,
                 routePath,
                 deliveryRoutePath,
                 delivery.getEstimatedCompletionDtm(),
