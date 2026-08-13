@@ -22,6 +22,7 @@ import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -217,6 +218,15 @@ public class BoormiService {
             throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
         }
         return OrderSummaryDto.from(order);
+    }
+
+    /**
+     * 활동 내역 화면의 "총 N건" 표시용 전체 주문 건수(상태 무관). 목록은 페이지네이션으로 일부만 들고 있어
+     * records.length 로는 실제 총 건수를 알 수 없어서 별도로 집계한다.
+     */
+    @Transactional(readOnly = true)
+    public OrderCountDto getMyOrderCount(UUID boormiId) {
+        return OrderCountDto.of(orderRepository.countByBoormiId(boormiId));
     }
 
     /**

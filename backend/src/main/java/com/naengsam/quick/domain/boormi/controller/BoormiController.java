@@ -5,6 +5,7 @@ import com.naengsam.quick.domain.boormi.dto.*;
 import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
@@ -74,6 +75,13 @@ public class BoormiController {
     @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER"})
     public OrderSummaryDto getBoormiOrder(@LoginUser UUID boormiId, @PathVariable UUID orderId) {
         return boormiService.getMyOrder(boormiId, orderId);
+    }
+
+    @Operation(summary = "내 주문 전체 건수 조회", description = "활동 내역 화면의 총 건수 표시용으로, 상태 무관하게 로그인한 부르미의 전체 주문 건수를 조회한다.")
+    @GetMapping("/calls/count")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    public OrderCountDto getBoormiOrderCount(@LoginUser UUID boormiId) {
+        return boormiService.getMyOrderCount(boormiId);
     }
 
     @Operation(summary = "주문 취소", description = "매칭 성사 전 상태의 주문을 취소하고 매칭 큐에서 제안을 회수한다.")
