@@ -21,6 +21,8 @@ export interface DeliveryRouteMapProps {
   driver?: Coords;
   /** 드리미 핀 라벨. 기본값은 "드리미". (내 위치 등으로 사용될 수 있음)*/
   driverLabel?: string;
+  /** 픽업 핀 라벨. 기본값은 "픽업 장소"(주문의 item_name을 넣으면 그 이름으로 표시). */
+  pickupLabel?: string;
   /** 추천 이동경로 좌표 목록. 있으면 폴리라인으로 그린다(첫 로드부터 표시). */
   route?: Coords[];
   /** 지도 높이(px). 기본 340. */
@@ -107,6 +109,7 @@ export function DeliveryRouteMap({
   dropoff,
   driver,
   driverLabel = "드리미", // 기본 값은 "드리미"
+  pickupLabel,
   route,
   height = 340,
   flat = false,
@@ -173,11 +176,16 @@ export function DeliveryRouteMap({
     if (!DELIVERY_MAP_SMOOTH_MODE) entries.push(["driver", driver]);
     entries.forEach(([role, coords]) => {
       if (coords) {
-        const label = role === "driver" ? driverLabel : ROLE[role].label;
+        const label =
+          role === "driver"
+            ? driverLabel
+            : role === "pickup"
+              ? pickupLabel ?? ROLE.pickup.label
+              : ROLE[role].label;
         upsertMarker(kakao, map, storeRef.current[role], role, coords, label);
       }
     });
-  }, [status, pickup, dropoff, driver, driverLabel]);
+  }, [status, pickup, dropoff, driver, driverLabel, pickupLabel]);
 
   // SMOOTH 모드에서는 원본 좌표와 분리된 표시 좌표만 보간한다. 서버 전송·SSE 좌표는 건드리지 않는다.
   useEffect(() => {
