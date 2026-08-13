@@ -78,13 +78,13 @@ export function ActivityScreen() {
 
   /**
    * 진행 중인 건은 실시간 상세로 보낸다(드리미는 실 추적 페이지, 부르미는 mock 상세).
-   * 드리미의 완료/취소 건은 페이지 연결하지 않는다(null 반환).
+   * 완료/취소 건은 역할별 상세 화면으로 보낸다(드리미는 드림상세, 부르미는 배달 상세).
    */
   const detailPath = (record: ActivityRecord): string | null => {
     if (isDriver) {
       return record.filter === "진행중"
         ? `${ROUTES.deliveryTrack}?orderId=${record.id}`
-        : null;
+        : `${ROUTES.activityDetailDriver}?id=${record.id}`;
     }
     if (record.filter === "진행중")
       return `${ROUTES.activityDetail}?status=진행중&id=${record.id}`;
