@@ -157,6 +157,8 @@ export function MatchingPopup() {
                 className="ds-sheet-up relative w-full max-w-[420px] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
                 {call ? (
                     <CallCard
+                        key={call.offerId}
+                        offerId={call.offerId}
                         code={formatCode(call.orderId)}
                         price={
                             call.deliveryAmount != null
