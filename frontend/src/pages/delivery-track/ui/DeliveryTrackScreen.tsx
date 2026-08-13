@@ -334,7 +334,7 @@ export function DeliveryTrackScreen() {
             disabled={!orderId}
             onClick={() => setContactOpen(true)}
           >
-            연락하기
+            연락
           </Button>
           <Button block disabled={!detailReady} onClick={onAction}>
             {action}

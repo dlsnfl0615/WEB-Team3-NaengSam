@@ -395,7 +395,7 @@ export function RealDeliveryTracking({
 
       <footer className="flex flex-col items-center gap-2 pt-4">
         <Button block variant="outline" onClick={() => setContactOpen(true)}>
-          연락하기
+          연락
         </Button>
         {detailReady && isPickup && (
           <button

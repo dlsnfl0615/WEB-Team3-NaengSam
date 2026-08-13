@@ -11,7 +11,7 @@ export interface ContactSheetProps {
 }
 
 /**
- * 배달 화면의 '연락하기' 시트. 열릴 때 상대방(부르미↔드리미) 연락처를 한 번 조회하고,
+ * 배달 화면의 '연락' 시트. 열릴 때 상대방(부르미↔드리미) 연락처를 한 번 조회하고,
  * 전화하기 / 핑 보내기 두 버튼을 세로로 보여준다.
  *
  * 전화번호는 개인정보라 시트를 열 때만 받아온다(추적 상세 응답에는 실려 있지 않다).
@@ -51,8 +51,8 @@ export function ContactSheet({ open, orderId, onClose }: ContactSheetProps) {
   const role = contact?.viewerIsDreami ? "부르미" : "드리미";
 
   return (
-    <BottomSheet open={open} label="연락하기" onClose={onClose}>
-      <p className="text-lg font-bold text-navy-900">연락하기</p>
+    <BottomSheet open={open} label="연락" onClose={onClose}>
+      <p className="text-lg font-bold text-navy-900">연락</p>
 
       {loading ? (
         <p className="py-6 text-center text-sm text-muted">불러오는 중…</p>
