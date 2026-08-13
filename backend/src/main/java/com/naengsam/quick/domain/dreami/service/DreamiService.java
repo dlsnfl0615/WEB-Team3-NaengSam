@@ -258,11 +258,11 @@ public class DreamiService {
     }
 
     /**
-     * 드리미가 수행한(수행 중인) 배달을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하다.
+     * 드리미가 수행한(수행 중인) 배달 전체를 최신순으로 조회한다.
      */
     @Transactional(readOnly = true)
-    public BoormiOrdersResponse getMyOrders(UUID dreamiId, String cursor, int size, OrderCd status) {
-        return orderService.getOrders(dreamiId, Role.DREAMI, cursor, size, status);
+    public BoormiOrdersResponse getMyOrders(UUID dreamiId) {
+        return orderService.getOrders(dreamiId, Role.DREAMI);
     }
 
     /**
