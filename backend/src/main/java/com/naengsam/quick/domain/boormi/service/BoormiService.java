@@ -22,6 +22,7 @@ import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -203,6 +204,19 @@ public class BoormiService {
     @Transactional(readOnly = true)
     public BoormiOrdersResponse getMyOrders(UUID boormiId, String cursor, int size, OrderCd status) {
         return orderService.getOrders(boormiId, Role.BOORMI, cursor, size, status);
+    }
+
+    /**
+     * 주문 하나를 id로 직접 조회한다. 활동 내역 상세 화면이 딥링크/새로고침으로 바로 들어왔을 때,
+     * 목록 페이지네이션(getMyOrders)과 무관하게 그 주문 하나만 정확히 찾기 위해 쓴다.
+     */
+    @Transactional(readOnly = true)
+    public OrderSummaryDto getMyOrder(UUID boormiId, UUID orderId) {
+        Orders order = orderService.getOrder(orderId);
+        if (!order.getBoormiId().equals(boormiId)) {
+            throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
+        }
+        return OrderSummaryDto.from(order);
     }
 
     /**
