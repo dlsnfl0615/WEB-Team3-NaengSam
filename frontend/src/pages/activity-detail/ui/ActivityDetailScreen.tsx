@@ -1,7 +1,7 @@
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { ScreenShell, TopBar } from "@/shared/ui";
 import { useDeliveryById } from "@/shared/store/deliveryStore";
-import { useBoormiOrderById, useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
+import { useBoormiOrderById } from "@/shared/store/boormiOrderStore";
 import { CompletedDetail } from "./CompletedDetail";
 import { OngoingDetail } from "./OngoingDetail";
 
@@ -16,8 +16,7 @@ export function ActivityDetailScreen() {
   const ongoing = params.get("status") === "진행중";
   const id = params.get("id");
   const mockDelivery = useDeliveryById(id);
-  const order = useBoormiOrderById(id);
-  const ordersLoading = useBoormiOrderStore((s) => s.loading);
+  const { order, loading: ordersLoading } = useBoormiOrderById(id);
 
   return (
     <ScreenShell>
