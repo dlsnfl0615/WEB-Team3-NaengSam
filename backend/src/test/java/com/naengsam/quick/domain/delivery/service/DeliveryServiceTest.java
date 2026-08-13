@@ -764,7 +764,21 @@ class DeliveryServiceTest {
 
         deliveryService.sendAfterCommit(event);
 
-        verify(notificationService).notify(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload);
+        // 물품명을 싣지 않는 알림은 pushSubject가 null로 나간다(정책의 기본 문구를 그대로 쓴다).
+        verify(notificationService).notify(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload, null);
+    }
+
+    @Test
+    void 커밋후리스너가_이벤트에_실린_물품명을_웹푸시_대상으로_함께_넘긴다() {
+        UUID userId = UUID.randomUUID();
+        DeliveryStatusResponseDto payload =
+                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지");
+        DeliveryNotificationEvent event = new DeliveryNotificationEvent(
+                userId, DeliveryEventType.DELIVERY_COMPLETED, payload, "설계도면");
+
+        deliveryService.sendAfterCommit(event);
+
+        verify(notificationService).notify(userId, DeliveryEventType.DELIVERY_COMPLETED, payload, "설계도면");
     }
 
     @Test
