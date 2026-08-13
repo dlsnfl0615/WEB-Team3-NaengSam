@@ -864,6 +864,46 @@ class DeliveryServiceTest {
     }
 
     @Test
+    void 드리미취소되면_결제포인트를_전액_환불한다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        cancelByDreami(orderId);
+
+        verify(paymentService).refundByPoint(orderId);
+    }
+
+    @Test
+    void 부르미취소되면_결제포인트를_전액_환불한다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        cancelByBoormi(orderId);
+
+        verify(paymentService).refundByPoint(orderId);
+    }
+
+    @Test
+    void 관리자취소되면_결제포인트를_전액_환불한다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        deliveryService.cancelByAdmin(orderId);
+
+        verify(paymentService).refundByPoint(orderId);
+    }
+
+    @Test
+    void 취소가_거부되면_환불하지_않는다() {
+        for (Function<UUID, DeliveryStatusResponseDto> cancelOperation : cancelOperations()) {
+            UUID orderId = registerDelivery(DELIVERING); // 배달중이면 취소 불가
+
+            Throwable thrown = catchThrowable(() -> cancelOperation.apply(orderId));
+
+            assertThat(errorCodeOf(thrown))
+                    .isEqualTo(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
+            verify(paymentService, never()).refundByPoint(orderId);
+        }
+    }
+
+    @Test
     void 드리미취소_배정되지않은_드리미면_NOT_ASSIGNED_DREAMI_예외() {
         UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
         UUID otherDreamiId = UUID.randomUUID();
