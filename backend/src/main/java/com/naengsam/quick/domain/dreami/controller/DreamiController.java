@@ -12,6 +12,7 @@ import com.naengsam.quick.domain.matching.dto.NearbyOrderRequest;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
@@ -136,5 +137,12 @@ public class DreamiController {
     @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER"})
     public OrderSummaryDto getDreamiOrder(@LoginUser UUID dreamiId, @PathVariable UUID orderId) {
         return dreamiService.getMyDelivery(dreamiId, orderId);
+    }
+
+    @Operation(summary = "내 배달 전체 건수 조회", description = "활동 내역 화면의 총 건수 표시용으로, 상태 무관하게 로그인한 드리미의 전체 배달 건수를 조회한다.")
+    @GetMapping("/deliveries/count")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    public OrderCountDto getDreamiOrderCount(@LoginUser UUID dreamiId) {
+        return dreamiService.getMyDeliveryCount(dreamiId);
     }
 }

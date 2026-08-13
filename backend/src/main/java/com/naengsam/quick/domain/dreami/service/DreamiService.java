@@ -23,6 +23,7 @@ import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -251,6 +252,15 @@ public class DreamiService {
             throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
         }
         return OrderSummaryDto.from(order);
+    }
+
+    /**
+     * 활동 내역 화면의 "총 N건" 표시용 전체 배달 건수(상태 무관). 목록은 페이지네이션으로 일부만 들고 있어
+     * records.length 로는 실제 총 건수를 알 수 없어서 별도로 집계한다.
+     */
+    @Transactional(readOnly = true)
+    public OrderCountDto getMyDeliveryCount(UUID dreamiId) {
+        return OrderCountDto.of(orderRepository.countByDreamiId(dreamiId));
     }
 
     private long amountOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {
