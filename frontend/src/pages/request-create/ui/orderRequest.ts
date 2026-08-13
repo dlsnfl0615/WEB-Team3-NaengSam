@@ -1,4 +1,8 @@
-import { OrderRequestItemCd, type OrderRequest } from "@/shared/api";
+import {
+  OrderRequestItemCd,
+  OrderRequestItemSizeCd,
+  type OrderRequest,
+} from "@/shared/api";
 import type { RequestForm } from "./types";
 
 /** 폼의 한글 물품 유형 → 백엔드 물건 유형 코드. */
@@ -15,6 +19,13 @@ export function itemTypeToCd(
     default:
       return OrderRequestItemCd.ETC;
   }
+}
+
+/** 폼의 물품 크기 → 백엔드 물건 크기 코드. */
+export function itemSizeToCd(
+  itemSize: RequestForm["itemSize"],
+): OrderRequestItemSizeCd {
+  return itemSize === "M" ? OrderRequestItemSizeCd.M : OrderRequestItemSizeCd.S;
 }
 
 /** 요청사항 태그 + 직접 입력을 한 문장으로 결합(빈 값은 제외). */
@@ -35,6 +46,7 @@ export function toOrderRequest(form: RequestForm): OrderRequest {
     destinationAddressLine2: form.dropoffDetail.trim() || undefined,
     itemName: form.itemName.trim(),
     itemCd: itemTypeToCd(form.itemType),
+    itemSizeCd: itemSizeToCd(form.itemSize),
     imageKey: form.imageKey || undefined,
     itemDetail: form.detail.trim() || undefined,
     deliveryRequest: toDeliveryRequest(form),
