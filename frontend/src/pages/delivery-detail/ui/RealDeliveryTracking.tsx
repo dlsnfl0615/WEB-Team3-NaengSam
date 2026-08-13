@@ -5,7 +5,7 @@ import {
   BlockingLoadErrorModal,
   Card,
   DeliveryRouteMap,
-  Icon,
+  DeliveryTimeline,
   MapCard,
   Modal,
   PhotoLightboxModal,
@@ -34,7 +34,11 @@ import type {
   DeliveryLocationDto,
   DeliveryStatusResponseDto,
 } from "@/shared/api";
-import { realTrackView } from "./statuses";
+import {
+  realTrackView,
+  DELIVERY_TIMELINE_STEPS,
+  deliveryTimelineCompletedCount,
+} from "./statuses";
 
 interface RealDeliveryTrackingProps {
   /** 추적할 주문 UUID(URL `?orderId=`). */
@@ -401,16 +405,11 @@ export function RealDeliveryTracking({
           />
         </MapCard>
 
-        <Card className="flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-pill bg-teal-50 text-teal-700">
-            <Icon name="pin" size={18} />
-          </span>
-          <div className="flex flex-col">
-            <span className="text-2xs text-muted">실시간 상태</span>
-            <span className="text-md font-bold text-navy-900">
-              {view.title}
-            </span>
-          </div>
+        <Card>
+          <DeliveryTimeline
+            steps={DELIVERY_TIMELINE_STEPS}
+            completedCount={deliveryTimelineCompletedCount(status)}
+          />
         </Card>
       </main>
 
