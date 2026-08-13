@@ -40,8 +40,10 @@ import type {
   GetDreamiOrders200,
   GetDreamiOrdersParams,
   GetMyReview200,
+  GetOfferItemPhoto200,
   GetOrderOfferGroup200,
   GetParams,
+  GetPickupPhoto200,
   GetPresignedUrl200,
   GetPresignedUrlParams,
   GetProfile200,
@@ -910,6 +912,19 @@ const getProfile = (
     }
 
 /**
+ * 수락 전 콜(오퍼)에서 부르미가 등록한 물품 사진 URL을 조회한다. 이 오퍼를 받은 드리미 본인만 조회할 수 있다.
+ * @summary 오퍼 물품 사진 조회
+ */
+const getOfferItemPhoto = (
+    offerId: string,
+ options?: SecondParameter<typeof customInstance<GetOfferItemPhoto200>>,) => {
+      return customInstance<GetOfferItemPhoto200>(
+      {url: `/api/v1/dreami/offers/${offerId}/item-photo`, method: 'GET'
+    },
+      options);
+    }
+
+/**
  * 로그인한 드리미가 수행한(수행 중인) 배달을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하며, cursor 는 이전 응답의 nextCursor 를 그대로 넘긴다.
  * @summary 드리미 활동 내역 조회
  */
@@ -989,6 +1004,19 @@ const getDeliveryDetail = (
     }
 
 /**
+ * 배달 추적 화면의 픽업사진 버튼용. 픽업 전이거나 사진이 없으면 result.pickupPhotoUrl이 null이다.
+ * @summary 픽업 인증 사진 조회
+ */
+const getPickupPhoto = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetPickupPhoto200>>,) => {
+      return customInstance<GetPickupPhoto200>(
+      {url: `/api/v1/delivery/orders/${orderId}/pickup-photo`, method: 'GET'
+    },
+      options);
+    }
+
+/**
  * 완료 화면용. 물품명·담당 드리미·결제금액·소요시간을 반환한다.
  * @summary 배달 완료 요약 조회
  */
@@ -1062,7 +1090,7 @@ const unsubscribeOrder = (
       options);
     }
 
-return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,removeDreami,unsubscribeOrder}};
+return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getCurrentStatus,getProfile,getOfferItemPhoto,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getPickupPhoto,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,removeDreami,unsubscribeOrder}};
 export type GetResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['get']>>>
 export type PutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['put']>>>
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
@@ -1122,12 +1150,14 @@ export type SubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof g
 export type VapidPublicKeyResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['vapidPublicKey']>>>
 export type GetCurrentStatusResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getCurrentStatus']>>>
 export type GetProfileResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getProfile']>>>
+export type GetOfferItemPhotoResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getOfferItemPhoto']>>>
 export type GetDreamiOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrders']>>>
 export type FindCurrentDeliveryCardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findCurrentDeliveryCard']>>>
 export type GetDashboardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDashboard']>>>
 export type GetTodayStatsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getTodayStats']>>>
 export type DevSubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['devSubscribe']>>>
 export type GetDeliveryDetailResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDeliveryDetail']>>>
+export type GetPickupPhotoResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getPickupPhoto']>>>
 export type GetDeliveryCompletionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDeliveryCompletion']>>>
 export type GetOrderOfferGroupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getOrderOfferGroup']>>>
 export type WaitingOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['waitingOrders']>>>
