@@ -17,6 +17,7 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPo
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -56,7 +57,6 @@ class MatchingServiceConcurrencyTest {
         // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 이 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
         when(notificationService.isReachableNow(any())).thenReturn(true);
         matchingService = new MatchingService(matchingEngine, notificationService,
-                mock(MatchingActionScheduler.class),
                 mock(MatchingBatchDispatcher.class), mock(DeliveryService.class),
                 Clock.systemDefaultZone(),
                 mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),
