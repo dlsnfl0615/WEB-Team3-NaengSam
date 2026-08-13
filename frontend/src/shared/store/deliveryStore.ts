@@ -7,7 +7,6 @@ import {
 } from "@/shared/mock/deliveryService";
 import { SEED_DELIVERIES } from "@/shared/mock/seed";
 import type { CreateDeliveryRequest, Delivery } from "@/shared/mock/types";
-import type { Role } from "@/shared/lib/role/RoleContext";
 
 /** 진행 화면(track/detail statuses.ts)이 다루는 축약 상태. */
 export type DeliveryStatus = "픽업중" | "배송중" | "지연";
@@ -93,35 +92,4 @@ export function useDeliveryById(id: string | null): Delivery | null {
   return useDeliveryStore((s) =>
     id ? (s.deliveries.find((d) => d.id === id) ?? null) : null,
   );
-}
-
-/** 시장 퀵서비스 건당 평균 단가(비교 기준). */
-const MARKET_UNIT = 5800;
-
-/** 완료 배달에서 파생한 수익/절감 집계. */
-export interface EarningsSummary {
-  /** 완료 건수 */
-  count: number;
-  /** 완료 배달 금액 합계 */
-  total: number;
-  /** 건당 평균 금액 */
-  average: number;
-  /** 드리미=퀵 대비 추가 수익, 부르미=퀵 대비 절감액(음수는 0으로 보정). */
-  diff: number;
-}
-
-/** 역할별 완료 배달 집계. */
-export function selectEarnings(
-  deliveries: Delivery[],
-  role: Role,
-): EarningsSummary {
-  const done = deliveries.filter(
-    (d) => d.myRole === role && d.status === "완료",
-  );
-  const count = done.length;
-  const total = done.reduce((sum, d) => sum + d.price, 0);
-  const average = count ? Math.round(total / count) : 0;
-  const market = count * MARKET_UNIT;
-  const diff = Math.max(0, role === "드리미" ? total - market : market - total);
-  return { count, total, average, diff };
 }

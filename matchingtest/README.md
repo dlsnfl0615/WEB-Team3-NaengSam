@@ -73,6 +73,16 @@ npm run watch      # 브라우저 검증만
 
 설정은 `config/`에 있다 — `.env.local`(실행 설정, 기본 `ENV_FILE`) · `env.example`(템플릿) · `users.json`(브라우저 계정).
 
+### 로그인 대기열 (#399)
+
+`POST /api/v1/user/login`은 200이어도 로그인이 끝난 것이 아니다. 동시 로그인이 서버의 해싱 슬롯(`login.queue.permits`)을 넘기면 세션 대신 대기 티켓(`result.status === "QUEUED"`)이 온다. 이때 하네스는 `POST /api/v1/user/login/queue/{ticketId}`를 서버가 준 `pollAfterMs` 간격으로 폴링하고, **세션 쿠키는 차례가 된 그 폴링 응답에서** 받는다. 티켓 ID는 최초 응답에만 실려 오므로 폴링 내내 같은 티켓을 쓴다.
+
+대기 상한은 `LOGIN_QUEUE_TIMEOUT_MS`(기본 120초, 서버 티켓 TTL과 맞췄다)다. 정원 초과(503)와 티켓 만료(410)는 두 번까지 로그인을 처음부터 다시 탄다. 대기열이 없는 백엔드에서는 응답에 `result`가 없어 곧바로 기존 즉시 경로로 떨어지므로, 같은 스크립트가 양쪽에서 다 돈다.
+
+브라우저 검증(`watch`)도 같은 대기열을 만난다. 대기 모달이 뜨면 **폼을 다시 제출하지 않고** 화면이 스스로 `/home`으로 넘어갈 때까지 기다린다 — 재제출은 티켓만 하나 더 만들고 순번을 뒤로 민다.
+
+결과는 리포트 `11. 로그인 대기열` 섹션(JSON은 `loginQueue`)에 남는다. 대기 시간이 길면 서버의 `login.queue.permits`를, 503이 잡히면 `login.queue.capacity`를 먼저 본다.
+
 생성물: `seed.sql`(감사용), `agents.json`(에이전트 명세), `result/<타임스탬프>.{json,md}`, `videos/`.
 
 ## 리포트 읽는 법

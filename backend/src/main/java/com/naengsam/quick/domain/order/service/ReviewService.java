@@ -103,6 +103,23 @@ public class ReviewService {
     }
 
     /**
+     * 상대방이 나에게 남긴 리뷰를 조회한다. getMyReview와 반대 방향(내가 작성한 리뷰가 아니라 내가 받은 리뷰)이며,
+     * 아직 상대방이 리뷰를 안 남겼으면 예외 대신 null을 반환한다(활동 내역에서 "아직 리뷰가 없어요" 표시용).
+     */
+    @Transactional(readOnly = true)
+    public ReviewDto getReceivedReview(UUID orderId, UUID userId) {
+        Orders order = orderService.getOrder(orderId);
+
+        if (resolveReviewer(order, userId) == Role.BOORMI) {
+            // 나는 부르미 → 내가 받은 리뷰는 BOORMI_REVIEW(드리미가 작성).
+            return boormiReviewRepository.findByOrderId(orderId).map(ReviewDto::from).orElse(null);
+        }
+
+        // 나는 드리미 → 내가 받은 리뷰는 DREAMI_REVIEW(부르미가 작성).
+        return dreamiReviewRepository.findByOrderId(orderId).map(ReviewDto::from).orElse(null);
+    }
+
+    /**
      * 로그인 사용자가 이 주문에서 어느 쪽인지 판별한다. 둘 다 아니면 접근 권한이 없다.
      */
     private Role resolveReviewer(Orders order, UUID userId) {

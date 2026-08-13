@@ -5,6 +5,7 @@
  * OpenAPI spec version: v0
  */
 import type { OrderRequestItemCd } from './orderRequestItemCd';
+import type { OrderRequestItemSizeCd } from './orderRequestItemSizeCd';
 
 export interface OrderRequest {
   /**
@@ -39,6 +40,8 @@ export interface OrderRequest {
   itemName: string;
   /** 물건 유형 */
   itemCd: OrderRequestItemCd;
+  /** 물건 크기 */
+  itemSizeCd: OrderRequestItemSizeCd;
   /**
      * 물건 이미지 URL
      * @minLength 0

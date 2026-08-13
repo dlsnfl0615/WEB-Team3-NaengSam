@@ -5,6 +5,7 @@
  * OpenAPI spec version: v0
  */
 
-export type GetParams = {
-key: string;
-};
+export interface MonthlySavingDto {
+  month?: string;
+  savedAmount?: number;
+}

@@ -8,6 +8,7 @@ describe("CallCard", () => {
   it("픽업 후 배송 라벨과 eta 값을 함께 표시한다", () => {
     const { getByText } = render(
       <CallCard
+        offerId="offer-1"
         code="#B-882"
         price="₩3,000"
         place="물품 배송"
