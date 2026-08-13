@@ -8,6 +8,7 @@ import {
   Icon,
   MapCard,
   Modal,
+  PhotoLightboxModal,
   ScreenShell,
   Toast,
   TopBar,
@@ -151,6 +152,9 @@ export function RealDeliveryTracking({
     status === DeliveryStatusResponseDtoStatus.PICKUP_DELAYED;
   const routePath = isPickup ? deliveryRoutePath : orderRoutePath;
   const arrivalTime = formatArrivalTime(detail?.estimatedCompletionTime);
+
+  // 픽업 사진 라이트박스 상태.
+  const [pickupPhotoOpen, setPickupPhotoOpen] = useState(false);
 
   // 부르미 취소(확인 모달) 상태.
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -350,9 +354,18 @@ export function RealDeliveryTracking({
       )}
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
-        <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
-          {view.title}
-        </h1>
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
+            {view.title}
+          </h1>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setPickupPhotoOpen(true)}
+          >
+            픽업사진
+          </Button>
+        </div>
 
         <MapCard
           height={340}
@@ -449,6 +462,14 @@ export function RealDeliveryTracking({
         canRetry={blockingModal.canRetry}
         onRetry={retryDeliveryDetail}
         onExit={() => navigate(ROUTES.home, { replace: true })}
+      />
+
+      <PhotoLightboxModal
+        open={pickupPhotoOpen}
+        label="픽업 사진"
+        photoUrl={detail?.pickupPhotoUrl}
+        emptyMessage="아직 픽업 사진이 없어요."
+        onClose={() => setPickupPhotoOpen(false)}
       />
     </ScreenShell>
   );
