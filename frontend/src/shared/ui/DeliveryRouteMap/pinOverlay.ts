@@ -18,6 +18,7 @@ export interface PinStyle {
   color: string;
   label: string;
   bg: string;
+  variant?: "pin" | "glow-dot";
 }
 
 interface PinAnimation {
@@ -43,17 +44,28 @@ export function makePinOverlay(
   onClick?: () => void,
   smooth = false,
 ): PinOverlayHandle {
+  const isGlowDot = style.variant === "glow-dot";
+  const anchorTransform = isGlowDot
+    ? "translate(-50%, -50%)"
+    : "translate(-50%, -100%)";
   const root = document.createElement("div");
   root.className = cn(
     "absolute flex flex-col items-center gap-0.5 whitespace-nowrap",
     onClick ? "cursor-pointer" : "pointer-events-none",
   );
-  root.style.transform = "translate(-50%, -100%)";
+  root.style.transform = anchorTransform;
   if (smooth) root.style.willChange = "transform";
   if (onClick) root.addEventListener("click", onClick);
 
   const content = document.createElement("div");
-  content.className = "ds-map-pin ds-map-pin-enter flex flex-col items-center gap-0.5";
+  content.className = cn(
+    "ds-map-pin ds-map-pin-enter flex flex-col items-center gap-0.5",
+    isGlowDot && "ds-map-glow-dot",
+  );
+
+  if (isGlowDot) {
+    content.style.setProperty("--ds-map-dot-color", style.color);
+  }
 
   const labelElement = document.createElement("div");
   labelElement.className = cn(
@@ -71,7 +83,9 @@ export function makePinOverlay(
   pin.style.backgroundRepeat = "no-repeat";
   pin.style.backgroundSize = "contain";
 
-  content.append(labelElement, pin);
+  if (!isGlowDot) {
+    content.append(labelElement, pin);
+  }
   root.append(content);
 
   class PinOverlay extends kakao.maps.AbstractOverlay {
@@ -103,13 +117,13 @@ export function makePinOverlay(
         // transform은 소수점 픽셀을 유지하고 브라우저 합성 레이어에서 처리돼 left/top보다 부드럽다.
         root.style.left = "0px";
         root.style.top = "0px";
-        root.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) translate(-50%, -100%)`;
+        root.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) ${anchorTransform}`;
         return;
       }
       // SMOOTH 모드가 꺼지면 기존 위치 반영 방식을 그대로 사용한다.
       root.style.left = `${point.x}px`;
       root.style.top = `${point.y}px`;
-      root.style.transform = "translate(-50%, -100%)";
+      root.style.transform = anchorTransform;
     }
 
     private cancelAnimation() {
