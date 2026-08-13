@@ -184,6 +184,7 @@ export function MatchingPopup() {
                         currentLocation={dreamiCoords ?? undefined}
                         deliveryDistance={formatDistance(call.deliveryDistance)}
                         eta={`${call.deliveryEta}분`}
+                        requestNote={call.deliveryRequest ?? undefined}
                         countdown={callCountdown}
                         onReject={rejectOffer}
                         onAccept={onAcceptCall}
