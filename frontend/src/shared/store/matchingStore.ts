@@ -39,6 +39,8 @@ interface OfferPopupPayload {
   destinationAlias: string | null;
   destinationAddressLine1: string | null;
   imageKey: string | null;
+  /** 부르미가 작성한 요청 사항. 없으면 null. */
+  deliveryRequest: string | null;
   /** 제안이 생성된 시각. 응답 마감(expiresAt)과 함께 카운트다운 계산에 쓴다. */
   offeredAt: string;
   /** 응답 마감 절대 시각. */
@@ -201,6 +203,7 @@ function pendingOfferFromSnapshot(
     destinationAlias: str(summary.destinationAlias),
     destinationAddressLine1: str(summary.destinationAddressLine1),
     imageKey: str(summary.imageKey),
+    deliveryRequest: str(summary.deliveryRequest),
     offeredAt: dto.offeredAt ?? "",
     expiresAt: dto.expiresAt ?? "",
     distanceMeters: nearbyCalls.find((c) => c.orderId === orderId)?.distanceMeters,
