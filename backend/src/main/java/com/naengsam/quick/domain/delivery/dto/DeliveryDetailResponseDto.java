@@ -12,6 +12,8 @@ import java.util.UUID;
 /**
  * 배달 추적 화면용 상세 응답. 출발지·도착지 좌표는 Orders에서, 상태·현재 드리미 위치는 Delivery에서 조합한다.
  * currentLocation은 드리미의 최신 위치 스냅샷이다(아직 갱신 전이면 null).
+ *
+ * 픽업사진은 부르미가 버튼을 눌렀을 때 {@code GET /api/v1/delivery/orders/{orderId}/pickup-photo}로 그때 조회한다.
  */
 public record DeliveryDetailResponseDto(
         @Schema(description = "주문 ID", example = "018f1c2e-8a4b-7c3d-9e0f-1a2b3c4d5e6f")
@@ -51,10 +53,6 @@ public record DeliveryDetailResponseDto(
                 example = "https://s3.ap-northeast-2.amazonaws.com/...", nullable = true)
         String itemPhotoUrl,
 
-        @Schema(description = "드리미가 찍은 픽업 인증 사진 다운로드 URL. 픽업 전이거나 조회 실패 시 null",
-                example = "https://s3.ap-northeast-2.amazonaws.com/...", nullable = true)
-        String pickupPhotoUrl,
-
         @Schema(description = "픽업지→도착지 카카오 추천 도보 경로 좌표 목록(픽업 후 지도 폴리라인용). 경로 정보가 없으면 빈 배열")
         List<RoutePointDto> routePath,
 
@@ -72,7 +70,7 @@ public record DeliveryDetailResponseDto(
         Long secondsSinceLastLocation
 ) {
     public static DeliveryDetailResponseDto from(Delivery delivery, Orders order,
-            String itemPhotoUrl, String pickupPhotoUrl,
+            String itemPhotoUrl,
             List<RoutePointDto> routePath, List<RoutePointDto> deliveryRoutePath,
             boolean dreamiOffline, Long secondsSinceLastLocation) {
         DeliveryLocationDto currentLocation = delivery.getCurrentLatitude() == null
@@ -94,7 +92,6 @@ public record DeliveryDetailResponseDto(
                 order.getItemName(),
                 order.getDeliveryRequest(),
                 itemPhotoUrl,
-                pickupPhotoUrl,
                 routePath,
                 deliveryRoutePath,
                 delivery.getEstimatedCompletionDtm(),
