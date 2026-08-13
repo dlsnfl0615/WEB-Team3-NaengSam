@@ -11,10 +11,14 @@ import java.util.UUID;
 /**
  * 로그인 사용자 기준 현재 매칭 상태. 드리미로서 응답 대기 중인 제안(pendingOffer)과 부르미로서 확인 대기 중인 드리미 수락 정보(incomingDreami)를 함께
  * 담는다. 진행 중인 것이 없으면 해당 필드는 null이다.
+ *
+ * <p>dreamiOnline은 드리미가 매칭엔진에 등록돼 오퍼를 기다리는 중인지다. 클라이언트의 온라인/오프라인 버튼 상태는 메모리에만 있어 새로고침하면 사라지는데, 서버 등록은 그대로
+ * 살아 있어 화면과 실제가 어긋난다. 이 필드가 그 복원 근거다.
  */
 public record CurrentMatchingStatusDto(
         PendingOfferDto pendingOffer,
-        DreamiInfoPayload incomingDreami
+        DreamiInfoPayload incomingDreami,
+        boolean dreamiOnline
 ) {
 
     public record PendingOfferDto(
