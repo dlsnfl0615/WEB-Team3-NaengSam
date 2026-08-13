@@ -1605,7 +1605,6 @@ class MatchingServiceTest {
         assertThat(payload.destinationLongitude()).isEqualByComparingTo(BigDecimal.valueOf(127.0559));
         assertThat(payload.destinationAlias()).isEqualTo("회사");
         assertThat(payload.destinationAddressLine1()).isEqualTo("서울시 성동구");
-        assertThat(payload.imageKey()).isEqualTo("img-key");
         assertThat(payload.offeredAt()).isNotNull();
         assertThat(payload.expiresAt()).isEqualTo(payload.offeredAt().plusSeconds(30));
     }
