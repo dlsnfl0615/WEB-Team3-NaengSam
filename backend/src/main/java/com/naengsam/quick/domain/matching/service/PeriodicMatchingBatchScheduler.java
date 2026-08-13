@@ -3,7 +3,6 @@ package com.naengsam.quick.domain.matching.service;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.annotation.Lazy;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 
@@ -19,7 +18,7 @@ public class PeriodicMatchingBatchScheduler {
     private final MatchingService matchingService;
 
     public PeriodicMatchingBatchScheduler(MatchingEngine matchingEngine,
-            MatchingPolicyProperties matchingPolicyProperties, @Lazy MatchingService matchingService) {
+            MatchingPolicyProperties matchingPolicyProperties, MatchingService matchingService) {
         this.matchingEngine = matchingEngine;
         this.matchingPolicyProperties = matchingPolicyProperties;
         this.matchingService = matchingService;
