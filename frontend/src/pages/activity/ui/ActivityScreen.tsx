@@ -86,7 +86,7 @@ export function ActivityScreen() {
     filter === "전체" ? records : records.filter((r) => r.filter === filter);
 
   /**
-   * 진행 중인 건은 실시간 상세로 보낸다(드리미는 실 추적 페이지, 부르미는 mock 상세).
+   * 진행 중인 건은 실시간 상세로 보낸다(드리미는 실 추적 페이지, 부르미도 실 추적 페이지).
    * 드리미의 완료/취소 건은 드림상세(activityDetailDriver)로 보낸다.
    */
   const detailPath = (record: ActivityRecord): string | null => {
@@ -96,7 +96,7 @@ export function ActivityScreen() {
         : `${ROUTES.activityDetailDriver}?id=${record.id}`;
     }
     if (record.filter === "진행중")
-      return `${ROUTES.activityDetail}?status=진행중&id=${record.id}`;
+      return `${ROUTES.deliveryDetail}?orderId=${record.id}`;
     return `${ROUTES.activityDetail}?status=완료&id=${record.id}`;
   };
 
