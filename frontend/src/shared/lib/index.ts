@@ -34,6 +34,11 @@ export {
   type UntrackableDeliveryNotice,
 } from "./deliveryAvailability";
 export {
+  markForcedLogout,
+  hasForcedLogout,
+  clearForcedLogout,
+} from "./auth/forcedLogoutNotice";
+export {
   useDeliveryDetailGate,
   type UseDeliveryDetailGateOptions,
   type DeliveryDetailBlockNotice,
