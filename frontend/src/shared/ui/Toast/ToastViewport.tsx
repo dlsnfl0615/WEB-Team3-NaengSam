@@ -14,7 +14,7 @@ export function ToastViewport() {
       aria-atomic="false"
     >
       {toasts.map((toast) => (
-        <div key={toast.id} className="pointer-events-auto">
+        <div key={toast.id} className="ds-toast-down pointer-events-auto">
           <Toast
             icon={toast.icon}
             title={toast.title}
