@@ -129,6 +129,7 @@ public class DeliveryService {
         // 드리미 연결 상태도 함께 담는다 — 화면을 다시 열었을 때 SSE 이벤트를 기다리지 않고 즉시 복원하기 위함이며,
         // 부르미가 끊긴 동안 유실된 오프라인 통보를 되찾는 경로이기도 하다.
         return DeliveryDetailResponseDto.from(delivery, order,
+                resolveItemPhotoUrl(order.getImageKey()), resolvePickupPhotoUrl(orderId),
                 parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()),
                 dreamiOfflineDetector.isOffline(delivery),
                 dreamiOfflineDetector.secondsSinceLastLocationOrNull(delivery));
@@ -168,6 +169,19 @@ public class DeliveryService {
     // 완료 요약 전체를 실패시키지 않는다.
     private String resolveDeliveryPhotoUrl(UUID deliveryId) {
         return deliveryCertificationRepository.findByDeliveryId(deliveryId)
+                .map(certification -> s3PresignService.resolveDownloadUrl(certification.getImageKey()))
+                .orElse(null);
+    }
+
+    // 부르미가 주문 접수 시 등록한 물품 사진 URL을 조회한다. 사진을 안 올렸으면(imageKey 없음) 조회하지 않는다.
+    // 부르미가 주문 접수 시 물품 사진을 등록하지 않아도 되므로 image key가 null일 수 있음
+    private String resolveItemPhotoUrl(String imageKey) {
+        return imageKey == null ? null : s3PresignService.resolveDownloadUrl(imageKey);
+    }
+
+    // 드리미가 찍은 픽업 인증 사진 URL을 조회한다. 픽업 전이라 아직 없으면(레코드 없음) 조회하지 않는다.
+    private String resolvePickupPhotoUrl(UUID orderId) {
+        return pickupCertificationRepository.findByOrderId(orderId)
                 .map(certification -> s3PresignService.resolveDownloadUrl(certification.getImageKey()))
                 .orElse(null);
     }
