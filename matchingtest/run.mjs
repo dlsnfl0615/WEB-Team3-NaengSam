@@ -48,12 +48,25 @@ const config = {
   durationMs: num("DURATION_MS", 120_000),
   drainMs: num("DRAIN_MS", 20_000),
 
+  // 배달 단계. 픽업/완료 시각은 건별로 아래 범위 안에서 균등분포로 뽑는다.
+  delivery: bool("DELIVERY", "1"),
+  locationIntervalMs: num("LOCATION_INTERVAL_MS", 5_000),
+  pickupMsMin: num("PICKUP_MS_MIN", 20_000),
+  pickupMsMax: num("PICKUP_MS_MAX", 90_000),
+  deliverMsMin: num("DELIVER_MS_MIN", 30_000),
+  deliverMsMax: num("DELIVER_MS_MAX", 180_000),
+
   watch: bool("WATCH", "1"),
   watchDreami: num("WATCH_DREAMI", 10),
   watchBoormi: num("WATCH_BOORMI", 10),
   headed: bool("HEADED", "0"),
   watchTimeoutMs: num("WATCH_TIMEOUT_MS", 60_000),
   watchConcurrency: num("WATCH_CONCURRENCY", 4),
+  // 브라우저 창이 배달을 UI로 완주시킬 때의 시간들. 부하의 PICKUP_MS_*/DELIVER_MS_*와 별개다 —
+  // 이 창이 재는 것은 배달 소요 시간이 아니라 화면이 끝까지 동작하는지다.
+  watchPickupMs: num("WATCH_PICKUP_MS", 2_000),
+  watchDeliverMs: num("WATCH_DELIVER_MS", 2_000),
+  watchDeliveryTimeoutMs: num("WATCH_DELIVERY_TIMEOUT_MS", 300_000),
 
   useExistingAccounts: bool("USE_EXISTING_ACCOUNTS", "0"),
   existingEmailLike: process.env.EXISTING_EMAIL_LIKE ?? "",
@@ -343,6 +356,9 @@ async function startClients(watchUsers) {
       headed: config.headed,
       timeoutMs: config.watchTimeoutMs,
       concurrency: config.watchConcurrency,
+      pickupHoldMs: config.watchPickupMs,
+      deliverHoldMs: config.watchDeliverMs,
+      deliveryTimeoutMs: config.watchDeliveryTimeoutMs,
       videoDir: config.videoDir,
       resultDir: config.resultDir,
       cols: config.cols,
@@ -362,6 +378,14 @@ async function startClients(watchUsers) {
 async function drive(agents, ledger) {
   header("부하 시작");
   line(`목표  주문 ${config.orderCount}건 (초당 ${config.orderRate}) · 완주 상한 ${Math.min(config.orderCount, config.dreamiCount)}건`);
+  if (config.delivery) {
+    const holdMin = (config.pickupMsMin + config.deliverMsMin) / 1000;
+    const holdMax = (config.pickupMsMax + config.deliverMsMax) / 1000;
+    // 동시 배달 ≈ 초당 주문 수 × 평균 배달 소요 시간. 규모를 잡을 때 이 값을 먼저 본다.
+    const expected = Math.round((config.orderRate * (holdMin + holdMax)) / 2);
+    line(`배달  1건당 ${holdMin}~${holdMax}초 유지 · 위치 전송 ${config.locationIntervalMs}ms 주기`);
+    line(`      예상 동시 배달 ≈ ${expected}건 (드리미 계정 ${config.dreamiCount}명이 상한)`);
+  }
 
   // 브라우저 부르미도 주문을 하나씩 만들고 브라우저 드리미도 같은 풀에서 매칭된다.
   // 수요(주문)와 공급(드리미)이 같으면 오퍼가 한 번만 만료돼도 남는 주문이 굶는다.
@@ -387,6 +411,12 @@ async function drive(agents, ledger) {
       orderRate: config.orderRate,
       durationMs: config.durationMs,
       drainMs: config.drainMs,
+      delivery: config.delivery,
+      locationIntervalMs: config.locationIntervalMs,
+      pickupMsMin: config.pickupMsMin,
+      pickupMsMax: config.pickupMsMax,
+      deliverMsMin: config.deliverMsMin,
+      deliverMsMax: config.deliverMsMax,
     },
     log: line,
     tick: (s) => {
@@ -397,11 +427,17 @@ async function drive(agents, ledger) {
         dreamiCount: s.online,
       });
       const p95 = live.latency.server.createReqToOffer.p95;
+      // 배달을 켰으면 동시 배달 수가 이 테스트의 주 지표다. 매칭 지표 뒤에 붙여 같이 본다.
+      const deliveryPart = config.delivery
+        ? ` | 배달중 ${s.activeDeliveries}(피크 ${live.concurrency.peak}) | ` +
+          `픽업 ${s.pickupOk} 완료 ${s.finishOk} 실패 ${s.deliveryFail}`
+        : "";
       console.log(
         `  ${clock()}  주문 ${s.created}/${s.target} | 오퍼 ${s.offers} | ` +
           `수락제출 ${s.acceptSubmitted}(실패 ${s.acceptFail}) | 선착순승 ${live.won} | ` +
           `확정 ${s.confirmOk}(실패 ${s.confirmFail}) | ` +
-          `완주 ${live.completed} | 유실 ${live.missing.length} | 주문요청→오퍼 p95 ${p95 === null ? "-" : `${p95}ms`}`,
+          `완주 ${live.completed} | 유실 ${live.missing.length} | 주문요청→오퍼 p95 ${p95 === null ? "-" : `${p95}ms`}` +
+          deliveryPart,
       );
     },
   });
@@ -419,6 +455,15 @@ function eventLoopStats(histogram) {
   };
 }
 
+/**
+ * 브라우저 창이 UI로 배달을 끝낸 주문. 원장은 이 전이를 보지 못하므로 DB 대조와 정리 단계가
+ * 이 목록으로 보정한다. 드리미 창은 자기가 완주시킨 주문을, 부르미 창은 완료 화면까지 본 자기
+ * 주문을 들고 있다 — 둘 다 "이미 종료된 주문"이라는 점에서 같다.
+ */
+function browserDeliveredOrderIds(watchResults) {
+  return (watchResults ?? []).filter((r) => r.delivered && r.orderId).map((r) => r.orderId);
+}
+
 async function verifyAndReport({ summary, agents, watchResults, startedAt, eventLoopLag }) {
   console.log(`\n━━ 검증  DB 대조 ${BAR}`);
   const dbRows = await db.verifyOrders(summary.orderIds);
@@ -431,6 +476,7 @@ async function verifyAndReport({ summary, agents, watchResults, startedAt, event
     dbRows,
     dreamiIdByEmail,
     duplicates,
+    browserDeliveredOrderIds: browserDeliveredOrderIds(watchResults),
   });
 
   const finishedAt = Date.now();
@@ -499,18 +545,44 @@ async function cleanupStage({ summary, agents, watchResults, watchUsers }) {
     ...watchUsers.map((u) => [u.email, u.password]),
   ]);
 
+  // 배달이 끝난 주문은 COMPLETED라 계정을 잠그지 않는다 — 취소를 시도할 이유가 없다.
+  const finished = summary.records.filter((r) => r.finishOk === true);
+  // 픽업은 끝났는데 완료를 못 한 주문. cancel/boormi·dreami·admin 전부 DELIVERING에서는
+  // CANCELLATION_RESTRICTED_DURING_DELIVERY를 던지므로 API로 되돌릴 방법이 없다.
+  // 부르미와 드리미 계정이 그대로 잠긴 채 남으니 목록을 그대로 보여주고 사람 손에 맡긴다.
+  const stuckInDelivery = summary.records.filter((r) => r.pickupOk === true && r.finishOk !== true);
+  // 브라우저 창이 UI로 끝낸 주문도 COMPLETED다. 빼지 않으면 취소를 걸었다가 DELIVERY_013만 받는다.
+  const browserDelivered = browserDeliveredOrderIds(watchResults);
+  const untouchable = new Set([
+    ...[...finished, ...stuckInDelivery].map((r) => r.orderId),
+    ...browserDelivered,
+  ]);
+
+  if (finished.length > 0) line(`배달 완료 ${finished.length}건은 이미 종료 — 취소 대상 아님`);
+  if (browserDelivered.length > 0) {
+    line(`브라우저 창이 완주시킨 ${browserDelivered.length}건도 이미 종료 — 취소 대상 아님`);
+  }
+  if (stuckInDelivery.length > 0) {
+    warn(
+      `DELIVERING에 멈춘 주문 ${stuckInDelivery.length}건은 API로 취소할 수 없습니다 (수동 정리 필요).`,
+    );
+    for (const r of stuckInDelivery.slice(0, 20)) line(`  ${r.orderId}  ${r.boormiEmail}`);
+    if (stuckInDelivery.length > 20) line(`  … 외 ${stuckInDelivery.length - 20}건`);
+  }
+
   const targets = [
     // 확정까지 간 주문은 IN_PROGRESS라 배달 취소로 가야 한다. 원장이 이미 알고 있으니 힌트로 넘긴다.
     ...summary.records
-      .filter((r) => r.boormiEmail)
+      .filter((r) => r.boormiEmail && !untouchable.has(r.orderId))
       .map((r) => ({
         orderId: r.orderId,
         email: r.boormiEmail,
         orderCd: r.confirmOk ? "IN_PROGRESS" : undefined,
       })),
     // 브라우저 부르미가 만든 주문도 같은 방식으로 계정을 잠근다. 빼면 그 계정이 계속 묶인다.
+    // 드리미 창의 orderId는 남의 주문이라 취소 권한이 없다 — 역할로 갈라낸다.
     ...(watchResults ?? [])
-      .filter((r) => r.orderId)
+      .filter((r) => r.role === "boormi" && r.orderId && !untouchable.has(r.orderId))
       .map((r) => ({ orderId: r.orderId, email: r.email })),
   ].map((t) => ({ ...t, password: passwordOf.get(t.email) }));
 
@@ -554,6 +626,16 @@ async function cleanupStandalone() {
 
   if (rows.length === 0) return true;
 
+  // DELIVERING은 어떤 취소 API로도 되돌릴 수 없다. 시도해봐야 전부 실패로 쌓일 뿐이라 빼고 알린다.
+  const stuck = rows.filter((r) => r.deliveryCd === "DELIVERING");
+  const cancellable = rows.filter((r) => r.deliveryCd !== "DELIVERING");
+  if (stuck.length > 0) {
+    warn(`DELIVERING ${stuck.length}건은 API로 취소할 수 없습니다 (수동 정리 필요).`);
+    for (const r of stuck.slice(0, 20)) line(`  ${r.orderId}  ${r.email}`);
+    if (stuck.length > 20) line(`  … 외 ${stuck.length - 20}건`);
+  }
+  if (cancellable.length === 0) return stuck.length === 0;
+
   if (!config.cleanupConfirm) {
     warn("dry-run입니다. 실제로 취소하려면 CLEANUP_CONFIRM=1을 붙여 다시 실행하세요.");
     return true;
@@ -561,7 +643,7 @@ async function cleanupStandalone() {
 
   const result = await cleanupOrders({
     apiBase: config.apiBase,
-    targets: rows.map((r) => ({ ...r, password: config.existingPassword })),
+    targets: cancellable.map((r) => ({ ...r, password: config.existingPassword })),
     concurrency: config.loginConcurrency,
     log: line,
   });
@@ -608,7 +690,7 @@ try {
     if (config.cleanup) {
       await cleanupStage({ summary: { records: [] }, agents, watchResults, watchUsers });
     }
-    process.exit(watchResults?.every((r) => r.matched) ? 0 : 1);
+    process.exit(watchResults?.every((r) => r.matched && r.delivered) ? 0 : 1);
   }
 
   const ledger = createLedger();

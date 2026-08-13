@@ -440,7 +440,12 @@ export async function resetTestData() {
   return { deleted, remaining: await snapshot() };
 }
 
-/** 이번 런에서 만든 주문만 골라 매칭·배달 결과를 읽는다. */
+/**
+ * 이번 런에서 만든 주문만 골라 매칭·배달 결과를 읽는다.
+ *
+ * 인증 사진과 POINT_TX까지 같이 끌어오는 이유: 배달 완료는 상태 컬럼 하나로 끝나지 않는다.
+ * `finish`가 200을 주고도 인증 row가 없거나 정산이 PENDING에 머물러 있으면 그건 반쪽 완료다.
+ */
 export async function verifyOrders(orderIds) {
   if (orderIds.length === 0) return [];
   const list = orderIds.map(bin).join(", ");
@@ -452,10 +457,16 @@ export async function verifyOrders(orderIds) {
             o.order_cd as ORDER_CD,
             ${hex}(d.dreami_id) as DELIVERY_DREAMI_ID,
             d.delivery_cd as DELIVERY_CD,
-            m.accepted_dtm as ACCEPTED_DTM
+            m.accepted_dtm as ACCEPTED_DTM,
+            ${hex}(pc.certification_id) as PICKUP_CERT_ID,
+            ${hex}(dc.certification_id) as DELIVERY_CERT_ID,
+            pt.status as POINT_TX_STATUS
        from ORDERS o
        left join DELIVERY d on d.order_id = o.order_id
        left join MATCHING m on m.order_id = o.order_id
+       left join PICKUP_CERTIFICATION pc on pc.order_id = o.order_id
+       left join DELIVERY_CERTIFICATION dc on dc.delivery_id = d.delivery_id
+       left join POINT_TX pt on pt.order_id = o.order_id and pt.type = 'PAYMENT'
       where o.order_id in (${list})`,
   );
 }
