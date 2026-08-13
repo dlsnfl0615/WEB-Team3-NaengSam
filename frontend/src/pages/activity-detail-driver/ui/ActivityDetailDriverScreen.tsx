@@ -11,10 +11,7 @@ import {
   TopBar,
   toneForStatus,
 } from "@/shared/ui";
-import {
-  useDreamiOrderById,
-  useDreamiOrderStore,
-} from "@/shared/store/dreamiOrderStore";
+import { useDreamiOrderById } from "@/shared/store/dreamiOrderStore";
 import { useDeliveryCompletion } from "@/shared/lib/delivery/useDeliveryCompletion";
 import { useReceivedReview } from "@/shared/lib/delivery/useReceivedReview";
 
@@ -28,8 +25,7 @@ export function ActivityDetailDriverScreen() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const id = params.get("id");
-  const order = useDreamiOrderById(id);
-  const deliveriesLoading = useDreamiOrderStore((s) => s.loading);
+  const { order, loading: deliveriesLoading } = useDreamiOrderById(id);
   const completion = useDeliveryCompletion(id);
   const { review } = useReceivedReview(id);
 
