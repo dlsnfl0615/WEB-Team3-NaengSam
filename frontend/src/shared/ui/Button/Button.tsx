@@ -40,7 +40,8 @@ export function Button({
     <button
       type={type}
       className={cn(
-        'inline-flex items-center justify-center gap-1 rounded-pill font-bold',
+        // 라벨은 항상 한 줄로 — flex row 안에서 폭이 눌리면 '연/락'처럼 글자 단위로 줄바꿈된다.
+        'inline-flex items-center justify-center gap-1 whitespace-nowrap rounded-pill font-bold',
         'transition disabled:cursor-not-allowed disabled:opacity-40',
         'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-500',
         VARIANTS[variant],
