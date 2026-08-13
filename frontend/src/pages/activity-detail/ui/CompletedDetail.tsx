@@ -22,7 +22,6 @@ export function CompletedDetail({ order }: CompletedDetailProps) {
   const completion = useDeliveryCompletion(order.id);
   const { review } = useReceivedReview(order.id);
   const dreamiName = completion?.dreamiName;
-  const dreamiAvgScore = completion?.dreamiAvgScore;
   const durationLabel =
     completion?.durationMinutes != null
       ? `${completion.durationMinutes}분`
@@ -67,15 +66,7 @@ export function CompletedDetail({ order }: CompletedDetailProps) {
 
       <Card className="flex flex-col gap-2.5">
         {dreamiName && (
-          <InfoRow label="담당 드리미">
-            '{dreamiName}'
-            {dreamiAvgScore != null && (
-              <>
-                <Icon name="star" size={12} className="text-teal-700" />
-                {Number(dreamiAvgScore).toFixed(1)}
-              </>
-            )}
-          </InfoRow>
+          <InfoRow label="담당 드리미">'{dreamiName}'</InfoRow>
         )}
         {durationLabel && <InfoRow label="소요 시간">{durationLabel}</InfoRow>}
         <div className="mt-1 flex items-center justify-between border-t border-track pt-3">
