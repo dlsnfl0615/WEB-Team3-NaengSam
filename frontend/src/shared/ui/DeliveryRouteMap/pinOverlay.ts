@@ -10,6 +10,7 @@ export interface PinOverlayHandle {
   setMap(map: KakaoMap | null): void;
   setPosition(position: KakaoLatLng): void;
   setSmoothPosition(position: KakaoLatLng, durationMs: number): void;
+  removeSmoothly(): void;
 }
 
 /** 핀 색·라벨 텍스트·라벨 배경(theme.css 토큰 유틸)을 함께 묶은 스타일. */
@@ -51,6 +52,9 @@ export function makePinOverlay(
   if (smooth) root.style.willChange = "transform";
   if (onClick) root.addEventListener("click", onClick);
 
+  const content = document.createElement("div");
+  content.className = "ds-map-pin ds-map-pin-enter flex flex-col items-center gap-0.5";
+
   const labelElement = document.createElement("div");
   labelElement.className = cn(
     "rounded-pill px-1.5 py-0.5 text-2xs font-semibold text-white shadow-card",
@@ -67,11 +71,14 @@ export function makePinOverlay(
   pin.style.backgroundRepeat = "no-repeat";
   pin.style.backgroundSize = "contain";
 
-  root.append(labelElement, pin);
+  content.append(labelElement, pin);
+  root.append(content);
 
   class PinOverlay extends kakao.maps.AbstractOverlay {
     private position = position;
     private animation?: PinAnimation;
+    private enterFrame?: number;
+    private removeTimer?: number;
 
     private progress(animation: PinAnimation, now: number) {
       return Math.min(
@@ -131,6 +138,10 @@ export function makePinOverlay(
 
     onAdd() {
       this.getPanels().overlayLayer.appendChild(root);
+      this.enterFrame = requestAnimationFrame(() => {
+        content.classList.remove("ds-map-pin-enter");
+        this.enterFrame = undefined;
+      });
     }
 
     draw() {
@@ -159,6 +170,8 @@ export function makePinOverlay(
 
     onRemove() {
       this.cancelAnimation();
+      if (this.enterFrame != null) cancelAnimationFrame(this.enterFrame);
+      if (this.removeTimer != null) window.clearTimeout(this.removeTimer);
       root.remove();
     }
 
@@ -207,6 +220,17 @@ export function makePinOverlay(
       };
       this.renderPoint(fromPoint);
       this.animation.frame = requestAnimationFrame(this.animate);
+    }
+
+    removeSmoothly() {
+      if (!this.getMap() || content.classList.contains("ds-map-pin-exit")) return;
+      if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+        this.setMap(null);
+        return;
+      }
+      content.classList.remove("ds-map-pin-enter");
+      content.classList.add("ds-map-pin-exit");
+      this.removeTimer = window.setTimeout(() => this.setMap(null), 220);
     }
   }
 

@@ -49,6 +49,24 @@ body {
   fill: currentColor;
 }
 
+/* 지도 핀: 실시간 목록에 들어오고 나갈 때 위치를 잃지 않으면서 부드럽게 전환 */
+.ds-map-pin {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transform-origin: center bottom;
+  transition:
+    opacity 180ms ease-out,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.ds-map-pin-enter,
+.ds-map-pin-exit {
+  opacity: 0;
+  transform: translateY(5px) scale(0.72);
+}
+.ds-map-pin-exit {
+  pointer-events: none;
+}
+
 /* 바텀시트: 하단에서 올라오는 등장 애니메이션 */
 @keyframes ds-sheet-up {
   from {
@@ -62,6 +80,9 @@ body {
   animation: ds-sheet-up 220ms ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
+  .ds-map-pin {
+    transition: none;
+  }
   .ds-sheet-up {
     animation: none;
   }
