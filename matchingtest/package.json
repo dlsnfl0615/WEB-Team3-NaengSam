@@ -10,6 +10,7 @@
     "seed": "node run.mjs --only=seed",
     "drive": "node run.mjs --only=drive",
     "watch": "node run.mjs --only=watch",
+    "pins:dreamis": "node dreami-pin-test.mjs",
     "cleanup": "node run.mjs --only=cleanup",
     "tunnel": "ssh -N -L 13306:10.0.2.198:3306 symboorm-web",
     "prod": "ENV_FILE=config/.env.prod node run.mjs",

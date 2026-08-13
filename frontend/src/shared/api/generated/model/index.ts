@@ -53,6 +53,7 @@ export * from './findCurrentDeliveryCard200';
 export * from './findNearbyCalls200';
 export * from './findNearbyDreamis200';
 export * from './findNearbyOrders200';
+export * from './findNearbyWaitingDreamis200';
 export * from './finishDelivery200';
 export * from './geoPoint';
 export * from './getBoormiDashboard200';
