@@ -80,6 +80,7 @@ export * from './matchOfferDto';
 export * from './matchOfferDtoStatus';
 export * from './me200';
 export * from './monthlyRevenueDto';
+export * from './monthlySavingDto';
 export * from './nearbyCallDto';
 export * from './nearbyCallDtoItemCd';
 export * from './nearbyCallDtoOrderCd';

@@ -4,9 +4,13 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { MonthlySavingDto } from './monthlySavingDto';
 
 export interface BoormiDashboardDto {
   completedCount?: number;
   totalSavedAmount?: number;
   thisMonthCount?: number;
+  thisMonthSavedAmount?: number;
+  monthOverMonthGrowthPercent?: number;
+  recentSixMonths?: MonthlySavingDto[];
 }
