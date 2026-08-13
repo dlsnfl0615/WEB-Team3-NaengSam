@@ -1,6 +1,7 @@
 package com.naengsam.quick.domain.delivery.controller;
 
 import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
+import com.naengsam.quick.domain.delivery.dto.DeliveryContactDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryPhotoRequest;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
@@ -68,6 +69,19 @@ public class DeliveryController {
     public PickupPhotoDto getPickupPhoto(
             @PathVariable UUID orderId, @LoginUser UUID userId) {
         return deliveryService.getPickupPhoto(orderId, userId);
+    }
+
+    // 배달 화면에서 '연락하기'를 눌렀을 때만 호출하는 함수 — 개인정보라 상세 조회에 싣지 않고 분리했다.
+    @Operation(summary = "배달 상대방 연락처 조회",
+            description = "진행 중인 배달의 상대방(부르미↔드리미) 이름과 전화번호를 반환한다. 해당 배달의 당사자만 조회할 수 있고, "
+                    + "완료·취소·반송 등 종료된 배달에서는 조회할 수 없다.")
+    @ApiErrorCodes(enumClass = DeliveryErrorCode.class, codes = {"DELIVERY_NOT_FOUND", "CONTACT_NOT_AVAILABLE"})
+    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"NOT_RESOURCE_OWNER"})
+    @ApiErrorCodes(enumClass = UserErrorCode.class, codes = {"USER_NOT_FOUND"})
+    @GetMapping("/orders/{orderId}/contact")
+    public DeliveryContactDto getDeliveryContact(
+            @PathVariable UUID orderId, @LoginUser UUID userId) {
+        return deliveryService.getDeliveryContact(orderId, userId);
     }
 
     @Operation(summary = "드리미 위치 갱신",

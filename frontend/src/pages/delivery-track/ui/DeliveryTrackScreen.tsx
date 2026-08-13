@@ -23,6 +23,7 @@ import {
   rememberDeliveryStage,
   getUntrackableDeliveryNotice,
   useDeliveryDetailGate,
+  ContactSheet,
   useSse,
   useSseReconnectSync,
   useDreamiLocationBroadcast,
@@ -141,6 +142,7 @@ export function DeliveryTrackScreen() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [contactOpen, setContactOpen] = useState(false);
 
   const sseHandlers: SseHandlers = {
     delivery_cancelled: (data) => {
@@ -349,7 +351,14 @@ export function DeliveryTrackScreen() {
 
       <footer className="flex flex-col items-center gap-2 pt-4">
         <div className="flex w-full gap-2">
-          <Button variant="outline">연락하기</Button>
+          {/* mock 흐름(orderId 없음)에서는 조회할 배달이 없어 비활성. */}
+          <Button
+            variant="outline"
+            disabled={!orderId}
+            onClick={() => setContactOpen(true)}
+          >
+            연락
+          </Button>
           <Button block disabled={!detailReady} onClick={onAction}>
             {action}
           </Button>
@@ -364,6 +373,12 @@ export function DeliveryTrackScreen() {
           </button>
         )}
       </footer>
+
+      <ContactSheet
+        open={contactOpen}
+        orderId={orderId}
+        onClose={() => setContactOpen(false)}
+      />
 
       <Modal
         open={confirmOpen}

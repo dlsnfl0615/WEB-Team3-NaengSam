@@ -35,7 +35,14 @@ export function dbHost(url = dbConfig.url) {
   return m ? m[1] : "";
 }
 
+/**
+ * SSH 터널로 원격 DB를 로컬 포트에 붙이면 호스트가 `127.0.0.1`로 보여 이 판정이 뒤집힌다.
+ * 호스트만으로는 구분할 방법이 없으므로 `REMOTE_DB=1`로 직접 알려준다.
+ */
+const FORCE_REMOTE = process.env.REMOTE_DB === "1";
+
 export function isLocalDb(url = dbConfig.url) {
+  if (FORCE_REMOTE) return false;
   const host = dbHost(url);
   return host === "" || host === "localhost" || host === "127.0.0.1" || host === "::1";
 }
@@ -221,15 +228,19 @@ export async function query(sql) {
 /**
  * MySQL용. Shell의 list 모드는 행마다 `컬럼: 값`을 한 줄씩 찍고 빈 줄로 행을 구분한다.
  * 파이프 정렬 출력보다 값에 구분자가 섞일 위험이 적다.
+ *
+ * 컬럼명은 그 결과에서 가장 긴 이름 폭에 맞춰 공백으로 채워진다(`ID   : ...` / `EMAIL: ...`).
+ * 콜론 앞 공백을 허용하지 않으면 짧은 이름의 컬럼만 통째로 사라진다.
  */
 async function queryViaListMode(sql) {
   const out = await runShell(`list\n${sql};\n`);
   const rows = [];
   let current = null;
   for (const raw of out.split("\n")) {
-    const line = raw.replace(/^sql> /, "").replace(/^\.\.\.> /, "");
+    // 프롬프트는 개행 없이 찍히므로 여러 줄짜리 SQL이면 첫 결과 줄 앞에 `sql> ...> ...> `가 겹쳐 붙는다.
+    const line = raw.replace(/^(?:sql> |\.\.\.> )+/, "");
     if (/^\(\d+ rows?, /.test(line.trim())) break;
-    const m = /^([A-Za-z_][\w]*): (.*)$/.exec(line);
+    const m = /^([A-Za-z_][\w]*) *: (.*)$/.exec(line);
     if (m) {
       if (!current) {
         current = {};
@@ -280,7 +291,49 @@ export function normHex(value) {
   return value == null ? null : String(value).replace(/-/g, "").toUpperCase();
 }
 
-const HEX = () => (dbConfig.kind === "mysql" ? "HEX" : "RAWTOHEX");
+export const HEX = () => (dbConfig.kind === "mysql" ? "HEX" : "RAWTOHEX");
+
+/** HEX()가 준 32자리를 대시 있는 UUID로. `@PathVariable UUID`는 대시 없는 문자열을 받지 않는다. */
+export function toUuid(hex) {
+  const h = normHex(hex).toLowerCase();
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+/**
+ * `OrderRepository.countActiveOrders`와 같은 정의. 이 상태들만 "끝난 주문"이다.
+ * 계정 수집기(`pull.mjs`)와 정리기(`cleanup.mjs`)가 같은 판정을 써야 한다 —
+ * 갈라지면 정리했는데도 계정이 안 풀리는 상황이 생긴다.
+ */
+export const CLOSED_ORDER_CDS = "'COMPLETED','CANCELLED','CLAIM_REVIEW'";
+
+/**
+ * 이메일 패턴에 걸리는 부르미가 들고 있는 활성 주문. SELECT만 한다.
+ *
+ * 잔여 주문 정리(`--only=cleanup`)와 부하 실행 전 사전 점검이 함께 쓴다.
+ * 부르미 쪽만 본다 — 취소는 주문을 만든 부르미 본인 세션으로만 되기 때문에,
+ * 패턴 밖의 부르미가 만든 주문은 찾아 봐야 치울 수가 없다.
+ */
+export async function activeOrdersByEmail(emailLike) {
+  const hex = HEX();
+  const rows = await query(
+    `SELECT ${hex}(o.order_id) AS ORDER_ID,
+            o.order_cd AS ORDER_CD,
+            b.email AS EMAIL,
+            d.delivery_cd AS DELIVERY_CD
+       FROM ORDERS o
+       JOIN BOORMI b ON b.boormi_id = o.boormi_id
+       LEFT JOIN DELIVERY d ON d.order_id = o.order_id
+      WHERE b.email LIKE '${String(emailLike).replace(/'/g, "''")}'
+        AND o.order_cd NOT IN (${CLOSED_ORDER_CDS})
+      ORDER BY b.email`,
+  );
+  return rows.map((r) => ({
+    orderId: toUuid(r.ORDER_ID),
+    orderCd: r.ORDER_CD,
+    email: r.EMAIL,
+    deliveryCd: r.DELIVERY_CD,
+  }));
+}
 
 const TEST_BOORMIS = () =>
   `SELECT boormi_id FROM BOORMI WHERE email LIKE '%${TEST_EMAIL_SUFFIX}'`;
@@ -387,7 +440,12 @@ export async function resetTestData() {
   return { deleted, remaining: await snapshot() };
 }
 
-/** 이번 런에서 만든 주문만 골라 매칭·배달 결과를 읽는다. */
+/**
+ * 이번 런에서 만든 주문만 골라 매칭·배달 결과를 읽는다.
+ *
+ * 인증 사진과 POINT_TX까지 같이 끌어오는 이유: 배달 완료는 상태 컬럼 하나로 끝나지 않는다.
+ * `finish`가 200을 주고도 인증 row가 없거나 정산이 PENDING에 머물러 있으면 그건 반쪽 완료다.
+ */
 export async function verifyOrders(orderIds) {
   if (orderIds.length === 0) return [];
   const list = orderIds.map(bin).join(", ");
@@ -399,10 +457,16 @@ export async function verifyOrders(orderIds) {
             o.order_cd as ORDER_CD,
             ${hex}(d.dreami_id) as DELIVERY_DREAMI_ID,
             d.delivery_cd as DELIVERY_CD,
-            m.accepted_dtm as ACCEPTED_DTM
+            m.accepted_dtm as ACCEPTED_DTM,
+            ${hex}(pc.certification_id) as PICKUP_CERT_ID,
+            ${hex}(dc.certification_id) as DELIVERY_CERT_ID,
+            pt.status as POINT_TX_STATUS
        from ORDERS o
        left join DELIVERY d on d.order_id = o.order_id
        left join MATCHING m on m.order_id = o.order_id
+       left join PICKUP_CERTIFICATION pc on pc.order_id = o.order_id
+       left join DELIVERY_CERTIFICATION dc on dc.delivery_id = d.delivery_id
+       left join POINT_TX pt on pt.order_id = o.order_id and pt.type = 'PAYMENT'
       where o.order_id in (${list})`,
   );
 }
