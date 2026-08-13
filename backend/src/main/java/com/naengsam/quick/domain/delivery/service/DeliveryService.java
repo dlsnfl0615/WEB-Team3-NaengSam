@@ -393,6 +393,7 @@ public class DeliveryService {
 
         delivery.cancelBy(PICKUP_CANCELLED_BY_DREAMI); // 픽업중_드리미의_취소
         orderService.cancel(delivery.getOrderId(), CancelerCd.DREAMI); // 주문도 취소 상태로 전이 + 취소 이력 저장
+        paymentService.refundByPoint(delivery.getOrderId()); // 결제 포인트 전액 환불 (SSE 알림 전에 DB 작업을 끝낸다)
         alarmBoormiDreamiCancelBySSE(delivery); // 부르미에게_픽업중에_드리미가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
@@ -426,6 +427,7 @@ public class DeliveryService {
 
         delivery.cancelBy(PICKUP_CANCELLED_BY_BOORMI); // 픽업중_부르미의_취소
         orderService.cancel(delivery.getOrderId(), CancelerCd.BOORMI); // 주문도 취소 상태로 전이 + 취소 이력 저장
+        paymentService.refundByPoint(delivery.getOrderId()); // 결제 포인트 전액 환불 (SSE 알림 전에 DB 작업을 끝낸다)
         alarmDreamiBoormiCancelBySSE(delivery); // 드리미에게_부르미가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
@@ -453,6 +455,7 @@ public class DeliveryService {
 
         delivery.cancelBy(PICKUP_CANCELLED_BY_ADMIN); // 픽업중_관리자의_취소
         orderService.cancel(delivery.getOrderId(), CancelerCd.ADMIN); // 주문도 취소 상태로 전이 + 취소 이력 저장
+        paymentService.refundByPoint(delivery.getOrderId()); // 결제 포인트 전액 환불 (SSE 알림 전에 DB 작업을 끝낸다)
         alarmBoormiAdminCancelBySSE(delivery); // 부르미에게_관리자가_취소했다고_전달_SSE사용()
         alarmDreamiAdminCancelBySSE(delivery); // 드리미에게_관리자가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
