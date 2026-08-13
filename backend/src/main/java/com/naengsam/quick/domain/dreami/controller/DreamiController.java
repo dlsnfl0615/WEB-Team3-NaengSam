@@ -128,4 +128,13 @@ public class DreamiController {
             @RequestParam(required = false) OrderCd status) {
         return dreamiService.getMyOrders(dreamiId, cursor, size, status);
     }
+
+    @Operation(summary = "내 배달 단건 조회",
+            description = "배달 하나를 주문 id로 직접 조회한다. 활동 내역 상세 화면이 목록 페이지네이션을 거치지 않고 딥링크/새로고침으로 바로 들어왔을 때 쓴다.")
+    @GetMapping("/deliveries/{orderId}")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER"})
+    public OrderSummaryDto getDreamiOrder(@LoginUser UUID dreamiId, @PathVariable UUID orderId) {
+        return dreamiService.getMyDelivery(dreamiId, orderId);
+    }
 }

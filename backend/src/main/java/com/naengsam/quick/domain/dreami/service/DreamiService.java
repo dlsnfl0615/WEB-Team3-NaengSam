@@ -240,6 +240,19 @@ public class DreamiService {
         return orderService.getOrders(dreamiId, Role.DREAMI, cursor, size, status);
     }
 
+    /**
+     * 배달 하나를 주문 id로 직접 조회한다. 활동 내역 상세 화면이 목록 페이지네이션(getMyOrders)과 무관하게
+     * 딥링크/새로고침으로 바로 들어왔을 때, 그 배달 하나만 정확히 찾기 위해 쓴다.
+     */
+    @Transactional(readOnly = true)
+    public OrderSummaryDto getMyDelivery(UUID dreamiId, UUID orderId) {
+        Orders order = orderService.getOrder(orderId);
+        if (!dreamiId.equals(order.getDreamiId())) {
+            throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
+        }
+        return OrderSummaryDto.from(order);
+    }
+
     private long amountOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {
         MonthlyMoneyAggregate aggregate = byMonth.get(month);
         return aggregate == null ? 0 : aggregate.totalAmount();
