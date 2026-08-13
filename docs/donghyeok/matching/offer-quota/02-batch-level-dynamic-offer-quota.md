@@ -1,4 +1,4 @@
-정# 2. 드리미 수급 기반 dynamic offer quota 추가
+# 2. 드리미 수급 기반 dynamic offer quota 추가
 
 `resolveMaxConcurrentOffers()`가 설정값을 그대로 반환하던 자리에, 배치 시점의 드리미/주문
 비율로 quota를 다시 계산하는 `DYNAMIC` 모드를 추가했다. `matching.offer-quota-mode`로
@@ -7,7 +7,7 @@
 ## 무엇을
 
 - `OfferQuotaMode` enum(`FIXED`, `DYNAMIC`) 추가.
-- `MatchingPolicyProperties`에 `offerQuotaMode` 필드 추가, `matching.offer-quota-mode=${OFFER_QUOTA_MODE:FIXED}`
+- `MatchingPolicyProperties`에 `offerQuotaMode` 필드 추가, `matching.offer-quota-mode=${OFFER_QUOTA_MODE:DYNAMIC}`
   설정 추가.
 - `MatchingAssignmentProblemAssembler.resolveMaxConcurrentOffers()`가 `orderCount`/`dreamiCount`를
   받아 모드에 따라 분기하도록 변경. `FIXED`는 기존처럼 설정값을 그대로 쓰고, `DYNAMIC`은
