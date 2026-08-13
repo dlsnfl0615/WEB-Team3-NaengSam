@@ -156,7 +156,7 @@ describe("matchingStore polling 복구", () => {
         deliveryEta: 0, deliveryDistance: null, originLatitude: null, originLongitude: null,
         originAlias: null, originAddressLine1: null, destinationLatitude: null,
         destinationLongitude: null, destinationAlias: null, destinationAddressLine1: null,
-        imageKey: null, offeredAt: "2026-08-11T10:00:00", expiresAt: "2026-08-11T10:00:30" },
+        deliveryRequest: null, offeredAt: "2026-08-11T10:00:00", expiresAt: "2026-08-11T10:00:30" },
       incomingDreami: { offerId: "old", orderId: "o", dreamiId: "d" },
     });
     getCurrentStatus.mockResolvedValue(snapshot({}) as never);
@@ -230,7 +230,7 @@ describe("matchingStore 카운트다운 만료(로컬)", () => {
         deliveryEta: 0, deliveryDistance: null, originLatitude: null, originLongitude: null,
         originAlias: null, originAddressLine1: null, destinationLatitude: null,
         destinationLongitude: null, destinationAlias: null, destinationAddressLine1: null,
-        imageKey: null, offeredAt: "2026-08-11T10:00:00", expiresAt: "2026-08-11T10:00:30" },
+        deliveryRequest: null, offeredAt: "2026-08-11T10:00:00", expiresAt: "2026-08-11T10:00:30" },
     });
 
     useMatchingStore.getState().expirePendingOffer("offer-stale");
@@ -289,7 +289,7 @@ describe("matchingStore 드리미 온라인 상태 복원", () => {
         deliveryEta: 0, deliveryDistance: null, originLatitude: null, originLongitude: null,
         originAlias: null, originAddressLine1: null, destinationLatitude: null,
         destinationLongitude: null, destinationAlias: null, destinationAddressLine1: null,
-        imageKey: null, offeredAt: "2026-08-13T10:00:00", expiresAt: "2026-08-13T10:00:30",
+        deliveryRequest: null, offeredAt: "2026-08-13T10:00:00", expiresAt: "2026-08-13T10:00:30",
       },
     });
 
