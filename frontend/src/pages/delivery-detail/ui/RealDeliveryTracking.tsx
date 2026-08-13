@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
+  ArrivalBadge,
   Button,
   BlockingLoadErrorModal,
   Card,
@@ -362,16 +363,7 @@ export function RealDeliveryTracking({
 
         <MapCard
           height={340}
-          overlay={
-            <div className="flex items-center gap-6 rounded-pill bg-navy-900 px-6 py-2.5 text-white">
-              <div className="flex flex-col items-center">
-                <span className="text-2xs opacity-70">배송 완료 예상</span>
-                <span className="text-md font-bold">
-                  {arrivalTime ?? "계산 중…"}
-                </span>
-              </div>
-            </div>
-          }
+          overlay={<ArrivalBadge arrivalTime={arrivalTime} />}
         >
           <DeliveryRouteMap
             pickup={pickup}

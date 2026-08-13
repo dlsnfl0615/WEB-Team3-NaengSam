@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
+  ArrivalBadge,
   Button,
   BlockingLoadErrorModal,
   Card,
@@ -46,7 +47,6 @@ import {
   useDeliveryStore,
 } from "@/shared/store/deliveryStore";
 import { TRACK_STAGES, type TrackStage } from "./statuses";
-import { TrackOverlay } from "./TrackOverlay";
 
 /**
  * 실시간 배송 추적 화면(Figma node 191:972, 191:989).
@@ -289,7 +289,7 @@ export function DeliveryTrackScreen() {
         <MapCard
           flat
           height={440}
-          overlay={<TrackOverlay arrivalTime={arrivalTime} />}
+          overlay={<ArrivalBadge arrivalTime={arrivalTime} />}
         >
           <DeliveryRouteMap
             flat
