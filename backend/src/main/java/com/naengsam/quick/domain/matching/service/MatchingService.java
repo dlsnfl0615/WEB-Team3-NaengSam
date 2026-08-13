@@ -163,6 +163,14 @@ public class MatchingService {
      * @param location 드리미의 현재 위치
      * @return 드리미 등록 액션이 큐에 제출되었으면 true, 이미 등록되어 있거나 큐 제출에 실패했을 경우 false
      */
+    /**
+     * 드리미가 매칭 엔진에 온라인 등록되어 오퍼를 기다리는 중인지. 이 상태는 DB에 흔적이 없어 주문 테이블만으로는 알 수 없다. 인메모리 상태이므로 서버가 재시작하면 false가 되며, 그때는 실제로도
+     * 오프라인이 맞다.
+     */
+    public boolean isDreamiWaiting(UUID dreamiId) {
+        return dreamiMap.containsKey(dreamiId);
+    }
+
     public boolean registerDreami(UUID dreamiId, GeoPoint location) {
         if (dreamiMap.containsKey(dreamiId)) {
             notificationService.notify(dreamiId, MatchingEventType.OFFER_ERROR,
