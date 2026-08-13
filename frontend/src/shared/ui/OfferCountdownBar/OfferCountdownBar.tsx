@@ -5,6 +5,8 @@ export interface OfferCountdownBarProps {
   remainingSeconds: number;
   /** 0~100 진행률(남은 비율). */
   progressPercent: number;
+  /** 좌측 라벨. 내가 응답하는 게 아니라 상대를 기다리는 화면이면 바꿔 준다. */
+  label?: string;
   className?: string;
 }
 
@@ -15,6 +17,7 @@ export interface OfferCountdownBarProps {
 export function OfferCountdownBar({
   remainingSeconds,
   progressPercent,
+  label = "응답 가능 시간",
   className,
 }: OfferCountdownBarProps) {
   const expired = remainingSeconds <= 0;
@@ -24,7 +27,7 @@ export function OfferCountdownBar({
   return (
     <div className={cn("flex flex-col gap-1", className)}>
       <div className="flex items-center justify-between text-2xs">
-        <p className="text-muted">응답 가능 시간</p>
+        <p className="text-muted">{label}</p>
         <p
           className={cn(
             "font-bold",

@@ -50,6 +50,31 @@ export interface PendingOffer extends OfferPopupPayload {
   distanceMeters?: number;
 }
 
+/**
+ * 드리미가 콜을 수락하고 부르미의 확정을 기다리는 상태.
+ *
+ * 백엔드는 이 대기 자체를 알려주는 이벤트나 스냅샷 필드를 두지 않는다(수락 응답이 곧 시작 신호다).
+ * 그래서 수락이 성공한 순간 프론트에서 만들고, 결말을 알려주는 기존 SSE 이벤트
+ * (`boormi_rejected`·`offer_closed`·`delivery_started_dreami`)에서 지운다. 이벤트를 하나도 못 받는
+ * 최악의 경우에도 화면에 남지 않도록 부르미 확인 TTL(`BOORMI_CONFIRM_TTL_MS`)로 스스로 만료된다.
+ */
+export interface AwaitingBoormi {
+  offerId: string;
+  orderId: string;
+  /** 수락한 콜의 물품명(카드에 무엇을 기다리는지 보여주기 위함). */
+  itemName: string | null;
+  /** 대기 시작 시각(ISO). 카운트다운 기준. */
+  acceptedAt: string;
+  /** 부르미 확인 마감 시각(ISO). */
+  expiresAt: string;
+}
+
+/**
+ * 부르미 확인 대기 TTL. 백엔드 `MatchingService.BOORMI_OFFER_TTL`(30초)과 같은 값이며,
+ * 대기 카드가 영원히 남지 않게 하는 상한으로만 쓴다(판정은 언제나 서버 이벤트가 한다).
+ */
+const BOORMI_CONFIRM_TTL_MS = 30_000;
+
 /** 부르미가 받은 드리미 수락 알림(SSE `dreami_info`) + 드리미 프로필. */
 export interface IncomingDreami {
   offerId: string;
@@ -75,6 +100,8 @@ interface MatchingState {
   nearbyCallsError: string | null;
   pendingOffer: PendingOffer | null;
   incomingDreami: IncomingDreami | null;
+  /** 드리미가 수락하고 부르미 확정을 기다리는 중(드리미 화면 전용). */
+  awaitingBoormi: AwaitingBoormi | null;
   /** 마지막 오류/안내 메시지(팝업·화면에서 노출 후 clearMessage). */
   message: string | null;
   /** 수락·거절 요청 진행 중(버튼 중복 클릭 방지). */
@@ -96,6 +123,10 @@ interface MatchingState {
   expirePendingOffer: (offerId: string) => void;
   /** 부르미 확인 카운트다운 만료(로컬). offerId가 다르면 무시한다. */
   expireIncomingDreami: (offerId: string) => void;
+  /** 드리미의 '부르미 응답 대기' 종료(로컬 TTL 만료). offerId가 다르면 무시한다. */
+  expireAwaitingBoormi: (offerId: string) => void;
+  /** 배달이 실제로 시작돼(delivery_started_dreami) 대기가 끝났을 때 정리. */
+  clearAwaitingBoormi: () => void;
   /** 드리미 화면 진입 시(및 폴링 시) 실행: 좌표를 구해 주변 콜을 조회한다. 온라인 여부와 무관하게 항상 동작한다. */
   loadNearbyCalls: () => Promise<NearbyCallsLoadResult>;
   /** 드리미 온라인 전환. myLocation이 있으면 재사용하고, 없으면 새로 조회한다. */
@@ -237,6 +268,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   nearbyCallsError: null,
   pendingOffer: null,
   incomingDreami: null,
+  awaitingBoormi: null,
   message: null,
   submitting: false,
 
@@ -254,21 +286,30 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     }));
   },
 
-  // 드리미: 제안 마감(선착순 마감·거절 처리 완료 등).
+  // 드리미: 제안 마감(선착순 마감·거절 처리 완료 등). 이미 수락해 대기 중이던 제안이 마감된 것이면
+  // '부르미 응답 대기' 카드도 함께 내린다.
   receiveOfferClosed: (payload) => {
     const { offerId, reason } = payload as { offerId: string; reason?: string };
     set((s) =>
-      s.pendingOffer?.offerId === offerId
-        ? { pendingOffer: null, message: reason ?? "제안이 마감됐어요." }
+      s.pendingOffer?.offerId === offerId || s.awaitingBoormi?.offerId === offerId
+        ? {
+            pendingOffer:
+              s.pendingOffer?.offerId === offerId ? null : s.pendingOffer,
+            awaitingBoormi:
+              s.awaitingBoormi?.offerId === offerId ? null : s.awaitingBoormi,
+            message: reason ?? "제안이 마감됐어요.",
+          }
         : {},
     );
   },
 
-  // 드리미: 부르미가 거절함.
+  // 드리미: 부르미가 거절함. 수락 후 띄워둔 '부르미 응답 대기' 카드를 내리는 지점이기도 하다.
   receiveBoormiRejected: (payload) => {
     const { offerId } = payload as { offerId: string };
     set((s) => ({
       pendingOffer: s.pendingOffer?.offerId === offerId ? null : s.pendingOffer,
+      awaitingBoormi:
+        s.awaitingBoormi?.offerId === offerId ? null : s.awaitingBoormi,
       message: "부르미가 요청을 거절했어요.",
     }));
   },
@@ -301,15 +342,20 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
       });
   },
 
+  // 매칭 처리가 실패했으면 그 제안은 더 진행되지 않는다 → 대기 카드도 남겨두지 않는다.
   receiveOfferError: (payload) => {
     const { message } = payload as { message?: string };
-    set({ message: message ?? "매칭 요청 처리에 실패했어요." });
+    set({
+      awaitingBoormi: null,
+      message: message ?? "매칭 요청 처리에 실패했어요.",
+    });
   },
 
   clearOffers: () =>
     set({
       pendingOffer: null,
       incomingDreami: null,
+      awaitingBoormi: null,
     }),
 
   // 드리미 카운트다운 만료(로컬). 그 사이 새 제안으로 교체됐으면(offerId 다름) 건드리지 않는다.
@@ -323,6 +369,20 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     set((s) =>
       s.incomingDreami?.offerId === offerId ? { incomingDreami: null } : {},
     ),
+
+  // 부르미 확인 TTL이 지나도록 아무 이벤트도 못 받은 경우의 안전장치. 결말은 서버가 알고 있으므로
+  // 단정적인 문구 대신 대기 종료만 알리고, 다음 오퍼를 받을 수 있는 상태로 되돌린다.
+  expireAwaitingBoormi: (offerId) =>
+    set((s) =>
+      s.awaitingBoormi?.offerId === offerId
+        ? {
+            awaitingBoormi: null,
+            message: "부르미의 응답을 받지 못했어요. 다음 콜을 기다려주세요.",
+          }
+        : {},
+    ),
+
+  clearAwaitingBoormi: () => set({ awaitingBoormi: null }),
 
   // 온라인 여부와 무관하게 화면 진입 시(및 폴링 시) 항상 실행한다. myLocation이 이미 있으면 재사용한다.
   loadNearbyCalls: async () => {
@@ -390,7 +450,20 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     set({ submitting: true });
     try {
       await api.acceptOffer(pendingOffer.offerId);
-      set({ pendingOffer: null, submitting: false });
+      // 수락은 배달 시작이 아니라 '부르미 확인 대기'의 시작이다. 콜 카드를 내리고 대기 카드로 바꿔,
+      // 드리미가 빈 화면에서 무슨 일이 일어나는지 모른 채 기다리지 않게 한다.
+      const acceptedAt = Date.now();
+      set({
+        pendingOffer: null,
+        awaitingBoormi: {
+          offerId: pendingOffer.offerId,
+          orderId: pendingOffer.orderId,
+          itemName: pendingOffer.itemName,
+          acceptedAt: new Date(acceptedAt).toISOString(),
+          expiresAt: new Date(acceptedAt + BOORMI_CONFIRM_TTL_MS).toISOString(),
+        },
+        submitting: false,
+      });
       return pendingOffer.orderId;
     } catch (e) {
       set({ submitting: false, message: toMessage(e, "수락에 실패했어요.") });
