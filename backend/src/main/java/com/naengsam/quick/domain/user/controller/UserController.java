@@ -1,12 +1,14 @@
 package com.naengsam.quick.domain.user.controller;
 
 import com.naengsam.quick.domain.user.dto.LoginRequest;
+import com.naengsam.quick.domain.user.dto.LoginResultDto;
 import com.naengsam.quick.domain.user.dto.SendVerificationCodeRequest;
 import com.naengsam.quick.domain.user.dto.SignUpRequest;
 import com.naengsam.quick.domain.user.dto.UserDto;
 import com.naengsam.quick.domain.user.dto.VerifyCodeRequest;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.domain.user.exception.UserErrorCode;
+import com.naengsam.quick.domain.user.service.LoginQueue;
 import com.naengsam.quick.domain.user.service.SmsVerificationService;
 import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.global.session.ActiveSession;
@@ -26,6 +28,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,6 +41,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 public class UserController {
     private final UserService userService;
+    private final LoginQueue loginQueue;
     private final SmsVerificationService smsVerificationService;
     private final ActiveSessionRegistry activeSessionRegistry;
     private final SseEmitterRegistry sseEmitterRegistry;
@@ -74,13 +78,39 @@ public class UserController {
     }
 
     @PublicApi
-    @Operation(summary = "로그인", description = "이메일/비밀번호로 로그인하고 세션을 생성한다.")
+    @Operation(summary = "로그인",
+            description = "이메일/비밀번호로 로그인한다. 동시 로그인이 몰리면 세션 대신 대기 티켓(QUEUED)을 발급한다.")
     @PostMapping("/login")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = AuthErrorCode.class,
-            codes = {"LOGIN_FAILED", "SUSPENDED_ACCOUNT", "WITHDRAWN_ACCOUNT"})
-    public void login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
-        UUID boormiId = userService.login(request);
+            codes = {"LOGIN_FAILED", "SUSPENDED_ACCOUNT", "WITHDRAWN_ACCOUNT", "LOGIN_QUEUE_FULL",
+                    "LOGIN_QUEUE_UNAVAILABLE"})
+    public LoginResultDto login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+        return establishSessionIfReady(loginQueue.submit(request), httpRequest);
+    }
+
+    @PublicApi
+    @Operation(summary = "로그인 대기열 상태 조회",
+            description = "대기 티켓의 순번을 조회하고, 차례가 되면 그 자리에서 세션을 생성한다. "
+                    + "응답의 pollAfterMs 만큼 기다렸다가 다시 호출한다.")
+    @PostMapping("/login/queue/{ticketId}")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = AuthErrorCode.class,
+            codes = {"LOGIN_FAILED", "SUSPENDED_ACCOUNT", "WITHDRAWN_ACCOUNT", "LOGIN_TICKET_EXPIRED",
+                    "LOGIN_QUEUE_UNAVAILABLE"})
+    public LoginResultDto pollLoginQueue(@PathVariable String ticketId, HttpServletRequest httpRequest) {
+        return establishSessionIfReady(loginQueue.poll(ticketId), httpRequest);
+    }
+
+    /**
+     * 대기열을 통과했으면 세션을 만들고, 아직 대기 중이면 대기 응답을 그대로 돌려준다.
+     * 즉시 로그인 경로와 대기열 클레임 경로가 같은 세션 생성 로직을 쓰도록 한 곳에 모아둔다.
+     */
+    private LoginResultDto establishSessionIfReady(LoginQueue.Progress progress, HttpServletRequest httpRequest) {
+        UUID boormiId = progress.boormiId();
+        if (boormiId == null) {
+            return progress.response();
+        }
 
         LoginSession newSession = LoginSession.create(httpRequest);
         newSession.login(boormiId);
@@ -91,6 +121,7 @@ public class UserController {
             sseEmitterRegistry.disconnectAll(boormiId, SseCloseReason.REPLACED_BY_LOGIN);
             previous.session().invalidate();
         }
+        return progress.response();
     }
 
     @Operation(summary = "로그아웃", description = "현재 세션을 무효화한다.")
