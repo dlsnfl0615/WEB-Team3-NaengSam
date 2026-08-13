@@ -14,10 +14,14 @@ interface BoormiOrderState {
   /** 다음 페이지 로딩 중(더 보기 버튼 상태). */
   loadingMore: boolean;
   error: string | null;
+  /** 상태 무관 전체 주문 건수(활동 내역 "총 N건" 표시용, 목록 페이지네이션과 별개로 서버에서 집계). */
+  totalCount: number;
   /** 첫 페이지 조회(orders 교체). */
   load: () => Promise<void>;
   /** nextCursor로 다음 페이지 append. */
   loadMore: () => Promise<void>;
+  /** 전체 건수 조회. */
+  loadCount: () => Promise<void>;
   /** 부름 등록 → 생성된 orderId 반환. */
   createOrder: (req: OrderRequest) => Promise<string>;
   /** 부름 취소 → 로컬 목록에서 제거. */
@@ -39,6 +43,7 @@ export const useBoormiOrderStore = create<BoormiOrderState>((set, get) => ({
   loading: false,
   loadingMore: false,
   error: null,
+  totalCount: 0,
 
   load: async () => {
     set({ loading: true, error: null });
@@ -78,6 +83,15 @@ export const useBoormiOrderStore = create<BoormiOrderState>((set, get) => ({
         loadingMore: false,
         error: isApiError(e) ? e.message : "콜을 더 불러오지 못했어요.",
       });
+    }
+  },
+
+  loadCount: async () => {
+    try {
+      const { result } = await api.getBoormiOrderCount();
+      set({ totalCount: result?.count ?? 0 });
+    } catch {
+      // 총 건수는 부가 정보이므로 실패해도 목록 표시를 막지 않는다.
     }
   },
 
