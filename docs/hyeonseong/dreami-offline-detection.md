@@ -33,7 +33,7 @@
 ### 서버
 
 - `DELIVERY.last_location_dtm` — 드리미 위치를 마지막으로 받은 시각. 좌표가 그대로여도 갱신되므로, "드리미가 멈춰 있음(정상)"과 "전송이 끊김(비정상)"이 구분된다.
-- `DreamiOfflineDetector` — 5초마다 추적 중(`PICKUP_NORMAL`·`PICKUP_DELAYED`·`DELIVERING`) 배달 중 **30초** 이상 무소식인 건을 찾아 부르미에게 SSE `delivery_dreami_offline`을 보낸다.
+- `DreamiOfflineDetector` — 5초마다 추적 중(`PICKUP_NORMAL`·`PICKUP_DELAYED`·`DELIVERING`) 배달 중 **30초** 이상 무소식인 건을 찾아 부르미에게 SSE `delivery_dreami_offline`을, **드리미 본인에게 `delivery_dreami_offline_self`(인앱 + 웹푸시, TTL 60초)** 를 보낸다.
 - 실제 감지 지연 = 임계값(30초) + 최대 스캔 간격(5초). 임계값·스캔 간격은 `application.properties`의 `delivery.dreami-offline-*`로 조정한다.
 
 ### 임계값을 30초로 둔 이유
