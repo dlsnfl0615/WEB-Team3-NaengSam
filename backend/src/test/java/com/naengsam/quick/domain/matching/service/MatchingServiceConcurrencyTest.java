@@ -13,10 +13,20 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
+import com.naengsam.quick.domain.matching.policy.assignment.LegacyOrderFirstAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemFactory;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanValidator;
+import com.naengsam.quick.domain.matching.policy.config.AssignmentPolicyType;
+import com.naengsam.quick.domain.matching.policy.config.EligibilityPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
+import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
+import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
+import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -44,9 +54,26 @@ import org.springframework.test.util.ReflectionTestUtils;
  */
 class MatchingServiceConcurrencyTest {
 
+    private static final Duration OFFER_TTL = Duration.ofSeconds(30);
+
     private MatchingEngine matchingEngine;
     private MatchingService matchingService;
     private ExecutorService requestThreads;
+
+    private static MatchingPolicyProperties matchingPolicyProperties() {
+        return new MatchingPolicyProperties(
+                Duration.ofMillis(500),
+                3,
+                OfferQuotaMode.FIXED,
+                5,
+                AssignmentPolicyType.LEGACY_ORDER_FIRST,
+                ScoringPolicyType.ORDER_WAIT,
+                EligibilityPolicyType.LEGACY,
+                new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10),
+                        Duration.ofMinutes(3)),
+                new MatchingPolicyProperties.BalancedWeights(
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+    }
 
     @BeforeEach
     void setUp() {
@@ -55,12 +82,23 @@ class MatchingServiceConcurrencyTest {
         NotificationService notificationService = mock(NotificationService.class);
         // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 이 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
         when(notificationService.isReachableNow(any())).thenReturn(true);
+        GeoDistanceCalculator geoDistanceCalculator = mock(GeoDistanceCalculator.class);
+        // 이 테스트는 좌표 없는 mock GeoPoint를 쓰므로, assembler의 후보별 거리 계산이 실제 좌표를 요구하지 않도록 고정값을 반환한다.
+        when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(500.0);
+
+        MatchingPolicyProperties properties = matchingPolicyProperties();
+        MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+        MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
+                new MatchingPlanValidator(new LegacyOfferPolicy()), mock(MatchingService.class),
+                notificationService, OFFER_TTL);
+        MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
+                geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
+                properties, Clock.systemDefaultZone());
+
         matchingService = new MatchingService(matchingEngine, notificationService,
-                mock(MatchingActionScheduler.class),
-                mock(MatchingBatchDispatcher.class), mock(DeliveryService.class),
+                mock(DeliveryService.class),
                 Clock.systemDefaultZone(),
-                mock(MatchingAssignmentProblemAssembler.class), mock(MatchingAssignmentPolicy.class),
-                mock(MatchingPlanApplier.class), mock(MatchingPolicyProperties.class), new GeoDistanceCalculator(),
+                assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
                 new SimpleMeterRegistry());
         requestThreads = Executors.newFixedThreadPool(16);
     }
@@ -104,8 +142,8 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
-        matchingService.scheduleRematchWaitingGroups();
+        // 배치 매칭 사이클(스케줄러가 아닌 이 호출로 직접) 첫 오퍼 라운드를 유도한다.
+        matchingService.runMatchingAssignmentCycle();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
@@ -191,8 +229,8 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
-        matchingService.scheduleRematchWaitingGroups();
+        // 배치 매칭 사이클(스케줄러가 아닌 이 호출로 직접) 첫 오퍼 라운드를 유도한다.
+        matchingService.runMatchingAssignmentCycle();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
@@ -229,8 +267,8 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
-        matchingService.scheduleRematchWaitingGroups();
+        // 배치 매칭 사이클(스케줄러가 아닌 이 호출로 직접) 첫 오퍼 라운드를 유도한다.
+        matchingService.runMatchingAssignmentCycle();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()
@@ -272,8 +310,8 @@ class MatchingServiceConcurrencyTest {
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
 
         matchingService.startMatching(order);
-        // markDirty()가 mock이라 실제 배치 실행으로 이어지지 않으므로, 재매칭 스캔으로 첫 오퍼 라운드를 직접 유도한다.
-        matchingService.scheduleRematchWaitingGroups();
+        // 배치 매칭 사이클(스케줄러가 아닌 이 호출로 직접) 첫 오퍼 라운드를 유도한다.
+        matchingService.runMatchingAssignmentCycle();
         awaitFirstOfferCreated(orderId);
 
         UUID offerId = matchingService.findOrderOfferGroup(orderId).orElseThrow()

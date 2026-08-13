@@ -611,6 +611,18 @@ public class NotificationPolicy {
 | `boormi_rejected` | IN_APP 전용 | — | — | 동일 |
 | `offer_error` | IN_APP 전용 | — | — | 동일 |
 | `delivery_dreami_offline` | IN_APP 전용 | — | — | 부르미가 화면을 보고 있음 |
+| `delivery_dreami_offline_self` | IN_APP + WEB_PUSH | **60s** | "배달 위치 전송이 멈췄어요" / "앱을 다시 열어 배달을 이어가 주세요" | 수신자가 드리미. 아래 참조 |
+
+### 왜 드리미 무소식 이벤트가 두 개인가
+
+판정도 payload(`DreamiOfflineDto`)도 같지만 **수신자별로 채널이 다르고, 결정표의 키가 이벤트 이름이라 한 이름에 두 채널 계획을 걸 수 없다.** 그래서 `DreamiOfflineDetector`가 같은 tick에서 부르미에게 `delivery_dreami_offline`을, 드리미에게 `delivery_dreami_offline_self`를 보낸다.
+
+- **부르미에게 푸시를 켜지 않는 이유** — 추적 화면을 보고 있고, 무엇보다 **손쓸 수 있는 게 없다.** 잠금화면에 "드리미가 멈췄다"를 밀어 넣어봐야 불안만 만든다.
+- **드리미에게 푸시가 필수인 이유** — 이 알림이 필요한 상태가 정확히 **앱이 백그라운드거나 죽은 상태**다(`dreami-offline-detection.md`가 "가장 흔한 발동 원인"이라고 인정한 케이스). 인앱만 두면 이 알림은 **정의상 닿지 않는다.** 그리고 배달을 되돌릴 수 있는 유일한 사람이 드리미다.
+- **TTL 60초** — 오퍼(30초)와 배달 상태(10분) 사이. 60초 안에 못 닿는 기기는 딥 도즈라 3분 SMS tier가 맡는 영역이고, 드리미가 이미 복구한 뒤 도착하는 "배달이 멈췄어요"는 소음이다. 부수 효과로 `HIGH_URGENCY_TTL_THRESHOLD`(1분) 규칙에 걸려 `Urgency: high`가 붙는데, **잠든 기기를 실제로 깨우는 것이 이 알림의 존재 이유**라 의도한 결과다.
+- **중복 방지** — 기존 `notifiedOrders`를 그대로 쓴다. 끊김 1회당 수신자별 1건이고, 위치가 다시 들어오면 기록에서 빠져 다음 끊김에 다시 알린다.
+
+**알림 사다리:** 30초 → 부르미 인앱 배너 + **드리미 웹푸시** / 3분 → 드리미 SMS(Phase 6).
 
 ### 푸시 TTL을 오퍼 TTL과 같게 두는 것이 핵심 안전장치다
 

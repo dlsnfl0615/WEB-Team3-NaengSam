@@ -33,7 +33,14 @@ public class NotificationPolicy {
                     "배달이 시작됐어요", "실시간으로 위치를 확인해보세요", Duration.ofMinutes(10))),
             Map.entry("delivery_started_dreami", ChannelPlan.inAppAndWebPush(
                     "배달이 시작됐어요", "픽업지로 이동해주세요", Duration.ofMinutes(10))),
-            Map.entry("delivery_dreami_offline", ChannelPlan.inAppOnly())
+            Map.entry("delivery_dreami_offline", ChannelPlan.inAppOnly()),
+            // 같은 판정, 다른 수신자라 채널이 다르다. 부르미는 추적 화면을 보고 있으니 인앱이면 되지만,
+            // 드리미는 앱이 죽었거나 백그라운드라서 무소식인 것이므로 인앱만으로는 정의상 닿지 않는다.
+            // TTL 60초: 이 시간 안에 못 닿는 기기는 딥 도즈 상태라 3분 SMS tier가 맡는 영역이고,
+            // 복구한 뒤 뒤늦게 도착하는 "배달이 멈췄어요"는 소음이다. 덤으로 Urgency: high가 붙어
+            // 잠든 기기를 실제로 깨운다(WebPushSender.HIGH_URGENCY_TTL_THRESHOLD).
+            Map.entry("delivery_dreami_offline_self", ChannelPlan.inAppAndWebPush(
+                    "배달 위치 전송이 멈췄어요", "앱을 다시 열어 배달을 이어가 주세요", Duration.ofSeconds(60)))
     );
 
     /**

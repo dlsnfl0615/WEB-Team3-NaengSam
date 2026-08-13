@@ -5,6 +5,8 @@ import com.naengsam.quick.domain.boormi.dto.*;
 import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderCountDto;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.global.code.GeneralErrorCode;
@@ -66,6 +68,22 @@ public class BoormiController {
         return boormiService.getMyOrders(boormiId, cursor, size, status);
     }
 
+    @Operation(summary = "내 주문 단건 조회",
+            description = "주문 하나를 id로 직접 조회한다. 활동 내역 상세 화면이 목록 페이지네이션을 거치지 않고 딥링크/새로고침으로 바로 들어왔을 때 쓴다.")
+    @GetMapping("/calls/{orderId}")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND", "NOT_ORDER_OWNER"})
+    public OrderSummaryDto getBoormiOrder(@LoginUser UUID boormiId, @PathVariable UUID orderId) {
+        return boormiService.getMyOrder(boormiId, orderId);
+    }
+
+    @Operation(summary = "내 주문 전체 건수 조회", description = "활동 내역 화면의 총 건수 표시용으로, 상태 무관하게 로그인한 부르미의 전체 주문 건수를 조회한다.")
+    @GetMapping("/calls/count")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    public OrderCountDto getBoormiOrderCount(@LoginUser UUID boormiId) {
+        return boormiService.getMyOrderCount(boormiId);
+    }
+
     @Operation(summary = "주문 취소", description = "매칭 성사 전 상태의 주문을 취소하고 매칭 큐에서 제안을 회수한다.")
     @DeleteMapping("/calls/{orderId}")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
@@ -96,5 +114,12 @@ public class BoormiController {
     public void rejectDreami(@LoginUser UUID boormiId, @PathVariable UUID orderId,
                              @Valid @RequestBody RejectDreamiRequest request) {
         boormiService.rejectDreami(boormiId, orderId, request.offerId());
+    }
+
+    @Operation(summary = "부르미 대시보드 조회", description = "홈 화면의 누적 이용 건수·절감 금액과 이번 달 이용 건수를 집계해 반환한다.")
+    @GetMapping("/dashboard")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    public BoormiDashboardDto getBoormiDashboard(@LoginUser UUID boormiId) {
+        return boormiService.getDashboard(boormiId);
     }
 }

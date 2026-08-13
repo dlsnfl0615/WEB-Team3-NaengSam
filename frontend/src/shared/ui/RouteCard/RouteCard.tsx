@@ -11,7 +11,9 @@ export function RouteCard({ origin, destination }: RouteCardProps) {
   return (
     <Card className="flex flex-col gap-1">
       <div className="flex items-center gap-3">
-        <span className="size-7 rounded-pill bg-teal-50" />
+        <span className="flex size-7 items-center justify-center rounded-pill bg-teal-50 text-teal-700">
+          <Icon name="package" size={14} />
+        </span>
         <div className="flex flex-col">
           <span className="text-2xs text-muted">출발지</span>
           <span className="text-md font-bold text-navy-900">{origin}</span>

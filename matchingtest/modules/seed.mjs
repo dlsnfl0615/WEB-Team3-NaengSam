@@ -79,7 +79,7 @@ const ROAD_ADDRESSES = [
 const ITEM_NAMES = ["서류 봉투", "소형 박스", "USB 메모리", "계약서", "샘플 상자"];
 
 /** 부르미 i번이 쓸 주문 payload. 출발지와 도착지가 같아지지 않게 어긋나게 집는다. */
-function orderPayload(i) {
+export function orderPayload(i) {
   const origin = ROAD_ADDRESSES[i % ROAD_ADDRESSES.length];
   const destination = ROAD_ADDRESSES[(i + 1 + (i % 3)) % ROAD_ADDRESSES.length];
   return {

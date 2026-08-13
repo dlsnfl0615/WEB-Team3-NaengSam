@@ -122,8 +122,12 @@ export function NearbyCallsMap({
         next.set(call.id, existing);
         return;
       }
-      const marker = makePinOverlay(kakao, map, pos, CALL_STYLE, () =>
-        onCallClick?.(call),
+      const marker = makePinOverlay(
+        kakao,
+        map,
+        pos,
+        { ...CALL_STYLE, label: call.itemName ?? CALL_STYLE.label },
+        () => onCallClick?.(call),
       );
       next.set(call.id, marker);
     });

@@ -5,6 +5,7 @@
  * OpenAPI spec version: v0
  */
 import type { ExpectedValueRequestItemCd } from './expectedValueRequestItemCd';
+import type { ExpectedValueRequestItemSizeCd } from './expectedValueRequestItemSizeCd';
 
 export interface ExpectedValueRequest {
   /** @minLength 1 */
@@ -12,4 +13,5 @@ export interface ExpectedValueRequest {
   /** @minLength 1 */
   destinationAddressLine1: string;
   itemCd: ExpectedValueRequestItemCd;
+  itemSizeCd: ExpectedValueRequestItemSizeCd;
 }
