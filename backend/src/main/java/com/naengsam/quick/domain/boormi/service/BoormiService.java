@@ -12,6 +12,7 @@ import com.naengsam.quick.domain.boormi.dto.MonthlySavingDto;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.Charge;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
+import com.naengsam.quick.domain.boormi.entity.ItemSizeCd;
 import com.naengsam.quick.domain.delivery.dto.MonthlySavingAggregate;
 import com.naengsam.quick.domain.delivery.dto.RoutePointDto;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
@@ -101,7 +102,7 @@ public class BoormiService {
         // 요금·예상시간은 클라이언트 전송값을 신뢰하지 않고 견적과 동일한 로직으로 서버가 재계산한다.
         // 같은 카카오 응답에서 추천 이동경로 좌표도 함께 받아 주문에 저장한다(추적 지도 폴리라인용).
         KakaoDirectionsResponseDto.Route route = directionsService.getRoute(originCoordinate, destinationCoordinate);
-        Charge charge = calculatePrice(route, orderRequest.itemCd());
+        Charge charge = calculatePrice(route, orderRequest.itemCd(), orderRequest.itemSizeCd());
         String routePath = toRoutePathJson(route);
 
         UUID orderId = UUID.randomUUID();
@@ -243,7 +244,7 @@ public class BoormiService {
     }
 
     /**
-     * 출발지/도착지 도로명주소를 좌표로 변환한 뒤 카카오 길찾기로 실제 거리·소요시간을 구하고, 물건 유형 배율을 반영한 예상 가격/시간/거리를 반환한다.
+     * 출발지/도착지 도로명주소를 좌표로 변환한 뒤 카카오 길찾기로 실제 거리·소요시간을 구하고, 물건 유형·크기 배율을 반영한 예상 가격/시간/거리를 반환한다.
      */
     @Transactional(readOnly = true)
     public ExpectedValueDto expectedValue(ExpectedValueRequest request) {
@@ -253,7 +254,7 @@ public class BoormiService {
         requireDifferentLocation(origin, destination);
 
         KakaoDirectionsResponseDto.Route route = directionsService.getRoute(origin, destination);
-        Charge charge = calculatePrice(route, request.itemCd());
+        Charge charge = calculatePrice(route, request.itemCd(), request.itemSizeCd());
 
         return new ExpectedValueDto(charge.amount(), charge.eta(), charge.distance());
     }
@@ -313,9 +314,9 @@ public class BoormiService {
 
     /**
      * 두 좌표의 실제 도보 거리·소요시간을 카카오 길찾기로 조회한 뒤 요금과 예상시간(분)을 계산한다. 견적 조회와 주문 접수가 같은 요금을 산출하도록 공유한다. 기본 1.5km까지는 100m당 100원,
-     * 초과 구간은 100m당 160원으로 과금하고 물건 유형 배율을 곱한다.
+     * 초과 구간은 100m당 160원으로 과금하고 물건 유형 배율과 물건 크기 배율을 곱한다.
      */
-    private Charge calculatePrice(KakaoDirectionsResponseDto.Route route, ItemCd itemCd) {
+    private Charge calculatePrice(KakaoDirectionsResponseDto.Route route, ItemCd itemCd, ItemSizeCd itemSizeCd) {
         KakaoDirectionsResponseDto.Properties properties = route.properties();
 
         //비용 계산
@@ -327,7 +328,8 @@ public class BoormiService {
 
         //예상 시간
         int eta = (int) Math.ceil(properties.totalTime() / 60.0);
-        return new Charge(properties.totalDistance(), (int) Math.round(price * ItemCd.multiplier(itemCd)), eta);
+        int amount = (int) Math.round(price * ItemCd.multiplier(itemCd) * ItemSizeCd.multiplier(itemSizeCd));
+        return new Charge(properties.totalDistance(), amount, eta);
     }
 
     /**
