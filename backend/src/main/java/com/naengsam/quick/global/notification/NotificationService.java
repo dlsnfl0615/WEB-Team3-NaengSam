@@ -73,12 +73,23 @@ public class NotificationService {
      * {@link NotificationPolicy}의 결정표가 정한다.
      */
     public void notify(UUID userId, SseEventType eventType, Object payload) {
+        notify(userId, eventType, payload, null);
+    }
+
+    /**
+     * 웹푸시 제목에 대상(물품명 등)을 덧붙여 전달한다. 인앱(SSE) payload는 영향을 받지 않는다 —
+     * 앱이 열려 있으면 화면이 이미 맥락을 알고 있고, 이 값은 잠금화면 문구를 위한 것이기 때문이다.
+     *
+     * @param pushSubject 제목 앞에 붙일 대상. null이면 정책의 기본 문구를 그대로 쓴다.
+     *                    매칭 단계 알림에는 넘기지 않는다({@link ChannelPlan#withPushSubject}의 주의 참고).
+     */
+    public void notify(UUID userId, SseEventType eventType, Object payload, String pushSubject) {
         ChannelPlan plan = policy.planFor(eventType);
         if (plan.includes(NotificationChannel.IN_APP)) {
             sseService.send(userId, eventType, payload);
         }
         if (plan.includes(NotificationChannel.WEB_PUSH)) {
-            submitWebPush(userId, eventType, plan);
+            submitWebPush(userId, eventType, plan.withPushSubject(pushSubject));
         }
     }
 
