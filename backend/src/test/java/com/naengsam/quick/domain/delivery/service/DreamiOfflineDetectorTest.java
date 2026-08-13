@@ -58,6 +58,21 @@ class DreamiOfflineDetectorTest {
         assertThat(payload.getValue().secondsSinceLastLocation()).isGreaterThanOrEqualTo(45);
     }
 
+    /** 되돌릴 수 있는 사람은 드리미뿐이라, 부르미 배너와 별개로 드리미 본인도 받아야 한다(이쪽만 웹푸시를 탄다). */
+    @Test
+    void 위치_수신이_30초_지나면_드리미_본인에게도_오프라인_이벤트를_보낸다() {
+        Delivery delivery = trackedDelivery(DeliveryCd.DELIVERING, LocalDateTime.now().minusSeconds(45));
+        givenStaleDeliveries(delivery);
+
+        detector.detectOfflineDreamis();
+
+        ArgumentCaptor<DreamiOfflineDto> payload = ArgumentCaptor.forClass(DreamiOfflineDto.class);
+        verify(notificationService).notify(eq(delivery.getDreamiId()),
+                eq(DeliveryEventType.DELIVERY_DREAMI_OFFLINE_SELF), payload.capture());
+        assertThat(payload.getValue().orderId()).isEqualTo(delivery.getOrderId());
+        assertThat(payload.getValue().secondsSinceLastLocation()).isGreaterThanOrEqualTo(45);
+    }
+
     @Test
     void 이미_알린_배달은_다시_알리지_않는다() {
         Delivery delivery = trackedDelivery(DeliveryCd.DELIVERING, LocalDateTime.now().minusSeconds(45));
@@ -67,7 +82,11 @@ class DreamiOfflineDetectorTest {
         detector.detectOfflineDreamis();
         detector.detectOfflineDreamis();
 
-        verify(notificationService, times(1)).notify(any(), any(), any());
+        // 한 번의 끊김 = 수신자별 1건씩. 드리미 쪽은 웹푸시라 중복이 곧 잠금화면 도배가 된다.
+        verify(notificationService, times(1))
+                .notify(eq(delivery.getBoormiId()), eq(DeliveryEventType.DELIVERY_DREAMI_OFFLINE), any());
+        verify(notificationService, times(1))
+                .notify(eq(delivery.getDreamiId()), eq(DeliveryEventType.DELIVERY_DREAMI_OFFLINE_SELF), any());
     }
 
     @Test
@@ -84,7 +103,10 @@ class DreamiOfflineDetectorTest {
         givenStaleDeliveries(delivery);
         detector.detectOfflineDreamis();
 
-        verify(notificationService, times(2)).notify(any(), any(), any());
+        verify(notificationService, times(2))
+                .notify(eq(delivery.getBoormiId()), eq(DeliveryEventType.DELIVERY_DREAMI_OFFLINE), any());
+        verify(notificationService, times(2))
+                .notify(eq(delivery.getDreamiId()), eq(DeliveryEventType.DELIVERY_DREAMI_OFFLINE_SELF), any());
     }
 
     @Test
