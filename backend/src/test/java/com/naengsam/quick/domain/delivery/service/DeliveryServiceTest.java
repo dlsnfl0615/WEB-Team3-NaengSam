@@ -32,8 +32,7 @@ import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
-import com.naengsam.quick.domain.user.dto.UserDto;
-import com.naengsam.quick.domain.user.service.UserService;
+import com.naengsam.quick.domain.dreami.service.DreamiActivationChecker;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.BaseErrorCode;
@@ -74,7 +73,7 @@ class DeliveryServiceTest {
     private DeliveryCertificationRepository deliveryCertificationRepository;
     private NotificationService notificationService;
     private UploadSessionService uploadSessionService;
-    private UserService userService;
+    private DreamiActivationChecker dreamiActivationChecker;
     private OrderService orderService;
     private DreamiRepository dreamiRepository;
     private BoormiRepository boormiRepository;
@@ -95,7 +94,7 @@ class DeliveryServiceTest {
         deliveryCertificationRepository = mock(DeliveryCertificationRepository.class);
         notificationService = mock(NotificationService.class);
         uploadSessionService = mock(UploadSessionService.class);
-        userService = mock(UserService.class);
+        dreamiActivationChecker = mock(DreamiActivationChecker.class);
         orderService = mock(OrderService.class);
         dreamiRepository = mock(DreamiRepository.class);
         boormiRepository = mock(BoormiRepository.class);
@@ -106,7 +105,7 @@ class DeliveryServiceTest {
         dreamiOfflineDetector = mock(DreamiOfflineDetector.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, notificationService, uploadSessionService,
-                userService, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
+                dreamiActivationChecker, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
                 directionsService, eventPublisher, new ObjectMapper(), dreamiOfflineDetector);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
@@ -224,12 +223,9 @@ class DeliveryServiceTest {
 
     // ===== 배달 시작 =====
 
-    // 주문자는 활성 드리미가 아니고(false), 배달자는 활성 드리미(true)인 정상 역할 상태를 스텁한다.
+    // 배달자는 활성 드리미(true)인 정상 상태를 스텁한다.
     private void stubValidRoles(UUID boormiId, UUID dreamiId) {
-        given(userService.getUserInfo(boormiId))
-                .willReturn(new UserDto(boormiId, "b@t.com", "부르미", false, null, null));
-        given(userService.getUserInfo(dreamiId))
-                .willReturn(new UserDto(dreamiId, "d@t.com", "드리미", true, null, null));
+        given(dreamiActivationChecker.isActivatedDreami(dreamiId)).willReturn(true);
     }
 
     private void stubOrderStatus(UUID orderId, OrderCd orderCd) {
@@ -599,10 +595,7 @@ class DeliveryServiceTest {
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
         stubOrderStatus(orderId, OrderCd.IN_PROGRESS);
-        given(userService.getUserInfo(boormiId))
-                .willReturn(new UserDto(boormiId, "b@t.com", "부르미", false, null, null));
-        given(userService.getUserInfo(dreamiId))
-                .willReturn(new UserDto(dreamiId, "d@t.com", "드리미", false, null, null));
+        given(dreamiActivationChecker.isActivatedDreami(dreamiId)).willReturn(false);
 
         Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
 
@@ -620,7 +613,7 @@ class DeliveryServiceTest {
         Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_START_NOT_ALLOWED);
-        verify(userService, never()).getUserInfo(any());
+        verify(dreamiActivationChecker, never()).isActivatedDreami(any());
         verify(deliveryRepository, never()).save(any());
     }
 

@@ -35,7 +35,7 @@ import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
-import com.naengsam.quick.domain.user.service.UserService;
+import com.naengsam.quick.domain.dreami.service.DreamiActivationChecker;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.notification.NotificationService;
@@ -82,7 +82,7 @@ public class DeliveryService {
     private final DeliveryCertificationRepository deliveryCertificationRepository;
     private final NotificationService notificationService;
     private final UploadSessionService uploadSessionService;
-    private final UserService userService;
+    private final DreamiActivationChecker dreamiActivationChecker;
     private final OrderService orderService;
     private final DreamiRepository dreamiRepository;
     private final BoormiRepository boormiRepository;
@@ -105,7 +105,7 @@ public class DeliveryService {
         if (order.getOrderCd() != OrderCd.IN_PROGRESS) {
             throw new BusinessException(DeliveryErrorCode.DELIVERY_START_NOT_ALLOWED);
         }
-        if (!userService.getUserInfo(dreamiId).isDreami()) { // 배달자는 활성 드리미여야 함
+        if (!dreamiActivationChecker.isActivatedDreami(dreamiId)) { // 배달자는 활성 드리미여야 함
             throw new BusinessException(DeliveryErrorCode.DREAMI_NOT_ACTIVATED);
         }
         Delivery delivery = deliveryRepository.save(Delivery.create(orderId, dreamiId, boormiId));
