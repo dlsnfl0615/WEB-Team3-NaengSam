@@ -8,9 +8,11 @@ import com.naengsam.quick.domain.address.service.DirectionsService;
 import com.naengsam.quick.domain.boormi.dto.BoormiDashboardDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
+import com.naengsam.quick.domain.boormi.dto.MonthlySavingDto;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.Charge;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
+import com.naengsam.quick.domain.delivery.dto.MonthlySavingAggregate;
 import com.naengsam.quick.domain.delivery.dto.RoutePointDto;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
@@ -39,7 +41,10 @@ import tools.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.YearMonth;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -227,8 +232,9 @@ public class BoormiService {
     }
 
     /**
-     * 부르미 대시보드 — 누적 완료 건수, 시장 퀵서비스 대비 절감 금액, 이번 달 이용 건수를 조회한다. 절감액은 완료 건수를 시장 평균 단가로 환산한 값에서 실제 결제액을 뺀 값이며, 실제 결제액이 더 크면
-     * 0으로 둔다. 주문에는 완료 시각이 없으므로 이번 달 건수는 배달 완료 시각(DELIVERY.delivery_end_dtm) 기준으로 센다.
+     * 부르미 대시보드 — 누적 완료 건수, 시장 퀵서비스 대비 절감 금액, 이번 달 이용 건수·절감액, 지난달 대비 증감률, 최근 6개월 절감액 추이를 조회한다. 절감액은 완료 건수를 시장 평균 단가로 환산한 값에서
+     * 실제 결제액을 뺀 값이며, 실제 결제액이 더 크면 0으로 둔다. 증감률은 지난달 절감액이 0이면 0%로 처리하고 반올림해 소수점 없이 반환한다. 주문에는 완료 시각이 없으므로 월별 집계는 배달 완료
+     * 시각(DELIVERY.delivery_end_dtm) 기준이다.
      */
     @Transactional(readOnly = true)
     public BoormiDashboardDto getDashboard(UUID boormiId) {
@@ -237,10 +243,38 @@ public class BoormiService {
         long totalSavedAmount = Math.max(0, completedCount * MARKET_UNIT_PRICE - paidAmount);
 
         YearMonth thisMonth = YearMonth.now();
-        long thisMonthCount = deliveryRepository.countDeliveredByBoormiBetween(boormiId,
-                thisMonth.atDay(1).atStartOfDay(), thisMonth.plusMonths(1).atDay(1).atStartOfDay());
+        YearMonth rangeStart = thisMonth.minusMonths(5);
+        Map<YearMonth, MonthlySavingAggregate> byMonth = deliveryRepository
+                .aggregateSavingByBoormiBetween(boormiId, rangeStart.atDay(1).atStartOfDay(),
+                        thisMonth.plusMonths(1).atDay(1).atStartOfDay())
+                .stream()
+                .collect(Collectors.toMap(MonthlySavingAggregate::yearMonth, aggregate -> aggregate));
 
-        return BoormiDashboardDto.of(completedCount, totalSavedAmount, thisMonthCount);
+        long thisMonthCount = countOf(byMonth, thisMonth);
+        long thisMonthSavedAmount = savingOf(byMonth, thisMonth);
+        long lastMonthSavedAmount = savingOf(byMonth, thisMonth.minusMonths(1));
+        long growthPercent = lastMonthSavedAmount == 0 ? 0
+                : Math.round((thisMonthSavedAmount - lastMonthSavedAmount) * 100.0 / lastMonthSavedAmount);
+
+        List<MonthlySavingDto> recentSixMonths = IntStream.rangeClosed(0, 5)
+                .mapToObj(thisMonth::minusMonths)
+                .sorted()
+                .map(month -> new MonthlySavingDto(month, savingOf(byMonth, month)))
+                .toList();
+
+        return BoormiDashboardDto.of(completedCount, totalSavedAmount, thisMonthCount, thisMonthSavedAmount,
+                growthPercent, recentSixMonths);
+    }
+
+    // 해당 월의 절감액. 완료 건수를 시장 평균 단가로 환산한 값에서 실제 결제액을 뺀다(누적 절감액과 같은 규칙으로 음수는 0).
+    private long savingOf(Map<YearMonth, MonthlySavingAggregate> byMonth, YearMonth month) {
+        MonthlySavingAggregate aggregate = byMonth.get(month);
+        return aggregate == null ? 0 : Math.max(0, aggregate.count() * MARKET_UNIT_PRICE - aggregate.paidAmount());
+    }
+
+    private long countOf(Map<YearMonth, MonthlySavingAggregate> byMonth, YearMonth month) {
+        MonthlySavingAggregate aggregate = byMonth.get(month);
+        return aggregate == null ? 0 : aggregate.count();
     }
 
     /**

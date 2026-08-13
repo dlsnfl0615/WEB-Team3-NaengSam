@@ -19,7 +19,9 @@ import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.boormi.dto.BoormiDashboardDto;
+import com.naengsam.quick.domain.boormi.dto.MonthlySavingDto;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
+import com.naengsam.quick.domain.delivery.dto.MonthlySavingAggregate;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
@@ -40,6 +42,7 @@ import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.math.BigDecimal;
+import java.time.YearMonth;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -597,28 +600,35 @@ BoormiServiceTest {
     @Test
     void 대시보드는_완료_건수와_절감액과_이번달_건수를_반환한다() {
         UUID boormiId = UUID.randomUUID();
+        YearMonth thisMonth = YearMonth.now();
         given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(4L);
         given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(14000L);
-        given(deliveryRepository.countDeliveredByBoormiBetween(eq(boormiId), any(), any())).willReturn(2L);
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any()))
+                .willReturn(List.of(savingAggregate(thisMonth, 2, 6000)));
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
-        // 시장 단가 5800원 × 4건 = 23200원, 실제 결제 14000원 → 9200원 절감
+        // 누적: 시장 단가 5800원 × 4건 = 23200원, 실제 결제 14000원 → 9200원 절감
         assertThat(dashboard.completedCount()).isEqualTo(4);
         assertThat(dashboard.totalSavedAmount()).isEqualTo(9200);
+        // 이번 달: 5800원 × 2건 = 11600원, 실제 결제 6000원 → 5600원 절감
         assertThat(dashboard.thisMonthCount()).isEqualTo(2);
+        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(5600);
     }
 
     @Test
     void 실제_결제액이_시장단가보다_크면_절감액은_0이다() {
         UUID boormiId = UUID.randomUUID();
+        YearMonth thisMonth = YearMonth.now();
         given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(1L);
         given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(9000L);
-        given(deliveryRepository.countDeliveredByBoormiBetween(eq(boormiId), any(), any())).willReturn(1L);
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any()))
+                .willReturn(List.of(savingAggregate(thisMonth, 1, 9000)));
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
         assertThat(dashboard.totalSavedAmount()).isZero();
+        assertThat(dashboard.thisMonthSavedAmount()).isZero();
     }
 
     @Test
@@ -626,12 +636,58 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(0L);
         given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(0L);
-        given(deliveryRepository.countDeliveredByBoormiBetween(eq(boormiId), any(), any())).willReturn(0L);
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any())).willReturn(List.of());
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
         assertThat(dashboard.completedCount()).isZero();
         assertThat(dashboard.totalSavedAmount()).isZero();
         assertThat(dashboard.thisMonthCount()).isZero();
+        assertThat(dashboard.thisMonthSavedAmount()).isZero();
+        assertThat(dashboard.monthOverMonthGrowthPercent()).isZero();
+        assertThat(dashboard.recentSixMonths()).hasSize(6)
+                .allSatisfy(monthly -> assertThat(monthly.savedAmount()).isZero());
+    }
+
+    @Test
+    void 최근_6개월_추이는_기록없는_달을_0으로_채워_오름차순으로_반환한다() {
+        UUID boormiId = UUID.randomUUID();
+        YearMonth thisMonth = YearMonth.now();
+        YearMonth lastMonth = thisMonth.minusMonths(1);
+        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(3L);
+        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(9000L);
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any()))
+                .willReturn(List.of(savingAggregate(thisMonth, 2, 6000), savingAggregate(lastMonth, 1, 3000)));
+
+        BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
+
+        assertThat(dashboard.recentSixMonths()).hasSize(6);
+        assertThat(dashboard.recentSixMonths()).extracting(MonthlySavingDto::month)
+                .containsExactly(thisMonth.minusMonths(5), thisMonth.minusMonths(4), thisMonth.minusMonths(3),
+                        thisMonth.minusMonths(2), lastMonth, thisMonth);
+        // 기록이 있는 달만 값이 차고 나머지는 0 — 지난달 2800원(5800 − 3000), 이번 달 5600원
+        assertThat(dashboard.recentSixMonths()).extracting(MonthlySavingDto::savedAmount)
+                .containsExactly(0L, 0L, 0L, 0L, 2800L, 5600L);
+        // 2800원 → 5600원이므로 +100%
+        assertThat(dashboard.monthOverMonthGrowthPercent()).isEqualTo(100);
+    }
+
+    @Test
+    void 지난달_절감액이_0이면_증감률은_0이다() {
+        UUID boormiId = UUID.randomUUID();
+        YearMonth thisMonth = YearMonth.now();
+        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(2L);
+        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(6000L);
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any()))
+                .willReturn(List.of(savingAggregate(thisMonth, 2, 6000)));
+
+        BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
+
+        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(5600);
+        assertThat(dashboard.monthOverMonthGrowthPercent()).isZero();
+    }
+
+    private static MonthlySavingAggregate savingAggregate(YearMonth month, long count, long paidAmount) {
+        return new MonthlySavingAggregate(month.getYear(), month.getMonthValue(), count, paidAmount);
     }
 }
