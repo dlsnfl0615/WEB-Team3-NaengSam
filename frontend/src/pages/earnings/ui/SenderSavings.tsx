@@ -4,6 +4,7 @@ import { cn } from "@/shared/lib/cn";
 import { api, isApiError } from "@/shared/api";
 import type { BoormiDashboardDto } from "@/shared/api";
 import { toMonthLabel } from "./monthLabel";
+import { MARKET_NOTE, OUR_PRICE_NOTE, SURVEY_BASIS } from "./savingsNote";
 
 /** 부르미 절감 리포트 본문. /api/v1/boormi/dashboard로 이번 달 절감액·월간 추이를 조회한다. */
 export function SenderSavings() {
@@ -36,6 +37,7 @@ export function SenderSavings() {
   const currentMonthLabel = trend.at(-1)?.label ?? "";
   const growthPercent = dashboard?.monthOverMonthGrowthPercent ?? 0;
   const isIncrease = growthPercent > 0;
+  const thisMonthCount = dashboard?.thisMonthCount ?? 0;
 
   return (
     <>
@@ -56,7 +58,7 @@ export function SenderSavings() {
           )}
         >
           {isIncrease ? "▲" : "▼"} 지난달 대비 {isIncrease ? "+" : ""}
-          {growthPercent}% · 이번 달 {dashboard?.thisMonthCount ?? 0}건
+          {growthPercent}% · 이번 달 {thisMonthCount}건
         </p>
       </Card>
 
@@ -66,6 +68,24 @@ export function SenderSavings() {
           <BarChart data={trend} />
         </Card>
       </div>
+
+      <Card variant="accent" className="flex flex-col gap-1.5">
+        <p className="text-sm font-bold text-navy-900">
+          이번 달 절감액은 이렇게 계산했어요
+        </p>
+        {thisMonthCount > 0 && (
+          <p className="text-base font-bold text-navy-900">
+            {thisMonthCount}건 ×{" "}
+            {(dashboard?.marketUnitPrice ?? 0).toLocaleString()}원 − 결제{" "}
+            {(dashboard?.thisMonthPaidAmount ?? 0).toLocaleString()}원 ={" "}
+            {(dashboard?.thisMonthSavedAmount ?? 0).toLocaleString()}원
+          </p>
+        )}
+        <p className="text-xs text-muted">
+          {MARKET_NOTE} {OUR_PRICE_NOTE}
+        </p>
+        <p className="text-2xs text-muted">{SURVEY_BASIS}</p>
+      </Card>
 
       {error && <p className="text-2xs text-status-danger">{error}</p>}
 
