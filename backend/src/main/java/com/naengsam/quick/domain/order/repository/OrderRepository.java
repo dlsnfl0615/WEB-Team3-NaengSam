@@ -30,6 +30,16 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
      */
     long countByDreamiIdAndOrderCd(UUID dreamiId, OrderCd orderCd);
 
+    /**
+     * 드리미 활동 내역 화면의 전체 건수 집계용(상태 무관).
+     */
+    long countByDreamiId(UUID dreamiId);
+
+    /**
+     * 부르미 활동 내역 화면의 전체 건수 집계용(상태 무관).
+     */
+    long countByBoormiId(UUID boormiId);
+
     @Query(value = """
             SELECT COUNT(*) FROM ORDERS o
             WHERE o.order_cd NOT IN ('COMPLETED','CANCELLED','CLAIM_REVIEW')
