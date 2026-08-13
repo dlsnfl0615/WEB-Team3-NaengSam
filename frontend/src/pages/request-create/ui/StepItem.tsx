@@ -26,7 +26,12 @@ export interface StepItemProps {
 }
 
 /** 스텝 2: 물품 — 유형/크기 선택 + 예상 요금(expectedValue). */
-export function StepItem({ form, update, estimate, estimating }: StepItemProps) {
+export function StepItem({
+  form,
+  update,
+  estimate,
+  estimating,
+}: StepItemProps) {
   const fareLabel = estimating
     ? "계산 중…"
     : estimate?.expectedValue != null
@@ -99,9 +104,6 @@ export function StepItem({ form, update, estimate, estimating }: StepItemProps) 
       <Card variant="hero" className="flex flex-col gap-2">
         <p className="text-center text-xs text-track">예상 배송 요금</p>
         <p className="text-center text-lg font-bold text-white">{fareLabel}</p>
-        <div className="h-2 w-full overflow-hidden rounded-[5px] bg-navy-700">
-          <div className="h-full w-[35%] rounded-[5px] bg-teal-500" />
-        </div>
         {estimate?.expectedDistance != null ||
         estimate?.expectedTime != null ? (
           <div className="flex justify-center gap-3 text-2xs text-track">
@@ -111,7 +113,7 @@ export function StepItem({ form, update, estimate, estimating }: StepItemProps) 
               </span>
             )}
             {estimate?.expectedTime != null && (
-              <span>예상 {Math.round(estimate.expectedTime / 60)}분</span>
+              <span>예상 {estimate.expectedTime}분</span>
             )}
           </div>
         ) : (

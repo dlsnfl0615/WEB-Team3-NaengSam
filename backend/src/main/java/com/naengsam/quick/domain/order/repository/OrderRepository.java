@@ -42,6 +42,16 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
             + "WHERE o.boormiId = :boormiId AND o.orderCd = com.naengsam.quick.domain.order.entity.OrderCd.COMPLETED")
     long sumCompletedDeliveryAmount(@Param("boormiId") UUID boormiId);
 
+    /**
+     * 드리미 활동 내역 화면의 전체 건수 집계용(상태 무관).
+     */
+    long countByDreamiId(UUID dreamiId);
+
+    /**
+     * 부르미 활동 내역 화면의 전체 건수 집계용(상태 무관).
+     */
+    long countByBoormiId(UUID boormiId);
+
     @Query(value = """
             SELECT COUNT(*) FROM ORDERS o
             WHERE o.order_cd NOT IN ('COMPLETED','CANCELLED','CLAIM_REVIEW')
