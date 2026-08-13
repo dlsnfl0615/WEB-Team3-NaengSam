@@ -29,6 +29,12 @@ export interface DeliveryDetailResponseDto {
   destinationAddressLine1?: string;
   /** 물건 이름 */
   itemName?: string;
+  /** 부르미가 작성한 요청 사항. 없으면 null */
+  deliveryRequest?: string;
+  /** 부르미가 등록한 물품 사진 다운로드 URL. 사진이 없거나 조회 실패 시 null */
+  itemPhotoUrl?: string;
+  /** 드리미가 찍은 픽업 인증 사진 다운로드 URL. 픽업 전이거나 조회 실패 시 null */
+  pickupPhotoUrl?: string;
   /** 픽업지→도착지 카카오 추천 도보 경로 좌표 목록(픽업 후 지도 폴리라인용). 경로 정보가 없으면 빈 배열 */
   routePath?: RoutePointDto[];
   /** 드리미 위치→픽업지 카카오 추천 도보 경로 좌표 목록(픽업 전 지도 폴리라인용). 아직 계산 전이면 빈 배열 */
