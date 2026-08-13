@@ -24,6 +24,7 @@ import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -257,6 +258,28 @@ public class DreamiService {
     @Transactional(readOnly = true)
     public BoormiOrdersResponse getMyOrders(UUID dreamiId, String cursor, int size, OrderCd status) {
         return orderService.getOrders(dreamiId, Role.DREAMI, cursor, size, status);
+    }
+
+    /**
+     * 배달 하나를 주문 id로 직접 조회한다. 활동 내역 상세 화면이 목록 페이지네이션(getMyOrders)과 무관하게
+     * 딥링크/새로고침으로 바로 들어왔을 때, 그 배달 하나만 정확히 찾기 위해 쓴다.
+     */
+    @Transactional(readOnly = true)
+    public OrderSummaryDto getMyDelivery(UUID dreamiId, UUID orderId) {
+        Orders order = orderService.getOrder(orderId);
+        if (!dreamiId.equals(order.getDreamiId())) {
+            throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
+        }
+        return OrderSummaryDto.from(order);
+    }
+
+    /**
+     * 활동 내역 화면의 "총 N건" 표시용 전체 배달 건수(상태 무관). 목록은 페이지네이션으로 일부만 들고 있어
+     * records.length 로는 실제 총 건수를 알 수 없어서 별도로 집계한다.
+     */
+    @Transactional(readOnly = true)
+    public OrderCountDto getMyDeliveryCount(UUID dreamiId) {
+        return OrderCountDto.of(orderRepository.countByDreamiId(dreamiId));
     }
 
     private long amountOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {

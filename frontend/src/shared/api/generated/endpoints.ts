@@ -30,6 +30,8 @@ import type {
   FinishDelivery200,
   GeoPoint,
   GetBoormiDashboard200,
+  GetBoormiOrder200,
+  GetBoormiOrderCount200,
   GetBoormiOrders200,
   GetBoormiOrdersParams,
   GetCoordinates200,
@@ -38,6 +40,8 @@ import type {
   GetDeliveryCompletion200,
   GetDeliveryContact200,
   GetDeliveryDetail200,
+  GetDreamiOrder200,
+  GetDreamiOrderCount200,
   GetDreamiOrders200,
   GetDreamiOrdersParams,
   GetMyReview200,
@@ -47,6 +51,7 @@ import type {
   GetPresignedUrl200,
   GetPresignedUrlParams,
   GetProfile200,
+  GetReceivedReview200,
   GetTodayStats200,
   GetWallet200,
   LoginRequest,
@@ -862,6 +867,19 @@ const vapidPublicKey = (
     }
 
 /**
+ * 이 주문에서 상대방이 나에게 남긴 별점·리뷰 내용을 조회한다. 아직 안 남겼으면 result가 null이다.
+ * @summary 받은 리뷰 조회
+ */
+const getReceivedReview = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetReceivedReview200>>,) => {
+      return customInstance<GetReceivedReview200>(
+      {url: `/api/v1/orders/${orderId}/review/received`, method: 'GET'
+    },
+      options);
+    }
+
+/**
  * 드리미로서 응답 대기 중인 제안(pendingOffer)과, 부르미로서 확인 대기 중인 드리미 수락 정보(incomingDreami)를 반환한다. 진행 중인 것이 없으면 해당 필드는 null이다.
  * @summary 현재 매칭 상태 조회
  */
@@ -915,6 +933,19 @@ const getDreamiOrders = (
     }
 
 /**
+ * 배달 하나를 주문 id로 직접 조회한다. 활동 내역 상세 화면이 목록 페이지네이션을 거치지 않고 딥링크/새로고침으로 바로 들어왔을 때 쓴다.
+ * @summary 내 배달 단건 조회
+ */
+const getDreamiOrder = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetDreamiOrder200>>,) => {
+      return customInstance<GetDreamiOrder200>(
+      {url: `/api/v1/dreami/deliveries/${orderId}`, method: 'GET'
+    },
+      options);
+    }
+
+/**
  * 드리미가 현재 수행 중인 배달 건의 카드 정보를 조회한다. 진행 중인 배달이 없으면 result가 null이다.
  * @summary 현재 수행 중인 배달 카드 조회
  */
@@ -923,6 +954,19 @@ const findCurrentDeliveryCard = (
  options?: SecondParameter<typeof customInstance<FindCurrentDeliveryCard200>>,) => {
       return customInstance<FindCurrentDeliveryCard200>(
       {url: `/api/v1/dreami/deliveries/current/card`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 활동 내역 화면의 총 건수 표시용으로, 상태 무관하게 로그인한 드리미의 전체 배달 건수를 조회한다.
+ * @summary 내 배달 전체 건수 조회
+ */
+const getDreamiOrderCount = (
+
+ options?: SecondParameter<typeof customInstance<GetDreamiOrderCount200>>,) => {
+      return customInstance<GetDreamiOrderCount200>(
+      {url: `/api/v1/dreami/deliveries/count`, method: 'GET'
     },
       options);
     }
@@ -1068,13 +1112,14 @@ const getBoormiDashboard = (
     }
 
 /**
- * @summary 드리미 제거
+ * 주문 하나를 id로 직접 조회한다. 활동 내역 상세 화면이 목록 페이지네이션을 거치지 않고 딥링크/새로고침으로 바로 들어왔을 때 쓴다.
+ * @summary 내 주문 단건 조회
  */
-const removeDreami = (
-    dreamiId: string,
- options?: SecondParameter<typeof customInstance<void>>,) => {
-      return customInstance<void>(
-      {url: `/api/v1/debug/matching/dreamis/${dreamiId}`, method: 'DELETE'
+const getBoormiOrder = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetBoormiOrder200>>,) => {
+      return customInstance<GetBoormiOrder200>(
+      {url: `/api/v1/boormi/calls/${orderId}`, method: 'GET'
     },
       options);
     }
@@ -1092,7 +1137,32 @@ const unsubscribeOrder = (
       options);
     }
 
-return {chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getCurrentStatus,getProfile,getOfferItemPhoto,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getPickupPhoto,getDeliveryContact,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,getBoormiDashboard,removeDreami,unsubscribeOrder}};
+/**
+ * 활동 내역 화면의 총 건수 표시용으로, 상태 무관하게 로그인한 부르미의 전체 주문 건수를 조회한다.
+ * @summary 내 주문 전체 건수 조회
+ */
+const getBoormiOrderCount = (
+
+ options?: SecondParameter<typeof customInstance<GetBoormiOrderCount200>>,) => {
+      return customInstance<GetBoormiOrderCount200>(
+      {url: `/api/v1/boormi/calls/count`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * @summary 드리미 제거
+ */
+const removeDreami = (
+    dreamiId: string,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/debug/matching/dreamis/${dreamiId}`, method: 'DELETE'
+    },
+      options);
+    }
+
+return {chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getReceivedReview,getCurrentStatus,getProfile,getOfferItemPhoto,getDreamiOrders,getDreamiOrder,findCurrentDeliveryCard,getDreamiOrderCount,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getPickupPhoto,getDeliveryContact,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,getBoormiDashboard,getBoormiOrder,unsubscribeOrder,getBoormiOrderCount,removeDreami}};
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
 export type ExchangeMoneyToPointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['exchangeMoneyToPoint']>>>
 export type SendVerificationCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['sendVerificationCode']>>>
@@ -1148,11 +1218,14 @@ export type MeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenA
 export type GetPresignedUrlResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getPresignedUrl']>>>
 export type SubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['subscribe']>>>
 export type VapidPublicKeyResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['vapidPublicKey']>>>
+export type GetReceivedReviewResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getReceivedReview']>>>
 export type GetCurrentStatusResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getCurrentStatus']>>>
 export type GetProfileResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getProfile']>>>
 export type GetOfferItemPhotoResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getOfferItemPhoto']>>>
 export type GetDreamiOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrders']>>>
+export type GetDreamiOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrder']>>>
 export type FindCurrentDeliveryCardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findCurrentDeliveryCard']>>>
+export type GetDreamiOrderCountResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrderCount']>>>
 export type GetDashboardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDashboard']>>>
 export type GetTodayStatsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getTodayStats']>>>
 export type DevSubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['devSubscribe']>>>
@@ -1164,5 +1237,7 @@ export type GetOrderOfferGroupResult = NonNullable<Awaited<ReturnType<ReturnType
 export type WaitingOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['waitingOrders']>>>
 export type PendingResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['pending']>>>
 export type GetBoormiDashboardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiDashboard']>>>
-export type RemoveDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['removeDreami']>>>
+export type GetBoormiOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiOrder']>>>
 export type UnsubscribeOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['unsubscribeOrder']>>>
+export type GetBoormiOrderCountResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiOrderCount']>>>
+export type RemoveDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['removeDreami']>>>
