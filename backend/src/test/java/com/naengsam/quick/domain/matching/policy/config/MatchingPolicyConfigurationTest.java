@@ -33,6 +33,7 @@ class MatchingPolicyConfigurationTest {
                 .withPropertyValues(
                         "matching.batch-window=200ms",
                         "matching.max-concurrent-offers=3",
+                        "matching.offer-quota-mode=FIXED",
                         "matching.assignment-policy=LEGACY_ORDER_FIRST",
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=LEGACY"
@@ -52,6 +53,7 @@ class MatchingPolicyConfigurationTest {
                 .withPropertyValues(
                         "matching.batch-window=200ms",
                         "matching.max-concurrent-offers=3",
+                        "matching.offer-quota-mode=FIXED",
                         "matching.assignment-policy=SCORE_BASED_GREEDY",
                         "matching.scoring-policy=BALANCED",
                         "matching.eligibility-policy=OUTCOME_COOLDOWN",
@@ -80,6 +82,7 @@ class MatchingPolicyConfigurationTest {
                 .withPropertyValues(
                         "matching.batch-window=200ms",
                         "matching.max-concurrent-offers=3",
+                        "matching.offer-quota-mode=FIXED",
                         "matching.assignment-policy=LEGACY_ORDER_FIRST",
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=LEGACY",
@@ -109,11 +112,43 @@ class MatchingPolicyConfigurationTest {
     }
 
     @Test
+    void offer_quota_mode가_FIXED_DYNAMIC으로_바인딩된다() {
+        contextRunner
+                .withPropertyValues(
+                        "matching.batch-window=200ms",
+                        "matching.max-concurrent-offers=3",
+                        "matching.offer-quota-mode=DYNAMIC",
+                        "matching.assignment-policy=LEGACY_ORDER_FIRST",
+                        "matching.scoring-policy=ORDER_WAIT",
+                        "matching.eligibility-policy=LEGACY"
+                )
+                .run(context -> {
+                    MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
+                    assertThat(properties.offerQuotaMode()).isEqualTo(OfferQuotaMode.DYNAMIC);
+                });
+
+        contextRunner
+                .withPropertyValues(
+                        "matching.batch-window=200ms",
+                        "matching.max-concurrent-offers=3",
+                        "matching.offer-quota-mode=FIXED",
+                        "matching.assignment-policy=LEGACY_ORDER_FIRST",
+                        "matching.scoring-policy=ORDER_WAIT",
+                        "matching.eligibility-policy=LEGACY"
+                )
+                .run(context -> {
+                    MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
+                    assertThat(properties.offerQuotaMode()).isEqualTo(OfferQuotaMode.FIXED);
+                });
+    }
+
+    @Test
     void 잘못된_정책_이름이면_컨텍스트_기동이_실패한다() {
         contextRunner
                 .withPropertyValues(
                         "matching.batch-window=200ms",
                         "matching.max-concurrent-offers=3",
+                        "matching.offer-quota-mode=FIXED",
                         "matching.assignment-policy=UNKNOWN_POLICY",
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=LEGACY"
@@ -127,6 +162,7 @@ class MatchingPolicyConfigurationTest {
                 .withPropertyValues(
                         "matching.batch-window=200ms",
                         "matching.max-concurrent-offers=3",
+                        "matching.offer-quota-mode=FIXED",
                         "matching.assignment-policy=LEGACY_ORDER_FIRST",
                         "matching.scoring-policy=BALANCED",
                         "matching.eligibility-policy=LEGACY",
@@ -146,6 +182,7 @@ class MatchingPolicyConfigurationTest {
                 .withPropertyValues(
                         "matching.batch-window=200ms",
                         "matching.max-concurrent-offers=3",
+                        "matching.offer-quota-mode=FIXED",
                         "matching.assignment-policy=LEGACY_ORDER_FIRST",
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=OUTCOME_COOLDOWN",

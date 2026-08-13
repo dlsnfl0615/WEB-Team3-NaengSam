@@ -24,9 +24,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
- * 엔진 상태의 {@link OrderOfferGroup}/{@link WaitingDreami} 스냅샷을
- * {@link MatchingAssignmentProblemFactory}에 넣을 입력({@link MatchingOrderInput}, {@link MatchingDreamiInput},
- * {@link MatchingCandidate})으로 변환한다.
+ * 엔진 상태의 {@link OrderOfferGroup}/{@link WaitingDreami} 스냅샷을 {@link MatchingAssignmentProblemFactory}에 넣을
+ * 입력({@link MatchingOrderInput}, {@link MatchingDreamiInput}, {@link MatchingCandidate})으로 변환한다.
  * <p>대상은 WAITING 상태(다음 micro-batch 라운드를 기다리는 중)인 주문 그룹과 MATCHING 상태(다른 방에 들어가지
  * 않은)인 드리미뿐이다. previousInteraction은 같은 주문 그룹의 offers() 이력 중 그 드리미에게 나갔던 오퍼를 찾아, 아직 진행 중이지 않은(응답이 끝난) 것 중 가장 최근 것으로
  * 만든다.
@@ -35,6 +34,8 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class MatchingAssignmentProblemAssembler {
 
+    private static final int MIN_OFFER_COUNT = 1;
+    private static final int MAX_OFFER_COUNT = 5;
     private final GeoDistanceCalculator geoDistanceCalculator;
     private final MatchingAssignmentProblemFactory matchingAssignmentProblemFactory;
     private final MatchingPolicyProperties matchingPolicyProperties;
@@ -64,9 +65,9 @@ public class MatchingAssignmentProblemAssembler {
                 .filter(dreami -> dreami.status() == WaitingDreamiStatus.MATCHING)
                 .toList();
 
+        int maxConcurrentOffers = resolveMaxConcurrentOffers(waitingGroups.size(), matchingDreamis.size());
         List<MatchingOrderInput> orders = waitingGroups.stream()
-                .map(group -> MatchingOrderInput.from(
-                        group, evaluatedAt, matchingPolicyProperties.maxConcurrentOffers()))
+                .map(group -> MatchingOrderInput.from(group, evaluatedAt, maxConcurrentOffers))
                 .toList();
         List<MatchingDreamiInput> dreamis = matchingDreamis.stream()
                 .map(dreami -> new MatchingDreamiInput(
@@ -105,5 +106,28 @@ public class MatchingAssignmentProblemAssembler {
                         .map(outcome -> new PreviousOfferInteraction(outcome, offer.statusUpdatedAt()))
                         .stream())
                 .max(Comparator.comparing(PreviousOfferInteraction::occurredAt));
+    }
+
+    /**
+     * 이번 배치의 모든 주문에 동일하게 적용할 maxConcurrentOffers를 정책에 따라 계산한다. FIXED는 설정값을 그대로 쓰고, DYNAMIC은 배치 시점의 드리미/주문 비율로 다시 계산한다.
+     */
+    private int resolveMaxConcurrentOffers(int orderCount, int dreamiCount) {
+        return switch (matchingPolicyProperties.offerQuotaMode()) {
+            case FIXED -> matchingPolicyProperties.maxConcurrentOffers();
+            case DYNAMIC -> calculateDynamicQuota(orderCount, dreamiCount);
+        };
+    }
+
+    /**
+     * 대기 드리미를 대기 주문 수만큼 나눠, 주문 하나가 받을 수 있는 오퍼 수를 올림 계산한다. 주문이 없으면(0으로 나누기 방지) 1을 반환하고, 결과는 선착순 경쟁이 과열되지 않도록 [1, 5] 범위로
+     * 자른다.
+     */
+    private int calculateDynamicQuota(int orderCount, int dreamiCount) {
+        if (orderCount == 0) {
+            return MIN_OFFER_COUNT;
+        }
+
+        int quota = Math.ceilDiv(dreamiCount, orderCount);
+        return Math.clamp(quota, MIN_OFFER_COUNT, MAX_OFFER_COUNT);
     }
 }
