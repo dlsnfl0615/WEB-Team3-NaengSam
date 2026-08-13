@@ -19,6 +19,7 @@ export interface PinStyle {
   label: string;
   bg: string;
   variant?: "pin" | "glow-dot";
+  pinSize?: "default" | "small";
 }
 
 interface PinAnimation {
@@ -76,8 +77,8 @@ export function makePinOverlay(
 
   const pin = document.createElement("span");
   pin.setAttribute("aria-hidden", "true");
-  pin.style.width = "30px";
-  pin.style.height = "40px";
+  pin.style.width = style.pinSize === "small" ? "24px" : "30px";
+  pin.style.height = style.pinSize === "small" ? "32px" : "40px";
   pin.style.backgroundImage = `url("${pinImageSrc(style.color)}")`;
   pin.style.backgroundPosition = "center";
   pin.style.backgroundRepeat = "no-repeat";

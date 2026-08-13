@@ -39,6 +39,7 @@ export interface NearbyCallsMapProps {
 // DeliveryRouteMap의 pickup/dropoff 색·라벨 배경 토큰을 그대로 재사용한다(같은 의미의 핀이므로).
 const MY_LOCATION_STYLE = { color: "#0d1b3d", label: "드리미", bg: "bg-navy-900" }; // navy-900
 const CALL_STYLE = { color: "#00b7a7", label: "픽업 장소", bg: "bg-teal-500" }; // teal-500
+const NEARBY_CALL_STYLE = { ...CALL_STYLE, pinSize: "small" as const };
 const DREAMI_DOT_STYLE = {
   color: "#00b7a7",
   label: "드리미",
@@ -143,7 +144,7 @@ export function NearbyCallsMap({
         map,
         pos,
         mode === "nearby-calls"
-          ? { ...CALL_STYLE, label: call.itemName ?? CALL_STYLE.label }
+          ? { ...NEARBY_CALL_STYLE, label: call.itemName ?? CALL_STYLE.label }
           : DREAMI_DOT_STYLE,
         onCallClick ? () => onCallClick(call) : undefined,
       );
