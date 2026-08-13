@@ -49,6 +49,27 @@ KAKAO_ENABLED=false CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:
 
 생성물: `seed.sql`(감사용), `agents.json`(에이전트 명세), `result/<타임스탬프>.{json,md}`, `videos/`.
 
+## 지도 핀 등장·퇴장 수동 테스트
+
+부르미 계정으로 브라우저에서 강남역 부근 픽업지에 부름을 등록한 뒤 아래 스크립트를 실행한다.
+스크립트는 중심 좌표 주변에 임의 드리미를 순차 등록하고 제거하며, `Ctrl+C`로 종료하면 남은
+테스트 드리미도 모두 정리한다. 백엔드의 디버그 API를 사용하므로 로컬/개발 환경에서만 실행한다.
+
+```bash
+cd matchingtest
+npm run pins:dreamis
+```
+
+기본 중심은 `37.4979, 127.0276`(강남역 부근), 드리미 6명, 반경 700m다. 픽업지가 다르면
+환경변수로 맞춘다.
+
+```bash
+CENTER_LAT=37.5665 CENTER_LNG=126.9780 DREAMI_COUNT=8 npm run pins:dreamis
+```
+
+한 번만 실행하려면 `CYCLES=1`, 등록·제거 간격은 `STEP_MS`, 전체 등록 후 유지 시간은
+`HOLD_MS`로 조절한다. 부르미 지도는 5초마다 갱신되므로 `HOLD_MS`는 5000 이상을 권장한다.
+
 ## 실행 단계
 
 ```

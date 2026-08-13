@@ -10,6 +10,7 @@
     "seed": "node run.mjs --only=seed",
     "drive": "node run.mjs --only=drive",
     "watch": "node run.mjs --only=watch",
+    "pins:dreamis": "node dreami-pin-test.mjs",
     "postinstall": "playwright install chromium"
   },
   "devDependencies": {
