@@ -12,7 +12,12 @@
  *
  * 완주 상한은 드리미 계정 수와 같다. 매칭이 성사되면 주문이 IN_PROGRESS가 되고
  * `DreamiService.goOnline`의 `countActiveOrders > 0` 가드에 걸려 그 계정은 다시 온라인이 될 수 없다.
+ *
+ * DELIVERY=1이면 배달 시작 SSE를 받은 드리미가 그대로 배달까지 몰고 간다(delivery.mjs).
+ * 이 경우 관측이 끝나는 조건은 "매칭 확정 완료"가 아니라 "진행 중 배달 0건"이다.
  */
+
+import { runDelivery } from "./delivery.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -155,6 +160,10 @@ export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) 
   const note = (kind, e) => noteFirst(kind, e.message, log);
 
   const state = { online: 0, created: 0, dispatched: 0 };
+  /** 진행 중 배달의 Promise. 크기가 곧 실시간 동시 배달 수다. */
+  const activeDeliveries = new Set();
+  /** 제한 시간이 다 되어 남은 배달을 강제로 끊는 중인지. */
+  let cutOff = false;
 
   // ── 1. 로그인 ──
   const all = [...dreamis, ...boormis];
@@ -212,25 +221,48 @@ export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) 
   );
 
   // ── 이벤트 처리 ──
+  // 요청 발신 시각(reqAt)을 응답 시각과 함께 원장에 넘긴다. 응답 시각만 남기면 서버가 비동기로 보낸 SSE가
+  // 응답보다 먼저 도착했을 때 구간이 음수가 되고, API 왕복 시간도 어느 지표에도 분리되지 않는다.
   async function acceptOffer(agent, offerId) {
     if (config.acceptDelayMs > 0) await sleep(config.acceptDelayMs);
+    const reqAt = Date.now();
     try {
       await call(agent, "POST", `/api/v1/dreami/offers/${offerId}/accept`);
-      ledger.acceptResult({ offerId, ok: true, at: Date.now() });
+      ledger.acceptResult({ offerId, ok: true, reqAt, at: Date.now() });
     } catch (e) {
-      ledger.acceptResult({ offerId, ok: false, at: Date.now(), error: e.message });
+      ledger.acceptResult({ offerId, ok: false, reqAt, at: Date.now(), error: e.message });
       note("수락 실패", e);
     }
   }
 
   async function confirmDreami(agent, orderId, offerId) {
+    const reqAt = Date.now();
     try {
       await call(agent, "POST", `/api/v1/boormi/calls/${orderId}/confirm-dreami`, { offerId });
-      ledger.confirmResult({ orderId, ok: true, at: Date.now() });
+      ledger.confirmResult({ orderId, ok: true, reqAt, at: Date.now() });
     } catch (e) {
-      ledger.confirmResult({ orderId, ok: false, at: Date.now(), error: e.message });
+      ledger.confirmResult({ orderId, ok: false, reqAt, at: Date.now(), error: e.message });
       note("확정 실패", e);
     }
+  }
+
+  /**
+   * 배달 구동 시작. 배달 시작 SSE를 받은 그 드리미가 이미 살아 있는 세션과 orderId를 쥐고 있으므로
+   * 추가 로그인 없이 그대로 몰면 된다(upload/url의 소유자 검증도 이 세션이라야 통과한다).
+   */
+  function startDelivery(agent, orderId) {
+    const task = runDelivery({
+      agent,
+      orderId,
+      ledger,
+      config,
+      call,
+      note,
+      isStopping: () => stopping || cutOff,
+    })
+      .catch((e) => note("배달 구동 오류", e))
+      .finally(() => activeDeliveries.delete(task));
+    activeDeliveries.add(task);
   }
 
   function onDreamiEvent(agent, { name, data }) {
@@ -249,6 +281,7 @@ export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) 
         break;
       case "delivery_started_dreami":
         ledger.deliveryStarted({ orderId: data.orderId, side: "dreami", at: Date.now() });
+        if (config.delivery) startDelivery(agent, data.orderId);
         break;
       case "boormi_rejected":
         ledger.boormiRejected();
@@ -270,6 +303,20 @@ export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) 
       case "delivery_started_boormi":
         ledger.deliveryStarted({ orderId: data.orderId, side: "boormi", at: Date.now() });
         break;
+      case "delivery_location":
+        ledger.deliveryEvent({ orderId: data.orderId, kind: "location", at: Date.now() });
+        break;
+      case "delivery_delivering":
+        ledger.deliveryEvent({ orderId: data.orderId, kind: "delivering", at: Date.now() });
+        break;
+      case "delivery_completed":
+        ledger.deliveryEvent({ orderId: data.orderId, kind: "completed", at: Date.now() });
+        break;
+      // payload가 DreamiOfflineDto라 형태가 다르다. 30초 넘게 위치가 안 왔다는 서버 판정이므로
+      // 하네스가 밀렸거나 서버가 밀렸다는 신호로 센다.
+      case "delivery_dreami_offline":
+        ledger.deliveryEvent({ orderId: data.orderId, kind: "offline", at: Date.now() });
+        break;
       default:
         break;
     }
@@ -280,9 +327,10 @@ export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) 
   // 매칭이 아니라 외부 호출에서 먼저 막힌다.
   async function createOrder(agent) {
     ledger.createAttempt();
+    const reqAt = Date.now();
     try {
       const orderId = await call(agent, "POST", "/api/v1/boormi/calls", agent.order);
-      ledger.createOk(orderId, agent.email, Date.now());
+      ledger.createOk(orderId, agent.email, reqAt, Date.now());
       state.created++;
     } catch (e) {
       ledger.createFail(e.message);
@@ -308,12 +356,24 @@ export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) 
   log(`주문 생성 ${state.created}/${config.orderCount}건 완료`);
 
   // ── 5. 소진 대기 ──
-  // 완주 상한(= 드리미 계정 수)에 닿거나 DURATION_MS가 지나면 멈춘다.
+  // 완주 상한(= 드리미 계정 수)에 닿고 진행 중 배달이 다 빠지거나, DURATION_MS가 지나면 멈춘다.
   const cap = Math.min(config.orderCount, state.online);
   const deadline = Date.now() + config.durationMs;
-  while (!stopping && Date.now() < deadline && ledger.counters.confirmOk < cap) {
+  while (
+    !stopping &&
+    Date.now() < deadline &&
+    (ledger.counters.confirmOk < cap || activeDeliveries.size > 0)
+  ) {
     await sleep(500);
     tick?.(snapshotStats());
+  }
+
+  // 제한 시간에 걸린 배달은 여기서 정리한다. SSE를 먼저 끊으면 아직 살아 있는 배달이
+  // 응답 없는 서버를 두드리는 꼴이 되고, 그 실패가 리포트에 서버 실패로 섞인다.
+  if (activeDeliveries.size > 0) {
+    log(`제한 시간 도달 — 진행 중 배달 ${activeDeliveries.size}건 중단`);
+    cutOff = true;
+    await Promise.allSettled([...activeDeliveries]);
   }
 
   // 마지막 단계의 타임아웃이 끝날 시간을 준다 — 이 시간이 없으면 정상 이벤트를 유실로 오판한다.
@@ -345,6 +405,11 @@ export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) 
       confirmOk: c.confirmOk,
       confirmFail: c.confirmFail,
       online: state.online,
+      activeDeliveries: activeDeliveries.size,
+      locationOk: c.locationOk,
+      pickupOk: c.pickupOk,
+      finishOk: c.finishOk,
+      deliveryFail: c.pickupFail + c.finishFail + c.presignFail + c.uploadFail,
     };
   }
 }
