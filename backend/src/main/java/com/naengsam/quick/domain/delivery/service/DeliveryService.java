@@ -8,6 +8,7 @@ import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.service.DirectionsService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
+import com.naengsam.quick.domain.delivery.dto.DeliveryContactDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
@@ -23,6 +24,7 @@ import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.repository.DeliveryCertificationRepository;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.delivery.repository.PickupCertificationRepository;
+import com.naengsam.quick.domain.boormi.entity.Boormi;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
@@ -51,7 +53,9 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 
@@ -76,6 +80,11 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
 public class DeliveryService {
 
     private static final int LOCATION_SCALE = 8;
+
+    // 연락처를 더 내려줄 이유가 없는 종료 상태들. 프론트가 추적 불가로 판정하는 집합(getUntrackableDeliveryNotice)과 같다.
+    private static final Set<DeliveryCd> CONTACT_CLOSED_STATUSES = EnumSet.of(
+            DELIVERED, PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN,
+            RETURNED, TERMINATED);
 
     private final DeliveryRepository deliveryRepository;
     private final PickupCertificationRepository pickupCertificationRepository;
@@ -161,6 +170,31 @@ public class DeliveryService {
 
         return DeliveryCompletionDto.from(delivery, order, dreamiName, dreami.getDreamiAvgScore(), boormiName,
                 deliveryPhotoUrl, viewerIsDreami);
+    }
+
+    // 배달 화면에서 '연락하기'를 눌렀을 때만 호출되는 상대방 연락처 조회.
+    // 전화번호는 개인정보라 추적 상세(getDeliveryDetail)에 싣지 않는다 — 그쪽은 SSE 재연결마다 재조회되므로
+    // 화면이 열려 있는 내내 번호가 오간다. 여기서는 당사자에게, 배달이 진행 중일 때만 내려준다.
+    @Transactional(readOnly = true)
+    public DeliveryContactDto getDeliveryContact(UUID orderId, UUID userId) {
+        Delivery delivery = deliveryRepository.findByOrderIdWithoutLock(orderId)
+                .orElseThrow(() -> new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+
+        if (!userId.equals(delivery.getBoormiId()) && !userId.equals(delivery.getDreamiId())) {
+            throw new BusinessException(AuthErrorCode.NOT_RESOURCE_OWNER);
+        }
+        if (CONTACT_CLOSED_STATUSES.contains(delivery.getDeliveryCd())) {
+            throw new BusinessException(DeliveryErrorCode.CONTACT_NOT_AVAILABLE);
+        }
+
+        // 조회자가 어느 쪽인지는 클라이언트 파라미터가 아니라 로그인 세션으로 서버가 판정한다(getDeliveryCompletion과 같은 이유).
+        boolean viewerIsDreami = userId.equals(delivery.getDreamiId());
+        UUID counterpartId = viewerIsDreami ? delivery.getBoormiId() : delivery.getDreamiId();
+        // 드리미의 이름·전화번호도 BOORMI 테이블에 있다(dreamiId == boormiId).
+        Boormi counterpart = boormiRepository.findById(counterpartId)
+                .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
+
+        return DeliveryContactDto.from(counterpart, viewerIsDreami);
     }
 
     // 배송 완료 인증 사진 URL을 조회한다. 완료 전이라 인증 사진이 아직 없으면(레코드 없음) 조회하지 않고,
@@ -393,6 +427,7 @@ public class DeliveryService {
 
         delivery.cancelBy(PICKUP_CANCELLED_BY_DREAMI); // 픽업중_드리미의_취소
         orderService.cancel(delivery.getOrderId(), CancelerCd.DREAMI); // 주문도 취소 상태로 전이 + 취소 이력 저장
+        paymentService.refundByPoint(delivery.getOrderId()); // 결제 포인트 전액 환불 (SSE 알림 전에 DB 작업을 끝낸다)
         alarmBoormiDreamiCancelBySSE(delivery); // 부르미에게_픽업중에_드리미가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
@@ -426,6 +461,7 @@ public class DeliveryService {
 
         delivery.cancelBy(PICKUP_CANCELLED_BY_BOORMI); // 픽업중_부르미의_취소
         orderService.cancel(delivery.getOrderId(), CancelerCd.BOORMI); // 주문도 취소 상태로 전이 + 취소 이력 저장
+        paymentService.refundByPoint(delivery.getOrderId()); // 결제 포인트 전액 환불 (SSE 알림 전에 DB 작업을 끝낸다)
         alarmDreamiBoormiCancelBySSE(delivery); // 드리미에게_부르미가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";
     }
@@ -453,6 +489,7 @@ public class DeliveryService {
 
         delivery.cancelBy(PICKUP_CANCELLED_BY_ADMIN); // 픽업중_관리자의_취소
         orderService.cancel(delivery.getOrderId(), CancelerCd.ADMIN); // 주문도 취소 상태로 전이 + 취소 이력 저장
+        paymentService.refundByPoint(delivery.getOrderId()); // 결제 포인트 전액 환불 (SSE 알림 전에 DB 작업을 끝낸다)
         alarmBoormiAdminCancelBySSE(delivery); // 부르미에게_관리자가_취소했다고_전달_SSE사용()
         alarmDreamiAdminCancelBySSE(delivery); // 드리미에게_관리자가_취소했다고_전달_SSE사용()
         return "픽업 취소 완료";

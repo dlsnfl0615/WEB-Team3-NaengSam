@@ -4,6 +4,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.service.DirectionsService;
 import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
+import com.naengsam.quick.domain.delivery.dto.DeliveryContactDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
@@ -488,6 +489,69 @@ class DeliveryServiceTest {
         assertThat(errorCodeOf(thrown)).isEqualTo(UserErrorCode.USER_NOT_FOUND);
     }
 
+    // ===== 상대방 연락처 조회 =====
+
+    @Test
+    void 부르미가_연락처를_조회하면_드리미의_이름과_전화번호를_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+        DeliveryContactDto result = deliveryService.getDeliveryContact(orderId, boormiId);
+
+        assertThat(result.counterpartName()).isEqualTo("김드림"); // setUp 기본 mock(드리미)
+        assertThat(result.counterpartPhoneNumber()).isEqualTo("01099998888");
+        assertThat(result.viewerIsDreami()).isFalse();
+    }
+
+    @Test
+    void 드리미가_연락처를_조회하면_부르미의_이름과_전화번호를_반환한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        Boormi boormi = Boormi.create("boormi@test.com", "pass123", "이부름", "01011112222",
+                LocalDate.of(1990, 1, 1));
+        given(boormiRepository.findById(boormiId)).willReturn(Optional.of(boormi));
+
+        DeliveryContactDto result = deliveryService.getDeliveryContact(orderId, dreamiId);
+
+        assertThat(result.counterpartName()).isEqualTo("이부름");
+        assertThat(result.counterpartPhoneNumber()).isEqualTo("01011112222");
+        assertThat(result.viewerIsDreami()).isTrue();
+    }
+
+    @Test
+    void 당사자가_아닌_사용자가_연락처를_조회하면_NOT_RESOURCE_OWNER_예외() {
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, UUID.randomUUID(), UUID.randomUUID());
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+        Throwable thrown = catchThrowable(() -> deliveryService.getDeliveryContact(orderId, UUID.randomUUID()));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(AuthErrorCode.NOT_RESOURCE_OWNER);
+    }
+
+    @Test
+    void 종료된_배달의_연락처를_조회하면_CONTACT_NOT_AVAILABLE_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        for (DeliveryCd closed : List.of(DELIVERED, PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI,
+                PICKUP_CANCELLED_BY_ADMIN, RETURNED, TERMINATED)) {
+            UUID orderId = UUID.randomUUID();
+            Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+            ReflectionTestUtils.setField(delivery, "deliveryCd", closed);
+            given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+            Throwable thrown = catchThrowable(() -> deliveryService.getDeliveryContact(orderId, boormiId));
+
+            assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.CONTACT_NOT_AVAILABLE);
+        }
+    }
+
     // ===== 첫 위치 전송 시 '드리미→픽업지' 경로·배송완료예상시간 계산 =====
 
     @Test
@@ -861,6 +925,46 @@ class DeliveryServiceTest {
         deliveryService.cancelByAdmin(orderId);
 
         verify(orderService).cancel(orderId, CancelerCd.ADMIN);
+    }
+
+    @Test
+    void 드리미취소되면_결제포인트를_전액_환불한다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        cancelByDreami(orderId);
+
+        verify(paymentService).refundByPoint(orderId);
+    }
+
+    @Test
+    void 부르미취소되면_결제포인트를_전액_환불한다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        cancelByBoormi(orderId);
+
+        verify(paymentService).refundByPoint(orderId);
+    }
+
+    @Test
+    void 관리자취소되면_결제포인트를_전액_환불한다() {
+        UUID orderId = registerDelivery(DeliveryCd.PICKUP_NORMAL);
+
+        deliveryService.cancelByAdmin(orderId);
+
+        verify(paymentService).refundByPoint(orderId);
+    }
+
+    @Test
+    void 취소가_거부되면_환불하지_않는다() {
+        for (Function<UUID, DeliveryStatusResponseDto> cancelOperation : cancelOperations()) {
+            UUID orderId = registerDelivery(DELIVERING); // 배달중이면 취소 불가
+
+            Throwable thrown = catchThrowable(() -> cancelOperation.apply(orderId));
+
+            assertThat(errorCodeOf(thrown))
+                    .isEqualTo(DeliveryErrorCode.CANCELLATION_RESTRICTED_DURING_DELIVERY);
+            verify(paymentService, never()).refundByPoint(orderId);
+        }
     }
 
     @Test
