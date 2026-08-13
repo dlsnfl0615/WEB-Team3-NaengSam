@@ -70,6 +70,14 @@ function latencyRows(latency, label) {
   }));
 }
 
+/** 대기 시간 분포. 표본이 적어 p99까지 나눌 의미가 없으므로 p50·p95·최대만 낸다. */
+function waitSummary(waits) {
+  if (waits.length === 0) return null;
+  const sorted = [...waits].sort((a, b) => a - b);
+  const at = (q) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))];
+  return { count: sorted.length, p50: at(0.5), p95: at(0.95), max: sorted.at(-1) };
+}
+
 function dreamiDistribution(byDreami, dreamiCount) {
   const entries = Object.entries(byDreami);
   const offers = entries.map(([, v]) => v.offers);
@@ -94,6 +102,7 @@ export function buildReport({
   startedAt,
   finishedAt,
   eventLoopLag = null,
+  loginStats = null,
 }) {
   const c = summary.counters;
   const dist = dreamiDistribution(summary.byDreami, summary.dreamiCount);
@@ -158,6 +167,7 @@ export function buildReport({
       드리미_오프라인통지: c.dreamiOffline,
     },
     concurrency: conc,
+    loginQueue: loginStats ? { ...loginStats, wait: waitSummary(loginStats.waits) } : null,
     latency: summary.latency,
     eventLoopLag,
     dreamiDistribution: dist,
@@ -372,6 +382,34 @@ export function buildReport({
       if (r.sse) push(`      수신 SSE ${r.sse}`);
       for (const shot of r.screenshots ?? []) push(`      ${shot}`);
     }
+  }
+  push("");
+
+  push("── 11. 로그인 대기열 ──");
+  if (!loginStats) {
+    push("  측정 없음");
+  } else if (loginStats.queued === 0 && loginStats.queueFull === 0) {
+    push(`  대기열 진입 없음 — 즉시 로그인 ${loginStats.inline}건 (대기열이 없는 서버이거나 permits가 넉넉하다)`);
+  } else {
+    const wait = waitSummary(loginStats.waits);
+    push(
+      `  즉시 로그인 ${loginStats.inline} · 대기열 진입 ${loginStats.queued} (최대 순번 ${loginStats.maxPosition})`,
+      `  폴링        ${loginStats.polls}회` +
+        (loginStats.queued ? ` (티켓당 평균 ${(loginStats.polls / loginStats.queued).toFixed(1)}회)` : ""),
+      `  대기 시간   ${
+        wait
+          ? `${wait.count}건  p50 ${ms(wait.p50)} · p95 ${ms(wait.p95)} · 최대 ${ms(wait.max)}`
+          : "차례를 기다려 통과한 티켓 없음"
+      }`,
+    );
+    if (loginStats.queueFull > 0) {
+      push(`  ⚠ 503 거절 ${loginStats.queueFull}건 — 대기열 정원(login.queue.capacity) 초과 또는 Redis 불가`);
+    }
+    if (loginStats.expired > 0) {
+      push(`  ⚠ 410 티켓 만료 ${loginStats.expired}건 — 티켓 TTL 안에 차례가 오지 않았다`);
+    }
+    if (loginStats.retries > 0) push(`  재시도      ${loginStats.retries}건 (503·410을 만나 로그인을 다시 탔다)`);
+    push("  ※ 대기 시간은 티켓을 받은 시점부터 세션이 생길 때까지다. 서버 permits를 올리면 줄어든다.");
   }
   push("");
 
