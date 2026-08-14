@@ -27,6 +27,7 @@ import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.CompletedSavingAggregate;
 import com.naengsam.quick.domain.order.dto.OrderCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
@@ -68,10 +69,14 @@ public class BoormiService {
     private static final int OVER_RATE = 160;       // 초과 구간 100m당 요금(원)
     private static final int MAX_ACTIVE_ORDERS = 5; // 동시 진행 가능한 요청 수(정책값)
     private static final int TOO_CLOSE_DISTANCE = 50;   // 출발지-도착지 최소 직선거리(m)
-    // 시장 퀵서비스 건당 기준 단가(절감액 비교 기준).
-    // 서울 오토바이 퀵의 3km 이내 기본요금 8,000~12,000원(2026-08 조사)의 중앙값을 쓴다.
+    // 시장 퀵서비스 요금 환산 기준(절감액 비교 기준). 건당 기본요금 + 기본 구간 초과 거리 요금으로 계산한다.
+    // 서울 오토바이 퀵의 3km 이내 기본요금 8,000~12,000원, 초과 구간 km당 2,000원대(2026-08 조사)를 근거로 잡았다.
     // 참고: gosuquick.com, 1600-7324.com, ssanquick.com, silverquick.kr
-    private static final long MARKET_UNIT_PRICE = 10000;
+    // 초과 요율은 우리 요금의 초과 구간 요율(160원/100m)의 1.5배로 둔다 — 주문에 물건 크기(ItemSizeCd)가 저장되지 않아
+    // 크기 배율(최대 1.5배)을 환산액에 반영할 수 없으므로, 그 배율만큼을 요율에 미리 얹어 절감액이 음수로 뒤집히지 않게 한다.
+    private static final long MARKET_BASE_FEE = 11000;      // 시장 퀵 건당 기본요금(기본 구간 이내)
+    private static final int MARKET_BASE_SECTION = 3000;    // 시장 퀵 기본 구간(m)
+    private static final int MARKET_OVER_RATE = 240;        // 시장 퀵 초과 구간 100m당 요금(원)
 
     private final CoordinatesService coordinatesService;
     private final DirectionsService directionsService;
@@ -260,26 +265,32 @@ public class BoormiService {
     }
 
     /**
-     * 부르미 대시보드 — 누적 완료 건수, 시장 퀵서비스 대비 절감 금액, 이번 달 이용 건수·절감액, 지난달 대비 증감률, 최근 6개월 절감액 추이를 조회한다. 절감액은 완료 건수를 시장 평균 단가로 환산한 값에서
-     * 실제 결제액을 뺀 값이며, 실제 결제액이 더 크면 0으로 둔다. 증감률은 지난달 절감액이 0이면 0%로 처리하고 반올림해 소수점 없이 반환한다. 주문에는 완료 시각이 없으므로 월별 집계는 배달 완료
-     * 시각(DELIVERY.delivery_end_dtm) 기준이다. 화면이 산술식을 그대로 보여주므로 기준 단가와 이번 달 실제 결제액도 함께 반환한다.
+     * 부르미 대시보드 — 누적 완료 건수, 시장 퀵서비스 대비 절감 금액, 이번 달 이용 건수·절감액, 지난달 대비 증감률, 최근 6개월 절감액 추이를 조회한다. 절감액은 주문별 배달 거리로
+     * 환산한 시장 퀵 요금 합계에서 실제 결제액을 뺀 값이며, 실제 결제액이 더 크면 0으로 둔다. 증감률은 지난달 절감액이 0이면 0%로 처리하고 반올림해 소수점 없이 반환한다. 주문에는 완료
+     * 시각이 없으므로 월별 집계는 배달 완료 시각(DELIVERY.delivery_end_dtm) 기준이다. 화면이 산술식을 그대로 보여주므로 이번 달 시장 환산액과 실제 결제액도 함께 반환한다.
      */
     @Transactional(readOnly = true)
     public BoormiDashboardDto getDashboard(UUID boormiId) {
-        long completedCount = orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED);
-        long paidAmount = orderRepository.sumCompletedDeliveryAmount(boormiId);
-        long totalSavedAmount = Math.max(0, completedCount * MARKET_UNIT_PRICE - paidAmount);
+        List<CompletedSavingAggregate> completed =
+                orderRepository.aggregateCompletedSavingByBoormi(boormiId, MARKET_BASE_SECTION);
+        long completedCount = completed.stream().mapToLong(CompletedSavingAggregate::count).sum();
+        long paidAmount = completed.stream().mapToLong(CompletedSavingAggregate::paidAmount).sum();
+        long totalMarketAmount = completed.stream()
+                .mapToLong(aggregate -> marketAmountOf(aggregate.itemCd(), aggregate.count(), aggregate.overDistance()))
+                .sum();
+        long totalSavedAmount = Math.max(0, totalMarketAmount - paidAmount);
 
         YearMonth thisMonth = YearMonth.now();
         YearMonth rangeStart = thisMonth.minusMonths(5);
-        Map<YearMonth, MonthlySavingAggregate> byMonth = deliveryRepository
+        Map<YearMonth, List<MonthlySavingAggregate>> byMonth = deliveryRepository
                 .aggregateSavingByBoormiBetween(boormiId, rangeStart.atDay(1).atStartOfDay(),
-                        thisMonth.plusMonths(1).atDay(1).atStartOfDay())
+                        thisMonth.plusMonths(1).atDay(1).atStartOfDay(), MARKET_BASE_SECTION)
                 .stream()
-                .collect(Collectors.toMap(MonthlySavingAggregate::yearMonth, aggregate -> aggregate));
+                .collect(Collectors.groupingBy(MonthlySavingAggregate::yearMonth));
 
         long thisMonthCount = countOf(byMonth, thisMonth);
         long thisMonthPaidAmount = paidOf(byMonth, thisMonth);
+        long thisMonthMarketAmount = marketAmountOf(byMonth, thisMonth);
         long thisMonthSavedAmount = savingOf(byMonth, thisMonth);
         long lastMonthSavedAmount = savingOf(byMonth, thisMonth.minusMonths(1));
         long growthPercent = lastMonthSavedAmount == 0 ? 0
@@ -292,24 +303,42 @@ public class BoormiService {
                 .toList();
 
         return BoormiDashboardDto.of(completedCount, totalSavedAmount, thisMonthCount, thisMonthPaidAmount,
-                thisMonthSavedAmount, MARKET_UNIT_PRICE, growthPercent, recentSixMonths);
+                thisMonthSavedAmount, thisMonthMarketAmount, growthPercent, recentSixMonths);
     }
 
-    // 해당 월의 절감액. 완료 건수를 시장 평균 단가로 환산한 값에서 실제 결제액을 뺀다(누적 절감액과 같은 규칙으로 음수는 0).
-    private long savingOf(Map<YearMonth, MonthlySavingAggregate> byMonth, YearMonth month) {
-        MonthlySavingAggregate aggregate = byMonth.get(month);
-        return aggregate == null ? 0 : Math.max(0, aggregate.count() * MARKET_UNIT_PRICE - aggregate.paidAmount());
+    /**
+     * 같은 조건의 배달을 시장 퀵서비스에 맡겼다면 냈을 금액. 건당 기본요금에 기본 구간을 넘긴 거리 요금을 더하고 물건 유형 배율을 곱한다.
+     * 물건 크기 배율은 주문에 남지 않아 반영하지 못하므로 초과 요율에 미리 얹어 두었다(MARKET_OVER_RATE 주석 참고).
+     */
+    private long marketAmountOf(ItemCd itemCd, long count, long overDistance) {
+        long amount = count * MARKET_BASE_FEE + (overDistance / UNIT_DISTANCE) * MARKET_OVER_RATE;
+        return Math.round(amount * ItemCd.multiplier(itemCd));
     }
 
-    private long countOf(Map<YearMonth, MonthlySavingAggregate> byMonth, YearMonth month) {
-        MonthlySavingAggregate aggregate = byMonth.get(month);
-        return aggregate == null ? 0 : aggregate.count();
+    // 해당 월의 시장 환산 금액 합계. 물건 유형별로 나뉜 행을 배율까지 적용해 더한다.
+    private long marketAmountOf(Map<YearMonth, List<MonthlySavingAggregate>> byMonth, YearMonth month) {
+        return rowsOf(byMonth, month).stream()
+                .mapToLong(aggregate -> marketAmountOf(aggregate.itemCd(), aggregate.count(), aggregate.overDistance()))
+                .sum();
+    }
+
+    // 해당 월의 절감액. 시장 환산 금액에서 실제 결제액을 뺀다(누적 절감액과 같은 규칙으로 음수는 0).
+    private long savingOf(Map<YearMonth, List<MonthlySavingAggregate>> byMonth, YearMonth month) {
+        return Math.max(0, marketAmountOf(byMonth, month) - paidOf(byMonth, month));
+    }
+
+    private long countOf(Map<YearMonth, List<MonthlySavingAggregate>> byMonth, YearMonth month) {
+        return rowsOf(byMonth, month).stream().mapToLong(MonthlySavingAggregate::count).sum();
     }
 
     // 해당 월에 부르미가 실제로 결제한 금액. 절감액 산술식의 빼는 값이다.
-    private long paidOf(Map<YearMonth, MonthlySavingAggregate> byMonth, YearMonth month) {
-        MonthlySavingAggregate aggregate = byMonth.get(month);
-        return aggregate == null ? 0 : aggregate.paidAmount();
+    private long paidOf(Map<YearMonth, List<MonthlySavingAggregate>> byMonth, YearMonth month) {
+        return rowsOf(byMonth, month).stream().mapToLong(MonthlySavingAggregate::paidAmount).sum();
+    }
+
+    private List<MonthlySavingAggregate> rowsOf(Map<YearMonth, List<MonthlySavingAggregate>> byMonth,
+            YearMonth month) {
+        return byMonth.getOrDefault(month, List.of());
     }
 
     /**
