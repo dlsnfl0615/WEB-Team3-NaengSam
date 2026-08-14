@@ -62,6 +62,12 @@ public record DeliveryDetailResponseDto(
         @Schema(description = "배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta). 아직 계산 전이면 null")
         LocalDateTime estimatedCompletionTime,
 
+        @Schema(description = "픽업 완료(=배달 시작) 시각. 아직 픽업 전이면 null", nullable = true)
+        LocalDateTime deliveryStartDtm,
+
+        @Schema(description = "배달(드림) 완료 시각. 아직 완료 전이면 null", nullable = true)
+        LocalDateTime deliveryEndDtm,
+
         @Schema(description = "드리미 위치가 끊긴 상태인지(true면 화면에 안내 필요)", example = "false")
         boolean dreamiOffline,
 
@@ -95,6 +101,8 @@ public record DeliveryDetailResponseDto(
                 routePath,
                 deliveryRoutePath,
                 delivery.getEstimatedCompletionDtm(),
+                delivery.getDeliveryStartDtm(),
+                delivery.getDeliveryEndDtm(),
                 dreamiOffline,
                 secondsSinceLastLocation);
     }
