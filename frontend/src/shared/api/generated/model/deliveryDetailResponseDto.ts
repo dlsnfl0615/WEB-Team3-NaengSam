@@ -39,6 +39,8 @@ export interface DeliveryDetailResponseDto {
   deliveryRoutePath?: RoutePointDto[];
   /** 배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta). 아직 계산 전이면 null */
   estimatedCompletionTime?: string;
+  /** 매칭 성사(부르미가 드리미를 확정한) 시각. 매칭 기록이 없으면 null */
+  matchingAcceptedDtm?: string;
   /** 픽업 완료(=배달 시작) 시각. 아직 픽업 전이면 null */
   deliveryStartDtm?: string;
   /** 배달(드림) 완료 시각. 아직 완료 전이면 null */
