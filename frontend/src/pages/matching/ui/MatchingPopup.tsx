@@ -195,6 +195,7 @@ export function MatchingPopup() {
                     offer && (
                         <OfferCard
                             heading="새 드리미 요청 도착!"
+                            dreamiId={offer.dreamiId}
                             name={
                                 offer.profile?.name
                                     ? `드리미 '${offer.profile.name}'`

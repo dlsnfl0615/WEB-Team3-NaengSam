@@ -3,22 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { Badge, BottomNav, Card, Icon, ScreenShell, TopBar } from "@/shared/ui";
 import { useSessionStore } from "@/shared/store/sessionStore";
 import { ROUTES } from "@/shared/config/routes";
+import { getProfileImage } from "@/shared/lib";
 import { AccountSection } from "./AccountSection";
 import { MenuGroup } from "./MenuGroup";
 import { ACCOUNT_MENU, SUPPORT_MENU } from "./menus";
-
-const PROFILE_IMAGES = ["/profile-dreami.png", "/profile-boormi.png"] as const;
-
-/** UUID가 같으면 항상 같은 기본 프로필 이미지를 반환합니다. */
-function getProfileImage(userId: string) {
-  let hash = 0;
-
-  for (const character of userId) {
-    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
-  }
-
-  return PROFILE_IMAGES[hash % PROFILE_IMAGES.length];
-}
 
 /**
  * 마이페이지 화면(Figma node 191:1574 계좌 미등록 / 191:1657 계좌 등록됨).

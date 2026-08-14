@@ -44,8 +44,8 @@ interface DriverMotionState {
 /** 역할별 핀 색(theme.css 토큰 hex 재사용)·라벨 텍스트·라벨 배경(토큰 유틸). */
 const ROLE: Record<Role, PinStyle> = {
   pickup: { color: "#0d1b3d", label: "픽업 장소", bg: "bg-navy-900" }, // navy-900
-  dropoff: { color: "#00b7a7", label: "도착지", bg: "bg-teal-500" }, // teal-500
-  driver: { color: "#b26a00", label: "드리미", bg: "bg-status-warning" }, // status-warning
+  dropoff: { color: "#b26a00", label: "도착지", bg: "bg-status-warning" }, // status-warning
+  driver: { color: "#00b7a7", label: "드리미", bg: "bg-teal-500" }, // teal-500
 };
 
 /** 핀 오버레이를 처음이면 생성하고, 이미 있으면 위치만 옮긴다. */
