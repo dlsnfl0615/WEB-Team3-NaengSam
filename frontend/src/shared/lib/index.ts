@@ -25,6 +25,7 @@ export {
   useCurrentAddress,
   type CurrentAddressState,
 } from "./geo/useCurrentAddress";
+export { distanceMeters } from "./geo/distance";
 export {
   rememberDeliveryStage,
   recallDeliveryStage,
