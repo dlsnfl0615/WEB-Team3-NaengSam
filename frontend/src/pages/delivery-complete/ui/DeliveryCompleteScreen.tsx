@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, Card, Icon, IconChip, ScreenShell, TopBar } from "@/shared/ui";
+import {
+  Button,
+  Card,
+  Icon,
+  IconChip,
+  ScreenShell,
+  StarRating,
+  TopBar,
+} from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useActiveDelivery } from "@/shared/store/deliveryStore";
 import {
@@ -9,7 +17,6 @@ import {
   DeliveryCompletionDtoItemCd,
   type DeliveryCompletionDto,
 } from "@/shared/api";
-import { StarRating } from "./StarRating";
 
 /** 리뷰 내용 최대 길이. 백엔드 ReviewContentRequest 의 @Size(max = 200) 과 맞춘다. */
 const CONTENT_MAX = 200;

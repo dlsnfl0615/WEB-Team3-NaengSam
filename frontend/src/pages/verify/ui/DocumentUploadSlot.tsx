@@ -8,7 +8,7 @@ export interface DocumentUploadSlotProps {
 }
 
 /**
- * 신분증/범죄이력조회서 선택 슬롯. 파일 선택 시 미리보기만 보여주고 File을 상위(VerifyScreen)로 올려준다.
+ * 신분증/범죄이력회보서 선택 슬롯. 파일 선택 시 미리보기만 보여주고 File을 상위(VerifyScreen)로 올려준다.
  * 실제 presigned URL 발급/S3 PUT은 "본인인증" 버튼 클릭 시 한 번에 처리한다.
  */
 export function DocumentUploadSlot({ label, onSelect, disabled }: DocumentUploadSlotProps) {
