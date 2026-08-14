@@ -108,6 +108,7 @@ public class Delivery {
     }
 
     // 픽업 완료 → 배달중 전이. 픽업/배달 시작 시각을 기록한다.
+
     public void markDelivering() {
         this.deliveryCd = DeliveryCd.DELIVERING;
         LocalDateTime now = LocalDateTime.now();
