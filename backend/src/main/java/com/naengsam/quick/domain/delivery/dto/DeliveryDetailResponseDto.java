@@ -62,6 +62,9 @@ public record DeliveryDetailResponseDto(
         @Schema(description = "배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta). 아직 계산 전이면 null")
         LocalDateTime estimatedCompletionTime,
 
+        @Schema(description = "매칭 성사(부르미가 드리미를 확정한) 시각. 매칭 기록이 없으면 null", nullable = true)
+        LocalDateTime matchingAcceptedDtm,
+
         @Schema(description = "픽업 완료(=배달 시작) 시각. 아직 픽업 전이면 null", nullable = true)
         LocalDateTime deliveryStartDtm,
 
@@ -78,6 +81,7 @@ public record DeliveryDetailResponseDto(
     public static DeliveryDetailResponseDto from(Delivery delivery, Orders order,
             String itemPhotoUrl,
             List<RoutePointDto> routePath, List<RoutePointDto> deliveryRoutePath,
+            LocalDateTime matchingAcceptedDtm,
             boolean dreamiOffline, Long secondsSinceLastLocation) {
         DeliveryLocationDto currentLocation = delivery.getCurrentLatitude() == null
                 ? null
@@ -101,6 +105,7 @@ public record DeliveryDetailResponseDto(
                 routePath,
                 deliveryRoutePath,
                 delivery.getEstimatedCompletionDtm(),
+                matchingAcceptedDtm,
                 delivery.getDeliveryStartDtm(),
                 delivery.getDeliveryEndDtm(),
                 dreamiOffline,
