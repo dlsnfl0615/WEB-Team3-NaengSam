@@ -15,7 +15,9 @@ import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.read.ListAppender;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
+import com.naengsam.quick.domain.user.dto.LoginResultDto;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
+import com.naengsam.quick.domain.user.service.LoginQueue;
 import com.naengsam.quick.domain.user.service.SmsVerificationService;
 import com.naengsam.quick.domain.user.service.UserService;
 import com.naengsam.quick.global.exception.BusinessException;
@@ -47,25 +49,31 @@ import org.springframework.web.method.HandlerMethod;
  */
 class UserControllerTest {
 
-    private UserService userService;
+    private LoginQueue loginQueue;
     private ActiveSessionRegistry activeSessionRegistry;
     private SseEmitterRegistry sseEmitterRegistry;
     private UserController controller;
 
     @BeforeEach
     void setUp() {
-        userService = mock(UserService.class);
+        UserService userService = mock(UserService.class);
+        loginQueue = mock(LoginQueue.class);
         SmsVerificationService smsVerificationService = mock(SmsVerificationService.class);
         activeSessionRegistry = new ActiveSessionRegistry();
         sseEmitterRegistry = mock(SseEmitterRegistry.class);
-        controller = new UserController(userService, smsVerificationService, activeSessionRegistry,
+        controller = new UserController(userService, loginQueue, smsVerificationService, activeSessionRegistry,
                 sseEmitterRegistry);
+    }
+
+    /** 대기열을 통과해 세션을 만들 차례가 된 결과(즉시 로그인 경로와 클레임 경로가 공유한다). */
+    private LoginQueue.Progress ready(UUID boormiId) {
+        return new LoginQueue.Progress(boormiId, LoginResultDto.success());
     }
 
     @Test
     void 첫_로그인은_활성_세션_하나를_등록하고_SSE_종료는_없다() {
         UUID userId = UUID.randomUUID();
-        given(userService.login(any())).willReturn(userId);
+        given(loginQueue.submit(any())).willReturn(ready(userId));
 
         controller.login(loginRequest(), new MockHttpServletRequest());
 
@@ -75,7 +83,7 @@ class UserControllerTest {
     @Test
     void 두번째_로그인은_첫_세션을_무효화한다() {
         UUID userId = UUID.randomUUID();
-        given(userService.login(any())).willReturn(userId);
+        given(loginQueue.submit(any())).willReturn(ready(userId));
         MockHttpServletRequest firstRequest = new MockHttpServletRequest();
         controller.login(loginRequest(), firstRequest);
         LoginSession firstSession = LoginSession.current(firstRequest).orElseThrow();
@@ -88,7 +96,7 @@ class UserControllerTest {
     @Test
     void 두번째_로그인은_이전_사용자의_SSE를_전체_종료한다() {
         UUID userId = UUID.randomUUID();
-        given(userService.login(any())).willReturn(userId);
+        given(loginQueue.submit(any())).willReturn(ready(userId));
         controller.login(loginRequest(), new MockHttpServletRequest());
 
         controller.login(loginRequest(), new MockHttpServletRequest());
@@ -100,7 +108,7 @@ class UserControllerTest {
     void 다른_사용자의_세션과_SSE는_영향받지_않는다() {
         UUID userA = UUID.randomUUID();
         UUID userB = UUID.randomUUID();
-        given(userService.login(any())).willReturn(userA, userB);
+        given(loginQueue.submit(any())).willReturn(ready(userA), ready(userB));
         MockHttpServletRequest requestA = new MockHttpServletRequest();
         controller.login(loginRequest(), requestA);
         LoginSession sessionA = LoginSession.current(requestA).orElseThrow();
@@ -114,7 +122,7 @@ class UserControllerTest {
     @Test
     void 동일_사용자의_동시_로그인에서도_최종_세션_하나만_유지된다() throws Exception {
         UUID userId = UUID.randomUUID();
-        given(userService.login(any())).willReturn(userId);
+        given(loginQueue.submit(any())).willReturn(ready(userId));
         int loginCount = 20;
         CountDownLatch start = new CountDownLatch(1);
         ExecutorService executor = Executors.newFixedThreadPool(8);
@@ -150,7 +158,7 @@ class UserControllerTest {
     @Test
     void 로그아웃하면_해당_사용자의_모든_emitter를_종료한다() {
         UUID userId = UUID.randomUUID();
-        given(userService.login(any())).willReturn(userId);
+        given(loginQueue.submit(any())).willReturn(ready(userId));
         MockHttpServletRequest loginRequest = new MockHttpServletRequest();
         controller.login(loginRequest(), loginRequest);
 
@@ -162,7 +170,7 @@ class UserControllerTest {
     @Test
     void 로그아웃하면_세션이_무효화된다() {
         UUID userId = UUID.randomUUID();
-        given(userService.login(any())).willReturn(userId);
+        given(loginQueue.submit(any())).willReturn(ready(userId));
         MockHttpServletRequest loginRequest = new MockHttpServletRequest();
         controller.login(loginRequest(), loginRequest);
         LoginSession session = LoginSession.current(loginRequest).orElseThrow();
@@ -176,7 +184,7 @@ class UserControllerTest {
     void 로그아웃해도_다른_사용자의_세션과_SSE는_영향받지_않는다() {
         UUID userA = UUID.randomUUID();
         UUID userB = UUID.randomUUID();
-        given(userService.login(any())).willReturn(userA, userB);
+        given(loginQueue.submit(any())).willReturn(ready(userA), ready(userB));
         MockHttpServletRequest requestA = new MockHttpServletRequest();
         controller.login(loginRequest(), requestA);
         MockHttpServletRequest requestB = new MockHttpServletRequest();
@@ -192,7 +200,7 @@ class UserControllerTest {
     @Test
     void 이전_세션으로_들어온_요청은_401이_된다() {
         UUID userId = UUID.randomUUID();
-        given(userService.login(any())).willReturn(userId);
+        given(loginQueue.submit(any())).willReturn(ready(userId));
         controller.login(loginRequest(), new MockHttpServletRequest());
 
         controller.login(loginRequest(), new MockHttpServletRequest());
@@ -218,7 +226,7 @@ class UserControllerTest {
 
         try {
             UUID userId = UUID.randomUUID();
-            given(userService.login(any())).willReturn(userId);
+            given(loginQueue.submit(any())).willReturn(ready(userId));
             // MockHttpSession의 기본 id는 짧은 순번(예: "1")이라 로그 메시지 속 다른 숫자와 우연히 겹칠 수 있으므로,
             // 충돌 가능성이 없는 UUID 기반 id를 직접 부여한다.
             UniqueIdRequest firstRequest = new UniqueIdRequest();
