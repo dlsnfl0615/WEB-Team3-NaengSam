@@ -51,7 +51,9 @@ public enum DeliveryErrorCode implements BaseErrorCode {
     DELIVERY_START_NOT_ALLOWED(
             HttpStatus.CONFLICT, "DELIVERY_032", "배달을 시작할 수 없는 주문 상태입니다."),
     CONTACT_NOT_AVAILABLE(
-            HttpStatus.CONFLICT, "DELIVERY_033", "배달이 진행 중일 때만 연락처를 볼 수 있어요.");
+            HttpStatus.CONFLICT, "DELIVERY_033", "배달이 진행 중일 때만 연락처를 볼 수 있어요."),
+    PING_TOO_FREQUENT(
+            HttpStatus.TOO_MANY_REQUESTS, "DELIVERY_034", "방금 핑을 보냈어요. 잠시 후 다시 시도해 주세요.");
 
     private final HttpStatus status;
     private final String code;

@@ -45,6 +45,15 @@ class NotificationPolicyTest {
     }
 
     @Test
+    void 핑은_드리미에게_웹푸시까지_전달한다() {
+        ChannelPlan plan = policy.planFor(DeliveryEventType.DELIVERY_PING);
+
+        // 부르미가 핑을 누르는 상황 자체가 드리미가 응답이 없는 상황이므로, 웹푸시가 빠지면 이 알림은 닿지 않는다.
+        assertThat(plan.includes(NotificationChannel.WEB_PUSH)).isTrue();
+        assertThat(plan.pushTtl()).isEqualTo(Duration.ofSeconds(60));
+    }
+
+    @Test
     void 등록되지_않은_이벤트는_IN_APP으로만_전달한다() {
         ChannelPlan plan = policy.planFor(() -> "unknown_event");
 

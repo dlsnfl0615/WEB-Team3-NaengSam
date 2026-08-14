@@ -54,12 +54,15 @@ import org.springframework.transaction.event.TransactionalEventListener;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
@@ -88,6 +91,12 @@ public class DeliveryService {
     private static final Set<DeliveryCd> CONTACT_CLOSED_STATUSES = EnumSet.of(
             DELIVERED, PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN,
             RETURNED, TERMINATED);
+
+    /** 배달 1건당 핑 최소 간격. 프론트 버튼 잠금과 같은 값이다. */
+    private static final Duration PING_COOLDOWN = Duration.ofSeconds(30);
+
+    /** 배달별 마지막 핑 시각. 쿨다운 판정에만 쓰는 휘발성 상태라 재시작하면 비워진다({@link #checkPingCooldown}). */
+    private final Map<UUID, Instant> lastPingAt = new ConcurrentHashMap<>();
 
     private final DeliveryRepository deliveryRepository;
     private final PickupCertificationRepository pickupCertificationRepository;
@@ -220,6 +229,44 @@ public class DeliveryService {
                 .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
 
         return DeliveryContactDto.from(counterpart, viewerIsDreami);
+    }
+
+    // 부르미가 연락 시트에서 '핑 보내기'를 눌렀을 때. 배달 상태는 건드리지 않고 드리미를 깨우는 알림만 보낸다.
+    // 상태 변경이 없어 readOnly지만 트랜잭션은 필요하다 — 알림은 AFTER_COMMIT 리스너가 보내므로
+    // 트랜잭션 밖에서 발행하면 이벤트가 그대로 버려진다.
+    @Transactional(readOnly = true)
+    public void sendPing(UUID orderId, UUID boormiId) {
+        Delivery delivery = deliveryRepository.findByOrderIdWithoutLock(orderId)
+                .orElseThrow(() -> new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+
+        // 핑은 부르미 → 드리미 단방향이다. 드리미 화면에는 버튼 자체가 없지만 서버에서도 막는다.
+        if (!boormiId.equals(delivery.getBoormiId())) {
+            throw new BusinessException(DeliveryErrorCode.NOT_ORDER_BOORMI);
+        }
+        // 연락처 조회와 같은 기준으로 막는다 — 끝난 배달의 드리미를 깨울 이유가 없다.
+        if (CONTACT_CLOSED_STATUSES.contains(delivery.getDeliveryCd())) {
+            throw new BusinessException(DeliveryErrorCode.CONTACT_NOT_AVAILABLE);
+        }
+        checkPingCooldown(orderId);
+
+        alarmDreamiPingBySSE(delivery);
+    }
+
+    /**
+     * 배달 1건당 {@link #PING_COOLDOWN} 간격으로만 핑을 허용한다. 프론트에도 같은 쿨다운이 있지만, 잠금화면에
+     * 알림을 밀어 넣는 기능이라 클라이언트 상태만 믿을 수 없다.
+     *
+     * <p>기록은 인메모리다 — 재시작하면 사라지고 그 순간 핑 한 번이 더 나가는 것이 전부라 DB에 남길 이유가 없다.
+     * (서버가 여러 대면 인스턴스별로 각각 카운트되는 것도 같은 이유로 감수한다.)
+     */
+    private void checkPingCooldown(UUID orderId) {
+        Instant now = Instant.now();
+        // 쿨다운이 지난 기록은 지운다. 이걸 안 하면 끝난 배달의 항목이 맵에 영원히 남는다.
+        lastPingAt.values().removeIf(sentAt -> Duration.between(sentAt, now).compareTo(PING_COOLDOWN) >= 0);
+        // 남아 있는 항목 = 아직 쿨다운 중. putIfAbsent가 원자적이라 동시에 두 번 눌러도 한 번만 통과한다.
+        if (lastPingAt.putIfAbsent(orderId, now) != null) {
+            throw new BusinessException(DeliveryErrorCode.PING_TOO_FREQUENT);
+        }
     }
 
     // 배송 완료 인증 사진 URL을 조회한다. 완료 전이라 인증 사진이 아직 없으면(레코드 없음) 조회하지 않고,
@@ -613,6 +660,12 @@ public class DeliveryService {
         publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_DELIVERING,
                 DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"),
                 itemNameOf(delivery));
+    }
+
+    // 부르미가 누른 '핑 보내기'. 상태 전이가 없어 payload의 상태는 현재 상태 그대로다(화면 갱신용이 아니라 알림용).
+    private void alarmDreamiPingBySSE(Delivery delivery) {
+        publish(delivery.getDreamiId(), DeliveryEventType.DELIVERY_PING,
+                DeliveryStatusResponseDto.from(delivery, "부르미가 배달 상황을 궁금해해요"));
     }
 
     private void alarmBoormiDreamiCancelBySSE(Delivery delivery) {
