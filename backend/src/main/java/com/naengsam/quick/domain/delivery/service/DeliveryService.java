@@ -14,6 +14,7 @@ import com.naengsam.quick.domain.delivery.dto.PickupPhotoDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationResponseDto;
+import com.naengsam.quick.domain.delivery.dto.EtaUnavailableDto;
 import com.naengsam.quick.domain.delivery.dto.RoutePointDto;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
@@ -42,6 +43,8 @@ import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
 import com.naengsam.quick.domain.dreami.service.DreamiActivationChecker;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
+import com.naengsam.quick.global.code.BaseErrorCode;
+import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -422,6 +425,9 @@ public class DeliveryService {
 
     // 드리미의 첫 위치가 들어온 픽업 단계에서 '드리미→픽업지' 카카오 도보 경로와 배송완료예상시간을 1회만 계산해 저장한다.
     // routePath가 이미 있거나 픽업 단계가 아니면 아무것도 하지 않는다. 카카오 실패는 위치 갱신을 막지 않고 다음 위치 전송 때 재시도한다.
+    //
+    // 실패를 조용히 삼키면 화면은 '아직 GPS를 못 받아 계산 전'과 구분하지 못해 영원히 "계산 중…"에 머문다.
+    // 그래서 실패 이유를 DELIVERY_ETA_UNAVAILABLE로 알려, 화면이 배지를 지우고 이유를 안내하게 한다.
     private void maybeComputePickupRoute(Delivery delivery, BigDecimal latitude, BigDecimal longitude) {
         if (delivery.getRoutePath() != null) {
             return;
@@ -446,8 +452,13 @@ public class DeliveryService {
                     .plus(completionBuffer);
 
             delivery.applyPickupRoute(routePathJson, estimatedCompletion);
-        } catch (BusinessException | JacksonException e) {
+        } catch (BusinessException e) {
             log.warn("드리미→픽업지 경로·배송완료예상시간 계산 실패 — 다음 위치 전송 때 재시도", e);
+            alarmEtaUnavailableBySSE(delivery, e.getErrorCode());
+        } catch (JacksonException e) {
+            // 경로는 받았지만 직렬화가 깨진 경우. 사용자에게는 원인을 구분할 도리가 없으니 일시적 오류로 안내한다.
+            log.warn("드리미→픽업지 경로·배송완료예상시간 계산 실패 — 다음 위치 전송 때 재시도", e);
+            alarmEtaUnavailableBySSE(delivery, GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
         }
     }
 
@@ -669,6 +680,17 @@ public class DeliveryService {
         publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_DELIVERING,
                 DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"),
                 itemNameOf(delivery));
+    }
+
+    // 배송완료예상시간 계산 실패 이유를 알린다. 배지가 드리미·부르미 양쪽 화면에 떠 있으므로 양쪽 모두에게
+    // 보낸다(드리미는 "내가 픽업지에서 너무 멀다"를, 부르미는 "왜 예상 시각이 안 뜨는지"를 각각 알아야 한다).
+    // 여기서는 추가 조회 없이 발행만 해 위치 갱신 흐름을 절대 깨지 않는다.
+    private void alarmEtaUnavailableBySSE(Delivery delivery, BaseErrorCode errorCode) {
+        EtaUnavailableDto payload = EtaUnavailableDto.from(delivery.getOrderId(), errorCode);
+        eventPublisher.publishEvent(new DeliveryNotificationEvent(
+                delivery.getDreamiId(), DeliveryEventType.DELIVERY_ETA_UNAVAILABLE, payload));
+        eventPublisher.publishEvent(new DeliveryNotificationEvent(
+                delivery.getBoormiId(), DeliveryEventType.DELIVERY_ETA_UNAVAILABLE, payload));
     }
 
     // 부르미가 누른 '핑 보내기'. 상태 전이가 없어 payload의 상태는 현재 상태 그대로다(화면 갱신용이 아니라 알림용).
