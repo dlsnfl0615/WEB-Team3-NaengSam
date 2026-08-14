@@ -15,7 +15,6 @@ import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
-import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
@@ -128,17 +127,11 @@ public class DreamiController {
     }
 
     @Operation(summary = "드리미 활동 내역 조회",
-            description = "로그인한 드리미가 수행한(수행 중인) 배달을 최신순 커서 페이지네이션으로 조회한다. "
-                    + "status 로 단일 상태 필터링이 가능하며, cursor 는 이전 응답의 nextCursor 를 그대로 넘긴다.")
+            description = "로그인한 드리미가 수행한(수행 중인) 배달 전체를 최신순으로 조회한다.")
     @GetMapping("/deliveries")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"INVALID_CURSOR"})
-    public BoormiOrdersResponse getDreamiOrders(
-            @LoginUser UUID dreamiId,
-            @RequestParam(required = false) String cursor,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) OrderCd status) {
-        return dreamiService.getMyOrders(dreamiId, cursor, size, status);
+    public BoormiOrdersResponse getDreamiOrders(@LoginUser UUID dreamiId) {
+        return dreamiService.getMyOrders(dreamiId);
     }
 
     @Operation(summary = "내 배달 단건 조회",

@@ -21,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Slf4j
@@ -114,14 +115,14 @@ public class UserService {
         Boormi boormi = boormiRepository.findById(boormiId)
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_SESSION));
 
-        boolean flag = false;
-        if (boormi.isDreamiActivate()) {
-            flag = dreamiRepository.findById(boormiId)
-                    .map(d -> d.getRequestCd() == DreamiCd.APPROVED)
-                    .orElse(false);
-        }
+        Dreami dreami = boormi.isDreamiActivate()
+                ? dreamiRepository.findById(boormiId).orElse(null)
+                : null;
+        boolean approved = dreami != null && dreami.getRequestCd() == DreamiCd.APPROVED;
+        // 승인된 드리미일 때만 드리미 평점을 내려준다(미등록·미승인은 null).
+        BigDecimal dreamiAvgScore = approved ? dreami.getDreamiAvgScore() : null;
 
-        return UserDto.from(boormi, flag, userActivityResolver.resolve(boormiId));
+        return UserDto.from(boormi, approved, dreamiAvgScore, userActivityResolver.resolve(boormiId));
     }
 
     /**

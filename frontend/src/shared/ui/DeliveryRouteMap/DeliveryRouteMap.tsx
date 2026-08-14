@@ -21,6 +21,10 @@ export interface DeliveryRouteMapProps {
   driver?: Coords;
   /** 드리미 핀 라벨. 기본값은 "드리미". (내 위치 등으로 사용될 수 있음)*/
   driverLabel?: string;
+  /** 드리미 핀에 사용할 캐릭터 이미지 URL. 없으면 기본 핀 SVG를 사용한다. */
+  driverPinImage?: string;
+  /** 드리미 핀이 표시되는 동안 driverPinImage와 400ms 간격으로 교대할 이미지 URL. */
+  driverRunningPinImage?: string;
   /** 픽업 핀 라벨. 기본값은 "픽업 장소"(주문의 item_name을 넣으면 그 이름으로 표시). */
   pickupLabel?: string;
   /** 추천 이동경로 좌표 목록. 있으면 폴리라인으로 그린다(첫 로드부터 표시). */
@@ -42,8 +46,8 @@ interface DriverMotionState {
 /** 역할별 핀 색(theme.css 토큰 hex 재사용)·라벨 텍스트·라벨 배경(토큰 유틸). */
 const ROLE: Record<Role, PinStyle> = {
   pickup: { color: "#0d1b3d", label: "픽업 장소", bg: "bg-navy-900" }, // navy-900
-  dropoff: { color: "#00b7a7", label: "도착지", bg: "bg-teal-500" }, // teal-500
-  driver: { color: "#b26a00", label: "드리미", bg: "bg-status-warning" }, // status-warning
+  dropoff: { color: "#b26a00", label: "도착지", bg: "bg-status-warning" }, // status-warning
+  driver: { color: "#00b7a7", label: "드리미", bg: "bg-teal-500" }, // teal-500
 };
 
 /** 핀 오버레이를 처음이면 생성하고, 이미 있으면 위치만 옮긴다. */
@@ -55,9 +59,14 @@ function upsertMarker(
   coords: Coords,
   label: string,
   smooth = false,
+  imageSrc?: string,
+  runningImageSrc?: string,
 ) {
   const pos = new kakao.maps.LatLng(coords.latitude, coords.longitude);
   if (store.overlay) {
+    if (role === "driver") {
+      store.overlay.setImageSrc(imageSrc, runningImageSrc);
+    }
     store.overlay.setPosition(pos);
     return;
   }
@@ -65,10 +74,13 @@ function upsertMarker(
     kakao,
     map,
     pos,
-    { ...ROLE[role], label },
+    { ...ROLE[role], label, imageSrc },
     undefined,
     smooth,
   );
+  if (role === "driver") {
+    store.overlay.setImageSrc(imageSrc, runningImageSrc);
+  }
 }
 
 /** 드리미 핀을 처음이면 생성하고, 이미 있으면 픽셀 기반 애니메이션으로 옮긴다. */
@@ -78,9 +90,12 @@ function upsertSmoothDriver(
   store: { overlay?: PinOverlayHandle },
   coords: Coords,
   label: string,
+  imageSrc?: string,
+  runningImageSrc?: string,
   durationMs?: number,
 ) {
   const position = new kakao.maps.LatLng(coords.latitude, coords.longitude);
+  store.overlay?.setImageSrc(imageSrc, runningImageSrc);
   if (store.overlay && durationMs != null) {
     store.overlay.setSmoothPosition(position, durationMs);
     return;
@@ -93,10 +108,11 @@ function upsertSmoothDriver(
     kakao,
     map,
     position,
-    { ...ROLE.driver, label },
+    { ...ROLE.driver, label, imageSrc },
     undefined,
     true,
   );
+  store.overlay.setImageSrc(imageSrc, runningImageSrc);
 }
 
 /**
@@ -109,6 +125,8 @@ export function DeliveryRouteMap({
   dropoff,
   driver,
   driverLabel = "드리미", // 기본 값은 "드리미"
+  driverPinImage,
+  driverRunningPinImage,
   pickupLabel,
   route,
   height = 340,
@@ -182,10 +200,29 @@ export function DeliveryRouteMap({
             : role === "pickup"
               ? pickupLabel ?? ROLE.pickup.label
               : ROLE[role].label;
-        upsertMarker(kakao, map, storeRef.current[role], role, coords, label);
+        upsertMarker(
+          kakao,
+          map,
+          storeRef.current[role],
+          role,
+          coords,
+          label,
+          false,
+          role === "driver" ? driverPinImage : undefined,
+          role === "driver" ? driverRunningPinImage : undefined,
+        );
       }
     });
-  }, [status, pickup, dropoff, driver, driverLabel, pickupLabel]);
+  }, [
+    status,
+    pickup,
+    dropoff,
+    driver,
+    driverLabel,
+    driverPinImage,
+    driverRunningPinImage,
+    pickupLabel,
+  ]);
 
   // SMOOTH 모드에서는 원본 좌표와 분리된 표시 좌표만 보간한다. 서버 전송·SSE 좌표는 건드리지 않는다.
   useEffect(() => {
@@ -195,6 +232,13 @@ export function DeliveryRouteMap({
     const kakao = kakaoRef.current;
     const map = mapRef.current;
     if (status !== "ready" || !kakao || !map) return;
+
+    // 픽업 완료처럼 좌표는 그대로이고 캐릭터 이미지만 바뀌는 경우에도 즉시 반영한다.
+    // 이동 계획이 없으면 아래에서 조기 반환하므로 이미지 갱신은 그보다 먼저 해야 한다.
+    storeRef.current.driver.overlay?.setImageSrc(
+      driverPinImage,
+      driverRunningPinImage,
+    );
 
     const receivedAt = performance.now();
     if (!motion.target || motion.targetReceivedAt == null) {
@@ -206,6 +250,8 @@ export function DeliveryRouteMap({
         storeRef.current.driver,
         driver,
         driverLabel,
+        driverPinImage,
+        driverRunningPinImage,
       );
       return;
     }
@@ -228,9 +274,17 @@ export function DeliveryRouteMap({
       storeRef.current.driver,
       driver,
       driverLabel,
+      driverPinImage,
+      driverRunningPinImage,
       plan.durationMs,
     );
-  }, [status, driver, driverLabel]);
+  }, [
+    status,
+    driver,
+    driverLabel,
+    driverPinImage,
+    driverRunningPinImage,
+  ]);
 
   // 추천 이동경로를 폴리라인으로 그린다(좌표가 바뀌면 다시 그림). 핀처럼 ref에 보관해 중복 생성을 막는다.
   useEffect(() => {

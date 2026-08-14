@@ -10,6 +10,7 @@ import { StepLocation } from "./StepLocation";
 import { StepItem } from "./StepItem";
 import { StepPhoto } from "./StepPhoto";
 import { StepPayment } from "./StepPayment";
+import { hasEstimateInputChanged } from "./estimateInput";
 import { itemSizeToCd, itemTypeToCd, toOrderRequest } from "./orderRequest";
 import {
   clearRequestDraft,
@@ -54,12 +55,9 @@ export function RequestCreateScreen() {
 
   const update = (patch: Partial<RequestForm>) => {
     setError(null);
-    if (
-      patch.pickup !== undefined ||
-      patch.dropoff !== undefined ||
-      patch.itemType !== undefined ||
-      patch.itemSize !== undefined
-    ) {
+    // AddressSheet는 상세주소만 수정하거나 아무것도 바꾸지 않아도 현재 도로명 주소를
+    // patch에 함께 담는다. 실제 견적 입력이 달라진 경우에만 기존 견적을 버린다.
+    if (hasEstimateInputChanged(form, patch)) {
       setEstimate(null);
     }
     setForm((prev) => ({ ...prev, ...patch }));

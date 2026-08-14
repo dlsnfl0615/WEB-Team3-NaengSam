@@ -33,21 +33,37 @@ function TestStepPhoto() {
 afterEach(cleanup);
 
 describe("StepPhoto 배송 요청사항", () => {
-  it('"없음"을 선택하면 직접 입력값을 비우고 입력란을 비활성화한다', () => {
+  it('"기타"를 선택했을 때만 직접 입력란이 활성화된다', () => {
     render(<TestStepPhoto />);
 
     const input = screen.getByPlaceholderText<HTMLInputElement>(
       "추가 요청사항 직접 입력",
     );
+    // 초기값은 "없음" → 비활성
+    expect(input.disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole("radio", { name: "도착 시 연락" }));
+    expect(input.disabled).toBe(true);
+
+    fireEvent.click(screen.getByRole("radio", { name: "파손주의" }));
     expect(input.disabled).toBe(true);
 
     fireEvent.click(screen.getByRole("radio", { name: "기타" }));
     expect(input.disabled).toBe(false);
+  });
 
+  it('"기타"가 아닌 태그로 옮기면 직접 입력값을 비우고 비활성화한다', () => {
+    render(<TestStepPhoto />);
+
+    const input = screen.getByPlaceholderText<HTMLInputElement>(
+      "추가 요청사항 직접 입력",
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: "기타" }));
     fireEvent.change(input, { target: { value: "문 앞에 놓아주세요" } });
     expect(input.value).toBe("문 앞에 놓아주세요");
 
-    fireEvent.click(screen.getByRole("radio", { name: "없음" }));
+    fireEvent.click(screen.getByRole("radio", { name: "도착 시 연락" }));
     expect(input.disabled).toBe(true);
     expect(input.value).toBe("");
   });

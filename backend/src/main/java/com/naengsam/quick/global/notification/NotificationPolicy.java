@@ -40,7 +40,12 @@ public class NotificationPolicy {
             // 복구한 뒤 뒤늦게 도착하는 "배달이 멈췄어요"는 소음이다. 덤으로 Urgency: high가 붙어
             // 잠든 기기를 실제로 깨운다(WebPushSender.HIGH_URGENCY_TTL_THRESHOLD).
             Map.entry("delivery_dreami_offline_self", ChannelPlan.inAppAndWebPush(
-                    "배달 위치 전송이 멈췄어요", "앱을 다시 열어 배달을 이어가 주세요", Duration.ofSeconds(60)))
+                    "배달 위치 전송이 멈췄어요", "앱을 다시 열어 배달을 이어가 주세요", Duration.ofSeconds(60))),
+            // 부르미가 드리미를 깨우려고 직접 누른 신호다. 앱이 열려 있으면 인앱으로, 닫혀 있으면 웹푸시로 닿아야
+            // 의미가 있다. TTL 60초는 offline_self와 같은 이유 — 1분 넘게 못 닿는 기기에 뒤늦게 도착하는
+            // "확인해 주세요"는 소음이고, 이 임계값이면 Urgency: high가 붙어 잠든 기기를 실제로 깨운다.
+            Map.entry("delivery_ping", ChannelPlan.inAppAndWebPush(
+                    "부르미가 핑을 보냈어요", "앱을 열어 배달 상황을 알려주세요", Duration.ofSeconds(60)))
     );
 
     /**

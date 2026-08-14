@@ -13,7 +13,7 @@ import { LoginQueueModal } from "./LoginQueueModal";
 
 /**
  * 로그인 화면(Figma node 21:91).
- * 이메일/비밀번호 로그인 + 비밀번호 찾기/회원가입 진입.
+ * 이메일/비밀번호 로그인 + 회원가입 진입.
  */
 export function LoginScreen() {
   const navigate = useNavigate();
@@ -77,9 +77,11 @@ export function LoginScreen() {
       <main className="flex flex-1 flex-col pt-8">
         {/* 로고 + 타이틀 */}
         <div className="flex flex-col items-center">
-          <div className="flex h-[82px] w-[106px] items-center justify-center rounded-md border border-dashed border-line text-sm text-muted">
-            LOGO
-          </div>
+          <img
+            src="/symboorm-logo.png"
+            alt="쉼부름"
+            className="h-[100px] w-[100px] object-contain"
+          />
           <h1 className="mt-4 text-xl font-bold tracking-[-0.4px] text-navy-900">
             쉼, 부름
           </h1>
@@ -136,10 +138,6 @@ export function LoginScreen() {
 
         {/* 하단 링크 */}
         <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted">
-          <button type="button" className="hover:text-navy-900">
-            비밀번호 찾기
-          </button>
-          <span aria-hidden>｜</span>
           <button
             type="button"
             className="hover:text-navy-900"
