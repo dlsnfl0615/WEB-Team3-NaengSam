@@ -166,14 +166,6 @@ public class Orders {
     }
 
     /**
-     * 매칭이 확정된 주문에 드리미를 배정하고 진행 중 상태로 전이한다. !! delivery에서 테스트 용도로 만든 것. 추후에 매칭 기능 완성되면 삭제하겠습니다.
-     */
-    public void assignDreamiTest(UUID dreamiId) {
-        this.dreamiId = dreamiId;
-        this.orderCd = OrderCd.IN_PROGRESS;
-    }
-
-    /**
      * 부르미가 확정 대기 중인 드리미를 거절한다. 배정을 비우고 다시 매칭 대기(MATCHING)로 되돌린다(dirty checking 반영). 검증은 서비스에서 수행한다.
      */
     public void rejectDreami() {

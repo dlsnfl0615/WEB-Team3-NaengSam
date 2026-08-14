@@ -132,7 +132,13 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
                 type="button"
                 role="radio"
                 aria-checked={selected}
-                onClick={() => update({ requestTag: tag })}
+                onClick={() =>
+                  update(
+                    tag === "없음"
+                      ? { requestTag: tag, etc: "" }
+                      : { requestTag: tag },
+                  )
+                }
                 className={cn(
                   "rounded-pill px-3 py-1 text-sm font-semibold",
                   selected
@@ -150,6 +156,8 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
           maxLength={255}
           value={form.etc}
           onChange={(e) => update({ etc: e.target.value })}
+          disabled={form.requestTag === "없음"}
+          className="disabled:cursor-not-allowed disabled:text-muted"
         />
       </div>
     </div>

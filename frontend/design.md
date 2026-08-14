@@ -131,6 +131,7 @@ import { Icon } from './components'
 | `InfoRow`           | `label` `children`                         | 상세 정보 카드의 라벨-값 한 줄                                            |
 | `StarRating`        | `value` `onChange` `readOnly`              | 별 5개 평점 입력(radiogroup). `readOnly`면 등록 후 고정 표시               |
 | `MapCard`           | `overlay` `height` `flat` `children`       | 지도 화면 래퍼(`flat`=풀블리드용 반경·테두리 제거)                        |
+| `ArrivalBadge`      | `arrivalTime`                              | 지도 위 배송 완료 예상 시각 배지(네이비 불투명)                           |
 | `DeliveryRouteMap`  | `pickup` `dropoff` `driver` `driverLabel` `height` `flat` | 출발지·도착지·드리미 3핀(라벨 포함) 좌표 기반 추적 지도(`driverLabel`로 드리미 핀 라벨 변경, 지오코딩 없음, 드리미 핀만 이동, 최초 1회 뷰포트 fit, 키/좌표 없으면 텍스트 폴백) |
 | `BarChart`          | `data` `highlightLast`                     | 절감 리포트용 막대 그래프                                                 |
 | `BottomSheet`       | `open` `label` `onClose` `children`        | 하단에서 올라오는 모달 시트(배경 어둡게·흐리게, 배경 클릭 시 닫힘)        |
