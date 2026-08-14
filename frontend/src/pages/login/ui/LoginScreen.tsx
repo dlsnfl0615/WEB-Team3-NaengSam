@@ -11,7 +11,7 @@ import { clearForcedLogout, hasForcedLogout } from '@/shared/lib'
 
 /**
  * 로그인 화면(Figma node 21:91).
- * 이메일/비밀번호 로그인 + 비밀번호 찾기/회원가입 진입.
+ * 이메일/비밀번호 로그인 + 회원가입 진입.
  */
 export function LoginScreen() {
   const navigate = useNavigate()
@@ -108,10 +108,6 @@ export function LoginScreen() {
 
         {/* 하단 링크 */}
         <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted">
-          <button type="button" className="hover:text-navy-900">
-            비밀번호 찾기
-          </button>
-          <span aria-hidden>｜</span>
           <button
             type="button"
             className="hover:text-navy-900"

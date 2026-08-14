@@ -42,21 +42,24 @@ export function OnboardingScreen() {
           </Card>
         </div>
 
-        {/* CTA */}
+        {/* CTA — 주 동선은 로그인 하나로 두고, 회원가입은 아래 링크로 내린다. */}
         <div className="mt-8 flex w-full flex-col gap-3">
-          <Button variant="navy" block onClick={() => navigate(ROUTES.signup)}>
-            시작하기
-          </Button>
-          <Button
-            variant="outline"
-            block
-            onClick={() => navigate(ROUTES.login)}
-          >
+          <Button variant="navy" block onClick={() => navigate(ROUTES.login)}>
             로그인
           </Button>
         </div>
 
-        <p className="mt-4 text-sm text-muted">서비스 가이드 · 고객지원</p>
+        {/* 하단 링크(로그인 화면과 같은 패턴) */}
+        <div className="mt-4 flex items-center justify-center gap-2 text-sm text-muted">
+          <span>아직 회원이 아니신가요?</span>
+          <button
+            type="button"
+            className="font-semibold hover:text-navy-900"
+            onClick={() => navigate(ROUTES.signup)}
+          >
+            회원가입
+          </button>
+        </div>
       </main>
     </ScreenShell>
   )
