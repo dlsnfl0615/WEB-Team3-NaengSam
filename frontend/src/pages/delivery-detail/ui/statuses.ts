@@ -38,19 +38,36 @@ export interface RealTrackView {
 
 const Cd = DeliveryStatusResponseDtoStatus;
 
+/** 배달 진행 타임라인 단계 라벨(순서대로). */
+export const DELIVERY_TIMELINE_STEPS = ["부름 접수", "픽업 완료", "드림 완료"];
+
+/**
+ * 백엔드 DeliveryCd → 타임라인에서 완료된 단계 수(앞에서부터 순서대로 채워짐).
+ */
+export function deliveryTimelineCompletedCount(status: DeliveryCd | undefined): number {
+  switch (status) {
+    case Cd.DELIVERED:
+      return 3;
+    case Cd.DELIVERING:
+      return 2;
+    default:
+      return 1;
+  }
+}
+
 /** 백엔드 DeliveryCd → 부르미 추적 화면 표시용 정보. */
 export function realTrackView(status: DeliveryCd | undefined): RealTrackView {
   switch (status) {
     case Cd.DELIVERING:
-      return { title: "물품을 드림 중이에요", terminal: false, completed: null };
+      return { title: "드리미가 드림중이에요", terminal: false, completed: null };
     case Cd.DELIVERED:
-      return { title: "배달이 완료됐어요", terminal: true, completed: true };
+      return { title: "드리미가 드림을 완료했어요", terminal: true, completed: true };
     case Cd.PICKUP_CANCELLED_BY_BOORMI:
     case Cd.PICKUP_CANCELLED_BY_DREAMI:
     case Cd.PICKUP_CANCELLED_BY_ADMIN:
       return { title: "배달이 취소됐어요", terminal: true, completed: false };
     case Cd.PICKUP_NORMAL:
     default:
-      return { title: "물품을 픽업 중이에요", terminal: false, completed: null };
+      return { title: "드리미가 픽업중이에요", terminal: false, completed: null };
   }
 }
