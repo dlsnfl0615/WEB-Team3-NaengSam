@@ -26,6 +26,7 @@ import {
   useSseReconnectSync,
   formatArrivalTime,
   formatLastSeen,
+  distanceMeters,
   type SseHandlers,
 } from "@/shared/lib";
 import { ROUTES } from "@/shared/config/routes";
@@ -373,6 +374,55 @@ export function RealDeliveryTracking({
       ? { latitude: location.latitude, longitude: location.longitude }
       : undefined;
 
+  const isDelivering = status === DeliveryStatusResponseDtoStatus.DELIVERING;
+
+  // 걷는 위치 표시용 진행률(0~1). 실제 도로 경로가 아니라 드리미 현재 위치→목적지 직선거리 기준
+  // 근사치다. 각 구간(픽업지 이동/도착지 이동)에 처음 진입했을 때의 직선거리를 기준값(분모)으로 한
+  // 번만 고정해두고, 위치가 갱신될 때마다 남은 직선거리와 비교해 몇 %나 좁혀졌는지로 환산한다.
+  // 렌더 중 이전 값과 비교해 state를 조정하는 공식 패턴(리액트 문서의
+  // "Storing information from previous renders")을 쓴다 — effect 없이, 같은 렌더 안에서 처리된다.
+  const [pickupBaselineMeters, setPickupBaselineMeters] = useState<
+    number | null
+  >(null);
+  if (isPickup && driver && pickup && pickupBaselineMeters == null) {
+    setPickupBaselineMeters(distanceMeters(driver, pickup));
+  }
+  const [deliveryBaselineMeters, setDeliveryBaselineMeters] = useState<
+    number | null
+  >(null);
+  if (isDelivering && driver && dropoff && deliveryBaselineMeters == null) {
+    setDeliveryBaselineMeters(distanceMeters(driver, dropoff));
+  }
+
+  const rawPickupProgress =
+    isPickup && driver && pickup && pickupBaselineMeters
+      ? 1 - distanceMeters(driver, pickup) / pickupBaselineMeters
+      : 0;
+  const rawDeliveryProgress =
+    isDelivering && driver && dropoff && deliveryBaselineMeters
+      ? 1 - distanceMeters(driver, dropoff) / deliveryBaselineMeters
+      : 0;
+  const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
+
+  // 실제 도로는 직선이 아니라 드리미가 잠깐 멀어지는(신호 대기·우회) 구간에서 위 비율이 순간적으로
+  // 줄어들 수 있다 — 걷는 점이 뒤로 가는 것처럼 보이지 않도록 지금까지 본 값 중 최대치만 반영한다.
+  const [maxPickupProgress, setMaxPickupProgress] = useState(0);
+  const clampedPickupProgress = clamp01(rawPickupProgress);
+  if (clampedPickupProgress > maxPickupProgress) {
+    setMaxPickupProgress(clampedPickupProgress);
+  }
+  const [maxDeliveryProgress, setMaxDeliveryProgress] = useState(0);
+  const clampedDeliveryProgress = clamp01(rawDeliveryProgress);
+  if (clampedDeliveryProgress > maxDeliveryProgress) {
+    setMaxDeliveryProgress(clampedDeliveryProgress);
+  }
+
+  const segmentProgress = isPickup
+    ? maxPickupProgress
+    : isDelivering
+      ? maxDeliveryProgress
+      : 0;
+
   // 부르미가 배달 취소를 확정하면 백엔드에 취소를 요청하고 홈으로 돌아간다(드리미에게는 SSE로 통지됨).
   const confirmCancel = async () => {
     if (canceling || !detailReady) return;
@@ -447,6 +497,7 @@ export function RealDeliveryTracking({
               formatArrivalTime(deliveryStartDtm),
               formatArrivalTime(deliveryEndDtm),
             ]}
+            segmentProgress={segmentProgress}
           />
         </Card>
       </main>
