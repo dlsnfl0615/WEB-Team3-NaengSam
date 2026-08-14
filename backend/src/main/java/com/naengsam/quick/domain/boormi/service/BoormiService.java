@@ -20,7 +20,6 @@ import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.entity.Matching;
 import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
 import com.naengsam.quick.domain.matching.event.BoormiRejectedDreamiEvent;
-import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
 import com.naengsam.quick.domain.matching.event.OrderCancelledByBoormiEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
@@ -76,6 +75,7 @@ public class BoormiService {
     private final CoordinatesService coordinatesService;
     private final DirectionsService directionsService;
     private final PaymentService paymentService;
+    private final OrderPlacementService orderPlacementService;
     private final MatchingService matchingService;
     private final OrderService orderService;
     private final OrderRepository orderRepository;
@@ -87,9 +87,13 @@ public class BoormiService {
 
     /**
      * 부르미의 주문 요청을 접수한다. 출발지/도착지 도로명주소를 좌표로 변환해 주문(ORDERS)을 생성·저장한 뒤 결제를 시작하고 매칭 큐에 등록한다.
+     * <p>
+     * <b>이 메서드에 {@code @Transactional} 을 붙이면 안 된다.</b> 아래에서 카카오 API 를 3회 호출하므로, 트랜잭션 안이면 외부 응답을 기다리는 내내 DB 커넥션을 붙들어
+     * 커넥션 풀이 마른다(#437). DB 쓰기는 {@link OrderPlacementService#place} 가 별도 트랜잭션으로 처리한다.
      */
-    @Transactional
     public UUID subscribeOrder(OrderRequest orderRequest, UUID boormiId) {
+        // 트랜잭션 밖의 검사라 이 시점부터 저장까지(카카오 3회) 사이에 다른 요청이 끼어들 수 있다. 원래도 이 상한은
+        // DB 제약이 아닌 정책값이라 동시 요청은 함께 통과할 수 있었고, 한도 초과 사용자를 카카오 호출 전에 걸러내는 이점이 더 크다.
         if (orderService.countActiveOrders(boormiId) >= MAX_ACTIVE_ORDERS) {
             throw new BusinessException(OrderErrorCode.TOO_MANY_ACTIVE_ORDERS);
         }
@@ -123,14 +127,8 @@ public class BoormiService {
                 (long) charge.amount(), charge.eta(), (long) charge.distance(),
                 orderRequest.deliveryRequest(), orderRequest.imageKey(), addresses, routePath);
 
-        orderService.createOrders(orders);
-        paymentService.payWithPoint(boormiId, orderId, charge.amount());
-        if (matchingService.isActiveGroupExists(orderId)) {
-            throw new BusinessException(GeneralErrorCode.CONFLICT);
-        }
-        // 엔진은 매칭 시작 즉시 드리미에게 오퍼 팝업을 보내므로, 주문이 커밋된 뒤에 제출해야 드리미가 그 주문을 조회할 수 있다.
-        eventPublisher.publishEvent(new MatchingStartRequestedEvent(orders));
-        return orders.getOrderId();
+        // 여기서부터가 유일한 DB 쓰기 구간이다. 카카오 호출이 모두 끝난 뒤에 트랜잭션이 열린다.
+        return orderPlacementService.place(orders, charge.amount());
     }
 
     /**
@@ -245,8 +243,9 @@ public class BoormiService {
 
     /**
      * 출발지/도착지 도로명주소를 좌표로 변환한 뒤 카카오 길찾기로 실제 거리·소요시간을 구하고, 물건 유형·크기 배율을 반영한 예상 가격/시간/거리를 반환한다.
+     * <p>
+     * DB 를 전혀 쓰지 않고 카카오 API 만 호출하므로 트랜잭션을 열지 않는다. 여기에 조회 한 줄을 추가하는 순간 카카오 응답을 기다리는 내내 커넥션을 붙들게 된다(#437).
      */
-    @Transactional(readOnly = true)
     public ExpectedValueDto expectedValue(ExpectedValueRequest request) {
         GeoPoint origin = toGeoPoint(request.originAddressLine1());
         GeoPoint destination = toGeoPoint(request.destinationAddressLine1());
