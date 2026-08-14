@@ -10,7 +10,7 @@ export interface DeliveryTimelineProps {
   className?: string;
 }
 
-const ITEM_HEIGHT = 88;
+const ITEM_HEIGHT = 108;
 
 /** 배달 진행 단계를 점 + 세로선으로 보여주는 타임라인(배민 배달 화면 스타일). */
 export function DeliveryTimeline({
