@@ -29,6 +29,7 @@ import {
   useSse,
   useSseReconnectSync,
   useDreamiLocationBroadcast,
+  useLeaveGuard,
   formatArrivalTime,
   type SseHandlers,
 } from "@/shared/lib";
@@ -145,6 +146,22 @@ export function DeliveryTrackScreen() {
   const [canceling, setCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [contactOpen, setContactOpen] = useState(false);
+
+  // 이탈 경고 모달 상태.
+  // 이 화면을 벗어나면 useDreamiLocationBroadcast의 cleanup이 GPS 전송을 끊어 배달 추적이 멈춘다.
+  // 그래서 실제 배달을 들고 있을 때(mock 흐름·조회 실패·취소된 배달 제외)만 붙잡는다.
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const leaveGuarded = isRealMode && detailReady && !blockingModal.open;
+  useLeaveGuard(leaveGuarded, () => setLeaveConfirmOpen(true));
+
+  // 화면 안 뒤로가기: 가드가 켜져 있으면 확인 모달을 거친다.
+  const onBack = () => {
+    if (leaveGuarded) {
+      setLeaveConfirmOpen(true);
+      return;
+    }
+    backOrHome();
+  };
 
   const sseHandlers: SseHandlers = {
     delivery_cancelled: (data) => {
@@ -307,7 +324,7 @@ export function DeliveryTrackScreen() {
         </MapCard>
         <button
           type="button"
-          onClick={backOrHome}
+          onClick={onBack}
           aria-label="뒤로가기"
           className="absolute left-4 top-5 text-navy-900"
         >
@@ -412,6 +429,44 @@ export function DeliveryTrackScreen() {
             </Button>
             <Button block disabled={canceling} onClick={confirmCancel}>
               {canceling ? "취소 중…" : "취소하기"}
+            </Button>
+          </div>
+        </Card>
+      </Modal>
+
+      <Modal
+        open={leaveConfirmOpen}
+        label="배송 화면 나가기 확인"
+        onClose={() => setLeaveConfirmOpen(false)}
+      >
+        <Card className="flex flex-col gap-4 text-center">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-md font-bold text-navy-900">
+              배송 화면을 나갈까요?
+            </h2>
+            <p className="text-2xs text-muted">
+              배송 중에 페이지를 벗어나면 위치 전송이 멈춰 배달이 정상적으로
+              진행되지 않을 수 있습니다.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              block
+              onClick={() => setLeaveConfirmOpen(false)}
+            >
+              계속 배송하기
+            </Button>
+            {/* 가드가 히스토리에 sentinel을 하나 끼워 둬서 뒤로가기는 이 화면으로 되돌아온다.
+                취소·차단 모달과 마찬가지로 홈으로 보낸다. */}
+            <Button
+              block
+              onClick={() => {
+                setLeaveConfirmOpen(false);
+                navigate(ROUTES.home, { replace: true });
+              }}
+            >
+              나가기
             </Button>
           </div>
         </Card>
