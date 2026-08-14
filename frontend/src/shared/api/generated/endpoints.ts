@@ -292,7 +292,7 @@ const findNearbyWaitingDreamis = (
     }
 
 /**
- * presigned URL로 업로드한 신분증/범죄이력조회서 파일이 S3에 실제로 존재하는지 확인한다.
+ * presigned URL로 업로드한 신분증/범죄이력회보서 파일이 S3에 실제로 존재하는지 확인한다.
  * @summary 드리미가 본인 인증 자료 제대로 제출했는지 확인
  */
 const verifyUploadedDocuments = (

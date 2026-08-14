@@ -87,7 +87,7 @@ export function ActivityScreen() {
 
   /**
    * 진행 중인 건은 실시간 상세로 보낸다(드리미는 실 추적 페이지, 부르미는 mock 상세).
-   * 드리미의 완료/취소 건은 드림상세(activityDetailDriver)로 보낸다.
+   * 완료/취소 건은 역할별 상세 화면으로 보낸다(드리미는 드림상세, 부르미는 배달 상세).
    */
   const detailPath = (record: ActivityRecord): string | null => {
     if (isDriver) {

@@ -607,9 +607,12 @@ public class DeliveryService {
                 DeliveryStatusResponseDto.from(delivery, "위치 갱신됨"));
     }
 
+    // 픽업/배달 완료 알림은 잠금화면에 "무슨 물품인지"까지 담는다. 이 시점의 부르미는 이미 이 배달의
+    // 당사자라 주문 내용을 알고 있어, 매칭 단계 오퍼 알림과 달리 물품명이 새로운 노출이 되지 않는다.
     private void alarmBoormiDeliveringBySSE(Delivery delivery) {
         publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_DELIVERING,
-                DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"));
+                DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"),
+                itemNameOf(delivery));
     }
 
     private void alarmBoormiDreamiCancelBySSE(Delivery delivery) {
@@ -624,17 +627,37 @@ public class DeliveryService {
 
     private void alarmBoormiDeliveredBySSE(Delivery delivery) {
         publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_COMPLETED,
-                DeliveryStatusResponseDto.from(delivery, "배달이 완료되었습니다"));
+                DeliveryStatusResponseDto.from(delivery, "배달이 완료되었습니다"),
+                itemNameOf(delivery));
+    }
+
+    /**
+     * 알림 문구에 쓸 물품명. 알림은 부가 기능이라 주문 조회가 실패해도 배달 흐름을 깨면 안 되므로,
+     * 실패하면 물품명 없이(null) 기본 문구로 나가게 둔다.
+     */
+    private String itemNameOf(Delivery delivery) {
+        try {
+            return orderService.getOrder(delivery.getOrderId()).getItemName();
+        } catch (Exception e) {
+            log.warn("알림 물품명 조회 실패, 기본 문구로 진행: orderId={}, reason={}",
+                    delivery.getOrderId(), e.toString());
+            return null;
+        }
     }
 
     private void publish(UUID userId, DeliveryEventType eventType, DeliveryStatusResponseDto payload) {
-        eventPublisher.publishEvent(new DeliveryNotificationEvent(userId, eventType, payload));
+        publish(userId, eventType, payload, null);
+    }
+
+    private void publish(UUID userId, DeliveryEventType eventType, DeliveryStatusResponseDto payload,
+            String pushSubject) {
+        eventPublisher.publishEvent(new DeliveryNotificationEvent(userId, eventType, payload, pushSubject));
     }
 
     // 트랜잭션 커밋 후에만 실제 알림을 보낸다(커밋 전 발행된 이벤트는 롤백 시 자동으로 버려진다).
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void sendAfterCommit(DeliveryNotificationEvent event) {
-        notificationService.notify(event.userId(), event.eventType(), event.payload());
+        notificationService.notify(event.userId(), event.eventType(), event.payload(), event.pushSubject());
     }
 
 }

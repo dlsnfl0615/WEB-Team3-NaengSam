@@ -2,7 +2,6 @@ import { useSearchParams } from "react-router-dom";
 import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   Badge,
-  Button,
   Card,
   Icon,
   IconChip,
@@ -111,23 +110,6 @@ export function ActivityDetailDriverScreen() {
                 <p className="text-sm text-muted">아직 리뷰가 없어요.</p>
               )}
             </Card>
-
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                block
-                className="border-transparent bg-track"
-              >
-                영수증
-              </Button>
-              <Button
-                variant="outline"
-                block
-                className="border-transparent bg-track"
-              >
-                문의하기
-              </Button>
-            </div>
           </>
         ) : deliveriesLoading ? (
           <p className="py-10 text-center text-sm text-muted">불러오는 중…</p>
