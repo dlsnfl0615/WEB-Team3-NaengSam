@@ -73,11 +73,17 @@ export function CallCard({
 
   return (
     <div className="flex flex-col gap-3 rounded-md border-2 border-status-success bg-surface p-4 shadow-card">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-xl font-bold tracking-[-0.4px] text-navy-900">
+      {/* 물품명은 길이를 통제할 수 없다. 카드 제목에서만큼은 자르지 않고 줄바꿈으로 전부 보여준다. */}
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 break-words text-xl font-bold tracking-[-0.4px] text-navy-900">
           {place}
         </p>
-        <Button size="sm" variant="outline" onClick={openItemPhoto}>
+        <Button
+          size="sm"
+          variant="outline"
+          className="shrink-0"
+          onClick={openItemPhoto}
+        >
           물품사진
         </Button>
       </div>
@@ -98,7 +104,7 @@ export function CallCard({
         <p className="text-xl font-bold text-teal-700">{price}</p>
       </div>
 
-      <p className="text-base font-bold text-navy-900">{route}</p>
+      <p className="break-words text-base font-bold text-navy-900">{route}</p>
 
       {requestNote && (
         <p className="text-xs text-muted">{requestNote}</p>
@@ -137,7 +143,7 @@ export function CallCard({
       <div className="flex gap-2">
         <Button
           variant="outline"
-          className="border-transparent bg-line"
+          className="shrink-0 border-transparent bg-line"
           onClick={onReject}
         >
           거절

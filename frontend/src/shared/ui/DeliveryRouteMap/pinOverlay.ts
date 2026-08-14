@@ -72,11 +72,16 @@ export function makePinOverlay(
   }
 
   const labelElement = document.createElement("div");
+  // 라벨에는 물품명처럼 길이를 통제할 수 없는 값이 들어온다. 폭을 제한하지 않으면 nowrap 라벨이
+  // 지도 밖으로 뻗어 overflow-hidden에 그대로 잘려 나가므로, 폭을 묶고 말줄임(…)으로 접는다.
+  // 전체 이름은 콜 카드 제목에서 볼 수 있다. title 속성으로 원문도 남긴다.
   labelElement.className = cn(
-    "rounded-pill px-1.5 py-0.5 text-2xs font-semibold text-white shadow-card",
+    "max-w-[9rem] overflow-hidden text-ellipsis rounded-pill px-1.5 py-0.5",
+    "text-2xs font-semibold text-white shadow-card",
     style.bg,
   );
   labelElement.textContent = style.label;
+  labelElement.title = style.label;
 
   const pin = document.createElement("span");
   pin.setAttribute("aria-hidden", "true");

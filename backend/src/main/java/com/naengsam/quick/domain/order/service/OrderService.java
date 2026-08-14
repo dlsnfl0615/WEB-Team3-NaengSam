@@ -1,7 +1,6 @@
 package com.naengsam.quick.domain.order.service;
 
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
-import com.naengsam.quick.domain.order.dto.OrderCursor;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Cancel;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
@@ -24,9 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class OrderService {
 
-    private static final int MIN_PAGE_SIZE = 1;
-    private static final int MAX_PAGE_SIZE = 100;
-
     private final OrderRepository orderRepository;
     private final CancelRepository cancelRepository;
 
@@ -44,35 +40,14 @@ public class OrderService {
     }
 
     /**
-     * 로그인한 사용자가 role(부르미/드리미)로 참여한 주문을 최신순 커서 페이지네이션으로 조회한다. status 가 주어지면 해당 상태만 필터링한다. 다음 페이지 존재 여부는 size+1 개를
-     * 조회해 판단하고, 초과분은 잘라낸 뒤 마지막 항목으로 다음 커서를 만든다.
+     * 로그인한 사용자가 role(부르미/드리미)로 참여한 주문 전체를 최신순으로 조회한다. 필터링(전체/진행중/완료/취소)은
+     * 클라이언트에서 하므로 여기서는 상태 무관하게 전체를 반환한다.
      */
     @Transactional(readOnly = true)
-    public BoormiOrdersResponse getOrders(UUID userId, Role role, String cursor, int size, OrderCd status) {
-        int pageSize = Math.clamp(size, MIN_PAGE_SIZE, MAX_PAGE_SIZE);
-        String statusFilter = status == null ? null : status.name();
-        String roleFilter = role.name();
-
-        List<Orders> rows;
-        if (cursor == null) {
-            rows = orderRepository.findFirstPageByRole(userId, roleFilter, statusFilter, pageSize + 1);
-        } else {
-            OrderCursor decoded = OrderCursor.decode(cursor);
-            rows = orderRepository.findPageByRoleAfterCursor(
-                    userId, roleFilter, statusFilter, decoded.dtm(), decoded.orderId(), pageSize + 1);
-        }
-
-        boolean hasNext = rows.size() > pageSize;
-        List<Orders> page = hasNext ? rows.subList(0, pageSize) : rows;
-
-        String nextCursor = null;
-        if (hasNext) {
-            Orders last = page.getLast();
-            nextCursor = new OrderCursor(last.getDeliveryRequestDtm(), last.getOrderId()).encode();
-        }
-
-        List<OrderSummaryDto> orders = page.stream().map(OrderSummaryDto::from).toList();
-        return BoormiOrdersResponse.of(orders, nextCursor, hasNext);
+    public BoormiOrdersResponse getOrders(UUID userId, Role role) {
+        List<Orders> rows = orderRepository.findAllByRole(userId, role.name());
+        List<OrderSummaryDto> orders = rows.stream().map(OrderSummaryDto::from).toList();
+        return BoormiOrdersResponse.of(orders);
     }
 
     /**

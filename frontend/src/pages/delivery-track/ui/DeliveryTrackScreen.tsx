@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
+  ArrivalBadge,
   Button,
   BlockingLoadErrorModal,
   Card,
@@ -47,7 +48,6 @@ import {
   useDeliveryStore,
 } from "@/shared/store/deliveryStore";
 import { TRACK_STAGES, type TrackStage } from "./statuses";
-import { TrackOverlay } from "./TrackOverlay";
 
 /**
  * 실시간 배송 추적 화면(Figma node 191:972, 191:989).
@@ -280,7 +280,7 @@ export function DeliveryTrackScreen() {
   return (
     <ScreenShell>
       {locationError && (
-        <div className="fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
+        <div className="ds-toast-down fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
           <Toast
             icon="pin"
             title="GPS를 허용해주세요."
@@ -294,7 +294,7 @@ export function DeliveryTrackScreen() {
         <MapCard
           flat
           height={440}
-          overlay={<TrackOverlay arrivalTime={arrivalTime} />}
+          overlay={<ArrivalBadge arrivalTime={arrivalTime} />}
         >
           <DeliveryRouteMap
             flat
@@ -364,8 +364,10 @@ export function DeliveryTrackScreen() {
       <footer className="flex flex-col items-center gap-2 pt-4">
         <div className="flex w-full gap-2">
           {/* mock 흐름(orderId 없음)에서는 조회할 배달이 없어 비활성. */}
+          {/* shrink-0: 옆의 액션 버튼(w-full)에 밀려 폭이 눌리면 라벨이 두 줄로 접힌다. */}
           <Button
             variant="outline"
+            className="shrink-0"
             disabled={!orderId}
             onClick={() => setContactOpen(true)}
           >
