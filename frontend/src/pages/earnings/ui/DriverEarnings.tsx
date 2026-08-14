@@ -3,13 +3,7 @@ import { BarChart, Button, Card } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
 import { api, isApiError } from "@/shared/api";
 import type { DreamiDashboardDto } from "@/shared/api";
-
-/** "2026-07" 형태의 YearMonth 문자열 → "7월" 라벨. */
-function toMonthLabel(month?: string): string {
-  if (!month) return "";
-  const m = Number(month.split("-")[1]);
-  return Number.isNaN(m) ? month : `${m}월`;
-}
+import { toMonthLabel } from "./monthLabel";
 
 /** 드리미 수익 리포트 본문. /api/v1/dreami/dashboard로 이번 달 수익·월간 추이를 조회한다. */
 export function DriverEarnings() {
@@ -25,7 +19,9 @@ export function DriverEarnings() {
       })
       .catch((e) => {
         if (!cancelled) {
-          setError(isApiError(e) ? e.message : "수익 정보를 불러오지 못했어요.");
+          setError(
+            isApiError(e) ? e.message : "수익 정보를 불러오지 못했어요.",
+          );
         }
       });
     return () => {

@@ -41,8 +41,14 @@ function attemptsFor(orderCd) {
  * @param targets `[{ orderId, email, password, orderCd? }]` — orderCd는 있으면 시도 순서에만 쓴다.
  * @returns `{ cancelled, alreadyClosed, failed: [{ orderId, email, reason }] }`
  */
-export async function cleanupOrders({ apiBase, targets, concurrency = 5, log = () => {} }) {
-  const { call, login } = createClient(apiBase);
+export async function cleanupOrders({
+  apiBase,
+  targets,
+  concurrency = 5,
+  queueTimeoutMs,
+  log = () => {},
+}) {
+  const { call, login } = createClient(apiBase, { queueTimeoutMs });
 
   // 부르미 한 명이 여러 주문을 들 수 있다(BoormiService.MAX_ACTIVE_ORDERS = 5).
   // 동시 실행이라 Promise를 캐시해야 같은 계정으로 로그인이 두 번 나가지 않는다.

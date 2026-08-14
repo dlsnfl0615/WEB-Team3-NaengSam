@@ -3,13 +3,18 @@ import {
   Button,
   DeliveryRouteMap,
   OfferCountdownBar,
+  PhotoLightboxModal,
   type Coords,
 } from "@/shared/ui";
+import { api } from "@/shared/api";
 import { cn } from "@/shared/lib/cn";
+import { usePresignedPhoto } from "@/shared/lib/photo/usePresignedPhoto";
 
 export interface CallCardProps {
   /** 콜 번호(예: "#B-882") */
   code: string;
+  /** 물품 사진 조회(offers/{offerId}/item-photo)에 쓰는 오퍼 id. */
+  offerId: string;
   price: string;
   /** 건물·장소 이름 */
   place: string;
@@ -25,6 +30,8 @@ export interface CallCardProps {
   dropoffDistance?: string;
   /** 물품 유형. 값이 없으면 항목을 숨긴다. */
   itemType?: string;
+  /** 부르미가 작성한 요청 사항. 값이 없으면 항목을 숨긴다. */
+  requestNote?: string;
   /** 콜 수락 응답 카운트다운(드리미가 콜을 선택하는 시간). */
   countdown: { remainingSeconds: number; progressPercent: number };
   onReject: () => void;
@@ -36,6 +43,7 @@ export interface CallCardProps {
  * 금액·경로·거리·물품 유형을 보여주고 콜을 수락하거나 거절합니다.
  */
 export function CallCard({
+  offerId,
   price,
   place,
   route,
@@ -46,16 +54,39 @@ export function CallCard({
   eta,
   dropoffDistance,
   itemType,
+  requestNote,
   countdown,
   onReject,
   onAccept,
 }: CallCardProps) {
+  // 사진은 버튼을 눌렀을 때만 조회한다(SSE payload엔 안 실려온다 — matchingStore.ts 주석 참고).
+  // 받아온 URL은 그 안에 박힌 만료 시각이 지나기 전까지만 재사용한다(usePresignedPhoto 참고).
+  const {
+    open: itemPhotoOpen,
+    photoUrl: itemPhotoUrl,
+    loading: itemPhotoLoading,
+    openModal: openItemPhoto,
+    closeModal: closeItemPhoto,
+  } = usePresignedPhoto(() =>
+    api.getOfferItemPhoto(offerId).then(({ result }) => result?.itemPhotoUrl ?? null),
+  );
+
   return (
     <div className="flex flex-col gap-3 rounded-md border-2 border-status-success bg-surface p-4 shadow-card">
       {/* 물품명은 길이를 통제할 수 없다. 카드 제목에서만큼은 자르지 않고 줄바꿈으로 전부 보여준다. */}
-      <p className="break-words text-xl font-bold tracking-[-0.4px] text-navy-900">
-        {place}
-      </p>
+      <div className="flex items-start justify-between gap-2">
+        <p className="min-w-0 break-words text-xl font-bold tracking-[-0.4px] text-navy-900">
+          {place}
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          className="shrink-0"
+          onClick={openItemPhoto}
+        >
+          물품사진
+        </Button>
+      </div>
 
       <DeliveryRouteMap
         pickup={pickup}
@@ -72,6 +103,10 @@ export function CallCard({
       </div>
 
       <p className="break-words text-base font-bold text-navy-900">{route}</p>
+
+      {requestNote && (
+        <p className="text-xs text-muted">{requestNote}</p>
+      )}
 
       <div className="h-px bg-track" />
 
@@ -120,6 +155,16 @@ export function CallCard({
           콜 수락
         </Button>
       </div>
+
+      <PhotoLightboxModal
+        open={itemPhotoOpen}
+        label="물품 사진"
+        photoUrl={itemPhotoUrl}
+        emptyMessage={
+          itemPhotoLoading ? "불러오는 중…" : "등록된 물품 사진이 없어요."
+        }
+        onClose={closeItemPhoto}
+      />
     </div>
   );
 }

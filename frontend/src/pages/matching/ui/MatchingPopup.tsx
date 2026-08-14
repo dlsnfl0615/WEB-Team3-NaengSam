@@ -183,6 +183,8 @@ export function MatchingPopup() {
             >
                 {call ? (
                     <CallCard
+                        key={call.offerId}
+                        offerId={call.offerId}
                         code={formatCode(call.orderId)}
                         price={
                             call.deliveryAmount != null
@@ -210,6 +212,7 @@ export function MatchingPopup() {
                         currentLocation={dreamiCoords ?? undefined}
                         deliveryDistance={formatDistance(call.deliveryDistance)}
                         eta={`${call.deliveryEta}분`}
+                        requestNote={call.deliveryRequest ?? undefined}
                         countdown={callCountdown}
                         onReject={rejectOffer}
                         onAccept={onAcceptCall}

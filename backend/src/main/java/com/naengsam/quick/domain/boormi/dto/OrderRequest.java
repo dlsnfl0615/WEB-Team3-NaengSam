@@ -1,6 +1,7 @@
 package com.naengsam.quick.domain.boormi.dto;
 
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
+import com.naengsam.quick.domain.boormi.entity.ItemSizeCd;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
@@ -33,6 +34,10 @@ public record OrderRequest(
         @Schema(description = "물건 유형", example = "DOCUMENT")
         @NotNull
         ItemCd itemCd,
+
+        @Schema(description = "물건 크기", example = "S")
+        @NotNull
+        ItemSizeCd itemSizeCd,
 
         @Schema(description = "물건 이미지 URL", example = "https://cdn.naengsam.com/orders/sample.jpg")
         @Size(max = 500)

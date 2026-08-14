@@ -5,6 +5,8 @@
  * 운영과 같은 경로로 태우고, 오가는 이벤트를 전부 원장(ledger.mjs)에 적는다.
  *
  *   로그인(JSESSIONID) → GET /api/v1/sse/subscribe
+ *     └ 로그인이 대기열에 걸리면(#399) POST /api/v1/user/login/queue/{ticketId}를 차례가 될 때까지
+ *       폴링하고, 세션 쿠키는 그 폴링 응답에서 받는다.
  *   드리미: POST /api/v1/dreami/status/online
  *           offer_popup 수신 → POST /api/v1/dreami/offers/{offerId}/accept
  *   부르미: POST /api/v1/boormi/calls (주문 생성)
@@ -68,7 +70,29 @@ export function parseEvent(block) {
   }
 }
 
-export function createClient(base) {
+/** 서버가 pollAfterMs를 안 줬을 때 쓰는 폴링 간격. */
+const DEFAULT_POLL_MS = 1000;
+
+/**
+ * @param options.queueTimeoutMs 대기열에서 차례를 기다리는 상한. 기본값은 서버 티켓 TTL(2분)에 맞췄다.
+ * @param options.retryLimit 대기열 정원 초과(503)·티켓 만료(410) 시 로그인을 처음부터 다시 타는 횟수.
+ */
+export function createClient(base, options = {}) {
+  const queueTimeoutMs = options.queueTimeoutMs ?? 120_000;
+  const retryLimit = options.retryLimit ?? 2;
+
+  /** 대기열 관측치. 리포트의 "로그인 대기열" 섹션이 이걸 그대로 읽는다. */
+  const loginStats = {
+    inline: 0,
+    queued: 0,
+    polls: 0,
+    waits: [],
+    queueFull: 0,
+    expired: 0,
+    retries: 0,
+    maxPosition: 0,
+  };
+
   /** 응답 envelope({result}) 또는 raw를 모두 받아준다. */
   async function call(agent, method, path, body) {
     const res = await fetch(`${base}${path}`, {
@@ -86,17 +110,114 @@ export function createClient(base) {
     return parsed && typeof parsed === "object" && "result" in parsed ? parsed.result : parsed;
   }
 
+  /** 대기열 정원 초과·티켓 만료처럼 처음부터 다시 타면 풀릴 수 있는 실패. */
+  function retryable(message) {
+    const e = new Error(message);
+    e.retryable = true;
+    return e;
+  }
+
   /** fetch는 쿠키를 자동으로 관리하지 않으므로 JSESSIONID를 직접 뽑아 이후 요청에 실어 보낸다. */
-  async function login(agent) {
+  function takeSession(res, agent) {
+    const setCookie = res.headers.getSetCookie().find((c) => c.startsWith("JSESSIONID="));
+    if (!setCookie) throw new Error(`로그인 응답에 JSESSIONID가 없음: ${agent.email}`);
+    agent.cookie = setCookie.split(";")[0];
+  }
+
+  async function readResult(res) {
+    const text = await res.text();
+    if (!text) return null;
+    try {
+      return JSON.parse(text)?.result ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * 대기 티켓이 차례가 될 때까지 폴링한다. 간격은 서버가 준 `pollAfterMs`를 그대로 쓴다 —
+   * 순번이 앞당겨질수록 짧아지므로 고정 주기보다 서버가 정한 백오프를 따르는 편이 정확하다.
+   *
+   * `ticketId`는 최초 QUEUED 응답에만 실려 온다(폴링 응답의 ticketId는 null). 원본 티켓을 계속 쓴다.
+   * 세션 쿠키는 로그인 응답이 아니라 **차례가 된 폴링 응답**에서 발급된다.
+   */
+  async function waitInQueue(agent, ticket) {
+    const startedAt = Date.now();
+    const deadline = startedAt + queueTimeoutMs;
+    let current = ticket;
+
+    for (;;) {
+      if (current.position) loginStats.maxPosition = Math.max(loginStats.maxPosition, current.position);
+      if (Date.now() >= deadline) {
+        throw new Error(
+          `로그인 대기열 타임아웃 ${agent.email} — ${Math.round((Date.now() - startedAt) / 1000)}초 대기,` +
+            ` 남은 순번 ${current.position ?? "?"}`,
+        );
+      }
+
+      await sleep(current.pollAfterMs ?? DEFAULT_POLL_MS);
+      const res = await fetch(`${base}/api/v1/user/login/queue/${ticket.ticketId}`, { method: "POST" });
+      loginStats.polls++;
+
+      if (res.status === 410) {
+        loginStats.expired++;
+        throw retryable(`대기 티켓 만료 ${agent.email}`);
+      }
+      if (res.status === 503) {
+        loginStats.queueFull++;
+        throw retryable(`대기열 응답 불가 ${agent.email} → 503 ${await res.text()}`);
+      }
+      if (!res.ok) throw new Error(`대기열 폴링 실패 ${agent.email} → ${res.status} ${await res.text()}`);
+
+      const result = await readResult(res);
+      const status = result?.status;
+      if (status === "QUEUED" || status === "WAITING") {
+        current = result;
+        continue;
+      }
+      // 차례가 됐다 — 이 응답에서 세션이 만들어졌다.
+      takeSession(res, agent);
+      loginStats.waits.push(Date.now() - startedAt);
+      return;
+    }
+  }
+
+  /**
+   * 로그인. 동시 로그인이 몰리면 세션 대신 대기 티켓이 오므로(#399) 그때는 차례를 기다린 뒤에야 세션이 생긴다.
+   * 대기열이 없는 백엔드는 `result`가 비어 있어 곧바로 즉시 경로로 떨어진다.
+   */
+  async function loginOnce(agent) {
     const res = await fetch(`${base}/api/v1/user/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: agent.email, password: agent.password }),
     });
+    if (res.status === 503) {
+      // LOGIN_QUEUE_FULL(정원·IP 한도) 또는 LOGIN_QUEUE_UNAVAILABLE(Redis 장애).
+      loginStats.queueFull++;
+      throw retryable(`로그인 대기열 정원 초과 ${agent.email} → 503 ${await res.text()}`);
+    }
     if (!res.ok) throw new Error(`로그인 실패 ${agent.email} → ${res.status} ${await res.text()}`);
-    const setCookie = res.headers.getSetCookie().find((c) => c.startsWith("JSESSIONID="));
-    if (!setCookie) throw new Error(`로그인 응답에 JSESSIONID가 없음: ${agent.email}`);
-    agent.cookie = setCookie.split(";")[0];
+
+    const result = await readResult(res);
+    if (result?.status === "QUEUED" && result.ticketId) {
+      loginStats.queued++;
+      return waitInQueue(agent, result);
+    }
+    loginStats.inline++;
+    takeSession(res, agent);
+  }
+
+  async function login(agent) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await loginOnce(agent);
+      } catch (e) {
+        if (!e.retryable || attempt >= retryLimit) throw e;
+        loginStats.retries++;
+        await sleep(500 * (attempt + 1));
+      }
+    }
   }
 
   /**
@@ -147,7 +268,7 @@ export function createClient(base) {
     });
   }
 
-  return { call, login, subscribe };
+  return { call, login, subscribe, loginStats };
 }
 
 /**
@@ -155,7 +276,9 @@ export function createClient(base) {
  * 반환 시점에는 SSE가 모두 끊기고 드리미가 오프라인으로 되돌려진 상태다.
  */
 export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) {
-  const { call, login, subscribe } = createClient(config.apiBase);
+  const { call, login, subscribe, loginStats } = createClient(config.apiBase, {
+    queueTimeoutMs: config.loginQueueTimeoutMs,
+  });
   const noteFirst = firstOnly();
   const note = (kind, e) => noteFirst(kind, e.message, log);
 
@@ -170,7 +293,11 @@ export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) 
   const loginFailed = await runLimited(all, config.loginConcurrency, login, (e) =>
     note("로그인 실패", e),
   );
-  log(`로그인 ${all.length - loginFailed}/${all.length}` + (loginFailed ? ` (실패 ${loginFailed})` : ""));
+  log(
+    `로그인 ${all.length - loginFailed}/${all.length}` +
+      (loginFailed ? ` (실패 ${loginFailed})` : "") +
+      (loginStats.queued ? ` · 대기열 ${loginStats.queued}건 (최대 순번 ${loginStats.maxPosition})` : ""),
+  );
 
   const liveDreamis = dreamis.filter((a) => a.cookie);
   const liveBoormis = boormis.filter((a) => a.cookie);
@@ -391,7 +518,7 @@ export async function runDrive({ ledger, dreamis, boormis, config, log, tick }) 
     call(agent, "POST", "/api/v1/dreami/status/offline").catch(() => {}),
   );
 
-  return { onlineDreamis: state.online, createdOrders: state.created };
+  return { onlineDreamis: state.online, createdOrders: state.created, loginStats };
 
   function snapshotStats() {
     const c = ledger.counters;

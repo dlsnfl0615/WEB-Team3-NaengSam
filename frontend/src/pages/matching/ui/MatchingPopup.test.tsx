@@ -100,7 +100,7 @@ describe("MatchingPopup 부르미 응답 대기", () => {
         deliveryEta: 10, deliveryDistance: 800, originLatitude: null, originLongitude: null,
         originAlias: null, originAddressLine1: null, destinationLatitude: null,
         destinationLongitude: null, destinationAlias: null, destinationAddressLine1: null,
-        imageKey: null,
+        deliveryRequest: null,
         acceptedAt: undefined,
         offeredAt: new Date().toISOString(),
         expiresAt: new Date(Date.now() + 30_000).toISOString(),

@@ -136,6 +136,7 @@ import { Icon } from './components'
 | `BarChart`          | `data` `highlightLast`                     | 절감 리포트용 막대 그래프                                                 |
 | `BottomSheet`       | `open` `label` `onClose` `children`        | 하단에서 올라오는 모달 시트(배경 어둡게·흐리게, 배경 클릭 시 닫힘)        |
 | `Modal`             | `open` `label` `onClose` `children`        | 가운데에 뜨는 모달(배경 회색조 처리, `onClose` 없으면 배경 클릭 무시)     |
+| `PhotoLightboxModal` | `open` `label` `photoUrl` `emptyMessage` `onClose` | `Modal` 위에 사진(또는 없음 안내)과 X 닫기 버튼을 얹은 사진 라이트박스 |
 | `DestinationPicker` | `onSubmit`                                 | 도착지 선택 본문(검색·빠른 선택 칩·최근/추천 목록·확인 버튼)              |
 | `PlaceItem`         | `name` `detail` `icon` `selected` `onSelect` | 장소/저장 주소 목록 아이템(단일 선택 카드)                              |
 | `ScreenShell`       | `children` `className`                     | 화면 공통 모바일 셸(가운데 정렬 `max-w-[420px]`). 모든 화면의 최상위 래퍼 |
