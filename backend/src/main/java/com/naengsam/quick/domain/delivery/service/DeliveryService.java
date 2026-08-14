@@ -30,6 +30,8 @@ import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
+import com.naengsam.quick.domain.matching.entity.Matching;
+import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -44,6 +46,7 @@ import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,12 +55,16 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 
 import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
@@ -87,6 +94,12 @@ public class DeliveryService {
             DELIVERED, PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN,
             RETURNED, TERMINATED);
 
+    /** 배달 1건당 핑 최소 간격. 프론트 버튼 잠금과 같은 값이다. */
+    private static final Duration PING_COOLDOWN = Duration.ofSeconds(30);
+
+    /** 배달별 마지막 핑 시각. 쿨다운 판정에만 쓰는 휘발성 상태라 재시작하면 비워진다({@link #checkPingCooldown}). */
+    private final Map<UUID, Instant> lastPingAt = new ConcurrentHashMap<>();
+
     private final DeliveryRepository deliveryRepository;
     private final PickupCertificationRepository pickupCertificationRepository;
     private final DeliveryCertificationRepository deliveryCertificationRepository;
@@ -96,12 +109,19 @@ public class DeliveryService {
     private final OrderService orderService;
     private final DreamiRepository dreamiRepository;
     private final BoormiRepository boormiRepository;
+    private final MatchingRepository matchingRepository;
     private final S3PresignService s3PresignService;
     private final PaymentService paymentService;
     private final DirectionsService directionsService;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     private final DreamiOfflineDetector dreamiOfflineDetector;
+
+    // 배송완료예상시간에 더하는 여유 시간(delivery.completion-buffer). 건물 진입·엘리베이터 대기처럼
+    // 카카오 경로(도로 기준 이동 시간)에 안 잡히는 시간을 보정한다. 튜닝값이라 @RequiredArgsConstructor가
+    // 만드는 의존성 주입 생성자 대신 필드로 받는다(DreamiOfflineDetector의 임계값들과 같은 성격).
+    @Value("${delivery.completion-buffer}")
+    private Duration completionBuffer;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -138,9 +158,15 @@ public class DeliveryService {
         // 픽업 후 지도용 픽업지→도착지 경로(Orders)와 픽업 전 지도용 드리미→픽업지 경로(Delivery)를 함께 내려준다.
         // 드리미 연결 상태도 함께 담는다 — 화면을 다시 열었을 때 SSE 이벤트를 기다리지 않고 즉시 복원하기 위함이며,
         // 부르미가 끊긴 동안 유실된 오프라인 통보를 되찾는 경로이기도 하다.
+        // 타임라인의 "부름 접수" 시각은 매칭이 성사된 순간(MATCHING.accepted_dtm)을 그대로 쓴다.
+        LocalDateTime matchingAcceptedDtm = matchingRepository.findByOrderId(orderId)
+                .map(Matching::getAcceptedDtm)
+                .orElse(null);
+
         return DeliveryDetailResponseDto.from(delivery, order,
                 resolveItemPhotoUrl(order.getImageKey()),
                 parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()),
+                matchingAcceptedDtm,
                 dreamiOfflineDetector.isOffline(delivery),
                 dreamiOfflineDetector.secondsSinceLastLocationOrNull(delivery));
     }
@@ -212,6 +238,44 @@ public class DeliveryService {
                 .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
 
         return DeliveryContactDto.from(counterpart, viewerIsDreami);
+    }
+
+    // 부르미가 연락 시트에서 '핑 보내기'를 눌렀을 때. 배달 상태는 건드리지 않고 드리미를 깨우는 알림만 보낸다.
+    // 상태 변경이 없어 readOnly지만 트랜잭션은 필요하다 — 알림은 AFTER_COMMIT 리스너가 보내므로
+    // 트랜잭션 밖에서 발행하면 이벤트가 그대로 버려진다.
+    @Transactional(readOnly = true)
+    public void sendPing(UUID orderId, UUID boormiId) {
+        Delivery delivery = deliveryRepository.findByOrderIdWithoutLock(orderId)
+                .orElseThrow(() -> new BusinessException(DeliveryErrorCode.DELIVERY_NOT_FOUND));
+
+        // 핑은 부르미 → 드리미 단방향이다. 드리미 화면에는 버튼 자체가 없지만 서버에서도 막는다.
+        if (!boormiId.equals(delivery.getBoormiId())) {
+            throw new BusinessException(DeliveryErrorCode.NOT_ORDER_BOORMI);
+        }
+        // 연락처 조회와 같은 기준으로 막는다 — 끝난 배달의 드리미를 깨울 이유가 없다.
+        if (CONTACT_CLOSED_STATUSES.contains(delivery.getDeliveryCd())) {
+            throw new BusinessException(DeliveryErrorCode.CONTACT_NOT_AVAILABLE);
+        }
+        checkPingCooldown(orderId);
+
+        alarmDreamiPingBySSE(delivery);
+    }
+
+    /**
+     * 배달 1건당 {@link #PING_COOLDOWN} 간격으로만 핑을 허용한다. 프론트에도 같은 쿨다운이 있지만, 잠금화면에
+     * 알림을 밀어 넣는 기능이라 클라이언트 상태만 믿을 수 없다.
+     *
+     * <p>기록은 인메모리다 — 재시작하면 사라지고 그 순간 핑 한 번이 더 나가는 것이 전부라 DB에 남길 이유가 없다.
+     * (서버가 여러 대면 인스턴스별로 각각 카운트되는 것도 같은 이유로 감수한다.)
+     */
+    private void checkPingCooldown(UUID orderId) {
+        Instant now = Instant.now();
+        // 쿨다운이 지난 기록은 지운다. 이걸 안 하면 끝난 배달의 항목이 맵에 영원히 남는다.
+        lastPingAt.values().removeIf(sentAt -> Duration.between(sentAt, now).compareTo(PING_COOLDOWN) >= 0);
+        // 남아 있는 항목 = 아직 쿨다운 중. putIfAbsent가 원자적이라 동시에 두 번 눌러도 한 번만 통과한다.
+        if (lastPingAt.putIfAbsent(orderId, now) != null) {
+            throw new BusinessException(DeliveryErrorCode.PING_TOO_FREQUENT);
+        }
     }
 
     // 배송 완료 인증 사진 URL을 조회한다. 완료 전이라 인증 사진이 아직 없으면(레코드 없음) 조회하지 않고,
@@ -374,10 +438,12 @@ public class DeliveryService {
             KakaoDirectionsResponseDto.Route route = directionsService.getRoute(dreami, pickup);
             String routePathJson = objectMapper.writeValueAsString(RoutePointDto.from(route));
 
-            // 드리미→픽업지 소요(분, BoormiService와 동일 공식) + 주문의 픽업지→도착지 delivery_eta(분)를 현재 시각에 더한다.
+            // 드리미→픽업지 소요(분, BoormiService와 동일 공식) + 주문의 픽업지→도착지 delivery_eta(분)를 현재 시각에 더하고,
+            // 경로에 안 잡히는 건물 진입 시간을 completionBuffer로 보정한다.
             int pickupEtaMinutes = (int) Math.ceil(route.properties().totalTime() / 60.0);
-            LocalDateTime estimatedCompletion =
-                    LocalDateTime.now().plusMinutes((long) pickupEtaMinutes + order.getDeliveryEta());
+            LocalDateTime estimatedCompletion = LocalDateTime.now()
+                    .plusMinutes((long) pickupEtaMinutes + order.getDeliveryEta())
+                    .plus(completionBuffer);
 
             delivery.applyPickupRoute(routePathJson, estimatedCompletion);
         } catch (BusinessException | JacksonException e) {
@@ -597,9 +663,18 @@ public class DeliveryService {
                 DeliveryStatusResponseDto.from(delivery, "위치 갱신됨"));
     }
 
+    // 픽업/배달 완료 알림은 잠금화면에 "무슨 물품인지"까지 담는다. 이 시점의 부르미는 이미 이 배달의
+    // 당사자라 주문 내용을 알고 있어, 매칭 단계 오퍼 알림과 달리 물품명이 새로운 노출이 되지 않는다.
     private void alarmBoormiDeliveringBySSE(Delivery delivery) {
         publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_DELIVERING,
-                DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"));
+                DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"),
+                itemNameOf(delivery));
+    }
+
+    // 부르미가 누른 '핑 보내기'. 상태 전이가 없어 payload의 상태는 현재 상태 그대로다(화면 갱신용이 아니라 알림용).
+    private void alarmDreamiPingBySSE(Delivery delivery) {
+        publish(delivery.getDreamiId(), DeliveryEventType.DELIVERY_PING,
+                DeliveryStatusResponseDto.from(delivery, "부르미가 배달 상황을 궁금해해요"));
     }
 
     private void alarmBoormiDreamiCancelBySSE(Delivery delivery) {
@@ -614,17 +689,37 @@ public class DeliveryService {
 
     private void alarmBoormiDeliveredBySSE(Delivery delivery) {
         publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_COMPLETED,
-                DeliveryStatusResponseDto.from(delivery, "배달이 완료되었습니다"));
+                DeliveryStatusResponseDto.from(delivery, "배달이 완료되었습니다"),
+                itemNameOf(delivery));
+    }
+
+    /**
+     * 알림 문구에 쓸 물품명. 알림은 부가 기능이라 주문 조회가 실패해도 배달 흐름을 깨면 안 되므로,
+     * 실패하면 물품명 없이(null) 기본 문구로 나가게 둔다.
+     */
+    private String itemNameOf(Delivery delivery) {
+        try {
+            return orderService.getOrder(delivery.getOrderId()).getItemName();
+        } catch (Exception e) {
+            log.warn("알림 물품명 조회 실패, 기본 문구로 진행: orderId={}, reason={}",
+                    delivery.getOrderId(), e.toString());
+            return null;
+        }
     }
 
     private void publish(UUID userId, DeliveryEventType eventType, DeliveryStatusResponseDto payload) {
-        eventPublisher.publishEvent(new DeliveryNotificationEvent(userId, eventType, payload));
+        publish(userId, eventType, payload, null);
+    }
+
+    private void publish(UUID userId, DeliveryEventType eventType, DeliveryStatusResponseDto payload,
+            String pushSubject) {
+        eventPublisher.publishEvent(new DeliveryNotificationEvent(userId, eventType, payload, pushSubject));
     }
 
     // 트랜잭션 커밋 후에만 실제 알림을 보낸다(커밋 전 발행된 이벤트는 롤백 시 자동으로 버려진다).
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void sendAfterCommit(DeliveryNotificationEvent event) {
-        notificationService.notify(event.userId(), event.eventType(), event.payload());
+        notificationService.notify(event.userId(), event.eventType(), event.payload(), event.pushSubject());
     }
 
 }

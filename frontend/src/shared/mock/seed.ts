@@ -11,7 +11,8 @@ export const SEED_USER: AuthUser = {
   id: "u1",
   name: "김드림",
   roles: ["부르미", "드리미"],
-  rating: 4.9,
+  boormiRating: 4.9,
+  dreamiRating: 4.8,
   email: "kim@naengsam.app",
 };
 

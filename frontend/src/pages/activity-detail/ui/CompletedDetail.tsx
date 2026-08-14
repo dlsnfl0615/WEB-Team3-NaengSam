@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Badge,
   Button,
@@ -6,11 +7,17 @@ import {
   IconChip,
   InfoRow,
   RouteCard,
+  StarRating,
   toneForStatus,
 } from "@/shared/ui";
 import { useDeliveryCompletion } from "@/shared/lib/delivery/useDeliveryCompletion";
 import { useReceivedReview } from "@/shared/lib/delivery/useReceivedReview";
+import { useMyReview } from "@/shared/lib/delivery/useMyReview";
+import { api, isApiError, OrderSummaryDtoOrderCd } from "@/shared/api";
 import type { BoormiOrder } from "@/shared/store/boormiOrderAdapter";
+
+/** 리뷰 내용 최대 길이. 백엔드 ReviewContentRequest 의 @Size(max = 200) 과 맞춘다. */
+const CONTENT_MAX = 200;
 
 export interface CompletedDetailProps {
   order: BoormiOrder;
@@ -21,6 +28,63 @@ export interface CompletedDetailProps {
 export function CompletedDetail({ order }: CompletedDetailProps) {
   const completion = useDeliveryCompletion(order.id);
   const { review } = useReceivedReview(order.id);
+  const { review: myReview, loading: myReviewLoading } = useMyReview(
+    order.id,
+  );
+
+  // 별점은 한 번 남기면 서버가 다시 못 남기게 막는다(ALREADY_REVIEWED) — 이번 세션에 막 등록한
+  // 값을 훅이 다시 조회해오기 전까지 optimistic하게 반영한다. 내용(content)은 몇 번이든
+  // 수정할 수 있어 같은 방식으로 최신값을 덮어쓴다.
+  const [submittedScore, setSubmittedScore] = useState<number | null>(null);
+  const [submittedContent, setSubmittedContent] = useState<string | null>(
+    null,
+  );
+  const [rating, setRating] = useState(0);
+  const [editingContent, setEditingContent] = useState(false);
+  const [content, setContent] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [reviewError, setReviewError] = useState<string | null>(null);
+
+  const myScore = submittedScore ?? myReview?.score ?? null;
+  const myContent = submittedContent ?? myReview?.content ?? null;
+  const hasScored = myScore != null;
+
+  const onSubmitScore = async () => {
+    if (rating === 0) return;
+    setSubmitting(true);
+    setReviewError(null);
+    try {
+      const { result } = await api.writeScore(order.id, { score: rating });
+      setSubmittedScore(result?.score ?? rating);
+    } catch (e) {
+      // 뒤로 갔다 다시 들어와 이미 별점을 남긴 건이면 그 값을 그대로 고정 표시로 취급한다.
+      if (isApiError(e) && e.code === "ORDER_019") {
+        setSubmittedScore(rating);
+        return;
+      }
+      setReviewError(isApiError(e) ? e.message : "별점을 남기지 못했어요.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const onSubmitContent = async () => {
+    if (!content.trim()) return;
+    setSubmitting(true);
+    setReviewError(null);
+    try {
+      const { result } = await api.writeContent(order.id, {
+        content: content.trim(),
+      });
+      setSubmittedContent(result?.content ?? content.trim());
+      setEditingContent(false);
+    } catch (e) {
+      setReviewError(isApiError(e) ? e.message : "리뷰를 등록하지 못했어요.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const dreamiName = completion?.dreamiName;
   const durationLabel =
     completion?.durationMinutes != null
@@ -94,14 +158,81 @@ export function CompletedDetail({ order }: CompletedDetailProps) {
         )}
       </Card>
 
-      <div className="flex gap-3">
-        <Button variant="outline" block className="border-transparent bg-track">
-          영수증
-        </Button>
-        <Button variant="outline" block className="border-transparent bg-track">
-          문의하기
-        </Button>
-      </div>
+      {order.orderCd === OrderSummaryDtoOrderCd.COMPLETED && (
+        <Card className="flex flex-col gap-3">
+          <p className="text-sm font-bold text-navy-900">내가 남긴 리뷰</p>
+
+          {myReviewLoading ? (
+            <p className="text-sm text-muted">확인 중…</p>
+          ) : !hasScored ? (
+            <>
+              <StarRating value={rating} onChange={setRating} />
+              <Button
+                variant="navy"
+                block
+                disabled={rating === 0 || submitting}
+                onClick={onSubmitScore}
+              >
+                {submitting ? "등록 중…" : "별점 남기기"}
+              </Button>
+            </>
+          ) : (
+            <>
+              <StarRating value={myScore ?? 0} readOnly />
+              {editingContent ? (
+                <>
+                  <textarea
+                    rows={3}
+                    maxLength={CONTENT_MAX}
+                    placeholder="어떤 점이 좋았나요? (선택)"
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    className="resize-none rounded-md bg-track px-3.5 py-3 text-md text-navy-900 outline-none placeholder:text-muted"
+                  />
+                  <div className="flex gap-3">
+                    <Button
+                      variant="navy"
+                      block
+                      disabled={!content.trim() || submitting}
+                      onClick={onSubmitContent}
+                    >
+                      {submitting ? "등록 중…" : "리뷰 등록"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      block
+                      disabled={submitting}
+                      onClick={() => setEditingContent(false)}
+                    >
+                      취소
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted">
+                    {myContent ?? "별점만 남겼어요."}
+                  </p>
+                  <Button
+                    variant="outline"
+                    block
+                    onClick={() => {
+                      setContent(myContent ?? "");
+                      setEditingContent(true);
+                    }}
+                  >
+                    {myContent ? "리뷰 수정" : "리뷰 작성"}
+                  </Button>
+                </>
+              )}
+            </>
+          )}
+
+          {reviewError && (
+            <p className="text-sm text-status-danger">{reviewError}</p>
+          )}
+        </Card>
+      )}
     </>
   );
 }

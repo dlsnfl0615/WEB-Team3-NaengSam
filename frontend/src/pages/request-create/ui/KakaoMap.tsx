@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { loadKakaoMaps } from "@/shared/lib";
-import { pinImage } from "@/shared/ui/DeliveryRouteMap/pinImage";
+import { makePinOverlay } from "@/shared/ui/DeliveryRouteMap/pinOverlay";
+import type {
+  PinOverlayHandle,
+  PinStyle,
+} from "@/shared/ui/DeliveryRouteMap/pinOverlay";
 
 export interface KakaoMapProps {
   /** 출발지 도로명 주소(비면 마커 없음). */
@@ -9,9 +13,17 @@ export interface KakaoMapProps {
   dropoff?: string;
 }
 
-/** 출발/도착 마커 색(theme.css 토큰 hex 재사용). */
-const PICKUP_COLOR = "#0d1b3d"; // navy-900
-const DROPOFF_COLOR = "#00b7a7"; // teal-500
+/** 출발/도착 핀 색·라벨(DeliveryRouteMap과 같은 theme.css 토큰 hex·라벨 배경을 재사용). */
+const PICKUP_STYLE: PinStyle = {
+  color: "#0d1b3d", // navy-900
+  label: "출발지",
+  bg: "bg-navy-900",
+};
+const DROPOFF_STYLE: PinStyle = {
+  color: "#b26a00", // status-warning
+  label: "도착지",
+  bg: "bg-status-warning",
+};
 
 /**
  * 픽업/도착지 도로명 주소를 지오코딩해 마커로 표시하는 미니 지도.
@@ -25,6 +37,7 @@ export function KakaoMap({ pickup, dropoff }: KakaoMapProps) {
 
   useEffect(() => {
     let cancelled = false;
+    const overlays: PinOverlayHandle[] = [];
     loadKakaoMaps()
       .then((kakao) => {
         if (cancelled) return;
@@ -43,11 +56,11 @@ export function KakaoMap({ pickup, dropoff }: KakaoMapProps) {
         let placed = 0;
 
         [
-          { addr: pickup, color: PICKUP_COLOR },
-          { addr: dropoff, color: DROPOFF_COLOR },
+          { addr: pickup, style: PICKUP_STYLE },
+          { addr: dropoff, style: DROPOFF_STYLE },
         ]
           .filter((p) => p.addr)
-          .forEach(({ addr, color }) => {
+          .forEach(({ addr, style }) => {
             geocoder.addressSearch(
               addr as string,
               (result: { x: string; y: string }[], st: string) => {
@@ -58,11 +71,8 @@ export function KakaoMap({ pickup, dropoff }: KakaoMapProps) {
                 )
                   return;
                 const pos = new kakao.maps.LatLng(result[0].y, result[0].x);
-                new kakao.maps.Marker({
-                  map,
-                  position: pos,
-                  image: pinImage(kakao, color),
-                });
+                // 어느 핀이 출발/도착인지 색만으로는 알 수 없어 라벨 오버레이를 쓴다.
+                overlays.push(makePinOverlay(kakao, map, pos, style));
                 bounds.extend(pos);
                 placed += 1;
                 if (placed === 1) map.setCenter(pos);
@@ -77,6 +87,7 @@ export function KakaoMap({ pickup, dropoff }: KakaoMapProps) {
 
     return () => {
       cancelled = true;
+      overlays.forEach((overlay) => overlay.setMap(null));
     };
   }, [pickup, dropoff]);
 

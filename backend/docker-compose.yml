@@ -27,9 +27,39 @@ services:
       # EC2 는 공인 IP 를 IGW 가 NAT 하므로 바인딩 주소로는 막을 수 없다 —
       # 보안그룹에서 8081 을 모니터링 인스턴스 SG 로만 제한하는 것이 유일한 방어선이다.
       - "8081:8081"
+    # 메모리 예산. 백엔드 인스턴스는 물리 RAM 908MB(vCPU 2)이고 OS·docker 몫을 빼면
+    # 앱에 700~750MB 를 줄 수 있다. 아래 JVM 옵션 합계가 약 679MB 라 800m 안에 들어간다.
+    #
+    # memswap_limit 을 mem_limit 과 같게 두어 스왑을 봉쇄한다. GC 는 힙을 랜덤 액세스로 훑기
+    # 때문에 스왑이 최악의 워크로드이고, t3 는 EBS 스왑이라 IO 버스트 크레딧까지 태운다.
+    # 예전 설정(640m/896m)은 스왑 256m 를 열어두고 그 위에서 겨우 버티다 6초 STW 를 냈다.
+    mem_limit: 800m
+    memswap_limit: 800m
     # application.properties 의 ${DATABASE_URL} 등을 이 파일 값으로 주입
     env_file:
       - .env
     environment:
       TZ: Asia/Seoul
-      JAVA_TOOL_OPTIONS: "-Duser.timezone=Asia/Seoul"
+      # glibc 가 스레드마다 malloc arena 를 파서 RSS 가 부푸는 것을 막는다.
+      MALLOC_ARENA_MAX: "2"
+      # 메타스페이스 256m: 2026-08-13 부하테스트에서 160m 상한이 used 159MiB 로 꽉 차
+      # Metadata GC 가 Clear Soft References 단계까지 반복되다 OutOfMemoryError: Metaspace 로
+      # 죽었다. springdoc-openapi + AWS SDK v2 + BouncyCastle + Hibernate 조합은 클래스가
+      # 30K 개(약 150MB)라 160m 로는 기동만으로 이미 포화 직전이었다.
+      # 힙 192m: 같은 구간 실사용이 133MiB 라 여유가 있어 그대로 둔다(이번 사건과 무관).
+      # -Xss512k: 스레드 스택이 기본 1MB 라 246개 × 1MB = 246MB 로 예산에서 가장 큰 덩어리였다.
+      #           application.properties 의 server.tomcat.threads.max 축소와 함께 줄인다.
+      JAVA_TOOL_OPTIONS: >-
+        -Duser.timezone=Asia/Seoul
+        -Xms192m
+        -Xmx192m
+        -XX:MaxMetaspaceSize=256m
+        -XX:ReservedCodeCacheSize=48m
+        -XX:MaxDirectMemorySize=48m
+        -Xss512k
+        -XX:+HeapDumpOnOutOfMemoryError
+        -XX:HeapDumpPath=/dump
+    volumes:
+      # 힙덤프 보존용. 마운트가 없으면 컨테이너 안에 쓰였다가 재기동 때 사라지고,
+      # /dump 디렉토리가 없으면 덤프 생성 자체가 실패한다.
+      - ./dump:/dump

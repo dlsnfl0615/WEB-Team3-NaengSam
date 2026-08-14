@@ -75,8 +75,8 @@ export function SenderSavings() {
         </p>
         {thisMonthCount > 0 && (
           <p className="text-base font-bold text-navy-900">
-            {thisMonthCount}건 ×{" "}
-            {(dashboard?.marketUnitPrice ?? 0).toLocaleString()}원 − 결제{" "}
+            {thisMonthCount}건 시장 환산{" "}
+            {(dashboard?.thisMonthMarketAmount ?? 0).toLocaleString()}원 − 결제{" "}
             {(dashboard?.thisMonthPaidAmount ?? 0).toLocaleString()}원 ={" "}
             {(dashboard?.thisMonthSavedAmount ?? 0).toLocaleString()}원
           </p>

@@ -1,8 +1,11 @@
-import { Button, Icon, IconChip, OfferCountdownBar } from "@/shared/ui";
+import { getProfileImage } from "@/shared/lib";
+import { Button, Icon, OfferCountdownBar } from "@/shared/ui";
 
 export interface OfferCardProps {
   /** 카드 상단 안내 문구(예: "새 드리미 요청 도착!") */
   heading: string;
+  /** 요청을 보낸 드리미 UUID. 기본 프로필 이미지 선택에 사용합니다. */
+  dreamiId: string;
   name: string;
   /** 드리미 평점(getProfile 응답의 dreamiAvgScore). */
   rating: number;
@@ -20,6 +23,7 @@ export interface OfferCardProps {
  */
 export function OfferCard({
   heading,
+  dreamiId,
   name,
   rating,
   pickupEtaMinutes,
@@ -33,7 +37,11 @@ export function OfferCard({
 
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
-          <IconChip name="profile" size={36} />
+          <img
+            src={getProfileImage(dreamiId)}
+            alt="드리미 프로필"
+            className="size-9 rounded-pill bg-teal-50 object-cover"
+          />
           <div className="flex flex-col">
             <p className="text-base font-bold text-navy-900">{name}</p>
             <p className="flex items-center gap-1 text-2xs text-muted">

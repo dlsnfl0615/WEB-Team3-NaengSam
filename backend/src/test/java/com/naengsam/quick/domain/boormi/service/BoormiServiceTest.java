@@ -3,11 +3,13 @@ package com.naengsam.quick.domain.boormi.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.never;
 
 import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
@@ -27,12 +29,12 @@ import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.event.BoormiConfirmedEvent;
 import com.naengsam.quick.domain.matching.event.BoormiRejectedDreamiEvent;
-import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
 import com.naengsam.quick.domain.matching.event.OrderCancelledByBoormiEvent;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.dto.CompletedSavingAggregate;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -50,12 +52,14 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.ObjectMapper;
 
@@ -83,6 +87,9 @@ BoormiServiceTest {
 
     @Mock
     private OrderService orderService;
+
+    @Mock
+    private OrderPlacementService orderPlacementService;
 
     @Mock
     private MatchingRepository matchingRepository;
@@ -251,7 +258,7 @@ BoormiServiceTest {
     }
 
     @Test
-    void 주문접수_요청필드로_주문을_생성해_저장하고_결제하며_커밋후_처리용_매칭시작_이벤트를_발행한다() {
+    void 주문접수_요청필드로_주문을_생성해_서버가_재계산한_요금과_함께_저장을_요청한다() {
         UUID boormiId = UUID.randomUUID();
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
@@ -260,13 +267,10 @@ BoormiServiceTest {
 
         boormiService.subscribeOrder(orderRequest(), boormiId);
 
+        // 저장·결제·매칭 이벤트는 OrderPlacementService 의 트랜잭션 안에서 일어난다(OrderPlacementServiceTest 참고).
         ArgumentCaptor<Orders> captor = ArgumentCaptor.forClass(Orders.class);
-        then(orderService).should().createOrders(captor.capture());
-        // 결제는 저장된 주문과 같은 orderId, 서버가 재계산한 요금으로 이뤄져야 한다
-        then(paymentService).should()
-                .payWithPoint(boormiId, captor.getValue().getOrderId(), 10100L);
+        then(orderPlacementService).should().place(captor.capture(), eq(10100L));
         then(matchingService).should(never()).startMatching(any()); // 커밋 전에는 엔진에 직접 제출하지 않는다
-        then(eventPublisher).should().publishEvent(new MatchingStartRequestedEvent(captor.getValue()));
 
         Orders saved = captor.getValue();
         assertThat(saved.getBoormiId()).isEqualTo(boormiId);
@@ -299,7 +303,7 @@ BoormiServiceTest {
         boormiService.subscribeOrder(packageOrder, boormiId);
 
         ArgumentCaptor<Orders> captor = ArgumentCaptor.forClass(Orders.class);
-        then(orderService).should().createOrders(captor.capture());
+        then(orderPlacementService).should().place(captor.capture(), eq(7950L));
         Orders saved = captor.getValue();
         assertThat(saved.getDeliveryAmount()).isEqualTo(7950L);
         assertThat(saved.getDeliveryEta()).isEqualTo(11);
@@ -317,7 +321,7 @@ BoormiServiceTest {
         boormiService.subscribeOrder(orderRequest(), boormiId);
 
         ArgumentCaptor<Orders> captor = ArgumentCaptor.forClass(Orders.class);
-        then(orderService).should().createOrders(captor.capture());
+        then(orderPlacementService).should().place(captor.capture(), anyLong());
         String routePath = captor.getValue().getRoutePath();
         assertThat(routePath)
                 .contains("\"latitude\":37.49864277")
@@ -327,7 +331,7 @@ BoormiServiceTest {
     }
 
     @Test
-    void 주문접수_route_path_직렬화가_실패해도_경로없이_저장_결제_매칭을_진행한다() {
+    void 주문접수_route_path_직렬화가_실패해도_경로없이_저장을_진행한다() {
         UUID boormiId = UUID.randomUUID();
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
@@ -338,11 +342,8 @@ BoormiServiceTest {
         boormiService.subscribeOrder(orderRequest(), boormiId);
 
         ArgumentCaptor<Orders> captor = ArgumentCaptor.forClass(Orders.class);
-        then(orderService).should().createOrders(captor.capture());
-        Orders saved = captor.getValue();
-        assertThat(saved.getRoutePath()).isNull();
-        then(paymentService).should().payWithPoint(boormiId, saved.getOrderId(), 10100L);
-        then(eventPublisher).should().publishEvent(new MatchingStartRequestedEvent(saved));
+        then(orderPlacementService).should().place(captor.capture(), eq(10100L));
+        assertThat(captor.getValue().getRoutePath()).isNull();
     }
 
     @Test
@@ -356,7 +357,7 @@ BoormiServiceTest {
         assertThat(thrown).isInstanceOf(BusinessException.class);
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.SAME_ORIGIN_DESTINATION);
-        then(orderService).should(never()).createOrders(any());
+        then(orderPlacementService).should(never()).place(any(), anyLong());
     }
 
     @Test
@@ -372,7 +373,7 @@ BoormiServiceTest {
         assertThat(thrown).isInstanceOf(BusinessException.class);
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.SAME_ORIGIN_DESTINATION);
-        then(orderService).should(never()).createOrders(any());
+        then(orderPlacementService).should(never()).place(any(), anyLong());
     }
 
     @Test
@@ -385,23 +386,55 @@ BoormiServiceTest {
         assertThat(thrown).isInstanceOf(BusinessException.class);
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(OrderErrorCode.TOO_MANY_ACTIVE_ORDERS);
-        then(orderService).should(never()).createOrders(any());
+        then(orderPlacementService).should(never()).place(any(), anyLong());
     }
 
     @Test
-    void 주문접수_매칭시작이_실패하면_CONFLICT() {
+    void 주문접수_카카오호출이_모두_끝난_뒤에_주문저장을_요청한다() {
         UUID boormiId = UUID.randomUUID();
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
         given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
         given(directionsService.getRoute(any(), any()))
                 .willReturn(routeOf(5000, 900));
-        given(matchingService.isActiveGroupExists(any())).willReturn(true);
+
+        boormiService.subscribeOrder(orderRequest(), boormiId);
+
+        // 트랜잭션은 place() 안에서만 열리므로, 카카오 호출이 전부 그 앞에 와야 커넥션을 붙들지 않는다(#437).
+        InOrder inOrder = inOrder(coordinatesService, directionsService, orderPlacementService);
+        inOrder.verify(coordinatesService).getCoordinates("서울시 강남구");
+        inOrder.verify(coordinatesService).getCoordinates("서울시 서초구");
+        inOrder.verify(directionsService).getRoute(any(), any());
+        inOrder.verify(orderPlacementService).place(any(), anyLong());
+    }
+
+    @Test
+    void 주문접수_카카오_길찾기가_실패하면_주문저장을_시도하지_않는다() {
+        UUID boormiId = UUID.randomUUID();
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
+        willThrow(new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_TIMEOUT))
+                .given(directionsService).getRoute(any(), any());
 
         Throwable thrown = catchThrowable(() -> boormiService.subscribeOrder(orderRequest(), boormiId));
 
-        assertThat(thrown).isInstanceOf(BusinessException.class);
-        assertThat(((BusinessException) thrown).getErrorCode()).isEqualTo(GeneralErrorCode.CONFLICT);
-        then(eventPublisher).should(never()).publishEvent(any(MatchingStartRequestedEvent.class));
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(GeneralErrorCode.EXTERNAL_SERVICE_TIMEOUT);
+        then(orderPlacementService).should(never()).place(any(), anyLong());
+    }
+
+    @Test
+    void 주문접수는_트랜잭션_밖에서_실행되어_카카오_호출중_DB커넥션을_잡지_않는다() throws Exception {
+        // 이 메서드는 카카오 API 를 3회 호출한다. @Transactional 이 다시 붙으면 외부 응답을 기다리는 내내
+        // DB 커넥션을 붙들어 커넥션 풀이 마른다(#437). 단위 테스트에는 프록시가 없어 직접 관찰할 수 없으므로
+        // 어노테이션 부재를 단언해 회귀를 막는다.
+        assertThat(BoormiService.class.getMethod("subscribeOrder", OrderRequest.class, UUID.class)
+                .isAnnotationPresent(Transactional.class)).isFalse();
+    }
+
+    @Test
+    void 견적조회는_DB를_쓰지_않으므로_트랜잭션을_열지_않는다() throws Exception {
+        assertThat(BoormiService.class.getMethod("expectedValue", ExpectedValueRequest.class)
+                .isAnnotationPresent(Transactional.class)).isFalse();
     }
 
     @Test
@@ -631,47 +664,82 @@ BoormiServiceTest {
     void 대시보드는_완료_건수와_절감액과_이번달_건수를_반환한다() {
         UUID boormiId = UUID.randomUUID();
         YearMonth thisMonth = YearMonth.now();
-        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(4L);
-        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(14000L);
-        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any()))
-                .willReturn(List.of(savingAggregate(thisMonth, 2, 6000)));
+        given(orderRepository.aggregateCompletedSavingByBoormi(eq(boormiId), anyLong()))
+                .willReturn(List.of(completedAggregate(ItemCd.DOCUMENT, 4, 0, 14000)));
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any(), anyLong()))
+                .willReturn(List.of(savingAggregate(thisMonth, ItemCd.DOCUMENT, 2, 0, 6000)));
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
-        // 누적: 시장 단가 10000원 × 4건 = 40000원, 실제 결제 14000원 → 26000원 절감
+        // 누적: 기본 구간 이내 4건 → 시장 환산 44000원, 실제 결제 14000원 → 30000원 절감
         assertThat(dashboard.completedCount()).isEqualTo(4);
-        assertThat(dashboard.totalSavedAmount()).isEqualTo(26000);
-        // 이번 달: 10000원 × 2건 = 20000원, 실제 결제 6000원 → 14000원 절감
+        assertThat(dashboard.totalSavedAmount()).isEqualTo(30000);
+        // 이번 달: 기본 구간 이내 2건 → 시장 환산 22000원, 실제 결제 6000원 → 16000원 절감
         assertThat(dashboard.thisMonthCount()).isEqualTo(2);
-        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(14000);
+        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(16000);
     }
 
     @Test
-    void 대시보드는_산술식에_쓸_기준단가와_이번달_결제액을_함께_반환한다() {
+    void 대시보드는_산술식에_쓸_이번달_시장환산액과_결제액을_함께_반환한다() {
         UUID boormiId = UUID.randomUUID();
         YearMonth thisMonth = YearMonth.now();
-        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(2L);
-        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(6000L);
-        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any()))
-                .willReturn(List.of(savingAggregate(thisMonth, 2, 6000)));
+        given(orderRepository.aggregateCompletedSavingByBoormi(eq(boormiId), anyLong()))
+                .willReturn(List.of(completedAggregate(ItemCd.DOCUMENT, 2, 4000, 6000)));
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any(), anyLong()))
+                .willReturn(List.of(savingAggregate(thisMonth, ItemCd.DOCUMENT, 2, 4000, 6000)));
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
-        // 화면이 "2건 × 10000원 − 6000원 = 14000원"을 그대로 그릴 수 있어야 한다
-        assertThat(dashboard.marketUnitPrice()).isEqualTo(10000);
+        // 화면이 "시장 환산 31600원 − 결제 6000원 = 25600원"을 그대로 그릴 수 있어야 한다
+        // 2건 × 11000원 + 초과 4000m(=40 × 240원) = 31600원
+        assertThat(dashboard.thisMonthMarketAmount()).isEqualTo(31600);
         assertThat(dashboard.thisMonthPaidAmount()).isEqualTo(6000);
-        assertThat(dashboard.thisMonthCount() * dashboard.marketUnitPrice() - dashboard.thisMonthPaidAmount())
+        assertThat(dashboard.thisMonthMarketAmount() - dashboard.thisMonthPaidAmount())
                 .isEqualTo(dashboard.thisMonthSavedAmount());
     }
 
     @Test
-    void 실제_결제액이_시장단가보다_크면_절감액은_0이다() {
+    void 시장_환산액은_물건_유형_배율을_반영한다() {
         UUID boormiId = UUID.randomUUID();
         YearMonth thisMonth = YearMonth.now();
-        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(1L);
-        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(12000L);
-        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any()))
-                .willReturn(List.of(savingAggregate(thisMonth, 1, 12000)));
+        given(orderRepository.aggregateCompletedSavingByBoormi(eq(boormiId), anyLong()))
+                .willReturn(List.of(completedAggregate(ItemCd.SAMPLE, 1, 0, 5000)));
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any(), anyLong()))
+                .willReturn(List.of(savingAggregate(thisMonth, ItemCd.SAMPLE, 1, 0, 5000)));
+
+        BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
+
+        // 11000원 × SAMPLE 배율 1.3 = 14300원, 실제 결제 5000원 → 9300원 절감
+        assertThat(dashboard.thisMonthMarketAmount()).isEqualTo(14300);
+        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(9300);
+    }
+
+    @Test
+    void 장거리_대형_주문도_절감액이_0으로_눌리지_않는다() {
+        UUID boormiId = UUID.randomUUID();
+        YearMonth thisMonth = YearMonth.now();
+        // 10km · PACKAGE · M 사이즈 1건 = 우리 요금 18100원 × 1.5 × 1.5 = 40725원 (배율 최댓값)
+        long paidAmount = 40725;
+        given(orderRepository.aggregateCompletedSavingByBoormi(eq(boormiId), anyLong()))
+                .willReturn(List.of(completedAggregate(ItemCd.PACKAGE, 1, 7000, paidAmount)));
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any(), anyLong()))
+                .willReturn(List.of(savingAggregate(thisMonth, ItemCd.PACKAGE, 1, 7000, paidAmount)));
+
+        BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
+
+        // (11000 + 7000m 초과분 16800) × PACKAGE 배율 1.5 = 41700원 → 975원 절감
+        assertThat(dashboard.totalSavedAmount()).isEqualTo(975);
+        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(975);
+    }
+
+    @Test
+    void 실제_결제액이_시장_환산액보다_크면_절감액은_0이다() {
+        UUID boormiId = UUID.randomUUID();
+        YearMonth thisMonth = YearMonth.now();
+        given(orderRepository.aggregateCompletedSavingByBoormi(eq(boormiId), anyLong()))
+                .willReturn(List.of(completedAggregate(ItemCd.DOCUMENT, 1, 0, 20000)));
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any(), anyLong()))
+                .willReturn(List.of(savingAggregate(thisMonth, ItemCd.DOCUMENT, 1, 0, 20000)));
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
@@ -682,9 +750,9 @@ BoormiServiceTest {
     @Test
     void 완료_주문이_없으면_모두_0이다() {
         UUID boormiId = UUID.randomUUID();
-        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(0L);
-        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(0L);
-        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any())).willReturn(List.of());
+        given(orderRepository.aggregateCompletedSavingByBoormi(eq(boormiId), anyLong())).willReturn(List.of());
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any(), anyLong()))
+                .willReturn(List.of());
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
@@ -693,6 +761,7 @@ BoormiServiceTest {
         assertThat(dashboard.thisMonthCount()).isZero();
         assertThat(dashboard.thisMonthPaidAmount()).isZero();
         assertThat(dashboard.thisMonthSavedAmount()).isZero();
+        assertThat(dashboard.thisMonthMarketAmount()).isZero();
         assertThat(dashboard.monthOverMonthGrowthPercent()).isZero();
         assertThat(dashboard.recentSixMonths()).hasSize(6)
                 .allSatisfy(monthly -> assertThat(monthly.savedAmount()).isZero());
@@ -703,10 +772,11 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         YearMonth thisMonth = YearMonth.now();
         YearMonth lastMonth = thisMonth.minusMonths(1);
-        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(3L);
-        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(9000L);
-        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any()))
-                .willReturn(List.of(savingAggregate(thisMonth, 2, 6000), savingAggregate(lastMonth, 1, 3000)));
+        given(orderRepository.aggregateCompletedSavingByBoormi(eq(boormiId), anyLong()))
+                .willReturn(List.of(completedAggregate(ItemCd.DOCUMENT, 3, 0, 9000)));
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any(), anyLong()))
+                .willReturn(List.of(savingAggregate(thisMonth, ItemCd.DOCUMENT, 2, 0, 6000),
+                        savingAggregate(lastMonth, ItemCd.DOCUMENT, 1, 0, 3000)));
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
@@ -714,10 +784,10 @@ BoormiServiceTest {
         assertThat(dashboard.recentSixMonths()).extracting(MonthlySavingDto::month)
                 .containsExactly(thisMonth.minusMonths(5), thisMonth.minusMonths(4), thisMonth.minusMonths(3),
                         thisMonth.minusMonths(2), lastMonth, thisMonth);
-        // 기록이 있는 달만 값이 차고 나머지는 0 — 지난달 7000원(10000 − 3000), 이번 달 14000원
+        // 기록이 있는 달만 값이 차고 나머지는 0 — 지난달 8000원(11000 − 3000), 이번 달 16000원(22000 − 6000)
         assertThat(dashboard.recentSixMonths()).extracting(MonthlySavingDto::savedAmount)
-                .containsExactly(0L, 0L, 0L, 0L, 7000L, 14000L);
-        // 7000원 → 14000원이므로 +100%
+                .containsExactly(0L, 0L, 0L, 0L, 8000L, 16000L);
+        // 8000원 → 16000원이므로 +100%
         assertThat(dashboard.monthOverMonthGrowthPercent()).isEqualTo(100);
     }
 
@@ -725,18 +795,25 @@ BoormiServiceTest {
     void 지난달_절감액이_0이면_증감률은_0이다() {
         UUID boormiId = UUID.randomUUID();
         YearMonth thisMonth = YearMonth.now();
-        given(orderRepository.countByBoormiIdAndOrderCd(boormiId, OrderCd.COMPLETED)).willReturn(2L);
-        given(orderRepository.sumCompletedDeliveryAmount(boormiId)).willReturn(6000L);
-        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any()))
-                .willReturn(List.of(savingAggregate(thisMonth, 2, 6000)));
+        given(orderRepository.aggregateCompletedSavingByBoormi(eq(boormiId), anyLong()))
+                .willReturn(List.of(completedAggregate(ItemCd.DOCUMENT, 2, 0, 6000)));
+        given(deliveryRepository.aggregateSavingByBoormiBetween(eq(boormiId), any(), any(), anyLong()))
+                .willReturn(List.of(savingAggregate(thisMonth, ItemCd.DOCUMENT, 2, 0, 6000)));
 
         BoormiDashboardDto dashboard = boormiService.getDashboard(boormiId);
 
-        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(14000);
+        assertThat(dashboard.thisMonthSavedAmount()).isEqualTo(16000);
         assertThat(dashboard.monthOverMonthGrowthPercent()).isZero();
     }
 
-    private static MonthlySavingAggregate savingAggregate(YearMonth month, long count, long paidAmount) {
-        return new MonthlySavingAggregate(month.getYear(), month.getMonthValue(), count, paidAmount);
+    private static MonthlySavingAggregate savingAggregate(YearMonth month, ItemCd itemCd, long count,
+            long overDistance, long paidAmount) {
+        return new MonthlySavingAggregate(month.getYear(), month.getMonthValue(), itemCd, count, overDistance,
+                paidAmount);
+    }
+
+    private static CompletedSavingAggregate completedAggregate(ItemCd itemCd, long count, long overDistance,
+            long paidAmount) {
+        return new CompletedSavingAggregate(itemCd, count, overDistance, paidAmount);
     }
 }

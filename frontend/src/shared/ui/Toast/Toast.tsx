@@ -19,7 +19,8 @@ export function Toast({ icon = 'bell', title, description, action }: ToastProps)
         <Icon name={icon} size={20} className="text-white" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-base font-bold">{title}</p>
+        {/* 물품명처럼 긴 제목은 한 줄로 잘라내기보다 두 줄까지 접어 보여준다. */}
+        <p className="line-clamp-2 break-words text-base font-bold">{title}</p>
         {description && (
           <div className="text-xs text-track">{description}</div>
         )}

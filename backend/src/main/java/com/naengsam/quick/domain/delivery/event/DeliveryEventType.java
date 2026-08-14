@@ -42,7 +42,12 @@ public enum DeliveryEventType implements SseEventType {
      * 한 이름에 수신자별로 다른 채널을 걸 수 없다. 부르미는 화면을 보고 있어 인앱으로 충분하지만, 드리미는
      * 정의상 앱이 죽었거나 백그라운드라 웹푸시로 깨워야 한다.
      */
-    DELIVERY_DREAMI_OFFLINE_SELF;
+    DELIVERY_DREAMI_OFFLINE_SELF,
+    /**
+     * 드리미: 부르미가 연락 시트에서 '핑 보내기'를 눌러 깨웠다. 상태 전이는 없고 "지금 확인해 달라"는 신호만
+     * 전달한다. 핑을 보내는 이유 자체가 드리미가 응답이 없어서이므로 인앱만으로는 닿지 않는다 → 웹푸시까지 태운다.
+     */
+    DELIVERY_PING;
 
     @Override
     public String eventName() {

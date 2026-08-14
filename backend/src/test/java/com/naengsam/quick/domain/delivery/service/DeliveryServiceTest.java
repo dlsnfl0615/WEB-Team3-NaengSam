@@ -25,6 +25,7 @@ import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.user.exception.UserErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
+import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -47,6 +48,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -78,6 +81,7 @@ class DeliveryServiceTest {
     private OrderService orderService;
     private DreamiRepository dreamiRepository;
     private BoormiRepository boormiRepository;
+    private MatchingRepository matchingRepository;
     private S3PresignService s3PresignService;
     private PaymentService paymentService;
     private DirectionsService directionsService;
@@ -99,6 +103,7 @@ class DeliveryServiceTest {
         orderService = mock(OrderService.class);
         dreamiRepository = mock(DreamiRepository.class);
         boormiRepository = mock(BoormiRepository.class);
+        matchingRepository = mock(MatchingRepository.class);
         s3PresignService = mock(S3PresignService.class);
         paymentService = mock(PaymentService.class);
         directionsService = mock(DirectionsService.class);
@@ -106,10 +111,15 @@ class DeliveryServiceTest {
         dreamiOfflineDetector = mock(DreamiOfflineDetector.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, notificationService, uploadSessionService,
-                dreamiActivationChecker, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
-                directionsService, eventPublisher, new ObjectMapper(), dreamiOfflineDetector);
+                dreamiActivationChecker, orderService, dreamiRepository, boormiRepository, matchingRepository,
+                s3PresignService, paymentService, directionsService, eventPublisher, new ObjectMapper(),
+                dreamiOfflineDetector);
+        // 배송완료예상시간 여유(delivery.completion-buffer)는 @Value 주입이라 수동 생성 시 비어 있다.
+        // 운영 기본값과 같은 5분을 넣어, 완료 예상 시각 계산이 실제 설정과 같은 조건에서 검증되게 한다.
+        ReflectionTestUtils.setField(deliveryService, "completionBuffer", Duration.ofMinutes(5));
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
+        given(matchingRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
         given(deliveryCertificationRepository.findByDeliveryId(any())).willReturn(Optional.empty());
         given(uploadSessionService.checkUpload(any(), any(), any(), any())).willReturn(true);
@@ -548,6 +558,105 @@ class DeliveryServiceTest {
         }
     }
 
+    // ===== 핑 보내기 =====
+
+    @Test
+    void 부르미가_핑을_보내면_드리미에게_DELIVERY_PING_이벤트를_발행한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+        deliveryService.sendPing(orderId, boormiId);
+
+        assertPublished(dreamiId, DeliveryEventType.DELIVERY_PING);
+    }
+
+    @Test
+    void 드리미가_핑을_보내면_NOT_ORDER_BOORMI_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, UUID.randomUUID());
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+        Throwable thrown = catchThrowable(() -> deliveryService.sendPing(orderId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.NOT_ORDER_BOORMI);
+        verify(eventPublisher, never()).publishEvent(any(DeliveryNotificationEvent.class));
+    }
+
+    @Test
+    void 종료된_배달에_핑을_보내면_CONTACT_NOT_AVAILABLE_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        for (DeliveryCd closed : List.of(DELIVERED, PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI,
+                PICKUP_CANCELLED_BY_ADMIN, RETURNED, TERMINATED)) {
+            UUID orderId = UUID.randomUUID();
+            Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+            ReflectionTestUtils.setField(delivery, "deliveryCd", closed);
+            given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+            Throwable thrown = catchThrowable(() -> deliveryService.sendPing(orderId, boormiId));
+
+            assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.CONTACT_NOT_AVAILABLE);
+        }
+        verify(eventPublisher, never()).publishEvent(any(DeliveryNotificationEvent.class));
+    }
+
+    @Test
+    void 쿨다운_안에_핑을_다시_보내면_PING_TOO_FREQUENT_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        deliveryService.sendPing(orderId, boormiId);
+
+        Throwable thrown = catchThrowable(() -> deliveryService.sendPing(orderId, boormiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.PING_TOO_FREQUENT);
+        // 막힌 핑은 알림도 나가지 않는다(첫 핑 1건만 발행됐다).
+        verify(eventPublisher, times(1)).publishEvent(any(DeliveryNotificationEvent.class));
+    }
+
+    @Test
+    void 쿨다운이_지나면_핑을_다시_보낼_수_있다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        deliveryService.sendPing(orderId, boormiId);
+        // 30초를 실제로 기다리는 대신, 마지막 핑 시각을 쿨다운 밖으로 되돌린다.
+        lastPingAt().put(orderId, Instant.now().minusSeconds(31));
+
+        deliveryService.sendPing(orderId, boormiId);
+
+        verify(eventPublisher, times(2)).publishEvent(any(DeliveryNotificationEvent.class));
+    }
+
+    @Test
+    void 핑_쿨다운은_배달별로_따로_적용된다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID firstOrderId = UUID.randomUUID();
+        UUID secondOrderId = UUID.randomUUID();
+        given(deliveryRepository.findByOrderIdWithoutLock(firstOrderId))
+                .willReturn(Optional.of(Delivery.create(firstOrderId, UUID.randomUUID(), boormiId)));
+        given(deliveryRepository.findByOrderIdWithoutLock(secondOrderId))
+                .willReturn(Optional.of(Delivery.create(secondOrderId, UUID.randomUUID(), boormiId)));
+        deliveryService.sendPing(firstOrderId, boormiId);
+
+        deliveryService.sendPing(secondOrderId, boormiId);
+
+        verify(eventPublisher, times(2)).publishEvent(any(DeliveryNotificationEvent.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<UUID, Instant> lastPingAt() {
+        return (Map<UUID, Instant>) ReflectionTestUtils.getField(deliveryService, "lastPingAt");
+    }
+
     // ===== 첫 위치 전송 시 '드리미→픽업지' 경로·배송완료예상시간 계산 =====
 
     @Test
@@ -566,9 +675,9 @@ class DeliveryServiceTest {
 
         Delivery saved = registeredDeliveries.get(orderId);
         assertThat(saved.getRoutePath()).contains("latitude");
-        // 드리미→픽업지 5분 + 주문 delivery_eta 20분 = 25분 뒤(계산 시각의 now 기준)
+        // 드리미→픽업지 5분 + 주문 delivery_eta 20분 + 건물 진입 여유 5분 = 30분 뒤(계산 시각의 now 기준)
         assertThat(saved.getEstimatedCompletionDtm())
-                .isBetween(before.plusMinutes(25), after.plusMinutes(25));
+                .isBetween(before.plusMinutes(30), after.plusMinutes(30));
         verify(directionsService).getRoute(any(), any());
 
         // 응답에도 방금 계산된 경로·배송완료예상시간이 담겨 나간다(프론트가 재조회 없이 바로 반영).
@@ -754,13 +863,27 @@ class DeliveryServiceTest {
     void 커밋후리스너가_이벤트를_그대로_NotificationService로_전달한다() {
         UUID userId = UUID.randomUUID();
         DeliveryStatusResponseDto payload =
-                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지");
+                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지", null, null);
         DeliveryNotificationEvent event =
                 new DeliveryNotificationEvent(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload);
 
         deliveryService.sendAfterCommit(event);
 
-        verify(notificationService).notify(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload);
+        // 물품명을 싣지 않는 알림은 pushSubject가 null로 나간다(정책의 기본 문구를 그대로 쓴다).
+        verify(notificationService).notify(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload, null);
+    }
+
+    @Test
+    void 커밋후리스너가_이벤트에_실린_물품명을_웹푸시_대상으로_함께_넘긴다() {
+        UUID userId = UUID.randomUUID();
+        DeliveryStatusResponseDto payload =
+                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지", null, null);
+        DeliveryNotificationEvent event = new DeliveryNotificationEvent(
+                userId, DeliveryEventType.DELIVERY_COMPLETED, payload, "설계도면");
+
+        deliveryService.sendAfterCommit(event);
+
+        verify(notificationService).notify(userId, DeliveryEventType.DELIVERY_COMPLETED, payload, "설계도면");
     }
 
     @Test

@@ -3,25 +3,12 @@ import { create } from "zustand";
 import { api, isApiError, type OrderRequest } from "@/shared/api";
 import { toBoormiOrder, type BoormiOrder } from "./boormiOrderAdapter";
 
-/** 한 번에 불러올 주문 수. */
-const PAGE_SIZE = 20;
-
 interface BoormiOrderState {
   orders: BoormiOrder[];
-  nextCursor?: string;
-  hasNext: boolean;
   loading: boolean;
-  /** 다음 페이지 로딩 중(더 보기 버튼 상태). */
-  loadingMore: boolean;
   error: string | null;
-  /** 상태 무관 전체 주문 건수(활동 내역 "총 N건" 표시용, 목록 페이지네이션과 별개로 서버에서 집계). */
-  totalCount: number;
-  /** 첫 페이지 조회(orders 교체). */
+  /** 전체 조회(orders 교체). */
   load: () => Promise<void>;
-  /** nextCursor로 다음 페이지 append. */
-  loadMore: () => Promise<void>;
-  /** 전체 건수 조회. */
-  loadCount: () => Promise<void>;
   /** 부름 등록 → 생성된 orderId 반환. */
   createOrder: (req: OrderRequest) => Promise<string>;
   /** 부름 취소 → 로컬 목록에서 제거. */
@@ -29,69 +16,27 @@ interface BoormiOrderState {
 }
 
 /**
- * 부르미 주문(콜) 전역 스토어. getBoormiOrders 커서 페이지네이션 결과를 담고
- * 홈("진행 중인 부름")·활동 화면이 함께 구독한다.
+ * 부르미 주문(콜) 전역 스토어. 홈("진행 중인 부름")·활동 화면이 함께 구독한다.
  *
- * 필터링은 클라이언트에서 orderCd를 그룹핑(전체/진행중/완료/취소)하므로
- * 목록은 status 미지정(=전체)으로 조회한다. 백엔드의 단일 status 필터는
- * 추후 단일 상태 최적화가 필요할 때 활용한다.
+ * 활동 탭 필터(전체/진행중/완료/취소)가 클라이언트에서 orderCd를 그룹핑하는 방식이라, 백엔드도
+ * 페이지네이션 없이 전체를 한 번에 내려준다(지금 규모에서는 이게 페이지네이션+서버 필터링보다
+ * 단순하고 충분하다).
  */
-export const useBoormiOrderStore = create<BoormiOrderState>((set, get) => ({
+export const useBoormiOrderStore = create<BoormiOrderState>((set) => ({
   orders: [],
-  nextCursor: undefined,
-  hasNext: false,
   loading: false,
-  loadingMore: false,
   error: null,
-  totalCount: 0,
 
   load: async () => {
     set({ loading: true, error: null });
     try {
-      const { result } = await api.getBoormiOrders({ size: PAGE_SIZE });
-      set({
-        orders: (result?.orders ?? []).map(toBoormiOrder),
-        nextCursor: result?.nextCursor,
-        hasNext: result?.hasNext ?? false,
-        loading: false,
-      });
+      const { result } = await api.getBoormiOrders();
+      set({ orders: (result?.orders ?? []).map(toBoormiOrder), loading: false });
     } catch (e) {
       set({
         loading: false,
         error: isApiError(e) ? e.message : "콜 목록을 불러오지 못했어요.",
       });
-    }
-  },
-
-  loadMore: async () => {
-    const { hasNext, nextCursor, loadingMore } = get();
-    if (!hasNext || !nextCursor || loadingMore) return;
-    set({ loadingMore: true, error: null });
-    try {
-      const { result } = await api.getBoormiOrders({
-        cursor: nextCursor,
-        size: PAGE_SIZE,
-      });
-      set((s) => ({
-        orders: [...s.orders, ...(result?.orders ?? []).map(toBoormiOrder)],
-        nextCursor: result?.nextCursor,
-        hasNext: result?.hasNext ?? false,
-        loadingMore: false,
-      }));
-    } catch (e) {
-      set({
-        loadingMore: false,
-        error: isApiError(e) ? e.message : "콜을 더 불러오지 못했어요.",
-      });
-    }
-  },
-
-  loadCount: async () => {
-    try {
-      const { result } = await api.getBoormiOrderCount();
-      set({ totalCount: result?.count ?? 0 });
-    } catch {
-      // 총 건수는 부가 정보이므로 실패해도 목록 표시를 막지 않는다.
     }
   },
 
@@ -112,10 +57,9 @@ export interface BoormiOrderByIdResult {
 }
 
 /**
- * 주문 하나를 id로 직접 조회한다(전용 API: getBoormiOrder). 목록 스토어의 orders 배열은 커서
- * 페이지네이션으로 최근 것부터 일부만 들고 있어서, 활동 내역 상세 화면이 목록을 거치지 않고
- * 새로고침/딥링크로 바로 들어오면 그 시점에 스토어가 비어있거나(또는 최근 20건 안에 이 주문이
- * 없어서) 못 찾을 수 있었다 — 그래서 스토어를 아예 안 보고 항상 이 API로 그 주문 하나만 조회한다.
+ * 주문 하나를 id로 직접 조회한다(전용 API: getBoormiOrder). 활동 내역 상세 화면이 목록 로딩과
+ * 무관하게 딥링크/새로고침으로 바로 들어와도 그 주문 하나를 정확히 찾을 수 있게, 스토어를 아예
+ * 안 보고 항상 이 API로 조회한다.
  */
 export function useBoormiOrderById(id: string | null): BoormiOrderByIdResult {
   // id를 상태에 같이 들고 있다가, 조회 중인 id와 다르면(아직 응답 전이면) loading으로 취급한다 —

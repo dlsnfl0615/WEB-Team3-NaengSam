@@ -129,6 +129,27 @@ body {
   }
 }
 
+/* 알림 토스트: 화면 위에서 아래로 미끄러져 내려오는 등장 애니메이션.
+   토스트는 레이아웃 위에 겹쳐 뜨므로(fixed) 이 움직임이 아래 콘텐츠를 밀지 않는다. */
+@keyframes ds-toast-down {
+  from {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.ds-toast-down {
+  animation: ds-toast-down 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-toast-down {
+    animation: none;
+  }
+}
+
 /* 모달: 가운데에서 살짝 커지며 나타나는 애니메이션 */
 @keyframes ds-modal-in {
   from {

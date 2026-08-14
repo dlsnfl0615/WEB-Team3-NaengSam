@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  BottomNav,
-  Button,
-  ScreenShell,
-  SegmentedToggle,
-  TopBar,
-} from "@/shared/ui";
+import { BottomNav, ScreenShell, SegmentedToggle, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useRoleSwitch } from "@/shared/lib/role/useRoleSwitch";
@@ -14,6 +8,7 @@ import { useRoleLocked } from "@/shared/lib/role/useRoleLocked";
 import { useSessionStore } from "@/shared/store/sessionStore";
 import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
 import { useDreamiOrderStore } from "@/shared/store/dreamiOrderStore";
+import { MATCHING_ORDER_CDS } from "@/shared/store/boormiOrderAdapter";
 import { ActivityItem } from "./ActivityItem";
 import { FilterChips } from "./FilterChips";
 import {
@@ -44,35 +39,21 @@ export function ActivityScreen() {
   // 드리미(실제 API) 소스
   const deliveries = useDreamiOrderStore((s) => s.deliveries);
   const dreamiLoading = useDreamiOrderStore((s) => s.loading);
-  const dreamiLoadingMore = useDreamiOrderStore((s) => s.loadingMore);
   const dreamiError = useDreamiOrderStore((s) => s.error);
-  const dreamiHasNext = useDreamiOrderStore((s) => s.hasNext);
-  const dreamiTotalCount = useDreamiOrderStore((s) => s.totalCount);
   const loadDreami = useDreamiOrderStore((s) => s.load);
-  const loadMoreDreami = useDreamiOrderStore((s) => s.loadMore);
-  const loadDreamiCount = useDreamiOrderStore((s) => s.loadCount);
 
   // 부르미(실제 API) 소스
   const orders = useBoormiOrderStore((s) => s.orders);
   const loading = useBoormiOrderStore((s) => s.loading);
-  const loadingMore = useBoormiOrderStore((s) => s.loadingMore);
   const boormiError = useBoormiOrderStore((s) => s.error);
-  const hasNext = useBoormiOrderStore((s) => s.hasNext);
-  const boormiTotalCount = useBoormiOrderStore((s) => s.totalCount);
   const load = useBoormiOrderStore((s) => s.load);
-  const loadMore = useBoormiOrderStore((s) => s.loadMore);
-  const loadBoormiCount = useBoormiOrderStore((s) => s.loadCount);
 
-  // 역할 탭 진입 시 각자의 목록과 전체 건수를 조회.
+  // 역할 탭 진입 시 각자의 전체 목록을 조회(필터가 클라이언트 필터링이라 일부만 있으면
+  // 아직 안 불러온 항목이 누락돼 보일 수 있어 전체를 가져온다).
   useEffect(() => {
-    if (isDriver) {
-      loadDreami();
-      loadDreamiCount();
-    } else {
-      load();
-      loadBoormiCount();
-    }
-  }, [isDriver, load, loadDreami, loadBoormiCount, loadDreamiCount]);
+    if (isDriver) loadDreami();
+    else load();
+  }, [isDriver, load, loadDreami]);
 
   const records: ActivityRecord[] = useMemo(
     () =>
@@ -86,7 +67,10 @@ export function ActivityScreen() {
     filter === "전체" ? records : records.filter((r) => r.filter === filter);
 
   /**
-   * 진행 중인 건은 실시간 상세로 보낸다(드리미는 실 추적 페이지, 부르미는 mock 상세).
+   * 진행 중인 건은 실시간 상세로 보낸다(드리미는 실 추적 페이지, 부르미도 실 추적 페이지).
+   * 단, 부르미의 "진행중"은 아직 드리미가 매칭되지 않은 상태(MATCHING/PENDING_BOORMI_CONFIRMATION)도
+   * 포함하는데, 이땐 실 추적 화면이 조회할 Delivery row 자체가 없어 DELIVERY_NOT_FOUND로 막힌다.
+   * 홈 화면(SenderPanel)과 동일하게 매칭 전이면 매칭 대기 화면으로 보낸다.
    * 드리미의 완료/취소 건은 드림상세(activityDetailDriver)로 보낸다.
    */
   const detailPath = (record: ActivityRecord): string | null => {
@@ -95,8 +79,11 @@ export function ActivityScreen() {
         ? `${ROUTES.deliveryTrack}?orderId=${record.id}`
         : `${ROUTES.activityDetailDriver}?id=${record.id}`;
     }
-    if (record.filter === "진행중")
-      return `${ROUTES.activityDetail}?status=진행중&id=${record.id}`;
+    if (record.filter === "진행중") {
+      return MATCHING_ORDER_CDS.has(record.orderCd)
+        ? `${ROUTES.matching}?orderId=${record.id}`
+        : `${ROUTES.deliveryDetail}?orderId=${record.id}`;
+    }
     return `${ROUTES.activityDetail}?status=완료&id=${record.id}`;
   };
 
@@ -122,8 +109,7 @@ export function ActivityScreen() {
         <FilterChips value={filter} onChange={setFilter} />
 
         <p className="text-xs text-muted">
-          {isDriver ? "수행한 배달" : "요청한 배달"} · 총{" "}
-          {isDriver ? dreamiTotalCount : boormiTotalCount}건
+          {isDriver ? "수행한 배달" : "요청한 배달"} · 총 {records.length}건
         </p>
 
         {isDriver && dreamiLoading && records.length === 0 ? (
@@ -153,31 +139,16 @@ export function ActivityScreen() {
             })}
           </div>
         ) : (
-          <p className="py-10 text-center text-sm text-muted">
-            해당하는 내역이 없어요.
-          </p>
-        )}
-
-        {isDriver && dreamiHasNext && (
-          <Button
-            variant="outline"
-            block
-            disabled={dreamiLoadingMore}
-            onClick={() => loadMoreDreami()}
-          >
-            {dreamiLoadingMore ? "불러오는 중…" : "더 보기"}
-          </Button>
-        )}
-
-        {!isDriver && hasNext && (
-          <Button
-            variant="outline"
-            block
-            disabled={loadingMore}
-            onClick={() => loadMore()}
-          >
-            {loadingMore ? "불러오는 중…" : "더 보기"}
-          </Button>
+          <div className="flex flex-col items-center py-10">
+            <img
+              src={isDriver ? "/dreami-no-dream.png" : "/boormi-no-boorm.png"}
+              alt=""
+              className="h-20 w-20 object-contain"
+            />
+            <p className="text-center text-sm text-muted">
+              해당하는 내역이 없어요.
+            </p>
+          </div>
         )}
       </main>
     </ScreenShell>
