@@ -30,6 +30,8 @@ import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
+import com.naengsam.quick.domain.matching.entity.Matching;
+import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -96,6 +98,7 @@ public class DeliveryService {
     private final OrderService orderService;
     private final DreamiRepository dreamiRepository;
     private final BoormiRepository boormiRepository;
+    private final MatchingRepository matchingRepository;
     private final S3PresignService s3PresignService;
     private final PaymentService paymentService;
     private final DirectionsService directionsService;
@@ -138,9 +141,15 @@ public class DeliveryService {
         // 픽업 후 지도용 픽업지→도착지 경로(Orders)와 픽업 전 지도용 드리미→픽업지 경로(Delivery)를 함께 내려준다.
         // 드리미 연결 상태도 함께 담는다 — 화면을 다시 열었을 때 SSE 이벤트를 기다리지 않고 즉시 복원하기 위함이며,
         // 부르미가 끊긴 동안 유실된 오프라인 통보를 되찾는 경로이기도 하다.
+        // 타임라인의 "부름 접수" 시각은 매칭이 성사된 순간(MATCHING.accepted_dtm)을 그대로 쓴다.
+        LocalDateTime matchingAcceptedDtm = matchingRepository.findByOrderId(orderId)
+                .map(Matching::getAcceptedDtm)
+                .orElse(null);
+
         return DeliveryDetailResponseDto.from(delivery, order,
                 resolveItemPhotoUrl(order.getImageKey()),
                 parseRoutePath(order.getRoutePath()), parseRoutePath(delivery.getRoutePath()),
+                matchingAcceptedDtm,
                 dreamiOfflineDetector.isOffline(delivery),
                 dreamiOfflineDetector.secondsSinceLastLocationOrNull(delivery));
     }
