@@ -3,6 +3,7 @@ export { cn } from "./cn";
 export { formatArrivalTime } from "./formatArrivalTime";
 export { formatLastSeen } from "./formatLastSeen";
 export { formatPhone } from "./formatPhone";
+export { getProfileImage } from "./profileImage";
 export { useSse, type UseSseOptions } from "./sse/useSse";
 export {
   useSseReconnectSync,

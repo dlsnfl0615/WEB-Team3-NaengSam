@@ -139,9 +139,16 @@ export function ActivityScreen() {
             })}
           </div>
         ) : (
-          <p className="py-10 text-center text-sm text-muted">
-            해당하는 내역이 없어요.
-          </p>
+          <div className="flex flex-col items-center py-10">
+            <img
+              src={isDriver ? "/dreami-no-dream.png" : "/boormi-no-boorm.png"}
+              alt=""
+              className="h-20 w-20 object-contain"
+            />
+            <p className="text-center text-sm text-muted">
+              해당하는 내역이 없어요.
+            </p>
+          </div>
         )}
       </main>
     </ScreenShell>

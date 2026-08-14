@@ -20,9 +20,9 @@ const PICKUP_STYLE: PinStyle = {
   bg: "bg-navy-900",
 };
 const DROPOFF_STYLE: PinStyle = {
-  color: "#00b7a7", // teal-500
+  color: "#b26a00", // status-warning
   label: "도착지",
-  bg: "bg-teal-500",
+  bg: "bg-status-warning",
 };
 
 /**

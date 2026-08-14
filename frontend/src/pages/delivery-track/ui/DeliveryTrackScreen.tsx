@@ -301,6 +301,16 @@ export function DeliveryTrackScreen() {
             pickup={pickup}
             dropoff={dropoff}
             driver={position ?? undefined}
+            driverPinImage={
+              isPickup
+                ? "/running-dreami-nopickup-1.png"
+                : "/running-dreami-pickup-1.png"
+            }
+            driverRunningPinImage={
+              isPickup
+                ? "/running-dreami-nopickup-2.png"
+                : "/running-dreami-pickup-2.png"
+            }
             route={route}
             height={440}
           />
