@@ -4,8 +4,8 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { ChangeRoleTarget } from './changeRoleTarget';
 
-export type OrderAndStartParams = {
-boormiId: string;
-dreamiId: string;
+export type ChangeRoleParams = {
+target: ChangeRoleTarget;
 };

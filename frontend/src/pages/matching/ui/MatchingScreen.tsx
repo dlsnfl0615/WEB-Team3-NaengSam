@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   BlockingLoadErrorModal,
   Button,
   Card,
-  MapCard,
   Modal,
   NearbyCallsMap,
   ScreenShell,
   TopBar,
   type NearbyCall,
 } from "@/shared/ui";
-import { isApiError } from "@/shared/api";
+import { api, isApiError } from "@/shared/api";
 import { ROUTES } from "@/shared/config/routes";
 import { PushPrompt } from "@/shared/lib/push/PushPrompt";
 import { useRole } from "@/shared/lib/role/useRole";
@@ -58,6 +58,7 @@ function fullAddress(line1?: string, line2?: string): string | null {
  * 오퍼/콜 팝업은 전역 `MatchingPopup`이 담당하므로 다른 화면으로 이동해도 이어서 뜬다.
  */
 export function MatchingScreen() {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const { role } = useRole();
@@ -84,6 +85,9 @@ export function MatchingScreen() {
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
   const [locationBlocked, setLocationBlocked] = useState(false);
+  const [boormiCenter, setBoormiCenter] = useState<NearbyCall["location"] | null>(null);
+  const [nearbyDreamis, setNearbyDreamis] = useState<NearbyCall[]>([]);
+  const [nearbyDreamisError, setNearbyDreamisError] = useState<string | null>(null);
   const callToastId = useRef<string | null>(null);
 
   // 부르미는 콜 등록을 마치고 이 화면에 들어오므로 진입 자체가 "찾으면 알려줘"라는 의도다.
@@ -97,6 +101,12 @@ export function MatchingScreen() {
     },
     [dismissToast],
   );
+
+  // 온라인 여부는 서버가 진실 소스다. 스토어는 메모리에만 있어 새로고침·새 탭이면 false로 시작하는데
+  // 서버 등록은 살아 있을 수 있다. 화면에 들어온 시점에 한 번 맞춰 버튼이 실제와 어긋나지 않게 한다.
+  useEffect(() => {
+    void useMatchingStore.getState().syncCurrentMatching();
+  }, []);
 
   // 드리미: 화면에 머무는 동안 주변 콜을 계속 갱신한다(시작하기 여부와 무관).
   // 오퍼 팝업 자체는 전역 `MatchingPopup`이 받으므로, 여기서는 지도용 목록만 폴링한다.
@@ -119,6 +129,90 @@ export function MatchingScreen() {
       window.clearInterval(timer);
     };
   }, [isDriver, loadNearbyCalls, locationBlocked]);
+
+  // 부르미: 주문의 픽업 좌표를 중심으로 대기 드리미를 주기적으로 갱신한다.
+  useEffect(() => {
+    if (isDriver || !orderId) return;
+    let active = true;
+    let timer: number | undefined;
+
+    const loadDreamis = async (center: NearbyCall["location"]) => {
+      try {
+        const { result } = await api.findNearbyWaitingDreamis({
+          lat: center.latitude,
+          lng: center.longitude,
+          radius: 3000,
+          count: 10,
+        });
+        if (!active) return;
+        setNearbyDreamis(
+          (result ?? []).flatMap((dreami) => {
+            if (
+              !dreami.dreamiId ||
+              dreami.location?.latitude == null ||
+              dreami.location?.longitude == null
+            ) {
+              return [];
+            }
+            return [
+              {
+                id: dreami.dreamiId,
+                location: {
+                  latitude: dreami.location.latitude,
+                  longitude: dreami.location.longitude,
+                },
+                distanceMeters: dreami.distanceMeters,
+              },
+            ];
+          }),
+        );
+        setNearbyDreamisError(null);
+      } catch (e) {
+        if (active) {
+          setNearbyDreamisError(
+            isApiError(e) ? e.message : "주변 드리미를 불러오지 못했어요.",
+          );
+        }
+      }
+    };
+
+    const startPolling = async () => {
+      try {
+        const { result } = await api.getBoormiOrders({ size: 20 });
+        const order = result?.orders?.find((candidate) => candidate.orderId === orderId);
+        if (
+          order?.originLatitude == null ||
+          order.originLongitude == null
+        ) {
+          throw new Error("pickup-location-unavailable");
+        }
+        const center = {
+          latitude: order.originLatitude,
+          longitude: order.originLongitude,
+        };
+        if (!active) return;
+        setBoormiCenter(center);
+        await loadDreamis(center);
+        if (active) {
+          timer = window.setInterval(() => {
+            void loadDreamis(center);
+          }, NEARBY_POLL_MS);
+        }
+      } catch (e) {
+        if (active) {
+          setNearbyDreamisError(
+            isApiError(e) ? e.message : "부름의 픽업 위치를 불러오지 못했어요.",
+          );
+        }
+      }
+    };
+
+    void startPolling();
+    return () => {
+      active = false;
+      if (timer != null) window.clearInterval(timer);
+    };
+  }, [isDriver, orderId]);
 
   const callsForMap: NearbyCall[] = nearbyCalls.flatMap((call) => {
     if (
@@ -245,7 +339,7 @@ export function MatchingScreen() {
     <ScreenShell>
       <TopBar
         title={`${counterpart}를 찾는 중`}
-        onBack={() => navigate(-1)}
+        onBack={backOrHome}
         actions={[]}
       />
 
@@ -268,7 +362,13 @@ export function MatchingScreen() {
             height={280}
           />
         ) : (
-          <MapCard height={280} />
+          <NearbyCallsMap
+            mode="nearby-dreamis"
+            center={boormiCenter}
+            calls={nearbyDreamis}
+            fallbackMessage={nearbyDreamisError}
+            height={280}
+          />
         )}
 
         {isDriver && !online ? (
@@ -286,7 +386,7 @@ export function MatchingScreen() {
               <span className="size-2 rounded-pill bg-teal-500" />
               {isDriver
                 ? `근방 3km 내 부름 ${nearbyCalls.length}건 대기중`
-                : `${counterpart}를 찾고 있어요`}
+                : `근방 3km 내 드리미 ${nearbyDreamis.length}명 대기중`}
             </p>
             <p className="text-2xs text-muted">
               요청을 보낸 {counterpart}의 수락을 기다리고 있어요...

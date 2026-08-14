@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   Button,
   Icon,
@@ -21,13 +21,13 @@ const REASONS = [
  * 사유를 하나만 고르고 기타 사유를 덧붙여 거절합니다(UI 전용).
  */
 export function RejectReasonScreen() {
-  const navigate = useNavigate();
+  const backOrHome = useBackOrHome();
   const [reason, setReason] = useState<(typeof REASONS)[number]>(REASONS[0]);
   const [etc, setEtc] = useState("");
 
   return (
     <ScreenShell>
-      <TopBar title="거절 사유 선택" onBack={() => navigate(-1)} actions={[]} />
+      <TopBar title="거절 사유 선택" onBack={backOrHome} actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
@@ -68,14 +68,14 @@ export function RejectReasonScreen() {
       </main>
 
       <footer className="flex gap-2 pt-4">
-        <Button variant="outline" onClick={() => navigate(-1)}>
+        <Button variant="outline" onClick={backOrHome}>
           이전
         </Button>
         <Button
           variant="navy"
           block
           disabled={reason === "기타" && !etc.trim()}
-          onClick={() => navigate(-1)}
+          onClick={backOrHome}
         >
           사유 제출하고 거절
         </Button>

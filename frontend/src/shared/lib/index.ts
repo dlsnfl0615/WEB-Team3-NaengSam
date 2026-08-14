@@ -13,6 +13,7 @@ export { SseProvider } from "./sse/SseProvider";
 export { SseStatusBanner } from "./sse/SseStatusBanner";
 export type { SseHandlers, SseState, SseStatus } from "./sse/SseContext";
 export { loadKakaoMaps, loadDaumPostcode, KAKAO_MAP_KEY } from "./kakao";
+export { useBackOrHome } from "./navigation/useBackOrHome";
 export {
   useDreamiLocationBroadcast,
   LOCATION_BROADCAST_INTERVAL_MS,
@@ -32,6 +33,11 @@ export {
   getUntrackableDeliveryNotice,
   type UntrackableDeliveryNotice,
 } from "./deliveryAvailability";
+export {
+  markForcedLogout,
+  hasForcedLogout,
+  clearForcedLogout,
+} from "./auth/forcedLogoutNotice";
 export {
   useDeliveryDetailGate,
   type UseDeliveryDetailGateOptions,

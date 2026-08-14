@@ -44,6 +44,8 @@ const config = {
   orderCount: num("ORDER_COUNT", 100),
   orderRate: num("ORDER_RATE", 5),
   loginConcurrency: num("LOGIN_CONCURRENCY", 10),
+  // 로그인이 대기열에 걸렸을 때 차례를 기다리는 상한(#399). 서버 티켓 TTL(2분)을 넘겨 봐야 만료 응답만 받는다.
+  loginQueueTimeoutMs: num("LOGIN_QUEUE_TIMEOUT_MS", 120_000),
   acceptDelayMs: num("ACCEPT_DELAY_MS", 0),
   durationMs: num("DURATION_MS", 120_000),
   drainMs: num("DRAIN_MS", 20_000),
@@ -277,7 +279,9 @@ async function checkKakaoStub(agents) {
   const seed = agents.boormis[0];
   if (!seed) return;
 
-  const { call, login } = createClient(config.apiBase);
+  const { call, login } = createClient(config.apiBase, {
+    queueTimeoutMs: config.loginQueueTimeoutMs,
+  });
   // 부하 드라이버가 나중에 같은 계정으로 다시 로그인하므로 원본 agent를 건드리지 않는다.
   const probe = { email: seed.email, password: seed.password };
   const body = {
@@ -356,6 +360,7 @@ async function startClients(watchUsers) {
       headed: config.headed,
       timeoutMs: config.watchTimeoutMs,
       concurrency: config.watchConcurrency,
+      loginQueueTimeoutMs: config.loginQueueTimeoutMs,
       pickupHoldMs: config.watchPickupMs,
       deliverHoldMs: config.watchDeliverMs,
       deliveryTimeoutMs: config.watchDeliveryTimeoutMs,
@@ -464,7 +469,7 @@ function browserDeliveredOrderIds(watchResults) {
   return (watchResults ?? []).filter((r) => r.delivered && r.orderId).map((r) => r.orderId);
 }
 
-async function verifyAndReport({ summary, agents, watchResults, startedAt, eventLoopLag }) {
+async function verifyAndReport({ summary, agents, watchResults, startedAt, eventLoopLag, loginStats }) {
   console.log(`\n━━ 검증  DB 대조 ${BAR}`);
   const dbRows = await db.verifyOrders(summary.orderIds);
   const duplicates = await db.duplicateAssignments(summary.orderIds);
@@ -488,6 +493,7 @@ async function verifyAndReport({ summary, agents, watchResults, startedAt, event
     startedAt,
     finishedAt,
     eventLoopLag,
+    loginStats,
   });
 
   console.log(report.text);
@@ -600,6 +606,7 @@ async function cleanupStage({ summary, agents, watchResults, watchUsers }) {
     apiBase: config.apiBase,
     targets: known,
     concurrency: config.loginConcurrency,
+    queueTimeoutMs: config.loginQueueTimeoutMs,
     log: line,
   });
   for (const f of result.failed) line(`✗ ${f.orderId} (${f.email}) ${f.reason}`);
@@ -645,6 +652,7 @@ async function cleanupStandalone() {
     apiBase: config.apiBase,
     targets: cancellable.map((r) => ({ ...r, password: config.existingPassword })),
     concurrency: config.loginConcurrency,
+    queueTimeoutMs: config.loginQueueTimeoutMs,
     log: line,
   });
   for (const f of result.failed) line(`✗ ${f.orderId} (${f.email}) ${f.reason}`);
@@ -716,6 +724,7 @@ try {
     watchResults,
     startedAt,
     eventLoopLag: eventLoopStats(loopLag),
+    loginStats: driveResult.loginStats,
   });
 
   // 리포트가 나온 뒤에만 취소한다. 순서가 바뀌면 검증이 취소된 주문을 보고 전부 유실로 센다.

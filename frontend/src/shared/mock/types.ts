@@ -48,8 +48,10 @@ export interface AuthUser {
   roles: Role[];
   /** 현재 진행 중인 주문에서 맡고 있는 역할. */
   activeRole?: "BOORMI" | "DREAMI";
-  /** 드리미로 진행 중인 주문 식별자. */
+  /** 진행 중인 주문 식별자. 드리미가 매칭 대기만 하는 중이면 주문이 없어 비어 있다. */
   activeOrderId?: string;
+  /** 진행 중인 주문의 상태. 로그인 후 복귀 화면과 토글 잠금 사유를 가르는 기준이다. */
+  activeOrderCd?: string;
   rating: number;
   email: string;
 }

@@ -13,7 +13,9 @@ public enum UserErrorCode implements BaseErrorCode {
     DREAMI_NOT_REGISTERED(HttpStatus.FORBIDDEN, "USER_003", "드리미 등록 후 이용할 수 있어요."),
     DREAMI_NOT_APPROVED(HttpStatus.FORBIDDEN, "USER_004", "드리미 승인 후 이용할 수 있어요."),
     DUPLICATE_NICKNAME(HttpStatus.CONFLICT, "USER_005", "이미 사용 중인 닉네임이에요."),
-    CANNOT_CHANGE_ROLE_WITH_ACTIVE_ORDER(HttpStatus.CONFLICT, "USER_006", "수행 중인 주문이 있어 전환할 수 없어요.");
+    CANNOT_CHANGE_ROLE_WITH_ACTIVE_ORDER(HttpStatus.CONFLICT, "USER_006", "수행 중인 주문이 있어 전환할 수 없어요."),
+    CANNOT_CHANGE_ROLE_WHILE_MATCHING(HttpStatus.CONFLICT, "USER_007",
+            "매칭 대기 중에는 전환할 수 없어요. 먼저 오프라인으로 전환해주세요.");
 
     private final HttpStatus status;
     private final String code;

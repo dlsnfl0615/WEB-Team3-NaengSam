@@ -10,9 +10,11 @@ import {
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useRoleSwitch } from "@/shared/lib/role/useRoleSwitch";
-import { useRoleLocked } from "@/shared/store/deliveryStore";
+import { useRoleLocked } from "@/shared/lib/role/useRoleLocked";
+import { useSessionStore } from "@/shared/store/sessionStore";
 import { useBoormiOrderStore } from "@/shared/store/boormiOrderStore";
 import { useDreamiOrderStore } from "@/shared/store/dreamiOrderStore";
+import { MATCHING_ORDER_CDS } from "@/shared/store/boormiOrderAdapter";
 import { ActivityItem } from "./ActivityItem";
 import { FilterChips } from "./FilterChips";
 import {
@@ -31,7 +33,13 @@ export function ActivityScreen() {
   const { role } = useRole();
   const { onRoleChange, pending, error: roleError } = useRoleSwitch();
   const [filter, setFilter] = useState<ActivityFilter>("전체");
-  const roleLocked = useRoleLocked();
+  const { locked: roleLocked, reason: roleLockReason } = useRoleLocked();
+  const refreshUser = useSessionStore((s) => s.refreshUser);
+
+  // 토글이 보이는 화면에 들어올 때마다 수행 중인 역할을 최신화해 잠금 상태를 맞춘다.
+  useEffect(() => {
+    void refreshUser();
+  }, [refreshUser]);
   const isDriver = role === "드리미";
 
   // 드리미(실제 API) 소스
@@ -79,7 +87,10 @@ export function ActivityScreen() {
     filter === "전체" ? records : records.filter((r) => r.filter === filter);
 
   /**
-   * 진행 중인 건은 실시간 상세로 보낸다(드리미는 실 추적 페이지, 부르미는 mock 상세).
+   * 진행 중인 건은 실시간 상세로 보낸다(드리미는 실 추적 페이지, 부르미도 실 추적 페이지).
+   * 단, 부르미의 "진행중"은 아직 드리미가 매칭되지 않은 상태(MATCHING/PENDING_BOORMI_CONFIRMATION)도
+   * 포함하는데, 이땐 실 추적 화면이 조회할 Delivery row 자체가 없어 DELIVERY_NOT_FOUND로 막힌다.
+   * 홈 화면(SenderPanel)과 동일하게 매칭 전이면 매칭 대기 화면으로 보낸다.
    * 드리미의 완료/취소 건은 드림상세(activityDetailDriver)로 보낸다.
    */
   const detailPath = (record: ActivityRecord): string | null => {
@@ -88,8 +99,11 @@ export function ActivityScreen() {
         ? `${ROUTES.deliveryTrack}?orderId=${record.id}`
         : `${ROUTES.activityDetailDriver}?id=${record.id}`;
     }
-    if (record.filter === "진행중")
-      return `${ROUTES.activityDetail}?status=진행중&id=${record.id}`;
+    if (record.filter === "진행중") {
+      return MATCHING_ORDER_CDS.has(record.orderCd)
+        ? `${ROUTES.matching}?orderId=${record.id}`
+        : `${ROUTES.deliveryDetail}?orderId=${record.id}`;
+    }
     return `${ROUTES.activityDetail}?status=완료&id=${record.id}`;
   };
 
@@ -107,6 +121,9 @@ export function ActivityScreen() {
 
         {roleError && (
           <p className="text-2xs text-status-danger">{roleError}</p>
+        )}
+        {!roleError && roleLocked && roleLockReason && (
+          <p className="text-2xs text-navy-500">{roleLockReason}</p>
         )}
 
         <FilterChips value={filter} onChange={setFilter} />

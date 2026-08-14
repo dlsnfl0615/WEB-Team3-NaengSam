@@ -47,6 +47,8 @@ vi.mock("@/shared/lib", () => ({
   useDreamiLocationBroadcast: () => locationState,
   useSse: () => ({ status: "connected" }),
   useSseReconnectSync: vi.fn(),
+  // 연락 시트는 이 테스트(GPS 안내)의 관심사가 아니라 렌더만 비운다.
+  ContactSheet: () => null,
 }));
 
 vi.mock("@/shared/store/deliveryStore", () => ({

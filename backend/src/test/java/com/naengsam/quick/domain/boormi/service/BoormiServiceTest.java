@@ -14,12 +14,13 @@ import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.service.CoordinatesService;
 import com.naengsam.quick.domain.address.service.DirectionsService;
+import com.naengsam.quick.domain.boormi.dto.BoormiDashboardDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueDto;
 import com.naengsam.quick.domain.boormi.dto.ExpectedValueRequest;
+import com.naengsam.quick.domain.boormi.dto.MonthlySavingDto;
 import com.naengsam.quick.domain.boormi.dto.OrderRequest;
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
-import com.naengsam.quick.domain.boormi.dto.BoormiDashboardDto;
-import com.naengsam.quick.domain.boormi.dto.MonthlySavingDto;
+import com.naengsam.quick.domain.boormi.entity.ItemSizeCd;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.delivery.dto.MonthlySavingAggregate;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
@@ -125,23 +126,27 @@ BoormiServiceTest {
     }
 
     private static ExpectedValueRequest request(ItemCd itemCd) {
-        return new ExpectedValueRequest("서울시 강남구", "서울시 서초구", itemCd);
+        return request(itemCd, ItemSizeCd.S);
+    }
+
+    private static ExpectedValueRequest request(ItemCd itemCd, ItemSizeCd itemSizeCd) {
+        return new ExpectedValueRequest("서울시 강남구", "서울시 서초구", itemCd, itemSizeCd);
     }
 
     private static OrderRequest orderRequest() {
         return new OrderRequest("서울시 강남구", "101동", "서울시 서초구", "202동",
-                "서류봉투", ItemCd.DOCUMENT, "http://img", "계약서", "문 앞에 두세요");
+                "서류봉투", ItemCd.DOCUMENT, ItemSizeCd.S, "http://img", "계약서", "문 앞에 두세요");
     }
 
     private static OrderRequest sameLocationOrderRequest() {
         return new OrderRequest("서울시 강남구", "101동", "서울시 강남구", "101동",
-                "서류봉투", ItemCd.DOCUMENT, "http://img", "계약서", "문 앞에 두세요");
+                "서류봉투", ItemCd.DOCUMENT, ItemSizeCd.S, "http://img", "계약서", "문 앞에 두세요");
     }
 
     // 주소 문자열은 다르지만 좌표는 임계값(50m) 이내로 아주 가까운 요청
     private static OrderRequest nearbyOrderRequest() {
         return new OrderRequest("서울시 강남구 A", "101동", "서울시 강남구 B", "202동",
-                "서류봉투", ItemCd.DOCUMENT, "http://img", "계약서", "문 앞에 두세요");
+                "서류봉투", ItemCd.DOCUMENT, ItemSizeCd.S, "http://img", "계약서", "문 앞에 두세요");
     }
 
     // x=경도(longitude), y=위도(latitude)
@@ -190,6 +195,31 @@ BoormiServiceTest {
         ExpectedValueDto result = boormiService.expectedValue(request(ItemCd.PACKAGE));
 
         assertThat(result.expectedValue()).isEqualTo(15150);
+    }
+
+    @Test
+    void 중형은_크기배율15가_곱해진다() {
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
+        given(directionsService.getRoute(any(), any()))
+                .willReturn(routeOf(5000, 900));
+
+        ExpectedValueDto result = boormiService.expectedValue(request(ItemCd.DOCUMENT, ItemSizeCd.M));
+
+        assertThat(result.expectedValue()).isEqualTo(15150);
+    }
+
+    @Test
+    void 물품유형배율과_크기배율은_함께_곱해진다() {
+        given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
+        given(coordinatesService.getCoordinates("서울시 서초구")).willReturn(coordinatesAt("127.1", "37.6"));
+        given(directionsService.getRoute(any(), any()))
+                .willReturn(routeOf(5000, 900));
+
+        ExpectedValueDto result = boormiService.expectedValue(request(ItemCd.PACKAGE, ItemSizeCd.M));
+
+        // 10100원 × PACKAGE 1.5 × M 1.5 = 22725원
+        assertThat(result.expectedValue()).isEqualTo(22725);
     }
 
     @Test
@@ -265,7 +295,7 @@ BoormiServiceTest {
                 .willReturn(routeOf(2000, 660));
 
         OrderRequest packageOrder = new OrderRequest("서울시 강남구", "101동", "서울시 서초구", "202동",
-                "노트북", ItemCd.PACKAGE, "http://img", "파손주의", "문 앞에 두세요");
+                "노트북", ItemCd.PACKAGE, ItemSizeCd.S, "http://img", "파손주의", "문 앞에 두세요");
         boormiService.subscribeOrder(packageOrder, boormiId);
 
         ArgumentCaptor<Orders> captor = ArgumentCaptor.forClass(Orders.class);
@@ -379,7 +409,7 @@ BoormiServiceTest {
         given(coordinatesService.getCoordinates("서울시 강남구")).willReturn(coordinatesAt("127.0", "37.5"));
 
         ExpectedValueRequest sameLocation =
-                new ExpectedValueRequest("서울시 강남구", "서울시 강남구", ItemCd.DOCUMENT);
+                new ExpectedValueRequest("서울시 강남구", "서울시 강남구", ItemCd.DOCUMENT, ItemSizeCd.S);
         Throwable thrown = catchThrowable(() -> boormiService.expectedValue(sameLocation));
 
         assertThat(thrown).isInstanceOf(BusinessException.class);

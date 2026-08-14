@@ -28,6 +28,27 @@ KAKAO_ENABLED=false CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:
 
 두 가지를 실행 초반에 스스로 확인하고, 어긋나면 부하를 시작하기 전에 중단한다 — `CORS_CHECK=1`은 `WEB_BASE` 오리진으로 프리플라이트를 보내고, `KAKAO_CHECK=1`은 카카오가 스텁인지 본다. 배포 대상처럼 검사가 거짓 실패를 내는 환경에서는 각각 0으로 끈다.
 
+## 지도 핀 등장·퇴장 수동 테스트
+
+부르미 계정으로 브라우저에서 강남역 부근 픽업지에 부름을 등록한 뒤 아래 스크립트를 실행한다.
+스크립트는 중심 좌표 주변에 임의 드리미를 순차 등록하고 제거하며, `Ctrl+C`로 종료하면 남은
+테스트 드리미도 모두 정리한다. 백엔드의 디버그 API를 사용하므로 로컬/개발 환경에서만 실행한다.
+
+```bash
+cd matchingtest
+npm run pins:dreamis
+```
+
+기본 중심은 `37.4979, 127.0276`(강남역 부근), 드리미 6명, 반경 700m다. 픽업지가 다르면
+환경변수로 맞춘다.
+
+```bash
+CENTER_LAT=37.5665 CENTER_LNG=126.9780 DREAMI_COUNT=8 npm run pins:dreamis
+```
+
+한 번만 실행하려면 `CYCLES=1`, 등록·제거 간격은 `STEP_MS`, 전체 등록 후 유지 시간은
+`HOLD_MS`로 조절한다. 부르미 지도는 5초마다 갱신되므로 `HOLD_MS`는 5000 이상을 권장한다.
+
 ## 실행 단계
 
 ```
@@ -51,6 +72,16 @@ npm run watch      # 브라우저 검증만
 `run.mjs`가 유일한 진입점이고, 나머지는 전부 `modules/`에 있다 — `db`(JDBC 실행기·한정 초기화·검증 쿼리) · `seed`(계정 SQL 생성) · `pull`(기존 계정 조회, SELECT만) · `drive`(로그인·SSE·주문·수락·확정) · `cleanup`(남은 주문 취소) · `ledger`(이벤트 원장·유실 판정·DB 대조) · `watch`(Playwright 검증) · `report`(렌더링).
 
 설정은 `config/`에 있다 — `.env.local`(실행 설정, 기본 `ENV_FILE`) · `env.example`(템플릿) · `users.json`(브라우저 계정).
+
+### 로그인 대기열 (#399)
+
+`POST /api/v1/user/login`은 200이어도 로그인이 끝난 것이 아니다. 동시 로그인이 서버의 해싱 슬롯(`login.queue.permits`)을 넘기면 세션 대신 대기 티켓(`result.status === "QUEUED"`)이 온다. 이때 하네스는 `POST /api/v1/user/login/queue/{ticketId}`를 서버가 준 `pollAfterMs` 간격으로 폴링하고, **세션 쿠키는 차례가 된 그 폴링 응답에서** 받는다. 티켓 ID는 최초 응답에만 실려 오므로 폴링 내내 같은 티켓을 쓴다.
+
+대기 상한은 `LOGIN_QUEUE_TIMEOUT_MS`(기본 120초, 서버 티켓 TTL과 맞췄다)다. 정원 초과(503)와 티켓 만료(410)는 두 번까지 로그인을 처음부터 다시 탄다. 대기열이 없는 백엔드에서는 응답에 `result`가 없어 곧바로 기존 즉시 경로로 떨어지므로, 같은 스크립트가 양쪽에서 다 돈다.
+
+브라우저 검증(`watch`)도 같은 대기열을 만난다. 대기 모달이 뜨면 **폼을 다시 제출하지 않고** 화면이 스스로 `/home`으로 넘어갈 때까지 기다린다 — 재제출은 티켓만 하나 더 만들고 순번을 뒤로 민다.
+
+결과는 리포트 `11. 로그인 대기열` 섹션(JSON은 `loginQueue`)에 남는다. 대기 시간이 길면 서버의 `login.queue.permits`를, 503이 잡히면 `login.queue.capacity`를 먼저 본다.
 
 생성물: `seed.sql`(감사용), `agents.json`(에이전트 명세), `result/<타임스탬프>.{json,md}`, `videos/`.
 

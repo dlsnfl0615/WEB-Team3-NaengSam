@@ -4,11 +4,11 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
-import type { SeedResponse } from './seedResponse';
+import type { NearbyDreamiDto } from './nearbyDreamiDto';
 
-export type OrderAndStart200 = {
+export type FindNearbyWaitingDreamis200 = {
   isSuccess?: boolean;
   code?: string;
   message?: string;
-  result?: SeedResponse;
+  result?: NearbyDreamiDto[];
 };
