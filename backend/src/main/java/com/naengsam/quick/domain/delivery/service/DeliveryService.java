@@ -44,6 +44,7 @@ import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +53,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -102,6 +104,12 @@ public class DeliveryService {
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     private final DreamiOfflineDetector dreamiOfflineDetector;
+
+    // 배송완료예상시간에 더하는 여유 시간(delivery.completion-buffer). 건물 진입·엘리베이터 대기처럼
+    // 카카오 경로(도로 기준 이동 시간)에 안 잡히는 시간을 보정한다. 튜닝값이라 @RequiredArgsConstructor가
+    // 만드는 의존성 주입 생성자 대신 필드로 받는다(DreamiOfflineDetector의 임계값들과 같은 성격).
+    @Value("${delivery.completion-buffer}")
+    private Duration completionBuffer;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -374,10 +382,12 @@ public class DeliveryService {
             KakaoDirectionsResponseDto.Route route = directionsService.getRoute(dreami, pickup);
             String routePathJson = objectMapper.writeValueAsString(RoutePointDto.from(route));
 
-            // 드리미→픽업지 소요(분, BoormiService와 동일 공식) + 주문의 픽업지→도착지 delivery_eta(분)를 현재 시각에 더한다.
+            // 드리미→픽업지 소요(분, BoormiService와 동일 공식) + 주문의 픽업지→도착지 delivery_eta(분)를 현재 시각에 더하고,
+            // 경로에 안 잡히는 건물 진입 시간을 completionBuffer로 보정한다.
             int pickupEtaMinutes = (int) Math.ceil(route.properties().totalTime() / 60.0);
-            LocalDateTime estimatedCompletion =
-                    LocalDateTime.now().plusMinutes((long) pickupEtaMinutes + order.getDeliveryEta());
+            LocalDateTime estimatedCompletion = LocalDateTime.now()
+                    .plusMinutes((long) pickupEtaMinutes + order.getDeliveryEta())
+                    .plus(completionBuffer);
 
             delivery.applyPickupRoute(routePathJson, estimatedCompletion);
         } catch (BusinessException | JacksonException e) {
