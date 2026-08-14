@@ -25,6 +25,7 @@ import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.domain.user.exception.UserErrorCode;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.Optional;
 import java.util.UUID;
@@ -271,6 +272,55 @@ class UserServiceTest {
 
         assertThat(result.isDreami()).isFalse();
         verify(dreamiRepository, never()).findById(any());
+    }
+
+    @Test
+    void 내정보_조회시_부르미_평점과_승인된_드리미_평점을_함께_반환한다() {
+        Boormi boormi = activeBoormi();
+        ReflectionTestUtils.setField(boormi, "isDreamiActivate", true);
+        ReflectionTestUtils.setField(boormi, "boormiAvgScore", new BigDecimal("4.50"));
+        UUID id = boormi.getBoormiId();
+        Dreami dreami = org.mockito.Mockito.mock(Dreami.class);
+        given(dreami.getRequestCd()).willReturn(DreamiCd.APPROVED);
+        given(dreami.getDreamiAvgScore()).willReturn(new BigDecimal("4.80"));
+        given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
+        given(dreamiRepository.findById(id)).willReturn(Optional.of(dreami));
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
+
+        UserDto result = userService.getUserInfo(id);
+
+        assertThat(result.boormiAvgScore()).isEqualByComparingTo("4.50");
+        assertThat(result.dreamiAvgScore()).isEqualByComparingTo("4.80");
+    }
+
+    @Test
+    void 내정보_드리미가_아니면_드리미_평점은_null이다() {
+        Boormi boormi = activeBoormi();
+        ReflectionTestUtils.setField(boormi, "boormiAvgScore", new BigDecimal("4.50"));
+        UUID id = boormi.getBoormiId();
+        given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
+
+        UserDto result = userService.getUserInfo(id);
+
+        assertThat(result.boormiAvgScore()).isEqualByComparingTo("4.50");
+        assertThat(result.dreamiAvgScore()).isNull();
+    }
+
+    @Test
+    void 내정보_드리미가_미승인이면_드리미_평점은_null이다() {
+        Boormi boormi = activeBoormi();
+        ReflectionTestUtils.setField(boormi, "isDreamiActivate", true);
+        UUID id = boormi.getBoormiId();
+        Dreami dreami = org.mockito.Mockito.mock(Dreami.class);
+        given(dreami.getRequestCd()).willReturn(DreamiCd.REVIEWING);
+        given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
+        given(dreamiRepository.findById(id)).willReturn(Optional.of(dreami));
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
+
+        UserDto result = userService.getUserInfo(id);
+
+        assertThat(result.dreamiAvgScore()).isNull();
     }
 
     @Test

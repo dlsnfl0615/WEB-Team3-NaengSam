@@ -15,6 +15,7 @@ export { SseStatusBanner } from "./sse/SseStatusBanner";
 export type { SseHandlers, SseState, SseStatus } from "./sse/SseContext";
 export { loadKakaoMaps, loadDaumPostcode, KAKAO_MAP_KEY } from "./kakao";
 export { useBackOrHome } from "./navigation/useBackOrHome";
+export { useLeaveGuard } from "./navigation/useLeaveGuard";
 export {
   useDreamiLocationBroadcast,
   LOCATION_BROADCAST_INTERVAL_MS,

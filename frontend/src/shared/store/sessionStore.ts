@@ -31,8 +31,9 @@ function toAuthUser(dto: UserDto): AuthUser {
     activeRole: dto.activeRole,
     activeOrderId: dto.activeOrderId,
     activeOrderCd: dto.activeOrderCd,
-    // UserDto엔 평점이 없다. 평점 API 확정 전까지 0으로 둔다(마이페이지 표시용).
-    rating: 0,
+    // 드리미 평점은 승인된 드리미일 때만 내려온다(미등록·미승인이면 null → 마이페이지에서 숨김).
+    boormiRating: dto.boormiAvgScore ?? 0,
+    dreamiRating: dto.dreamiAvgScore ?? undefined,
   };
 }
 

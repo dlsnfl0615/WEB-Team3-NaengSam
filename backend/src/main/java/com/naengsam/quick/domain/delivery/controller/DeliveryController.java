@@ -84,6 +84,18 @@ public class DeliveryController {
         return deliveryService.getDeliveryContact(orderId, userId);
     }
 
+    // 연락 시트의 '핑 보내기'. 부르미만 보낼 수 있고(드리미 화면에는 버튼이 없다), 배달 상태는 바뀌지 않는다.
+    @Operation(summary = "드리미에게 핑 보내기",
+            description = "부르미가 담당 드리미를 깨운다. 드리미에게 인앱(SSE) 알림과 웹푸시가 전달된다. "
+                    + "해당 주문의 부르미만 보낼 수 있고, 완료·취소 등 종료된 배달에서는 보낼 수 없다. "
+                    + "같은 배달에는 30초에 한 번만 보낼 수 있다.")
+    @PostMapping("/orders/{orderId}/ping")
+    @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
+            codes = {"DELIVERY_NOT_FOUND", "NOT_ORDER_BOORMI", "CONTACT_NOT_AVAILABLE", "PING_TOO_FREQUENT"})
+    public void sendPing(@PathVariable UUID orderId, @LoginUser UUID boormiId) {
+        deliveryService.sendPing(orderId, boormiId);
+    }
+
     @Operation(summary = "드리미 위치 갱신",
             description = "드리미가 5~10초마다 호출해 현재 위치를 전달한다. 첫 위치가 도착하면 서버가 계산한 '드리미→픽업지' 경로와 "
                     + "배송완료예상시간을 함께 응답한다(아직 계산 전이면 빈 목록/null). 상태 변경은 SSE로 전달된다. "
