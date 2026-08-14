@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import { Button, ScreenShell, TextField, TopBar } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
 import { useSessionStore } from '@/shared/store/sessionStore'
@@ -18,6 +19,7 @@ import {
  * 이름/생년월일/전화번호(인증)/이메일/비밀번호·재확인 입력 + 약관 동의.
  */
 export function SignupScreen() {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate()
   const signup = useSessionStore((s) => s.signup)
   const [form, setForm] = useState({
@@ -120,7 +122,7 @@ export function SignupScreen() {
 
   return (
     <ScreenShell>
-      <TopBar title="회원가입" onBack={() => navigate(-1)} actions={[]} />
+      <TopBar title="회원가입" onBack={backOrHome} actions={[]} />
 
       <main className="flex flex-1 flex-col pt-2">
         <h2 className="text-lg font-bold tracking-[-0.4px] text-navy-900">

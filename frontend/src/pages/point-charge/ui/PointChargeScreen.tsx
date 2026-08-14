@@ -1,4 +1,5 @@
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import { ScreenShell, TopBar } from "@/shared/ui";
 import { ChargeForm } from "./ChargeForm";
 import { ConvertForm } from "./ConvertForm";
@@ -8,7 +9,7 @@ import { ConvertForm } from "./ConvertForm";
  * ?mode=convert 이면 머니→포인트 전환을, 그 외에는 카드 충전을 보여줍니다.
  */
 export function PointChargeScreen() {
-  const navigate = useNavigate();
+  const backOrHome = useBackOrHome();
   const [params] = useSearchParams();
   const convert = params.get("mode") === "convert";
 
@@ -16,7 +17,7 @@ export function PointChargeScreen() {
     <ScreenShell>
       <TopBar
         title={convert ? "포인트로 전환" : "포인트 충전"}
-        onBack={() => navigate(-1)}
+        onBack={backOrHome}
         actions={[]}
       />
 

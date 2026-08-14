@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
+  ArrivalBadge,
   Button,
   BlockingLoadErrorModal,
   Card,
@@ -10,7 +12,6 @@ import {
   Modal,
   PhotoLightboxModal,
   ScreenShell,
-  Toast,
   TopBar,
 } from "@/shared/ui";
 import type { Coords } from "@/shared/ui";
@@ -66,6 +67,7 @@ export function RealDeliveryTracking({
   orderId,
   initialStatus,
 }: RealDeliveryTrackingProps) {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate();
   const showToast = useToastStore((state) => state.show);
   const clearToasts = useToastStore((state) => state.clear);
@@ -86,6 +88,9 @@ export function RealDeliveryTracking({
   const [lastSeenAt, setLastSeenAt] = useState<number | null>(null);
   // "마지막 확인 N분 전" 라벨을 계산할 기준 시각. lastSeenAt과 함께 잡고, 배너가 뜬 동안 주기적으로 갱신한다.
   const [labelNow, setLabelNow] = useState(() => Date.now());
+
+  // 전역 토스트 스택에 올려둔 연결·위치 안내의 id(치울 때 필요).
+  const noticeToastId = useRef<string | null>(null);
 
   // 상세 조회 성공 전에는 SSE·취소 등 모든 배달 기능을 차단한다.
   const {
@@ -295,21 +300,54 @@ export function RealDeliveryTracking({
   const isMyConnectionDown =
     sseStatus === "reconnecting" || sseStatus === "closed";
 
-  // 연결·위치 상태 안내는 일회성 토스트가 아니므로 화면 안에 유지한다.
-  const topNotice =
-    sseStatus === "reconnecting"
-      ? {
-          icon: "transfer" as const,
-          title: "실시간 연결이 불안정해요",
-          description: "다시 연결 중…",
-        }
-      : !isMyConnectionDown && lastSeenAt !== null
+  // 연결·위치 상태 안내는 일회성이 아니라 상태가 풀릴 때까지 유지되는 알림이다.
+  // useMemo로 참조를 고정해 아래 effect가 라벨이 실제로 바뀔 때만 토스트를 갱신하게 한다.
+  const topNotice = useMemo(
+    () =>
+      sseStatus === "reconnecting"
         ? {
-            icon: "pin" as const,
-            title: "드리미 위치를 받지 못하고 있어요",
-            description: `마지막 확인 ${formatLastSeen(lastSeenAt, labelNow)}`,
+            icon: "transfer" as const,
+            title: "실시간 연결이 불안정해요",
+            description: "다시 연결 중…",
           }
-        : null;
+        : !isMyConnectionDown && lastSeenAt !== null
+          ? {
+              icon: "pin" as const,
+              title: "드리미 위치를 받지 못하고 있어요",
+              description: `마지막 확인 ${formatLastSeen(lastSeenAt, labelNow)}`,
+            }
+          : null,
+    [sseStatus, isMyConnectionDown, lastSeenAt, labelNow],
+  );
+
+  // 화면 안에 인라인으로 그리면 안내가 뜰 때마다 아래 지도·카드를 통째로 밀어낸다.
+  // 전역 토스트 스택(ToastViewport)에 얹어 레이아웃 위에 겹쳐 뜨게 하고, 상태가 풀리면 걷어낸다.
+  useEffect(() => {
+    const { dismiss } = useToastStore.getState();
+    if (!topNotice) {
+      if (noticeToastId.current) {
+        dismiss(noticeToastId.current);
+        noticeToastId.current = null;
+      }
+      return;
+    }
+    noticeToastId.current = showToast({
+      ...topNotice,
+      persistent: true,
+      dedupeKey: `track-notice:${orderId}`,
+    });
+  }, [topNotice, showToast, orderId]);
+
+  // 화면을 떠날 때 남은 안내를 정리한다(다른 화면까지 따라다니면 안 된다).
+  useEffect(
+    () => () => {
+      if (noticeToastId.current) {
+        useToastStore.getState().dismiss(noticeToastId.current);
+        noticeToastId.current = null;
+      }
+    },
+    [],
+  );
 
   const view = realTrackView(status);
   const driver: Coords | undefined =
@@ -357,17 +395,7 @@ export function RealDeliveryTracking({
 
   return (
     <ScreenShell>
-      <TopBar title="실시간 배송" onBack={() => navigate(-1)} actions={[]} />
-
-      {topNotice && (
-        <div className="pt-2">
-          <Toast
-            icon={topNotice.icon}
-            title={topNotice.title}
-            description={topNotice.description}
-          />
-        </div>
-      )}
+      <TopBar title="실시간 배송" onBack={backOrHome} actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <div className="flex items-center justify-between gap-2">
@@ -381,16 +409,7 @@ export function RealDeliveryTracking({
 
         <MapCard
           height={340}
-          overlay={
-            <div className="flex items-center gap-6 rounded-pill bg-navy-900 px-6 py-2.5 text-white">
-              <div className="flex flex-col items-center">
-                <span className="text-2xs opacity-70">배송 완료 예상</span>
-                <span className="text-md font-bold">
-                  {arrivalTime ?? "계산 중…"}
-                </span>
-              </div>
-            </div>
-          }
+          overlay={<ArrivalBadge arrivalTime={arrivalTime} />}
         >
           <DeliveryRouteMap
             pickup={pickup}

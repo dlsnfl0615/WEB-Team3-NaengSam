@@ -1,4 +1,5 @@
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   Button,
   MapCard,
@@ -31,7 +32,7 @@ function parseStatusParam(
  * orderId 가 없으면 기존 mock 흐름(전역 스토어 구독)을 그대로 탄다.
  */
 export function DeliveryDetailScreen() {
-  const navigate = useNavigate();
+  const backOrHome = useBackOrHome();
   const [params] = useSearchParams();
   const orderId = params.get("orderId");
   const active = useActiveDelivery();
@@ -57,7 +58,7 @@ export function DeliveryDetailScreen() {
 
   return (
     <ScreenShell>
-      <TopBar title="드림 상세" onBack={() => navigate(-1)} actions={[]} />
+      <TopBar title="드림 상세" onBack={backOrHome} actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <div className="flex items-center gap-3">
@@ -96,7 +97,7 @@ export function DeliveryDetailScreen() {
         {cancelable && (
           <button
             type="button"
-            onClick={() => navigate(-1)}
+            onClick={backOrHome}
             className="text-2xs text-muted"
           >
             배달 취소하기 (픽업 전에만 가능)

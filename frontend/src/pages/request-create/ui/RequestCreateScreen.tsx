@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import { Button, ScreenShell, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { api, isApiError, type ExpectedValueDto } from "@/shared/api";
@@ -10,6 +11,11 @@ import { StepItem } from "./StepItem";
 import { StepPhoto } from "./StepPhoto";
 import { StepPayment } from "./StepPayment";
 import { itemSizeToCd, itemTypeToCd, toOrderRequest } from "./orderRequest";
+import {
+  clearRequestDraft,
+  readRequestDraft,
+  saveRequestDraft,
+} from "./requestDraft";
 import type { RequestForm } from "./types";
 
 const INITIAL_FORM: RequestForm = {
@@ -34,10 +40,13 @@ const INITIAL_FORM: RequestForm = {
  * 주소·예상요금·이미지 업로드·콜 등록을 실제 부르미 API로 연동한다.
  */
 export function RequestCreateScreen() {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate();
   const createOrder = useBoormiOrderStore((s) => s.createOrder);
-  const [step, setStep] = useState(1);
-  const [form, setForm] = useState<RequestForm>(INITIAL_FORM);
+  // 포인트 충전 등으로 화면을 떠났다 돌아오면 작성 중이던 내용을 그대로 복원한다.
+  const [draft] = useState(readRequestDraft);
+  const [step, setStep] = useState(draft?.step ?? 1);
+  const [form, setForm] = useState<RequestForm>(draft?.form ?? INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [estimate, setEstimate] = useState<ExpectedValueDto | null>(null);
@@ -58,7 +67,20 @@ export function RequestCreateScreen() {
 
   const next = () => setStep((s) => Math.min(4, s + 1));
   const prev = () => setStep((s) => Math.max(1, s - 1));
-  const back = () => (step > 1 ? prev() : navigate(-1));
+  // 첫 스텝에서 뒤로 = 등록 포기 → 임시저장도 비운다(충전 등으로 잠깐 나가는 경우와 구분).
+  const back = () => {
+    if (step > 1) {
+      prev();
+      return;
+    }
+    clearRequestDraft();
+    backOrHome();
+  };
+
+  // 스텝·입력이 바뀔 때마다 스냅샷을 남긴다. 견적은 서버 파생값이라 저장하지 않고 복원 후 재조회한다.
+  useEffect(() => {
+    saveRequestDraft({ step, form });
+  }, [step, form]);
 
   // 출발·도착지와 물품 유형·크기가 준비되면 예상 요금을 실시간 조회.
   useEffect(() => {
@@ -119,6 +141,7 @@ export function RequestCreateScreen() {
         setError("등록한 부름 정보를 확인하지 못했어요. 다시 시도해주세요.");
         return;
       }
+      clearRequestDraft();
       // 생성된 부름을 식별할 수 있도록 주문 ID와 함께 드리미 대기 화면으로 이동한다.
       navigate(`${ROUTES.matching}?orderId=${orderId}`, { replace: true });
     } catch (e) {

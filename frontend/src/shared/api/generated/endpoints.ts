@@ -10,6 +10,7 @@ import type {
   CancelByAdmin200,
   CancelByBoormi200,
   CancelByDreami200,
+  ChangeRoleParams,
   ChargePoint200,
   ConfirmDreamiRequest,
   DeliveryPhotoRequest,
@@ -27,6 +28,7 @@ import type {
   FindNearbyCalls200,
   FindNearbyDreamis200,
   FindNearbyOrders200,
+  FindNearbyWaitingDreamis200,
   FinishDelivery200,
   GeoPoint,
   Get200,
@@ -311,6 +313,21 @@ const writeContent = (
       {url: `/api/v1/orders/${orderId}/review`, method: 'PATCH',
       headers: {'Content-Type': 'application/json', },
       data: reviewContentRequest
+    },
+      options);
+    }
+
+/**
+ * 부르미 매칭 지도용. 기준 좌표 반경 내에서 콜을 기다리는 드리미를 최대 10명까지 가까운 순으로 반환한다.
+ * @summary 주변 대기 드리미 조회
+ */
+const findNearbyWaitingDreamis = (
+    nearbyDreamiRequest: NearbyDreamiRequest,
+ options?: SecondParameter<typeof customInstance<FindNearbyWaitingDreamis200>>,) => {
+      return customInstance<FindNearbyWaitingDreamis200>(
+      {url: `/api/v1/matching/dreamis/nearby`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: nearbyDreamiRequest
     },
       options);
     }
@@ -830,14 +847,16 @@ const getWallet = (
     }
 
 /**
- * 로그인 한 사용자가 부르미/드리미 전환 가능한지 확인한다.
+ * 로그인 한 사용자가 target 역할로 전환 가능한지 확인한다.
+ * 매칭·배달이 진행 중이면 어느 방향으로도 전환할 수 없다.
  * @summary 부르미/드리미 전환
  */
 const changeRole = (
-
+    params: ChangeRoleParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/user/role`, method: 'GET'
+      {url: `/api/v1/user/role`, method: 'GET',
+        params
     },
       options);
     }
@@ -909,7 +928,7 @@ const getReceivedReview = (
     }
 
 /**
- * 드리미로서 응답 대기 중인 제안(pendingOffer)과, 부르미로서 확인 대기 중인 드리미 수락 정보(incomingDreami)를 반환한다. 진행 중인 것이 없으면 해당 필드는 null이다.
+ * 드리미로서 응답 대기 중인 제안(pendingOffer)과, 부르미로서 확인 대기 중인 드리미 수락 정보(incomingDreami)를 반환한다. 진행 중인 것이 없으면 해당 필드는 null이다. dreamiOnline은 드리미가 매칭엔진에 등록돼 오퍼를 기다리는 중인지다(새로고침 후 온라인 상태 복원용).
  * @summary 현재 매칭 상태 조회
  */
 const getCurrentStatus = (
@@ -1191,12 +1210,7 @@ const removeDreami = (
       options);
     }
 
-return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,pollLoginQueue,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getReceivedReview,getCurrentStatus,getProfile,getOfferItemPhoto,getDreamiOrders,getDreamiOrder,findCurrentDeliveryCard,getDreamiOrderCount,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getPickupPhoto,getDeliveryContact,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,getBoormiDashboard,getBoormiOrder,unsubscribeOrder,getBoormiOrderCount,removeDreami}};
-
-type AwaitedInput<T> = PromiseLike<T> | T;
-
-    type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
-
+return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,pollLoginQueue,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,findNearbyWaitingDreamis,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getReceivedReview,getCurrentStatus,getProfile,getOfferItemPhoto,getDreamiOrders,getDreamiOrder,findCurrentDeliveryCard,getDreamiOrderCount,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getPickupPhoto,getDeliveryContact,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,getBoormiDashboard,getBoormiOrder,unsubscribeOrder,getBoormiOrderCount,removeDreami}};
 export type GetResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['get']>>>
 export type PutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['put']>>>
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
@@ -1212,6 +1226,7 @@ export type DeleteSubscriptionResult = NonNullable<Awaited<ReturnType<ReturnType
 export type GetMyReviewResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getMyReview']>>>
 export type WriteScoreResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['writeScore']>>>
 export type WriteContentResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['writeContent']>>>
+export type FindNearbyWaitingDreamisResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findNearbyWaitingDreamis']>>>
 export type VerifyUploadedDocumentsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['verifyUploadedDocuments']>>>
 export type GoOnlineResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['goOnline']>>>
 export type GoOfflineResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['goOffline']>>>

@@ -1,7 +1,7 @@
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   Badge,
-  Button,
   Card,
   Icon,
   IconChip,
@@ -22,7 +22,7 @@ import { useReceivedReview } from "@/shared/lib/delivery/useReceivedReview";
  * (getDeliveryCompletion)로 보충한다.
  */
 export function ActivityDetailDriverScreen() {
-  const navigate = useNavigate();
+  const backOrHome = useBackOrHome();
   const [params] = useSearchParams();
   const id = params.get("id");
   const { order, loading: deliveriesLoading } = useDreamiOrderById(id);
@@ -43,7 +43,7 @@ export function ActivityDetailDriverScreen() {
 
   return (
     <ScreenShell>
-      <TopBar title="드림상세" onBack={() => navigate(-1)} actions={["more"]} />
+      <TopBar title="드림상세" onBack={backOrHome} actions={["more"]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         {order ? (
@@ -110,23 +110,6 @@ export function ActivityDetailDriverScreen() {
                 <p className="text-sm text-muted">아직 리뷰가 없어요.</p>
               )}
             </Card>
-
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                block
-                className="border-transparent bg-track"
-              >
-                영수증
-              </Button>
-              <Button
-                variant="outline"
-                block
-                className="border-transparent bg-track"
-              >
-                문의하기
-              </Button>
-            </div>
           </>
         ) : deliveriesLoading ? (
           <p className="py-10 text-center text-sm text-muted">불러오는 중…</p>

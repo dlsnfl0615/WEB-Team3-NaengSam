@@ -49,6 +49,62 @@ body {
   fill: currentColor;
 }
 
+/* 지도 핀: 실시간 목록에 들어오고 나갈 때 위치를 잃지 않으면서 부드럽게 전환 */
+.ds-map-pin {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transform-origin: center bottom;
+  transition:
+    opacity 180ms ease-out,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.ds-map-pin-enter,
+.ds-map-pin-exit {
+  opacity: 0;
+  transform: translateY(5px) scale(0.72);
+}
+.ds-map-pin-exit {
+  pointer-events: none;
+}
+
+/* 주변 드리미: 많은 위치가 겹쳐도 지도를 가리지 않는 작은 발광 점 */
+.ds-map-glow-dot {
+  position: relative;
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgb(255 255 255 / 92%);
+  border-radius: 9999px;
+  background: var(--ds-map-dot-color);
+  box-shadow:
+    0 0 0 3px rgb(0 183 167 / 18%),
+    0 0 10px 3px rgb(0 183 167 / 35%);
+  transform-origin: center;
+}
+.ds-map-glow-dot::before {
+  position: absolute;
+  inset: -5px;
+  border: 1px solid rgb(0 183 167 / 32%);
+  border-radius: inherit;
+  content: "";
+  animation: ds-map-dot-pulse 1.8s ease-out infinite;
+}
+.ds-map-glow-dot.ds-map-pin-enter,
+.ds-map-glow-dot.ds-map-pin-exit {
+  transform: scale(0.45);
+}
+
+@keyframes ds-map-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.05);
+  }
+}
+
 /* 바텀시트: 하단에서 올라오는 등장 애니메이션 */
 @keyframes ds-sheet-up {
   from {
@@ -62,7 +118,34 @@ body {
   animation: ds-sheet-up 220ms ease-out;
 }
 @media (prefers-reduced-motion: reduce) {
+  .ds-map-pin {
+    transition: none;
+  }
+  .ds-map-glow-dot::before {
+    animation: none;
+  }
   .ds-sheet-up {
+    animation: none;
+  }
+}
+
+/* 알림 토스트: 화면 위에서 아래로 미끄러져 내려오는 등장 애니메이션.
+   토스트는 레이아웃 위에 겹쳐 뜨므로(fixed) 이 움직임이 아래 콘텐츠를 밀지 않는다. */
+@keyframes ds-toast-down {
+  from {
+    opacity: 0;
+    transform: translateY(-16px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.ds-toast-down {
+  animation: ds-toast-down 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ds-toast-down {
     animation: none;
   }
 }

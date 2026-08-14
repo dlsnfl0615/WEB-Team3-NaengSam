@@ -32,11 +32,20 @@ export interface NearbyCallsMapProps {
   fallbackMessage?: string | null;
   height?: number;
   flat?: boolean;
+  /** 드리미 화면은 주변 부름, 부르미 화면은 주변 드리미를 표시한다. */
+  mode?: "nearby-calls" | "nearby-dreamis";
 }
 
 // DeliveryRouteMap의 pickup/dropoff 색·라벨 배경 토큰을 그대로 재사용한다(같은 의미의 핀이므로).
 const MY_LOCATION_STYLE = { color: "#0d1b3d", label: "드리미", bg: "bg-navy-900" }; // navy-900
 const CALL_STYLE = { color: "#00b7a7", label: "픽업 장소", bg: "bg-teal-500" }; // teal-500
+const NEARBY_CALL_STYLE = { ...CALL_STYLE, pinSize: "small" as const };
+const DREAMI_DOT_STYLE = {
+  color: "#00b7a7",
+  label: "드리미",
+  bg: "bg-teal-500",
+  variant: "glow-dot" as const,
+};
 
 /**
  * 내 위치 핀 1개 + 주변 콜 핀 N개를 보여주는 지도. goOnline 여부와 무관하게
@@ -50,6 +59,7 @@ export function NearbyCallsMap({
   fallbackMessage,
   height = 280,
   flat = false,
+  mode = "nearby-calls",
 }: NearbyCallsMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const kakaoRef = useRef<typeof window.kakao | null>(null);
@@ -83,6 +93,8 @@ export function NearbyCallsMap({
 
     return () => {
       cancelled = true;
+      myMarkerRef.current?.setMap(null);
+      callMarkersRef.current.forEach((marker) => marker.setMap(null));
       kakaoRef.current = null;
       mapRef.current = null;
       myMarkerRef.current = null;
@@ -99,10 +111,15 @@ export function NearbyCallsMap({
     if (myMarkerRef.current) {
       myMarkerRef.current.setPosition(pos);
     } else {
-      myMarkerRef.current = makePinOverlay(kakao, map, pos, MY_LOCATION_STYLE);
+      myMarkerRef.current = makePinOverlay(
+        kakao,
+        map,
+        pos,
+        mode === "nearby-calls" ? MY_LOCATION_STYLE : CALL_STYLE,
+      );
       map.setCenter(pos);
     }
-  }, [status, center]);
+  }, [status, center, mode]);
 
   // 콜 핀: calls 목록에 맞춰 마커를 새로 그린다(사라진 콜의 마커는 지운다).
   useEffect(() => {
@@ -126,8 +143,10 @@ export function NearbyCallsMap({
         kakao,
         map,
         pos,
-        { ...CALL_STYLE, label: call.itemName ?? CALL_STYLE.label },
-        () => onCallClick?.(call),
+        mode === "nearby-calls"
+          ? { ...NEARBY_CALL_STYLE, label: call.itemName ?? CALL_STYLE.label }
+          : DREAMI_DOT_STYLE,
+        onCallClick ? () => onCallClick(call) : undefined,
       );
       next.set(call.id, marker);
     });
@@ -135,11 +154,11 @@ export function NearbyCallsMap({
     // 이번 목록에 없는 기존 마커는 지도에서 제거한다.
     callMarkersRef.current.forEach((marker, id) => {
       if (!next.has(id)) {
-        marker.setMap(null);
+        marker.removeSmoothly();
       }
     });
     callMarkersRef.current = next;
-  }, [status, calls, onCallClick]);
+  }, [status, calls, onCallClick, mode]);
 
   if (status === "disabled") {
     return (

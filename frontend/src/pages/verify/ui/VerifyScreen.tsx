@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import { Button, Card, ScreenShell, TopBar } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
 import { useSessionStore } from '@/shared/store/sessionStore'
@@ -22,9 +23,10 @@ async function uploadDocument(file: File, purpose: GetPresignedUrlPurpose): Prom
 
 /**
  * 본인인증 및 등록 화면(Figma node 21:41).
- * 드리미 등록을 위한 신분증/범죄이력조회서 업로드 안내 + 본인인증 진입.
+ * 드리미 등록을 위한 신분증/범죄이력회보서 업로드 안내 + 본인인증 진입.
  */
 export function VerifyScreen() {
+  const backOrHome = useBackOrHome();
   const navigate = useNavigate()
   const verify = useSessionStore((s) => s.verify)
   const [idCardFile, setIdCardFile] = useState<File | null>(null)
@@ -69,7 +71,7 @@ export function VerifyScreen() {
     <ScreenShell>
       <TopBar
         title="본인인증 및 등록"
-        onBack={() => navigate(-1)}
+        onBack={backOrHome}
         actions={[]}
       />
 
@@ -95,7 +97,7 @@ export function VerifyScreen() {
             </div>
           </div>
 
-          {/* 신분증 / 범죄이력조회서 업로드 */}
+          {/* 신분증 / 범죄이력회보서 업로드 */}
           <div className="grid grid-cols-2 gap-3">
             <DocumentUploadSlot
               label="신분증"
@@ -103,7 +105,7 @@ export function VerifyScreen() {
               disabled={verifying}
             />
             <DocumentUploadSlot
-              label="범죄이력조회서"
+              label="범죄이력회보서"
               onSelect={setCriminalRecordFile}
               disabled={verifying}
             />

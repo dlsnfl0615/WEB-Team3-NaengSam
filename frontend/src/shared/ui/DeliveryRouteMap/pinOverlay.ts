@@ -10,6 +10,7 @@ export interface PinOverlayHandle {
   setMap(map: KakaoMap | null): void;
   setPosition(position: KakaoLatLng): void;
   setSmoothPosition(position: KakaoLatLng, durationMs: number): void;
+  removeSmoothly(): void;
 }
 
 /** 핀 색·라벨 텍스트·라벨 배경(theme.css 토큰 유틸)을 함께 묶은 스타일. */
@@ -17,6 +18,8 @@ export interface PinStyle {
   color: string;
   label: string;
   bg: string;
+  variant?: "pin" | "glow-dot";
+  pinSize?: "default" | "small";
 }
 
 interface PinAnimation {
@@ -42,36 +45,60 @@ export function makePinOverlay(
   onClick?: () => void,
   smooth = false,
 ): PinOverlayHandle {
+  const isGlowDot = style.variant === "glow-dot";
+  const anchorTransform = isGlowDot
+    ? "translate(-50%, -50%)"
+    : "translate(-50%, -100%)";
   const root = document.createElement("div");
   root.className = cn(
     "absolute flex flex-col items-center gap-0.5 whitespace-nowrap",
     onClick ? "cursor-pointer" : "pointer-events-none",
   );
-  root.style.transform = "translate(-50%, -100%)";
+  root.style.transform = anchorTransform;
   if (smooth) root.style.willChange = "transform";
   if (onClick) root.addEventListener("click", onClick);
 
+  const content = document.createElement("div");
+  content.className = cn(
+    "ds-map-pin ds-map-pin-enter flex flex-col items-center gap-0.5",
+    isGlowDot && "ds-map-glow-dot",
+  );
+
+  if (isGlowDot) {
+    content.style.setProperty("--ds-map-dot-color", style.color);
+  }
+
   const labelElement = document.createElement("div");
+  // 라벨에는 물품명처럼 길이를 통제할 수 없는 값이 들어온다. 폭을 제한하지 않으면 nowrap 라벨이
+  // 지도 밖으로 뻗어 overflow-hidden에 그대로 잘려 나가므로, 폭을 묶고 말줄임(…)으로 접는다.
+  // 전체 이름은 콜 카드 제목에서 볼 수 있다. title 속성으로 원문도 남긴다.
   labelElement.className = cn(
-    "rounded-pill px-1.5 py-0.5 text-2xs font-semibold text-white shadow-card",
+    "max-w-[9rem] overflow-hidden text-ellipsis rounded-pill px-1.5 py-0.5",
+    "text-2xs font-semibold text-white shadow-card",
     style.bg,
   );
   labelElement.textContent = style.label;
+  labelElement.title = style.label;
 
   const pin = document.createElement("span");
   pin.setAttribute("aria-hidden", "true");
-  pin.style.width = "30px";
-  pin.style.height = "40px";
+  pin.style.width = style.pinSize === "small" ? "24px" : "30px";
+  pin.style.height = style.pinSize === "small" ? "32px" : "40px";
   pin.style.backgroundImage = `url("${pinImageSrc(style.color)}")`;
   pin.style.backgroundPosition = "center";
   pin.style.backgroundRepeat = "no-repeat";
   pin.style.backgroundSize = "contain";
 
-  root.append(labelElement, pin);
+  if (!isGlowDot) {
+    content.append(labelElement, pin);
+  }
+  root.append(content);
 
   class PinOverlay extends kakao.maps.AbstractOverlay {
     private position = position;
     private animation?: PinAnimation;
+    private enterFrame?: number;
+    private removeTimer?: number;
 
     private progress(animation: PinAnimation, now: number) {
       return Math.min(
@@ -96,13 +123,13 @@ export function makePinOverlay(
         // transform은 소수점 픽셀을 유지하고 브라우저 합성 레이어에서 처리돼 left/top보다 부드럽다.
         root.style.left = "0px";
         root.style.top = "0px";
-        root.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) translate(-50%, -100%)`;
+        root.style.transform = `translate3d(${point.x}px, ${point.y}px, 0) ${anchorTransform}`;
         return;
       }
       // SMOOTH 모드가 꺼지면 기존 위치 반영 방식을 그대로 사용한다.
       root.style.left = `${point.x}px`;
       root.style.top = `${point.y}px`;
-      root.style.transform = "translate(-50%, -100%)";
+      root.style.transform = anchorTransform;
     }
 
     private cancelAnimation() {
@@ -131,6 +158,10 @@ export function makePinOverlay(
 
     onAdd() {
       this.getPanels().overlayLayer.appendChild(root);
+      this.enterFrame = requestAnimationFrame(() => {
+        content.classList.remove("ds-map-pin-enter");
+        this.enterFrame = undefined;
+      });
     }
 
     draw() {
@@ -159,6 +190,8 @@ export function makePinOverlay(
 
     onRemove() {
       this.cancelAnimation();
+      if (this.enterFrame != null) cancelAnimationFrame(this.enterFrame);
+      if (this.removeTimer != null) window.clearTimeout(this.removeTimer);
       root.remove();
     }
 
@@ -207,6 +240,17 @@ export function makePinOverlay(
       };
       this.renderPoint(fromPoint);
       this.animation.frame = requestAnimationFrame(this.animate);
+    }
+
+    removeSmoothly() {
+      if (!this.getMap() || content.classList.contains("ds-map-pin-exit")) return;
+      if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+        this.setMap(null);
+        return;
+      }
+      content.classList.remove("ds-map-pin-enter");
+      content.classList.add("ds-map-pin-exit");
+      this.removeTimer = window.setTimeout(() => this.setMap(null), 220);
     }
   }
 

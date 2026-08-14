@@ -4,18 +4,33 @@ import type { CurrentMatchingStatusDto } from "@/shared/api";
 import {
   MATCHING_POLL_INTERVAL_MS,
   useMatchingStore,
+  type PendingOffer,
 } from "./matchingStore";
 
 vi.mock("@/shared/api", () => ({
   api: {
     getCurrentStatus: vi.fn(),
     getProfile: vi.fn(),
+    acceptOffer: vi.fn(),
   },
   isApiError: () => false,
 }));
 
 const getCurrentStatus = vi.mocked(api.getCurrentStatus);
 const getProfile = vi.mocked(api.getProfile);
+const acceptOffer = vi.mocked(api.acceptOffer);
+
+/** 필수 필드만 채운 pendingOffer(테스트에서 쓰지 않는 값은 전부 null). */
+function offer(overrides: Partial<PendingOffer> = {}): PendingOffer {
+  return {
+    offerId: "offer-1", orderId: "order-1", deliveryAmount: null, itemName: null,
+    deliveryEta: 0, deliveryDistance: null, originLatitude: null, originLongitude: null,
+    originAlias: null, originAddressLine1: null, destinationLatitude: null,
+    destinationLongitude: null, destinationAlias: null, destinationAddressLine1: null,
+    deliveryRequest: null, offeredAt: "2026-08-13T10:00:00", expiresAt: "2026-08-13T10:00:30",
+    ...overrides,
+  };
+}
 
 /** getCurrentStatus 응답(CommonResponse 봉투)을 만든다. */
 function snapshot(result: CurrentMatchingStatusDto) {
@@ -33,11 +48,15 @@ beforeEach(() => {
   vi.useFakeTimers();
   getCurrentStatus.mockReset();
   getProfile.mockReset();
+  acceptOffer.mockReset();
+  acceptOffer.mockResolvedValue(undefined as never);
   getProfile.mockResolvedValue({ result: {} } as never);
   getCurrentStatus.mockResolvedValue(snapshot({}) as never);
   useMatchingStore.setState({
+    online: false,
     pendingOffer: null,
     incomingDreami: null,
+    awaitingBoormi: null,
     submitting: false,
     myLocation: null,
     nearbyCalls: [],
@@ -249,5 +268,122 @@ describe("matchingStore 카운트다운 만료(로컬)", () => {
 
     useMatchingStore.getState().expireIncomingDreami("offer-2");
     expect(useMatchingStore.getState().incomingDreami).toBeNull();
+  });
+});
+
+describe("matchingStore 드리미 온라인 상태 복원", () => {
+  it("새로고침으로 online이 false여도 서버가 등록됐다고 하면 true로 복원한다", async () => {
+    // 스토어는 메모리에만 있어 새로고침하면 false로 시작하지만 매칭엔진 등록은 살아 있다.
+    getCurrentStatus.mockResolvedValue(snapshot({ dreamiOnline: true }) as never);
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    expect(useMatchingStore.getState().online).toBe(true);
+  });
+
+  it("서버가 등록 해제됐다고 하면 online을 false로 되돌린다", async () => {
+    useMatchingStore.setState({ online: true });
+    getCurrentStatus.mockResolvedValue(snapshot({ dreamiOnline: false }) as never);
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    expect(useMatchingStore.getState().online).toBe(false);
+  });
+
+  it("dreamiOnline이 없는 응답은 online을 건드리지 않는다", async () => {
+    useMatchingStore.setState({ online: true });
+    getCurrentStatus.mockResolvedValue(snapshot({}) as never);
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    expect(useMatchingStore.getState().online).toBe(true);
+  });
+
+  it("부르미 거절 이벤트는 online을 끄지 않는다(서버 등록은 유지된다)", () => {
+    useMatchingStore.setState({ online: true, pendingOffer: offer() });
+
+    useMatchingStore.getState().receiveBoormiRejected({ offerId: "offer-1" });
+
+    expect(useMatchingStore.getState().online).toBe(true);
+    expect(useMatchingStore.getState().pendingOffer).toBeNull();
+  });
+});
+
+/**
+ * 드리미가 수락한 뒤 부르미 확정을 기다리는 구간. 백엔드에 이 대기를 알려주는 상태가 없어서
+ * 프론트가 수락 성공 시점에 만들고 결말 이벤트로 지운다 — 그래서 "언제 사라지는가"가 핵심이다.
+ */
+describe("matchingStore 부르미 응답 대기", () => {
+  it("콜을 수락하면 대기 상태가 생기고 콜 카드는 내려간다", async () => {
+    useMatchingStore.setState({ pendingOffer: offer({ itemName: "설계도면" }) });
+
+    await useMatchingStore.getState().acceptOffer();
+
+    const { pendingOffer, awaitingBoormi } = useMatchingStore.getState();
+    expect(pendingOffer).toBeNull();
+    expect(awaitingBoormi).toMatchObject({
+      offerId: "offer-1",
+      orderId: "order-1",
+      itemName: "설계도면",
+    });
+  });
+
+  it("수락이 실패하면 대기 상태를 만들지 않는다", async () => {
+    acceptOffer.mockRejectedValue(new Error("이미 마감된 제안입니다."));
+    useMatchingStore.setState({ pendingOffer: offer() });
+
+    await useMatchingStore.getState().acceptOffer();
+
+    expect(useMatchingStore.getState().awaitingBoormi).toBeNull();
+  });
+
+  it("부르미가 거절하면 대기 창이 내려간다", async () => {
+    useMatchingStore.setState({ pendingOffer: offer() });
+    await useMatchingStore.getState().acceptOffer();
+
+    useMatchingStore.getState().receiveBoormiRejected({ offerId: "offer-1" });
+
+    expect(useMatchingStore.getState().awaitingBoormi).toBeNull();
+    expect(useMatchingStore.getState().message).toBe("부르미가 요청을 거절했어요.");
+  });
+
+  it("제안이 마감되면 대기 창이 내려간다", async () => {
+    useMatchingStore.setState({ pendingOffer: offer() });
+    await useMatchingStore.getState().acceptOffer();
+
+    useMatchingStore
+      .getState()
+      .receiveOfferClosed({ offerId: "offer-1", reason: "다른 드리미가 배정됐어요." });
+
+    expect(useMatchingStore.getState().awaitingBoormi).toBeNull();
+    expect(useMatchingStore.getState().message).toBe("다른 드리미가 배정됐어요.");
+  });
+
+  it("다른 제안의 거절 이벤트는 내 대기 창을 건드리지 않는다", async () => {
+    useMatchingStore.setState({ pendingOffer: offer() });
+    await useMatchingStore.getState().acceptOffer();
+
+    useMatchingStore.getState().receiveBoormiRejected({ offerId: "다른-offer" });
+
+    expect(useMatchingStore.getState().awaitingBoormi?.offerId).toBe("offer-1");
+  });
+
+  it("아무 이벤트도 못 받고 TTL이 지나면 스스로 만료된다", async () => {
+    useMatchingStore.setState({ pendingOffer: offer() });
+    await useMatchingStore.getState().acceptOffer();
+
+    useMatchingStore.getState().expireAwaitingBoormi("offer-1");
+
+    expect(useMatchingStore.getState().awaitingBoormi).toBeNull();
+    expect(useMatchingStore.getState().message).toContain("응답을 받지 못했어요");
+  });
+
+  it("로그아웃하면 대기 창도 함께 정리된다", async () => {
+    useMatchingStore.setState({ pendingOffer: offer() });
+    await useMatchingStore.getState().acceptOffer();
+
+    useMatchingStore.getState().clearOffers();
+
+    expect(useMatchingStore.getState().awaitingBoormi).toBeNull();
   });
 });

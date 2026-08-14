@@ -38,12 +38,13 @@ import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
-import com.naengsam.quick.domain.user.service.UserService;
+import com.naengsam.quick.domain.dreami.service.DreamiActivationChecker;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -52,6 +53,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.EnumSet;
@@ -92,7 +94,7 @@ public class DeliveryService {
     private final DeliveryCertificationRepository deliveryCertificationRepository;
     private final NotificationService notificationService;
     private final UploadSessionService uploadSessionService;
-    private final UserService userService;
+    private final DreamiActivationChecker dreamiActivationChecker;
     private final OrderService orderService;
     private final DreamiRepository dreamiRepository;
     private final BoormiRepository boormiRepository;
@@ -102,6 +104,12 @@ public class DeliveryService {
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
     private final DreamiOfflineDetector dreamiOfflineDetector;
+
+    // 배송완료예상시간에 더하는 여유 시간(delivery.completion-buffer). 건물 진입·엘리베이터 대기처럼
+    // 카카오 경로(도로 기준 이동 시간)에 안 잡히는 시간을 보정한다. 튜닝값이라 @RequiredArgsConstructor가
+    // 만드는 의존성 주입 생성자 대신 필드로 받는다(DreamiOfflineDetector의 임계값들과 같은 성격).
+    @Value("${delivery.completion-buffer}")
+    private Duration completionBuffer;
 
     // ===== 배달 시작 (진입점) =====
 
@@ -115,7 +123,7 @@ public class DeliveryService {
         if (order.getOrderCd() != OrderCd.IN_PROGRESS) {
             throw new BusinessException(DeliveryErrorCode.DELIVERY_START_NOT_ALLOWED);
         }
-        if (!userService.getUserInfo(dreamiId).isDreami()) { // 배달자는 활성 드리미여야 함
+        if (!dreamiActivationChecker.isActivatedDreami(dreamiId)) { // 배달자는 활성 드리미여야 함
             throw new BusinessException(DeliveryErrorCode.DREAMI_NOT_ACTIVATED);
         }
         Delivery delivery = deliveryRepository.save(Delivery.create(orderId, dreamiId, boormiId));
@@ -374,10 +382,12 @@ public class DeliveryService {
             KakaoDirectionsResponseDto.Route route = directionsService.getRoute(dreami, pickup);
             String routePathJson = objectMapper.writeValueAsString(RoutePointDto.from(route));
 
-            // 드리미→픽업지 소요(분, BoormiService와 동일 공식) + 주문의 픽업지→도착지 delivery_eta(분)를 현재 시각에 더한다.
+            // 드리미→픽업지 소요(분, BoormiService와 동일 공식) + 주문의 픽업지→도착지 delivery_eta(분)를 현재 시각에 더하고,
+            // 경로에 안 잡히는 건물 진입 시간을 completionBuffer로 보정한다.
             int pickupEtaMinutes = (int) Math.ceil(route.properties().totalTime() / 60.0);
-            LocalDateTime estimatedCompletion =
-                    LocalDateTime.now().plusMinutes((long) pickupEtaMinutes + order.getDeliveryEta());
+            LocalDateTime estimatedCompletion = LocalDateTime.now()
+                    .plusMinutes((long) pickupEtaMinutes + order.getDeliveryEta())
+                    .plus(completionBuffer);
 
             delivery.applyPickupRoute(routePathJson, estimatedCompletion);
         } catch (BusinessException | JacksonException e) {
@@ -597,9 +607,12 @@ public class DeliveryService {
                 DeliveryStatusResponseDto.from(delivery, "위치 갱신됨"));
     }
 
+    // 픽업/배달 완료 알림은 잠금화면에 "무슨 물품인지"까지 담는다. 이 시점의 부르미는 이미 이 배달의
+    // 당사자라 주문 내용을 알고 있어, 매칭 단계 오퍼 알림과 달리 물품명이 새로운 노출이 되지 않는다.
     private void alarmBoormiDeliveringBySSE(Delivery delivery) {
         publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_DELIVERING,
-                DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"));
+                DeliveryStatusResponseDto.from(delivery, "배달이 시작되었습니다"),
+                itemNameOf(delivery));
     }
 
     private void alarmBoormiDreamiCancelBySSE(Delivery delivery) {
@@ -614,17 +627,37 @@ public class DeliveryService {
 
     private void alarmBoormiDeliveredBySSE(Delivery delivery) {
         publish(delivery.getBoormiId(), DeliveryEventType.DELIVERY_COMPLETED,
-                DeliveryStatusResponseDto.from(delivery, "배달이 완료되었습니다"));
+                DeliveryStatusResponseDto.from(delivery, "배달이 완료되었습니다"),
+                itemNameOf(delivery));
+    }
+
+    /**
+     * 알림 문구에 쓸 물품명. 알림은 부가 기능이라 주문 조회가 실패해도 배달 흐름을 깨면 안 되므로,
+     * 실패하면 물품명 없이(null) 기본 문구로 나가게 둔다.
+     */
+    private String itemNameOf(Delivery delivery) {
+        try {
+            return orderService.getOrder(delivery.getOrderId()).getItemName();
+        } catch (Exception e) {
+            log.warn("알림 물품명 조회 실패, 기본 문구로 진행: orderId={}, reason={}",
+                    delivery.getOrderId(), e.toString());
+            return null;
+        }
     }
 
     private void publish(UUID userId, DeliveryEventType eventType, DeliveryStatusResponseDto payload) {
-        eventPublisher.publishEvent(new DeliveryNotificationEvent(userId, eventType, payload));
+        publish(userId, eventType, payload, null);
+    }
+
+    private void publish(UUID userId, DeliveryEventType eventType, DeliveryStatusResponseDto payload,
+            String pushSubject) {
+        eventPublisher.publishEvent(new DeliveryNotificationEvent(userId, eventType, payload, pushSubject));
     }
 
     // 트랜잭션 커밋 후에만 실제 알림을 보낸다(커밋 전 발행된 이벤트는 롤백 시 자동으로 버려진다).
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void sendAfterCommit(DeliveryNotificationEvent event) {
-        notificationService.notify(event.userId(), event.eventType(), event.payload());
+        notificationService.notify(event.userId(), event.eventType(), event.payload(), event.pushSubject());
     }
 
 }

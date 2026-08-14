@@ -33,8 +33,7 @@ import com.naengsam.quick.domain.upload.entity.UploadPurpose;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.S3PresignService;
 import com.naengsam.quick.domain.upload.service.UploadSessionService;
-import com.naengsam.quick.domain.user.dto.UserDto;
-import com.naengsam.quick.domain.user.service.UserService;
+import com.naengsam.quick.domain.dreami.service.DreamiActivationChecker;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.domain.payment.service.PaymentService;
 import com.naengsam.quick.global.code.BaseErrorCode;
@@ -48,6 +47,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -75,7 +75,7 @@ class DeliveryServiceTest {
     private DeliveryCertificationRepository deliveryCertificationRepository;
     private NotificationService notificationService;
     private UploadSessionService uploadSessionService;
-    private UserService userService;
+    private DreamiActivationChecker dreamiActivationChecker;
     private OrderService orderService;
     private DreamiRepository dreamiRepository;
     private BoormiRepository boormiRepository;
@@ -96,7 +96,7 @@ class DeliveryServiceTest {
         deliveryCertificationRepository = mock(DeliveryCertificationRepository.class);
         notificationService = mock(NotificationService.class);
         uploadSessionService = mock(UploadSessionService.class);
-        userService = mock(UserService.class);
+        dreamiActivationChecker = mock(DreamiActivationChecker.class);
         orderService = mock(OrderService.class);
         dreamiRepository = mock(DreamiRepository.class);
         boormiRepository = mock(BoormiRepository.class);
@@ -107,8 +107,11 @@ class DeliveryServiceTest {
         dreamiOfflineDetector = mock(DreamiOfflineDetector.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, notificationService, uploadSessionService,
-                userService, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
+                dreamiActivationChecker, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
                 directionsService, eventPublisher, new ObjectMapper(), dreamiOfflineDetector);
+        // 배송완료예상시간 여유(delivery.completion-buffer)는 @Value 주입이라 수동 생성 시 비어 있다.
+        // 운영 기본값과 같은 5분을 넣어, 완료 예상 시각 계산이 실제 설정과 같은 조건에서 검증되게 한다.
+        ReflectionTestUtils.setField(deliveryService, "completionBuffer", Duration.ofMinutes(5));
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
@@ -225,12 +228,9 @@ class DeliveryServiceTest {
 
     // ===== 배달 시작 =====
 
-    // 주문자는 활성 드리미가 아니고(false), 배달자는 활성 드리미(true)인 정상 역할 상태를 스텁한다.
+    // 배달자는 활성 드리미(true)인 정상 상태를 스텁한다.
     private void stubValidRoles(UUID boormiId, UUID dreamiId) {
-        given(userService.getUserInfo(boormiId))
-                .willReturn(new UserDto(boormiId, "b@t.com", "부르미", false, null, null));
-        given(userService.getUserInfo(dreamiId))
-                .willReturn(new UserDto(dreamiId, "d@t.com", "드리미", true, null, null));
+        given(dreamiActivationChecker.isActivatedDreami(dreamiId)).willReturn(true);
     }
 
     private void stubOrderStatus(UUID orderId, OrderCd orderCd) {
@@ -570,9 +570,9 @@ class DeliveryServiceTest {
 
         Delivery saved = registeredDeliveries.get(orderId);
         assertThat(saved.getRoutePath()).contains("latitude");
-        // 드리미→픽업지 5분 + 주문 delivery_eta 20분 = 25분 뒤(계산 시각의 now 기준)
+        // 드리미→픽업지 5분 + 주문 delivery_eta 20분 + 건물 진입 여유 5분 = 30분 뒤(계산 시각의 now 기준)
         assertThat(saved.getEstimatedCompletionDtm())
-                .isBetween(before.plusMinutes(25), after.plusMinutes(25));
+                .isBetween(before.plusMinutes(30), after.plusMinutes(30));
         verify(directionsService).getRoute(any(), any());
 
         // 응답에도 방금 계산된 경로·배송완료예상시간이 담겨 나간다(프론트가 재조회 없이 바로 반영).
@@ -663,10 +663,7 @@ class DeliveryServiceTest {
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
         stubOrderStatus(orderId, OrderCd.IN_PROGRESS);
-        given(userService.getUserInfo(boormiId))
-                .willReturn(new UserDto(boormiId, "b@t.com", "부르미", false, null, null));
-        given(userService.getUserInfo(dreamiId))
-                .willReturn(new UserDto(dreamiId, "d@t.com", "드리미", false, null, null));
+        given(dreamiActivationChecker.isActivatedDreami(dreamiId)).willReturn(false);
 
         Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
 
@@ -684,7 +681,7 @@ class DeliveryServiceTest {
         Throwable thrown = catchThrowable(() -> deliveryService.startDelivery(orderId, dreamiId, boormiId));
 
         assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.DELIVERY_START_NOT_ALLOWED);
-        verify(userService, never()).getUserInfo(any());
+        verify(dreamiActivationChecker, never()).isActivatedDreami(any());
         verify(deliveryRepository, never()).save(any());
     }
 
@@ -767,7 +764,21 @@ class DeliveryServiceTest {
 
         deliveryService.sendAfterCommit(event);
 
-        verify(notificationService).notify(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload);
+        // 물품명을 싣지 않는 알림은 pushSubject가 null로 나간다(정책의 기본 문구를 그대로 쓴다).
+        verify(notificationService).notify(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload, null);
+    }
+
+    @Test
+    void 커밋후리스너가_이벤트에_실린_물품명을_웹푸시_대상으로_함께_넘긴다() {
+        UUID userId = UUID.randomUUID();
+        DeliveryStatusResponseDto payload =
+                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지");
+        DeliveryNotificationEvent event = new DeliveryNotificationEvent(
+                userId, DeliveryEventType.DELIVERY_COMPLETED, payload, "설계도면");
+
+        deliveryService.sendAfterCommit(event);
+
+        verify(notificationService).notify(userId, DeliveryEventType.DELIVERY_COMPLETED, payload, "설계도면");
     }
 
     @Test
