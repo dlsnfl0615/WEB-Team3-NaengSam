@@ -1,8 +1,11 @@
 package com.naengsam.quick.domain.address.service;
 
 import com.naengsam.quick.domain.address.dto.CoordinatesResponseDto;
+import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
@@ -25,12 +28,26 @@ public class DevCoordinatesService implements CoordinatesService {
     private static final int ROWS = 24;
     private static final int COLUMNS = 28;
 
+    // 느린 카카오를 흉내 내는 인위적 지연. 기본 0 이라 평소에는 아무 영향이 없고, 부하테스트에서만 켠다.
+    @Value("${kakao.dev-latency:0ms}")
+    private Duration latency;
+
+    /**
+     * 어느 좌표 변환 구현이 떴는지 기동 로그로 남긴다. 이 스텁이 운영에 뜨면 모든 주소가 가짜 좌표로 처리되므로 INFO 가 아니라 WARN 이다.
+     */
+    @PostConstruct
+    void init() {
+        log.warn("좌표 변환 = 개발용 스텁 — 실제 좌표가 아니다 (kakao.enabled=false, 지연 {}ms)", latency.toMillis());
+    }
+
     /**
      * 주소 해시를 격자 한 칸에 대응시켜 좌표를 만든다. 서로 다른 주소가 같은 칸에 떨어지면(672칸 중 충돌) 출발지와 도착지가 같다고 판정돼 주문 접수가
      * SAME_ORIGIN_DESTINATION 으로 실패한다 — 결정적이므로 그때는 테스트 주소 목록을 바꾸면 된다.
      */
     @Override
     public CoordinatesResponseDto getCoordinates(String roadAddress) {
+        sleepArtificialLatency();
+
         int cell = Math.floorMod(roadAddress.hashCode(), ROWS * COLUMNS);
         double latitude = BASE_LATITUDE + (cell / COLUMNS) * CELL;
         double longitude = BASE_LONGITUDE + (cell % COLUMNS) * CELL;
@@ -42,5 +59,16 @@ public class DevCoordinatesService implements CoordinatesService {
                 roadAddress, "서울", "개발구", "개발동", "개발로", "1", "", "개발빌딩", "00000",
                 String.format("%.8f", longitude), String.format("%.8f", latitude));
         return new CoordinatesResponseDto(List.of(new CoordinatesResponseDto.Document(address)));
+    }
+
+    private void sleepArtificialLatency() {
+        if (latency.isZero() || latency.isNegative()) {
+            return;
+        }
+        try {
+            Thread.sleep(latency.toMillis());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }

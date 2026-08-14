@@ -2,7 +2,10 @@ package com.naengsam.quick.domain.address.service;
 
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 
@@ -20,8 +23,22 @@ public class DevDirectionsService implements DirectionsService {
     private static final double DETOUR_RATIO = 1.3;         // 직선거리 대비 실제 보행 경로 우회율
     private static final double WALK_SPEED = 1.2;           // m/s
 
+    // 느린 카카오를 흉내 내는 인위적 지연. 기본 0 이라 평소에는 아무 영향이 없고, 부하테스트에서만 켠다.
+    @Value("${kakao.dev-latency:0ms}")
+    private Duration latency;
+
+    /**
+     * 어느 길찾기 구현이 떴는지 기동 로그로 남긴다. 이 스텁이 운영에 뜨면 모든 경로가 직선 추정값이 되므로 INFO 가 아니라 WARN 이다.
+     */
+    @PostConstruct
+    void init() {
+        log.warn("도보 길찾기 = 개발용 스텁 — 실제 경로가 아니다 (kakao.enabled=false, 지연 {}ms)", latency.toMillis());
+    }
+
     @Override
     public KakaoDirectionsResponseDto.Route getRoute(GeoPoint origin, GeoPoint destination) {
+        sleepArtificialLatency();
+
         int totalDistance = (int) Math.round(distanceMeters(origin, destination) * DETOUR_RATIO);
         int totalTime = (int) Math.round(totalDistance / WALK_SPEED);
 
@@ -65,5 +82,16 @@ public class DevDirectionsService implements DirectionsService {
         double h = Math.pow(Math.sin(dLat / 2), 2)
                 + Math.cos(lat1) * Math.cos(lat2) * Math.pow(Math.sin(dLng / 2), 2);
         return 2 * EARTH_RADIUS * Math.asin(Math.sqrt(h));
+    }
+
+    private void sleepArtificialLatency() {
+        if (latency.isZero() || latency.isNegative()) {
+            return;
+        }
+        try {
+            Thread.sleep(latency.toMillis());
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 }
