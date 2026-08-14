@@ -105,9 +105,16 @@ export function SenderPanel() {
           ))}
         </div>
       ) : (
-        <p className="py-6 text-center text-sm text-muted">
-          진행 중인 부름이 없어요.
-        </p>
+        <div className="flex flex-col items-center py-6">
+          <img
+            src="/boormi-no-boorm.png"
+            alt=""
+            className="h-20 w-20 object-contain"
+          />
+          <p className="text-center text-sm text-muted">
+            진행 중인 부름이 없어요.
+          </p>
+        </div>
       )}
 
       <div className="grid grid-cols-2 gap-3">

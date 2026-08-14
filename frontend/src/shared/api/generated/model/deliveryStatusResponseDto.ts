@@ -12,4 +12,6 @@ export interface DeliveryStatusResponseDto {
   status?: DeliveryStatusResponseDtoStatus;
   currentLocation?: DeliveryLocationDto;
   message?: string;
+  deliveryStartDtm?: string;
+  deliveryEndDtm?: string;
 }

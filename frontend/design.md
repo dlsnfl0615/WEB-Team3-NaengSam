@@ -111,6 +111,7 @@ import { Icon } from './components'
 | `Card`                      | `variant`                        | `surface`(흰색) / `hero`(네이비) / `accent`(연한 티일) |
 | `IconChip`                  | `name` `tone` `size`             | 라운드 사각 아이콘 컨테이너                            |
 | `ProgressBar`               | `value`(0~100)                   | 배달 진행률 바                                         |
+| `DeliveryTimeline`          | `steps` `completedCount` `timestamps` | 배달 진행 단계 점+세로선 타임라인(배민 스타일). 완료 단계 옆에 짧은 점선+시각 표시 |
 | `SegmentedToggle`           | `options` `value` `onChange`     | 2-세그먼트 토글(부르미/드리미)                         |
 | `RadioOption`               | `label` `selected` `onSelect`    | 상호 배제 단일 선택 카드(사유 선택)                    |
 | `TextField` / `SearchField` | `label` `leadingIcon` `disabled` … | 입력 필드. Search는 search 아이콘 포함. `disabled`면 배경이 `track`으로 바뀌고 글자가 `muted` |
@@ -129,7 +130,7 @@ import { Icon } from './components'
 | `ToastViewport`     | —                                          | 전역 토스트를 화면 상단에 최대 3개까지 쌓아 표시                          |
 | `RouteCard`         | `origin` `destination`                     | 출발지 → 도착지 경로 카드                                                 |
 | `InfoRow`           | `label` `children`                         | 상세 정보 카드의 라벨-값 한 줄                                            |
-| `StarRating`        | `value` `onChange`                         | 별 5개 평점 입력(radiogroup)                                              |
+| `StarRating`        | `value` `onChange` `readOnly`              | 별 5개 평점 입력(radiogroup). `readOnly`면 등록 후 고정 표시               |
 | `MapCard`           | `overlay` `height` `flat` `children`       | 지도 화면 래퍼(`flat`=풀블리드용 반경·테두리 제거)                        |
 | `ArrivalBadge`      | `arrivalTime`                              | 지도 위 배송 완료 예상 시각 배지(네이비 불투명)                           |
 | `DeliveryRouteMap`  | `pickup` `dropoff` `driver` `driverLabel` `height` `flat` | 출발지·도착지·드리미 3핀(라벨 포함) 좌표 기반 추적 지도(`driverLabel`로 드리미 핀 라벨 변경, 지오코딩 없음, 드리미 핀만 이동, 최초 1회 뷰포트 fit, 키/좌표 없으면 텍스트 폴백) |

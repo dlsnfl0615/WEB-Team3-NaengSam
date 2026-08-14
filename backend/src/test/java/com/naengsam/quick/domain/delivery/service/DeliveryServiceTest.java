@@ -25,6 +25,7 @@ import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.user.exception.UserErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
+import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -80,6 +81,7 @@ class DeliveryServiceTest {
     private OrderService orderService;
     private DreamiRepository dreamiRepository;
     private BoormiRepository boormiRepository;
+    private MatchingRepository matchingRepository;
     private S3PresignService s3PresignService;
     private PaymentService paymentService;
     private DirectionsService directionsService;
@@ -101,6 +103,7 @@ class DeliveryServiceTest {
         orderService = mock(OrderService.class);
         dreamiRepository = mock(DreamiRepository.class);
         boormiRepository = mock(BoormiRepository.class);
+        matchingRepository = mock(MatchingRepository.class);
         s3PresignService = mock(S3PresignService.class);
         paymentService = mock(PaymentService.class);
         directionsService = mock(DirectionsService.class);
@@ -108,13 +111,15 @@ class DeliveryServiceTest {
         dreamiOfflineDetector = mock(DreamiOfflineDetector.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, notificationService, uploadSessionService,
-                dreamiActivationChecker, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
-                directionsService, eventPublisher, new ObjectMapper(), dreamiOfflineDetector);
+                dreamiActivationChecker, orderService, dreamiRepository, boormiRepository, matchingRepository,
+                s3PresignService, paymentService, directionsService, eventPublisher, new ObjectMapper(),
+                dreamiOfflineDetector);
         // 배송완료예상시간 여유(delivery.completion-buffer)는 @Value 주입이라 수동 생성 시 비어 있다.
         // 운영 기본값과 같은 5분을 넣어, 완료 예상 시각 계산이 실제 설정과 같은 조건에서 검증되게 한다.
         ReflectionTestUtils.setField(deliveryService, "completionBuffer", Duration.ofMinutes(5));
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
+        given(matchingRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
         given(deliveryCertificationRepository.findByDeliveryId(any())).willReturn(Optional.empty());
         given(uploadSessionService.checkUpload(any(), any(), any(), any())).willReturn(true);
@@ -858,7 +863,7 @@ class DeliveryServiceTest {
     void 커밋후리스너가_이벤트를_그대로_NotificationService로_전달한다() {
         UUID userId = UUID.randomUUID();
         DeliveryStatusResponseDto payload =
-                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지");
+                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지", null, null);
         DeliveryNotificationEvent event =
                 new DeliveryNotificationEvent(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload);
 
@@ -872,7 +877,7 @@ class DeliveryServiceTest {
     void 커밋후리스너가_이벤트에_실린_물품명을_웹푸시_대상으로_함께_넘긴다() {
         UUID userId = UUID.randomUUID();
         DeliveryStatusResponseDto payload =
-                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지");
+                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지", null, null);
         DeliveryNotificationEvent event = new DeliveryNotificationEvent(
                 userId, DeliveryEventType.DELIVERY_COMPLETED, payload, "설계도면");
 

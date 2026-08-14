@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Badge, BottomNav, Card, Icon, ScreenShell, TopBar } from "@/shared/ui";
 import { useSessionStore } from "@/shared/store/sessionStore";
 import { ROUTES } from "@/shared/config/routes";
+import { getProfileImage } from "@/shared/lib";
 import { AccountSection } from "./AccountSection";
 import { MenuGroup } from "./MenuGroup";
 import { ACCOUNT_MENU, SUPPORT_MENU, VERIFY_MENU_LABEL } from "./menus";
@@ -22,6 +23,7 @@ export function MypageScreen() {
   const boormiRating = user?.boormiRating ?? 0;
   // 드리미 평점은 승인된 드리미에게만 내려온다. 없으면 뱃지를 아예 띄우지 않는다.
   const dreamiRating = user?.dreamiRating;
+  const profileImage = getProfileImage(user?.id ?? "guest");
 
   const handleLogout = async () => {
     // api.logout이 실패(예: 이미 만료)해도 store가 상태를 비우므로 무조건 로그인 화면으로 이동.
@@ -55,7 +57,11 @@ export function MypageScreen() {
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <Card className="flex flex-col items-center gap-1 py-5">
-          <span className="size-14 rounded-pill border border-line bg-teal-50" />
+          <img
+            src={profileImage}
+            alt="프로필"
+            className="size-14 rounded-pill border border-line bg-teal-50 object-cover"
+          />
           <p className="mt-1 text-lg font-bold text-navy-900">{name}</p>
           <p className="text-2xs text-muted">{rolesLabel}</p>
           <div className="mt-1 flex items-center gap-2">

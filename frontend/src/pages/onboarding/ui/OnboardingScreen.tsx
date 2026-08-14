@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom'
-import { Button, Card, Icon, ScreenShell } from '@/shared/ui'
+import { Button, Card, ScreenShell } from '@/shared/ui'
 import { ROUTES } from '@/shared/config/routes'
 
 /**
@@ -12,32 +12,41 @@ export function OnboardingScreen() {
   return (
     <ScreenShell>
       <main className="flex flex-1 flex-col items-center pt-10">
-        {/* 로고 자리표시 */}
-        <div className="flex h-[62px] w-[128px] items-center justify-center rounded-md border border-dashed border-line text-sm text-muted">
-          LOGO
-        </div>
+        <img
+          src="/symboorm-logo.png"
+          alt="쉼부름"
+          className="h-[100px] w-[100px] object-contain"
+        />
 
         {/* 타이틀 */}
         <h1 className="mt-6 text-center text-xl font-bold leading-snug tracking-[-0.4px] text-navy-900">
           사내 배송의
           <br />
-          새로운 기준, <span className="text-muted">쉼부름</span>
+          새로운 기준: <span className="text-muted">쉼, 부름</span>
         </h1>
 
         {/* 역할 카드 */}
         <div className="mt-8 grid w-full grid-cols-2 gap-3">
           <Card
             variant="accent"
-            className="flex h-32 flex-col items-center justify-center gap-2"
+            className="flex h-32 flex-col items-center justify-center gap-0"
           >
-            <Icon name="transfer" size={28} className="text-teal-700" />
+            <img
+              src="/boormi-main.png"
+              alt=""
+              className="h-20 w-20 object-contain"
+            />
             <span className="text-base font-bold text-navy-900">부르미</span>
           </Card>
           <Card
             variant="accent"
-            className="flex h-32 flex-col items-center justify-center gap-2"
+            className="flex h-32 flex-col items-center justify-center gap-0"
           >
-            <Icon name="package" size={28} className="text-teal-700" />
+            <img
+              src="/dreami-main.png"
+              alt=""
+              className="h-20 w-20 object-contain"
+            />
             <span className="text-base font-bold text-navy-900">드리미</span>
           </Card>
         </div>

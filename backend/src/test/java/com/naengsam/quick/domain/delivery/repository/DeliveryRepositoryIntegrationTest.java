@@ -40,13 +40,16 @@ import org.springframework.test.util.ReflectionTestUtils;
 })
 class DeliveryRepositoryIntegrationTest {
 
+    // BoormiService.MARKET_BASE_SECTION — 이 값을 넘긴 거리만 초과 거리로 합산된다.
+    private static final long MARKET_BASE_SECTION = 3_000L;
+
     @Autowired
     private EntityManager entityManager;
     @Autowired
     private DeliveryRepository deliveryRepository;
 
     @Test
-    void 월별_집계는_완료된_배달만_월단위로_묶고_결제액을_합산한다() {
+    void 월별_집계는_완료된_배달만_월단위_물건유형별로_묶고_결제액과_초과거리를_합산한다() {
         UUID boormiId = persistAccount("sender@test.com", "부르미", "01011112222");
         UUID otherBoormiId = persistAccount("other@test.com", "다른부르미", "01055556666");
         UUID dreamiId = persistDreami("dreami@test.com", "드리미", "01033334444");
@@ -54,24 +57,29 @@ class DeliveryRepositoryIntegrationTest {
         YearMonth thisMonth = YearMonth.now();
         YearMonth lastMonth = thisMonth.minusMonths(1);
 
-        persistDelivered(boormiId, dreamiId, 3_000L, thisMonth.atDay(2).atTime(10, 0));
-        persistDelivered(boormiId, dreamiId, 4_000L, thisMonth.atDay(9).atTime(18, 30));
-        persistDelivered(boormiId, dreamiId, 5_000L, lastMonth.atDay(20).atTime(9, 0));
+        persistDelivered(boormiId, dreamiId, 3_000L, 2_000L, ItemCd.DOCUMENT, thisMonth.atDay(2).atTime(10, 0));
+        persistDelivered(boormiId, dreamiId, 4_000L, 5_000L, ItemCd.DOCUMENT, thisMonth.atDay(9).atTime(18, 30));
+        persistDelivered(boormiId, dreamiId, 6_000L, 10_000L, ItemCd.SAMPLE, thisMonth.atDay(11).atTime(14, 0));
+        // 거리가 없는 옛 주문도 COALESCE로 0 취급되어 집계에 들어가야 한다
+        persistDelivered(boormiId, dreamiId, 5_000L, null, ItemCd.DOCUMENT, lastMonth.atDay(20).atTime(9, 0));
         // 집계에서 빠져야 하는 것들: 아직 배달 중 / 다른 부르미의 완료 배달
-        persistDelivering(boormiId, dreamiId, 9_000L);
-        persistDelivered(otherBoormiId, dreamiId, 8_000L, thisMonth.atDay(3).atTime(11, 0));
+        persistDelivering(boormiId, dreamiId, 9_000L, 4_000L, ItemCd.DOCUMENT);
+        persistDelivered(otherBoormiId, dreamiId, 8_000L, 4_000L, ItemCd.DOCUMENT,
+                thisMonth.atDay(3).atTime(11, 0));
         entityManager.flush();
         entityManager.clear();
 
         List<MonthlySavingAggregate> aggregates = deliveryRepository.aggregateSavingByBoormiBetween(boormiId,
                 thisMonth.minusMonths(5).atDay(1).atStartOfDay(),
-                thisMonth.plusMonths(1).atDay(1).atStartOfDay());
+                thisMonth.plusMonths(1).atDay(1).atStartOfDay(), MARKET_BASE_SECTION);
 
-        assertThat(aggregates).extracting(MonthlySavingAggregate::yearMonth,
-                        MonthlySavingAggregate::count, MonthlySavingAggregate::paidAmount)
+        assertThat(aggregates).extracting(MonthlySavingAggregate::yearMonth, MonthlySavingAggregate::itemCd,
+                        MonthlySavingAggregate::count, MonthlySavingAggregate::overDistance,
+                        MonthlySavingAggregate::paidAmount)
                 .containsExactlyInAnyOrder(
-                        tuple(thisMonth, 2L, 7_000L),
-                        tuple(lastMonth, 1L, 5_000L));
+                        tuple(thisMonth, ItemCd.DOCUMENT, 2L, 2_000L, 7_000L),
+                        tuple(thisMonth, ItemCd.SAMPLE, 1L, 7_000L, 6_000L),
+                        tuple(lastMonth, ItemCd.DOCUMENT, 1L, 0L, 5_000L));
     }
 
     @Test
@@ -80,26 +88,28 @@ class DeliveryRepositoryIntegrationTest {
         UUID dreamiId = persistDreami("dreami@test.com", "드리미", "01033334444");
 
         YearMonth thisMonth = YearMonth.now();
-        persistDelivered(boormiId, dreamiId, 6_000L, thisMonth.minusMonths(6).atDay(15).atTime(12, 0));
+        persistDelivered(boormiId, dreamiId, 6_000L, 4_000L, ItemCd.DOCUMENT,
+                thisMonth.minusMonths(6).atDay(15).atTime(12, 0));
         entityManager.flush();
         entityManager.clear();
 
         List<MonthlySavingAggregate> aggregates = deliveryRepository.aggregateSavingByBoormiBetween(boormiId,
                 thisMonth.minusMonths(5).atDay(1).atStartOfDay(),
-                thisMonth.plusMonths(1).atDay(1).atStartOfDay());
+                thisMonth.plusMonths(1).atDay(1).atStartOfDay(), MARKET_BASE_SECTION);
 
         assertThat(aggregates).isEmpty();
     }
 
-    private void persistDelivered(UUID boormiId, UUID dreamiId, long amount, LocalDateTime deliveryEndDtm) {
-        Delivery delivery = persistDelivering(boormiId, dreamiId, amount);
+    private void persistDelivered(UUID boormiId, UUID dreamiId, long amount, Long distance, ItemCd itemCd,
+            LocalDateTime deliveryEndDtm) {
+        Delivery delivery = persistDelivering(boormiId, dreamiId, amount, distance, itemCd);
         delivery.markDelivered();
         ReflectionTestUtils.setField(delivery, "deliveryEndDtm", deliveryEndDtm);
     }
 
-    private Delivery persistDelivering(UUID boormiId, UUID dreamiId, long amount) {
-        Orders order = Orders.create(UUID.randomUUID(), boormiId, "서류봉투", ItemCd.DOCUMENT, null,
-                amount, 30, null, null, null, addresses(), null);
+    private Delivery persistDelivering(UUID boormiId, UUID dreamiId, long amount, Long distance, ItemCd itemCd) {
+        Orders order = Orders.create(UUID.randomUUID(), boormiId, "서류봉투", itemCd, null,
+                amount, 30, distance, null, null, addresses(), null);
         entityManager.persist(order);
 
         Delivery delivery = Delivery.create(order.getOrderId(), dreamiId, boormiId);
