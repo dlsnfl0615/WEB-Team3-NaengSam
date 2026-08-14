@@ -163,7 +163,21 @@ export function DeliveryTrackScreen() {
     backOrHome();
   };
 
+  // 부르미가 보낸 핑. 앱이 닫혀 있으면 웹푸시로 닿지만, 이 화면을 보고 있는 동안에는 토스트로 알린다.
+  const [pinged, setPinged] = useState(false);
+  useEffect(() => {
+    if (!pinged) return;
+    const timer = setTimeout(() => setPinged(false), 6000);
+    return () => clearTimeout(timer);
+  }, [pinged]);
+
   const sseHandlers: SseHandlers = {
+    // "delivery_ping"은 백엔드에서 결정한 이름(DeliveryEventType.DELIVERY_PING)
+    delivery_ping: (data) => {
+      const dto = data as DeliveryStatusResponseDto;
+      if (dto?.orderId !== orderId) return;
+      setPinged(true);
+    },
     delivery_cancelled: (data) => {
       const dto = data as DeliveryStatusResponseDto;
       if (dto?.orderId !== orderId) return;
@@ -302,6 +316,17 @@ export function DeliveryTrackScreen() {
             icon="pin"
             title="GPS를 허용해주세요."
             description="배달을 계속하려면 기기의 위치 권한을 켜 주세요."
+          />
+        </div>
+      )}
+
+      {/* GPS 경고가 떠 있을 땐 그쪽이 더 급하므로 핑 토스트는 양보한다(같은 자리에 겹쳐 뜨지 않게). */}
+      {pinged && !locationError && (
+        <div className="ds-toast-down fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
+          <Toast
+            icon="bell"
+            title="부르미가 핑을 보냈어요."
+            description="배달 상황이 궁금한가 봐요. 연락해 주세요."
           />
         </div>
       )}
