@@ -2,6 +2,7 @@ package com.naengsam.quick.domain.delivery.service;
 
 import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
+import com.naengsam.quick.domain.address.exception.AddressErrorCode;
 import com.naengsam.quick.domain.address.service.DirectionsService;
 import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryContactDto;
@@ -9,6 +10,7 @@ import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationResponseDto;
+import com.naengsam.quick.domain.delivery.dto.EtaUnavailableDto;
 import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCertification;
@@ -208,6 +210,15 @@ class DeliveryServiceTest {
     private void assertPublished(UUID userId, DeliveryEventType type) {
         verify(eventPublisher).publishEvent(argThat((DeliveryNotificationEvent event) ->
                 event.userId().equals(userId) && event.eventType() == type));
+    }
+
+    // 배송완료예상시간 계산 실패 알림이 해당 사용자에게, 실패 원인 에러코드의 코드·문구 그대로 발행됐는지 확인한다.
+    private void assertEtaUnavailablePublished(UUID userId, UUID orderId, BaseErrorCode expected) {
+        verify(eventPublisher).publishEvent(argThat((DeliveryNotificationEvent event) ->
+                event.userId().equals(userId)
+                        && event.eventType() == DeliveryEventType.DELIVERY_ETA_UNAVAILABLE
+                        && event.payload().equals(
+                                new EtaUnavailableDto(orderId, expected.getCode(), expected.getMessage()))));
     }
 
     private BaseErrorCode errorCodeOf(Throwable thrown) {
@@ -657,6 +668,14 @@ class DeliveryServiceTest {
         return (Map<UUID, Instant>) ReflectionTestUtils.getField(deliveryService, "lastPingAt");
     }
 
+    // 경로 재시도 쿨다운이 이미 지난 상황을 만든다. 실패 기록을 충분히 과거로 밀어 두면 다음 위치 전송이 재시도한다.
+    @SuppressWarnings("unchecked")
+    private void expireRouteRetryCooldown() {
+        Map<UUID, Instant> lastRouteFailureAt =
+                (Map<UUID, Instant>) ReflectionTestUtils.getField(deliveryService, "lastRouteFailureAt");
+        lastRouteFailureAt.replaceAll((orderId, failedAt) -> failedAt.minusSeconds(60));
+    }
+
     // ===== 첫 위치 전송 시 '드리미→픽업지' 경로·배송완료예상시간 계산 =====
 
     @Test
@@ -748,6 +767,94 @@ class DeliveryServiceTest {
         assertThat(saved.getRoutePath()).isNull();
         assertThat(saved.getEstimatedCompletionDtm()).isNull();
         assertPublished(boormiId, DeliveryEventType.DELIVERY_LOCATION); // 위치 갱신 SSE는 정상 발행
+    }
+
+    @Test
+    void 카카오가_TOO_FAR_AWAY면_실패_이유를_드리미와_부르미_양쪽에_알린다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+        Orders order = orderWithPickup("37.50000000", "127.05000000", 20);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(directionsService.getRoute(any(), any()))
+                .willThrow(new BusinessException(AddressErrorCode.TOO_FAR_AWAY));
+
+        deliveryService.updateDreamiLocation(orderId, location("33.50000000", "126.50000000"));
+
+        // 배지는 양쪽 화면에 다 떠 있으므로 양쪽 모두 "출발지와 도착지가 너무 멀리 떨어져 있어요."를 받아야 한다.
+        assertEtaUnavailablePublished(dreamiId, orderId, AddressErrorCode.TOO_FAR_AWAY);
+        assertEtaUnavailablePublished(boormiId, orderId, AddressErrorCode.TOO_FAR_AWAY);
+    }
+
+    @Test
+    void 카카오_타임아웃이면_일시적_오류_문구로_계산불가를_알린다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+        Orders order = orderWithPickup("37.50000000", "127.05000000", 20);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(directionsService.getRoute(any(), any()))
+                .willThrow(new BusinessException(GeneralErrorCode.EXTERNAL_SERVICE_TIMEOUT));
+
+        deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
+
+        assertEtaUnavailablePublished(dreamiId, orderId, GeneralErrorCode.EXTERNAL_SERVICE_TIMEOUT);
+        assertEtaUnavailablePublished(boormiId, orderId, GeneralErrorCode.EXTERNAL_SERVICE_TIMEOUT);
+    }
+
+    @Test
+    void 계산_실패_직후엔_쿨다운_동안_카카오를_다시_부르지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+        Orders order = orderWithPickup("37.50000000", "127.05000000", 20);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(directionsService.getRoute(any(), any()))
+                .willThrow(new BusinessException(AddressErrorCode.TOO_FAR_AWAY));
+
+        // 드리미는 5초마다 위치를 보낸다 — 실패했다고 매번 카카오를 다시 두드리면 안 된다.
+        deliveryService.updateDreamiLocation(orderId, location("33.50000000", "126.50000000"));
+        deliveryService.updateDreamiLocation(orderId, location("33.50000000", "126.50000000"));
+
+        verify(directionsService, times(1)).getRoute(any(), any());
+        // 알림도 첫 실패 때만 나간다(드리미·부르미 각 1건).
+        verify(eventPublisher, times(2)).publishEvent(argThat((DeliveryNotificationEvent event) ->
+                event.eventType() == DeliveryEventType.DELIVERY_ETA_UNAVAILABLE));
+    }
+
+    @Test
+    void 쿨다운이_지나면_계산을_다시_시도해_회복한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+        Orders order = orderWithPickup("37.50000000", "127.05000000", 20);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(directionsService.getRoute(any(), any()))
+                .willThrow(new BusinessException(AddressErrorCode.TOO_FAR_AWAY))
+                .willReturn(routeWith(300));
+
+        deliveryService.updateDreamiLocation(orderId, location("33.50000000", "126.50000000"));
+        expireRouteRetryCooldown(); // 30초가 지난 상황을 만든다
+        deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
+
+        // GPS가 한 번 튀었거나 드리미가 픽업지에 가까워진 경우, 재시도가 있어야 예상 시각이 살아난다.
+        verify(directionsService, times(2)).getRoute(any(), any());
+        assertThat(registeredDeliveries.get(orderId).getEstimatedCompletionDtm()).isNotNull();
+    }
+
+    @Test
+    void 경로_계산에_성공하면_계산불가를_알리지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = registerDeliveryWith(DeliveryCd.PICKUP_NORMAL, dreamiId, boormiId);
+        Orders order = orderWithPickup("37.50000000", "127.05000000", 20);
+        given(orderService.getOrder(orderId)).willReturn(order);
+        given(directionsService.getRoute(any(), any())).willReturn(routeWith(300));
+
+        deliveryService.updateDreamiLocation(orderId, location("37.40000000", "127.00000000"));
+
+        verify(eventPublisher, never()).publishEvent(argThat((DeliveryNotificationEvent event) ->
+                event.eventType() == DeliveryEventType.DELIVERY_ETA_UNAVAILABLE));
     }
 
     @Test
