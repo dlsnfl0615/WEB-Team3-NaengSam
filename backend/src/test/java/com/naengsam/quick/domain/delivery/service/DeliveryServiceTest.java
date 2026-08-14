@@ -25,6 +25,7 @@ import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.user.exception.UserErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
+import com.naengsam.quick.domain.matching.repository.MatchingRepository;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -79,6 +80,7 @@ class DeliveryServiceTest {
     private OrderService orderService;
     private DreamiRepository dreamiRepository;
     private BoormiRepository boormiRepository;
+    private MatchingRepository matchingRepository;
     private S3PresignService s3PresignService;
     private PaymentService paymentService;
     private DirectionsService directionsService;
@@ -100,6 +102,7 @@ class DeliveryServiceTest {
         orderService = mock(OrderService.class);
         dreamiRepository = mock(DreamiRepository.class);
         boormiRepository = mock(BoormiRepository.class);
+        matchingRepository = mock(MatchingRepository.class);
         s3PresignService = mock(S3PresignService.class);
         paymentService = mock(PaymentService.class);
         directionsService = mock(DirectionsService.class);
@@ -107,10 +110,11 @@ class DeliveryServiceTest {
         dreamiOfflineDetector = mock(DreamiOfflineDetector.class);
         deliveryService = new DeliveryService(deliveryRepository, pickupCertificationRepository,
                 deliveryCertificationRepository, notificationService, uploadSessionService,
-                userService, orderService, dreamiRepository, boormiRepository, s3PresignService, paymentService,
-                directionsService, eventPublisher, new ObjectMapper(), dreamiOfflineDetector);
+                userService, orderService, dreamiRepository, boormiRepository, matchingRepository, s3PresignService,
+                paymentService, directionsService, eventPublisher, new ObjectMapper(), dreamiOfflineDetector);
         // 기본값: 미등록 주문은 빈 Optional, 사진은 정상 업로드된 것으로 간주(checkUpload 통과).
         given(deliveryRepository.findByOrderId(any())).willReturn(Optional.empty());
+        given(matchingRepository.findByOrderId(any())).willReturn(Optional.empty());
         given(deliveryRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
         given(deliveryCertificationRepository.findByDeliveryId(any())).willReturn(Optional.empty());
         given(uploadSessionService.checkUpload(any(), any(), any(), any())).willReturn(true);
