@@ -22,6 +22,7 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis' // 로그인 대기열(순번·상태) 저장소
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus' // /actuator/prometheus 노출
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
     implementation 'com.solapi:sdk:1.0.3'

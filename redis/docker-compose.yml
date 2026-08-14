@@ -1,0 +1,36 @@
+# 로그인 대기열용 Redis.
+# 백엔드와 **다른 인스턴스**에서 뜬다. 도커 네트워크를 공유하지 않고,
+# 백엔드가 이 인스턴스의 VPC 프라이빗 IP:6379 로 붙는다 (backend/.env 의 REDIS_HOST).
+#
+# 모니터링 스택과 같은 방식으로 CI 를 타지 않는다 —
+# 이 폴더를 통째로 Redis 인스턴스에 복사해서 여기서 직접 띄운다.
+#
+# 사용법 (Redis 인스턴스에서):
+#   0) (사전 조건) 이 인스턴스 보안그룹 인바운드에
+#      TCP 6379 ← 백엔드 인스턴스의 보안그룹 규칙이 있어야 한다 (0.0.0.0/0 절대 금지)
+#   1) 이 폴더를 복사하고, 같은 폴더에 .env 를 둔다 (.env.example 참고)
+#   2) docker compose up -d
+#   3) docker compose logs -f redis
+#
+# 자세한 내용은 README.md 참고.
+
+name: symboorm-redis
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: symboorm-redis
+    restart: always
+    env_file:
+      - .env
+    # maxmemory-policy 는 noeviction 이다. 대기열이 evict 되면 대기자가 조용히 사라져
+    # 폴링하던 사용자가 영문 모를 만료 응답을 받는다. 정원 초과는 앱의 login.queue.capacity 로 막고,
+    # Redis 레벨에서는 차라리 쓰기를 실패시켜 드러나게 한다.
+    # appendonly no: 대기열은 수명이 2분인 휘발성 데이터라 디스크에 남길 이유가 없다.
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 64mb
+      --maxmemory-policy noeviction
+      --appendonly no
+    network_mode: "host"

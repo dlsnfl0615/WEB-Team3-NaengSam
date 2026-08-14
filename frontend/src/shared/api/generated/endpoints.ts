@@ -30,6 +30,7 @@ import type {
   FindNearbyWaitingDreamis200,
   FinishDelivery200,
   GeoPoint,
+  Get200,
   GetBoormiDashboard200,
   GetBoormiOrder200,
   GetBoormiOrderCount200,
@@ -46,6 +47,7 @@ import type {
   GetMyReview200,
   GetOfferItemPhoto200,
   GetOrderOfferGroup200,
+  GetParams,
   GetPickupPhoto200,
   GetPresignedUrl200,
   GetPresignedUrlParams,
@@ -53,6 +55,7 @@ import type {
   GetReceivedReview200,
   GetTodayStats200,
   GetWallet200,
+  Login200,
   LoginRequest,
   MatchingStartRequest,
   Me200,
@@ -62,8 +65,10 @@ import type {
   Pending200,
   PickupFinishByDreami200,
   PointChargeRequest,
+  PollLoginQueue200,
   PushSubscriptionRequest,
   PushUnsubscribeRequest,
+  PutParams,
   RegisterDreami200,
   RejectDreamiRequest,
   ReviewContentRequest,
@@ -91,6 +96,29 @@ type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 
   export const getOpenAPIDefinition = () => {
+const get = (
+    params: GetParams,
+ options?: SecondParameter<typeof customInstance<Get200>>,) => {
+      return customInstance<Get200>(
+      {url: `/api/v1/upload/dev-storage`, method: 'GET',
+        params
+    },
+      options);
+    }
+
+const put = (
+    putBody: string,
+    params: PutParams,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/upload/dev-storage`, method: 'PUT',
+      headers: {'Content-Type': 'application/json', },
+      data: putBody,
+        params
+    },
+      options);
+    }
+
 /**
  * 결제 금액만큼 포인트를 적립한다(1원 = 1P). PG 연동 전이라 결제는 항상 성공한 것으로 보고 즉시 적립한다.
  * @summary 포인트 충전
@@ -180,16 +208,29 @@ const logout = (
     }
 
 /**
- * 이메일/비밀번호로 로그인하고 세션을 생성한다.
+ * 이메일/비밀번호로 로그인한다. 동시 로그인이 몰리면 세션 대신 대기 티켓(QUEUED)을 발급한다.
  * @summary 로그인
  */
 const login = (
     loginRequest: LoginRequest,
- options?: SecondParameter<typeof customInstance<void>>,) => {
-      return customInstance<void>(
+ options?: SecondParameter<typeof customInstance<Login200>>,) => {
+      return customInstance<Login200>(
       {url: `/api/v1/user/login`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
       data: loginRequest
+    },
+      options);
+    }
+
+/**
+ * 대기 티켓의 순번을 조회하고, 차례가 되면 그 자리에서 세션을 생성한다. 응답의 pollAfterMs 만큼 기다렸다가 다시 호출한다.
+ * @summary 로그인 대기열 상태 조회
+ */
+const pollLoginQueue = (
+    ticketId: string,
+ options?: SecondParameter<typeof customInstance<PollLoginQueue200>>,) => {
+      return customInstance<PollLoginQueue200>(
+      {url: `/api/v1/user/login/queue/${ticketId}`, method: 'POST'
     },
       options);
     }
@@ -1132,7 +1173,9 @@ const removeDreami = (
       options);
     }
 
-return {chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,findNearbyWaitingDreamis,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,sendPing,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getReceivedReview,getCurrentStatus,getProfile,getOfferItemPhoto,getDreamiOrders,getDreamiOrder,findCurrentDeliveryCard,getDreamiOrderCount,getDashboard,getTodayStats,getDeliveryDetail,getPickupPhoto,getDeliveryContact,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,getBoormiDashboard,getBoormiOrder,unsubscribeOrder,getBoormiOrderCount,removeDreami}};
+return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,pollLoginQueue,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,findNearbyWaitingDreamis,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,sendPing,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getReceivedReview,getCurrentStatus,getProfile,getOfferItemPhoto,getDreamiOrders,getDreamiOrder,findCurrentDeliveryCard,getDreamiOrderCount,getDashboard,getTodayStats,getDeliveryDetail,getPickupPhoto,getDeliveryContact,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,getBoormiDashboard,getBoormiOrder,unsubscribeOrder,getBoormiOrderCount,removeDreami}};
+export type GetResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['get']>>>
+export type PutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['put']>>>
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
 export type ExchangeMoneyToPointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['exchangeMoneyToPoint']>>>
 export type SendVerificationCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['sendVerificationCode']>>>
@@ -1140,6 +1183,7 @@ export type VerifyCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof 
 export type SignupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['signup']>>>
 export type LogoutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['logout']>>>
 export type LoginResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['login']>>>
+export type PollLoginQueueResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['pollLoginQueue']>>>
 export type CreateSubscriptionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['createSubscription']>>>
 export type DeleteSubscriptionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['deleteSubscription']>>>
 export type GetMyReviewResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getMyReview']>>>

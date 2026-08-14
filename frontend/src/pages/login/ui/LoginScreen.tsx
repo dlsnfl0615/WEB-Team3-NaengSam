@@ -1,50 +1,76 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Button, ScreenShell, TextField } from '@/shared/ui'
-import { ROUTES } from '@/shared/config/routes'
-import { useSessionStore } from '@/shared/store/sessionStore'
-import { useRole } from '@/shared/lib/role/useRole'
-import { resolveLandingRoute } from '@/shared/lib/role/resolveLandingRoute'
-import { isApiError } from '@/shared/api'
-import { isEmail, VALIDATION_MESSAGE } from '@/shared/lib/validation'
-import { clearForcedLogout, hasForcedLogout } from '@/shared/lib'
+import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { Button, ScreenShell, TextField } from "@/shared/ui";
+import { ROUTES } from "@/shared/config/routes";
+import { useSessionStore } from "@/shared/store/sessionStore";
+import type { AuthUser } from "@/shared/mock/types";
+import { useRole } from "@/shared/lib/role/useRole";
+import { resolveLandingRoute } from "@/shared/lib/role/resolveLandingRoute";
+import { isApiError } from "@/shared/api";
+import { isEmail, VALIDATION_MESSAGE } from "@/shared/lib/validation";
+import { clearForcedLogout, hasForcedLogout } from "@/shared/lib";
+import { LoginQueueModal } from "./LoginQueueModal";
 
 /**
  * 로그인 화면(Figma node 21:91).
  * 이메일/비밀번호 로그인 + 회원가입 진입.
  */
 export function LoginScreen() {
-  const navigate = useNavigate()
-  const login = useSessionStore((s) => s.login)
-  const { setRole } = useRole()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [submitting, setSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const navigate = useNavigate();
+  const login = useSessionStore((s) => s.login);
+  const resumeQueuedLogin = useSessionStore((s) => s.resumeQueuedLogin);
+  const loginQueue = useSessionStore((s) => s.loginQueue);
+  const { setRole } = useRole();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   // 세션이 끊겨 밀려왔는지. 표식은 로그인 성공 시에만 지우므로 렌더 중 읽어도 안전하다.
-  const forcedLogout = hasForcedLogout()
+  const forcedLogout = hasForcedLogout();
 
   const emailError =
-    email.trim() && !isEmail(email) ? VALIDATION_MESSAGE.email : undefined
-  const canSubmit = isEmail(email) && !!password.trim() && !submitting
+    email.trim() && !isEmail(email) ? VALIDATION_MESSAGE.email : undefined;
+  const canSubmit = isEmail(email) && !!password.trim() && !submitting;
+
+  /** 로그인 성공 후처리. 새로 로그인한 경우와 대기열을 이어받은 경우가 같은 경로를 탄다. */
+  const finishLogin = useCallback(
+    (user: AuthUser) => {
+      clearForcedLogout();
+      setRole(user.activeRole === "DREAMI" ? "드리미" : "부르미");
+      // 진행 중인 배달이 있으면 홈이 아니라 그 화면으로 곧바로 복귀시킨다.
+      navigate(resolveLandingRoute(user), { replace: true });
+    },
+    [navigate, setRole],
+  );
+
+  // 대기 중에 새로고침하면 폴링 루프가 끊긴다. 탭에 남은 티켓으로 이어서 폴링한다(티켓이 없으면 아무 일도 없다).
+  useEffect(() => {
+    resumeQueuedLogin()
+      .then((user) => {
+        if (user) finishLogin(user);
+      })
+      .catch((e) =>
+        setError(
+          isApiError(e)
+            ? e.message
+            : "대기 시간이 지났어요. 다시 로그인해주세요.",
+        ),
+      );
+  }, [finishLogin, resumeQueuedLogin]);
 
   const onLogin = async () => {
-    setError(null)
-    setSubmitting(true)
+    setError(null);
+    setSubmitting(true);
     try {
-      const user = await login({ email, password })
-      clearForcedLogout()
-      setRole(user.activeRole === 'DREAMI' ? '드리미' : '부르미')
-      // 진행 중인 배달이 있으면 홈이 아니라 그 화면으로 곧바로 복귀시킨다.
-      navigate(resolveLandingRoute(user), { replace: true })
+      finishLogin(await login({ email, password }));
     } catch (e) {
       setError(
-        isApiError(e) ? e.message : '로그인에 실패했어요. 다시 시도해주세요.',
-      )
+        isApiError(e) ? e.message : "로그인에 실패했어요. 다시 시도해주세요.",
+      );
     } finally {
-      setSubmitting(false)
+      setSubmitting(false);
     }
-  }
+  };
 
   return (
     <ScreenShell>
@@ -67,7 +93,9 @@ export function LoginScreen() {
             role="status"
             className="mt-8 rounded-md bg-status-warning-50 px-4 py-3 text-status-warning"
           >
-            <p className="text-sm font-bold">세션이 종료되어 로그아웃되었어요</p>
+            <p className="text-sm font-bold">
+              세션이 종료되어 로그아웃되었어요
+            </p>
             <p className="mt-1 text-xs leading-5">
               다른 기기에서 로그인했거나, 오랫동안 사용하지 않아 세션이
               만료되었어요. 다시 로그인해 주세요.
@@ -105,7 +133,7 @@ export function LoginScreen() {
           disabled={!canSubmit}
           onClick={onLogin}
         >
-          {submitting ? '로그인 중…' : '로그인'}
+          {submitting ? "로그인 중…" : "로그인"}
         </Button>
 
         {/* 하단 링크 */}
@@ -119,6 +147,8 @@ export function LoginScreen() {
           </button>
         </div>
       </main>
+
+      <LoginQueueModal queue={loginQueue} />
     </ScreenShell>
-  )
+  );
 }
