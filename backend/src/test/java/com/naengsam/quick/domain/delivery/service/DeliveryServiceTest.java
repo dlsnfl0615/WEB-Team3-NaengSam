@@ -761,7 +761,7 @@ class DeliveryServiceTest {
     void 커밋후리스너가_이벤트를_그대로_NotificationService로_전달한다() {
         UUID userId = UUID.randomUUID();
         DeliveryStatusResponseDto payload =
-                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지");
+                new DeliveryStatusResponseDto(UUID.randomUUID(), PICKUP_NORMAL, null, "메시지", null, null);
         DeliveryNotificationEvent event =
                 new DeliveryNotificationEvent(userId, DeliveryEventType.DELIVERY_STARTED_BOORMI, payload);
 
