@@ -196,6 +196,10 @@ async function openUser(user, index, config) {
   // 리로드가 입력값과 진행 중인 제출을 날려버리므로, 로드가 잦아든 뒤에 폼을 채우고
   // 그래도 /login에 남아 있으면 한 번 더 시도한다.
   await page.goto(`${config.webBase}/login`, { waitUntil: "networkidle" });
+  // 대기열(#399)에 걸리면 닫을 수 없는 모달이 뜨고 차례가 되면 화면이 알아서 /home으로 넘어간다.
+  // 이때 폼을 다시 제출하면 티켓만 하나 더 생기고 순번이 뒤로 밀리므로, 재시도 전에 모달부터 본다.
+  const queueModal = page.getByText("접속자가 많아 대기 중이에요");
+  let queued = false;
   for (let attempt = 1; ; attempt++) {
     await page.locator('input[type="email"]').fill(user.email);
     await page.locator('input[type="password"]').fill(user.password);
@@ -204,12 +208,17 @@ async function openUser(user, index, config) {
       await page.waitForURL("**/home", { timeout: 20_000 });
       break;
     } catch (e) {
+      if (await queueModal.isVisible().catch(() => false)) {
+        queued = true;
+        await page.waitForURL("**/home", { timeout: config.loginQueueTimeoutMs });
+        break;
+      }
       if (attempt >= 2) throw e;
       await page.waitForLoadState("networkidle");
     }
   }
 
-  return { browser, context, page };
+  return { browser, context, page, queued };
 }
 
 /**
@@ -566,12 +575,13 @@ export async function startWatch({ users, config, log }) {
       session.index = index;
       sessions.push(session);
       result.stage = "로그인";
+      const viaQueue = session.queued ? " (대기열 통과)" : "";
       if (user.role === "dreami") {
         const prepared = await prepareDreami(user, session.page, config);
         result.stage = "대기중";
-        log(`${user.label} (dreami) 로그인 ✓ ${prepared.screen} ✓ 대기중`);
+        log(`${user.label} (dreami) 로그인 ✓${viaQueue} ${prepared.screen} ✓ 대기중`);
       } else {
-        log(`${user.label} (boormi) 로그인 ✓`);
+        log(`${user.label} (boormi) 로그인 ✓${viaQueue}`);
       }
     } catch (e) {
       result.stage = "준비실패";

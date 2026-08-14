@@ -51,3 +51,8 @@ export {
   type UseExpiryCountdownOptions,
   type ExpiryCountdownState,
 } from "./time/useExpiryCountdown";
+export {
+  usePresignedPhoto,
+  parsePresignedUrlExpiresAt,
+  type UsePresignedPhotoResult,
+} from "./photo/usePresignedPhoto";

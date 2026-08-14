@@ -93,6 +93,9 @@ export type { BottomSheetProps } from "./BottomSheet/BottomSheet";
 export { Modal } from "./Modal/Modal";
 export type { ModalProps } from "./Modal/Modal";
 
+export { PhotoLightboxModal } from "./PhotoLightboxModal/PhotoLightboxModal";
+export type { PhotoLightboxModalProps } from "./PhotoLightboxModal/PhotoLightboxModal";
+
 export { BlockingLoadErrorModal } from "./BlockingLoadErrorModal/BlockingLoadErrorModal";
 export type { BlockingLoadErrorModalProps } from "./BlockingLoadErrorModal/BlockingLoadErrorModal";
 

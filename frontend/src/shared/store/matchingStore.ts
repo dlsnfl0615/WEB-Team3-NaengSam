@@ -22,7 +22,10 @@ type NearbyCallsLoadResult = "loaded" | "location-unavailable" | "failed";
 /** 위치 권한 거부·브라우저 미지원처럼 드리미 화면을 사용할 수 없는 오류. */
 class LocationAccessError extends Error {}
 
-/** 백엔드 SSE `offer_popup` payload. */
+/**
+ * 백엔드 SSE `offer_popup` payload. 물품 사진은 여기 안 실려온다 — 콜 카드에서 물품사진 버튼을
+ * 누른 시점에 `api.getOfferItemPhoto(offerId)`로 그때 조회한다(자세한 이유는 백엔드 OfferPopupPayload 참고).
+ */
 interface OfferPopupPayload {
   offerId: string;
   orderId: string;
@@ -38,7 +41,8 @@ interface OfferPopupPayload {
   destinationLongitude: number | null;
   destinationAlias: string | null;
   destinationAddressLine1: string | null;
-  imageKey: string | null;
+  /** 부르미가 작성한 요청 사항. 없으면 null. */
+  deliveryRequest: string | null;
   /** 제안이 생성된 시각. 응답 마감(expiresAt)과 함께 카운트다운 계산에 쓴다. */
   offeredAt: string;
   /** 응답 마감 절대 시각. */
@@ -231,7 +235,7 @@ function pendingOfferFromSnapshot(
     destinationLongitude: num(summary.destinationLongitude),
     destinationAlias: str(summary.destinationAlias),
     destinationAddressLine1: str(summary.destinationAddressLine1),
-    imageKey: str(summary.imageKey),
+    deliveryRequest: str(summary.deliveryRequest),
     offeredAt: dto.offeredAt ?? "",
     expiresAt: dto.expiresAt ?? "",
     distanceMeters: nearbyCalls.find((c) => c.orderId === orderId)?.distanceMeters,

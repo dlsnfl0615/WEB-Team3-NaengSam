@@ -7,6 +7,7 @@ import com.naengsam.quick.domain.delivery.dto.DeliveryPhotoRequest;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationResponseDto;
+import com.naengsam.quick.domain.delivery.dto.PickupPhotoDto;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
@@ -58,6 +59,16 @@ public class DeliveryController {
     public DeliveryCompletionDto getDeliveryCompletion(
             @PathVariable UUID orderId, @LoginUser UUID userId) {
         return deliveryService.getDeliveryCompletion(orderId, userId);
+    }
+
+    @Operation(summary = "픽업 인증 사진 조회",
+            description = "배달 추적 화면의 픽업사진 버튼용. 픽업 전이거나 사진이 없으면 result.pickupPhotoUrl이 null이다.")
+    @ApiErrorCodes(enumClass = DeliveryErrorCode.class, codes = {"DELIVERY_NOT_FOUND"})
+    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"NOT_RESOURCE_OWNER"})
+    @GetMapping("/orders/{orderId}/pickup-photo")
+    public PickupPhotoDto getPickupPhoto(
+            @PathVariable UUID orderId, @LoginUser UUID userId) {
+        return deliveryService.getPickupPhoto(orderId, userId);
     }
 
     // 배달 화면에서 '연락하기'를 눌렀을 때만 호출하는 함수 — 개인정보라 상세 조회에 싣지 않고 분리했다.

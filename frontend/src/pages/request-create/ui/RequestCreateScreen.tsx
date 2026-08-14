@@ -10,7 +10,7 @@ import { StepLocation } from "./StepLocation";
 import { StepItem } from "./StepItem";
 import { StepPhoto } from "./StepPhoto";
 import { StepPayment } from "./StepPayment";
-import { itemTypeToCd, toOrderRequest } from "./orderRequest";
+import { itemSizeToCd, itemTypeToCd, toOrderRequest } from "./orderRequest";
 import {
   clearRequestDraft,
   readRequestDraft,
@@ -57,7 +57,8 @@ export function RequestCreateScreen() {
     if (
       patch.pickup !== undefined ||
       patch.dropoff !== undefined ||
-      patch.itemType !== undefined
+      patch.itemType !== undefined ||
+      patch.itemSize !== undefined
     ) {
       setEstimate(null);
     }
@@ -81,7 +82,7 @@ export function RequestCreateScreen() {
     saveRequestDraft({ step, form });
   }, [step, form]);
 
-  // 출발·도착지와 물품 유형이 준비되면 예상 요금을 실시간 조회.
+  // 출발·도착지와 물품 유형·크기가 준비되면 예상 요금을 실시간 조회.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
@@ -95,12 +96,11 @@ export function RequestCreateScreen() {
           originAddressLine1: form.pickup.trim(),
           destinationAddressLine1: form.dropoff.trim(),
           itemCd: itemTypeToCd(form.itemType),
+          itemSizeCd: itemSizeToCd(form.itemSize),
         });
         if (!cancelled) {
           setEstimate(result ?? null);
-          setError(
-            result ? null : "예상 배송 요금을 확인하지 못했어요.",
-          );
+          setError(result ? null : "예상 배송 요금을 확인하지 못했어요.");
         }
       } catch (e) {
         if (!cancelled) {
@@ -119,7 +119,7 @@ export function RequestCreateScreen() {
     return () => {
       cancelled = true;
     };
-  }, [form.pickup, form.dropoff, form.itemType]);
+  }, [form.pickup, form.dropoff, form.itemType, form.itemSize]);
 
   // 스텝별 필수값과 견적 조회 성공 여부를 검증한다.
   const hasValidEstimate = estimate !== null && !estimating;

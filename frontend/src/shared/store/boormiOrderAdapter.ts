@@ -27,7 +27,7 @@ export interface BoormiOrder {
   orderCd: OrderSummaryDtoOrderCd;
   /** 배달 요금(원). */
   amount: number;
-  /** 예상 소요(초). 없으면 undefined. */
+  /** 예상 소요(분). 없으면 undefined. */
   eta?: number;
   /** 목록 표시용 시각 라벨. */
   time: string;
