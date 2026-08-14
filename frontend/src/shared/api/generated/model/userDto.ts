@@ -12,6 +12,8 @@ export interface UserDto {
   email?: string;
   name?: string;
   isDreami?: boolean;
+  boormiAvgScore?: number;
+  dreamiAvgScore?: number;
   activeRole?: UserDtoActiveRole;
   activeOrderId?: string;
   activeOrderCd?: UserDtoActiveOrderCd;
