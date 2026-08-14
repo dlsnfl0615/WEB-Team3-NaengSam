@@ -7,7 +7,6 @@ import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
-import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
@@ -56,16 +55,11 @@ public class BoormiController {
         return boormiService.subscribeOrder(orderRequest, boormiId);
     }
 
-    @Operation(summary = "내 주문 목록 조회", description = "로그인한 부르미가 신청한 주문을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하며, cursor 는 이전 응답의 nextCursor 를 그대로 넘긴다.")
+    @Operation(summary = "내 주문 목록 조회", description = "로그인한 부르미가 신청한 주문 전체를 최신순으로 조회한다.")
     @GetMapping("/calls")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"INVALID_CURSOR"})
-    public BoormiOrdersResponse getBoormiOrders(
-            @LoginUser UUID boormiId,
-            @RequestParam(required = false) String cursor,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) OrderCd status) {
-        return boormiService.getMyOrders(boormiId, cursor, size, status);
+    public BoormiOrdersResponse getBoormiOrders(@LoginUser UUID boormiId) {
+        return boormiService.getMyOrders(boormiId);
     }
 
     @Operation(summary = "내 주문 단건 조회",
