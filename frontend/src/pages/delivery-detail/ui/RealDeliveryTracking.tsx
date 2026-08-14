@@ -91,6 +91,14 @@ export function RealDeliveryTracking({
   // "마지막 확인 N분 전" 라벨을 계산할 기준 시각. lastSeenAt과 함께 잡고, 배너가 뜬 동안 주기적으로 갱신한다.
   const [labelNow, setLabelNow] = useState(() => Date.now());
 
+  // 타임라인 "부름 접수" 시각 — 서버에 별도 컬럼이 없어, 이 화면에 처음 들어온 시각을 그대로 쓴다.
+  // 한 번만 캡처해서 리렌더링돼도 안 바뀌게 한다.
+  const [entryTime] = useState(() => new Date().toISOString());
+  // 타임라인 "픽업 완료"/"드림 완료" 시각. 최초 조회 응답과 SSE 페이로드 둘 다에 실려 오므로
+  // 화면을 새로고침하지 않아도 그 순간 바로 채워진다.
+  const [deliveryStartDtm, setDeliveryStartDtm] = useState<string | null>(null);
+  const [deliveryEndDtm, setDeliveryEndDtm] = useState<string | null>(null);
+
   // 상세 조회 성공 전에는 SSE·취소 등 모든 배달 기능을 차단한다.
   const {
     detail,
@@ -105,6 +113,8 @@ export function RealDeliveryTracking({
       // SSE가 아직 위치를 안 줬으면 응답의 currentLocation으로 시드한다.
       setLocation(loadedDetail.currentLocation ?? null);
       if (loadedDetail.status) setStatus(loadedDetail.status);
+      setDeliveryStartDtm(loadedDetail.deliveryStartDtm ?? null);
+      setDeliveryEndDtm(loadedDetail.deliveryEndDtm ?? null);
       // 드리미 연결 상태는 이벤트 공백으로 추론하지 않고 서버 스냅샷으로 잡는다.
       // 화면 재진입 시 즉시 정확하고, 끊긴 사이 놓친 오프라인 통보도 이 경로로 복구된다.
       const now = Date.now();
@@ -236,6 +246,7 @@ export function RealDeliveryTracking({
       const dto = forThisOrder(data);
       if (!dto) return;
       applyStatus(dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERING);
+      setDeliveryStartDtm(dto.deliveryStartDtm ?? null);
       showToast({
         icon: "bell",
         title: "드리미가 픽업을 완료했어요",
@@ -251,6 +262,7 @@ export function RealDeliveryTracking({
         dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERED;
       clearToasts();
       applyStatus(completedStatus);
+      setDeliveryEndDtm(dto.deliveryEndDtm ?? null);
       navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
         replace: true,
       });
@@ -409,6 +421,11 @@ export function RealDeliveryTracking({
           <DeliveryTimeline
             steps={DELIVERY_TIMELINE_STEPS}
             completedCount={deliveryTimelineCompletedCount(status)}
+            timestamps={[
+              formatArrivalTime(entryTime),
+              formatArrivalTime(deliveryStartDtm),
+              formatArrivalTime(deliveryEndDtm),
+            ]}
           />
         </Card>
       </main>
