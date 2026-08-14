@@ -53,7 +53,6 @@ export function MypageScreen() {
 
         <AccountSection
           registered={registered}
-          onRegister={() => setRegistered(true)}
           onChange={() => setRegistered(false)}
         />
 

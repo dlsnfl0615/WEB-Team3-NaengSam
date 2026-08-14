@@ -1,6 +1,6 @@
 import { createElement } from 'react'
-import type { RouteObject } from 'react-router-dom'
-import { GUEST_ONLY_ROUTES, PUBLIC_ROUTES } from '@/shared/config/routes'
+import { Navigate, type RouteObject } from 'react-router-dom'
+import { GUEST_ONLY_ROUTES, PUBLIC_ROUTES, ROUTES } from '@/shared/config/routes'
 import { RedirectIfAuthed } from '@/shared/lib/auth/RedirectIfAuthed'
 import { RequireAuth } from '@/shared/lib/auth/RequireAuth'
 
@@ -18,7 +18,7 @@ const modules = import.meta.glob('../pages/*/route.tsx', {
   eager: true,
 }) as Record<string, { route: RouteObject }>
 
-export const routes: RouteObject[] = Object.values(modules).map((m) => {
+const pageRoutes: RouteObject[] = Object.values(modules).map((m) => {
   const route = m.route
   if (route.path && GUEST_ONLY_ROUTES.includes(route.path)) {
     return { ...route, element: createElement(RedirectIfAuthed, null, route.element) }
@@ -26,3 +26,11 @@ export const routes: RouteObject[] = Object.values(modules).map((m) => {
   if (route.path && PUBLIC_ROUTES.includes(route.path)) return route
   return { ...route, element: createElement(RequireAuth, null, route.element) }
 })
+
+export const routes: RouteObject[] = [
+  ...pageRoutes,
+  {
+    path: '*',
+    element: createElement(Navigate, { to: ROUTES.home, replace: true }),
+  },
+]
