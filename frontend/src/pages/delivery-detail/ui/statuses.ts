@@ -39,19 +39,17 @@ export interface RealTrackView {
 const Cd = DeliveryStatusResponseDtoStatus;
 
 /** 배달 진행 타임라인 단계 라벨(순서대로). */
-export const DELIVERY_TIMELINE_STEPS = ["픽업 시작", "픽업 완료", "배달 시작", "배달 완료"];
+export const DELIVERY_TIMELINE_STEPS = ["부름 접수", "픽업 완료", "드림 완료"];
 
 /**
  * 백엔드 DeliveryCd → 타임라인에서 완료된 단계 수(앞에서부터 순서대로 채워짐).
- * 드리미가 픽업사진을 올려 픽업을 완료 처리하는 시점(DELIVERING)에 "픽업 완료"와 "배달 시작"이
- * 동시에 완료 처리된다 — 백엔드가 이 둘을 구분하는 별도 이벤트를 갖고 있지 않기 때문이다.
  */
 export function deliveryTimelineCompletedCount(status: DeliveryCd | undefined): number {
   switch (status) {
     case Cd.DELIVERED:
-      return 4;
-    case Cd.DELIVERING:
       return 3;
+    case Cd.DELIVERING:
+      return 2;
     default:
       return 1;
   }
