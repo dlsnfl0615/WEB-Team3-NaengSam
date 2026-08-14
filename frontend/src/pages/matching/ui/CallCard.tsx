@@ -87,7 +87,8 @@ export function CallCard({
         dropoff={dropoff}
         driver={currentLocation}
         driverLabel="내 위치"
-        driverPinImage="/dreami-pin-main-no-pickup.png"
+        driverPinImage="/running-dreami-nopickup-1.png"
+        driverRunningPinImage="/running-dreami-nopickup-2.png"
         pickupLabel={place}
         height={280}
       />

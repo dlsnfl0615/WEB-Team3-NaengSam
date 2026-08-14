@@ -10,7 +10,7 @@ export interface PinOverlayHandle {
   setMap(map: KakaoMap | null): void;
   setPosition(position: KakaoLatLng): void;
   setSmoothPosition(position: KakaoLatLng, durationMs: number): void;
-  setImageSrc(imageSrc?: string): void;
+  setImageSrc(imageSrc?: string, runningImageSrc?: string): void;
   removeSmoothly(): void;
 }
 
@@ -47,6 +47,7 @@ export function makePinOverlay(
   onClick?: () => void,
   smooth = false,
 ): PinOverlayHandle {
+  const RUNNING_FRAME_INTERVAL_MS = 400;
   const isGlowDot = style.variant === "glow-dot";
   const anchorTransform = isGlowDot
     ? "translate(-50%, -50%)"
@@ -83,6 +84,11 @@ export function makePinOverlay(
   pin.style.backgroundRepeat = "no-repeat";
   pin.style.backgroundSize = "contain";
 
+  let restingImageSrc = style.imageSrc;
+  let runningImageSrc: string | undefined;
+  let runningFrameTimer: number | undefined;
+  let runningFrame = 0;
+
   const setPinImage = (imageSrc?: string) => {
     pin.style.width = imageSrc
       ? "60px"
@@ -97,6 +103,25 @@ export function makePinOverlay(
     pin.style.backgroundImage = `url("${imageSrc ?? pinImageSrc(style.color)}")`;
   };
   setPinImage(style.imageSrc);
+
+  const stopRunningFrames = () => {
+    if (runningFrameTimer != null) {
+      window.clearInterval(runningFrameTimer);
+      runningFrameTimer = undefined;
+    }
+    runningFrame = 0;
+    setPinImage(restingImageSrc);
+  };
+
+  const startRunningFrames = () => {
+    if (!runningImageSrc || runningFrameTimer != null) return;
+    runningFrame = 0;
+    setPinImage(restingImageSrc);
+    runningFrameTimer = window.setInterval(() => {
+      runningFrame = runningFrame === 0 ? 1 : 0;
+      setPinImage(runningFrame === 0 ? restingImageSrc : runningImageSrc);
+    }, RUNNING_FRAME_INTERVAL_MS);
+  };
 
   if (!isGlowDot) {
     content.append(labelElement, pin);
@@ -199,6 +224,7 @@ export function makePinOverlay(
 
     onRemove() {
       this.cancelAnimation();
+      stopRunningFrames();
       if (this.enterFrame != null) cancelAnimationFrame(this.enterFrame);
       if (this.removeTimer != null) window.clearTimeout(this.removeTimer);
       root.remove();
@@ -247,12 +273,24 @@ export function makePinOverlay(
         startedAt: now,
         durationMs: Math.max(durationMs, 1),
       };
+      startRunningFrames();
       this.renderPoint(fromPoint);
       this.animation.frame = requestAnimationFrame(this.animate);
     }
 
-    setImageSrc(imageSrc?: string) {
-      setPinImage(imageSrc);
+    setImageSrc(imageSrc?: string, nextRunningImageSrc?: string) {
+      restingImageSrc = imageSrc;
+      runningImageSrc = nextRunningImageSrc;
+      if (!runningImageSrc) {
+        stopRunningFrames();
+        return;
+      }
+      setPinImage(
+        runningFrameTimer != null && runningFrame === 1
+          ? runningImageSrc
+          : restingImageSrc,
+      );
+      startRunningFrames();
     }
 
     removeSmoothly() {
