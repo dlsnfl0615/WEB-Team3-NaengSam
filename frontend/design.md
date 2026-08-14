@@ -114,7 +114,7 @@ import { Icon } from './components'
 | `DeliveryTimeline`          | `steps` `completedCount` `timestamps` | 배달 진행 단계 점+세로선 타임라인(배민 스타일). 완료 단계 옆에 짧은 점선+시각 표시 |
 | `SegmentedToggle`           | `options` `value` `onChange`     | 2-세그먼트 토글(부르미/드리미)                         |
 | `RadioOption`               | `label` `selected` `onSelect`    | 상호 배제 단일 선택 카드(사유 선택)                    |
-| `TextField` / `SearchField` | `label` `leadingIcon` …          | 입력 필드. Search는 search 아이콘 포함                 |
+| `TextField` / `SearchField` | `label` `leadingIcon` `disabled` … | 입력 필드. Search는 search 아이콘 포함. `disabled`면 배경이 `track`으로 바뀌고 글자가 `muted` |
 
 ### 복합 · 레이아웃
 

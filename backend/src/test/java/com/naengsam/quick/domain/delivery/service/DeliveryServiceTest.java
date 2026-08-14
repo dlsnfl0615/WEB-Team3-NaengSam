@@ -49,6 +49,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.*;
@@ -555,6 +556,105 @@ class DeliveryServiceTest {
 
             assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.CONTACT_NOT_AVAILABLE);
         }
+    }
+
+    // ===== 핑 보내기 =====
+
+    @Test
+    void 부르미가_핑을_보내면_드리미에게_DELIVERY_PING_이벤트를_발행한다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+        deliveryService.sendPing(orderId, boormiId);
+
+        assertPublished(dreamiId, DeliveryEventType.DELIVERY_PING);
+    }
+
+    @Test
+    void 드리미가_핑을_보내면_NOT_ORDER_BOORMI_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, UUID.randomUUID());
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+        Throwable thrown = catchThrowable(() -> deliveryService.sendPing(orderId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.NOT_ORDER_BOORMI);
+        verify(eventPublisher, never()).publishEvent(any(DeliveryNotificationEvent.class));
+    }
+
+    @Test
+    void 종료된_배달에_핑을_보내면_CONTACT_NOT_AVAILABLE_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        for (DeliveryCd closed : List.of(DELIVERED, PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI,
+                PICKUP_CANCELLED_BY_ADMIN, RETURNED, TERMINATED)) {
+            UUID orderId = UUID.randomUUID();
+            Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+            ReflectionTestUtils.setField(delivery, "deliveryCd", closed);
+            given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+
+            Throwable thrown = catchThrowable(() -> deliveryService.sendPing(orderId, boormiId));
+
+            assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.CONTACT_NOT_AVAILABLE);
+        }
+        verify(eventPublisher, never()).publishEvent(any(DeliveryNotificationEvent.class));
+    }
+
+    @Test
+    void 쿨다운_안에_핑을_다시_보내면_PING_TOO_FREQUENT_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        deliveryService.sendPing(orderId, boormiId);
+
+        Throwable thrown = catchThrowable(() -> deliveryService.sendPing(orderId, boormiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DeliveryErrorCode.PING_TOO_FREQUENT);
+        // 막힌 핑은 알림도 나가지 않는다(첫 핑 1건만 발행됐다).
+        verify(eventPublisher, times(1)).publishEvent(any(DeliveryNotificationEvent.class));
+    }
+
+    @Test
+    void 쿨다운이_지나면_핑을_다시_보낼_수_있다() {
+        UUID dreamiId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        Delivery delivery = Delivery.create(orderId, dreamiId, boormiId);
+        given(deliveryRepository.findByOrderIdWithoutLock(orderId)).willReturn(Optional.of(delivery));
+        deliveryService.sendPing(orderId, boormiId);
+        // 30초를 실제로 기다리는 대신, 마지막 핑 시각을 쿨다운 밖으로 되돌린다.
+        lastPingAt().put(orderId, Instant.now().minusSeconds(31));
+
+        deliveryService.sendPing(orderId, boormiId);
+
+        verify(eventPublisher, times(2)).publishEvent(any(DeliveryNotificationEvent.class));
+    }
+
+    @Test
+    void 핑_쿨다운은_배달별로_따로_적용된다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID firstOrderId = UUID.randomUUID();
+        UUID secondOrderId = UUID.randomUUID();
+        given(deliveryRepository.findByOrderIdWithoutLock(firstOrderId))
+                .willReturn(Optional.of(Delivery.create(firstOrderId, UUID.randomUUID(), boormiId)));
+        given(deliveryRepository.findByOrderIdWithoutLock(secondOrderId))
+                .willReturn(Optional.of(Delivery.create(secondOrderId, UUID.randomUUID(), boormiId)));
+        deliveryService.sendPing(firstOrderId, boormiId);
+
+        deliveryService.sendPing(secondOrderId, boormiId);
+
+        verify(eventPublisher, times(2)).publishEvent(any(DeliveryNotificationEvent.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<UUID, Instant> lastPingAt() {
+        return (Map<UUID, Instant>) ReflectionTestUtils.getField(deliveryService, "lastPingAt");
     }
 
     // ===== 첫 위치 전송 시 '드리미→픽업지' 경로·배송완료예상시간 계산 =====

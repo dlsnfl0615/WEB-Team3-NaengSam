@@ -3,6 +3,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { useMatchingStore, type AwaitingBoormi } from "@/shared/store/matchingStore";
 import { useSessionStore } from "@/shared/store/sessionStore";
+import { useToastStore } from "@/shared/store/toastStore";
+import { ROUTES } from "@/shared/config/routes";
 import { MatchingPopup } from "./MatchingPopup";
 
 // SSE 연결은 이 테스트의 대상이 아니다(팝업이 무엇을 어떻게 덮는지만 본다).
@@ -33,6 +35,7 @@ function renderPopup() {
 }
 
 beforeEach(() => {
+  useToastStore.getState().clear();
   useSessionStore.setState({ isAuthenticated: true });
   useMatchingStore.setState({
     pendingOffer: null,
@@ -112,5 +115,44 @@ describe("MatchingPopup 부르미 응답 대기", () => {
     const overlay = container.firstElementChild as HTMLElement;
     expect(overlay.className).not.toContain("pointer-events-none");
     expect(container.querySelector('[aria-hidden="true"].absolute')).toBeTruthy();
+  });
+});
+
+describe("MatchingPopup 매칭 안내", () => {
+  it("안내_메시지는_상단_토스트_스택으로_올린다", () => {
+    useMatchingStore.setState({ message: "부르미가 요청을 거절했어요." });
+
+    const { container } = renderPopup();
+
+    // 하단 오버레이는 카드가 있을 때만 그린다(안내는 ToastViewport가 상단에서 내려주며 표시).
+    expect(container.firstElementChild).toBeNull();
+    expect(
+      useToastStore
+        .getState()
+        .toasts.map((toast) => [toast.title, toast.persistent]),
+    ).toContainEqual(["부르미가 요청을 거절했어요.", true]);
+  });
+
+  it("토스트를_닫으면_안내_메시지도_비운다", () => {
+    useMatchingStore.setState({ message: "부르미가 요청을 거절했어요." });
+    renderPopup();
+    const toastId = useToastStore.getState().toasts[0].id;
+
+    useToastStore.getState().dismiss(toastId);
+
+    // 메시지가 남아 있으면 같은 안내가 다시 와도 새 토스트가 뜨지 않는다.
+    expect(useMatchingStore.getState().message).toBeNull();
+  });
+
+  it("거절_사유_화면에서는_안내를_띄우지_않는다", () => {
+    useMatchingStore.setState({ message: "부르미가 요청을 거절했어요." });
+
+    render(
+      <MemoryRouter initialEntries={[ROUTES.rejectReason]}>
+        <MatchingPopup />
+      </MemoryRouter>,
+    );
+
+    expect(useToastStore.getState().toasts).toHaveLength(0);
   });
 });

@@ -1,22 +1,83 @@
 import { create } from "zustand";
 import { api, SESSION_PROBE_HEADER } from "@/shared/api";
-import type { UserDto } from "@/shared/api";
+import type { LoginResultDto, UserDto } from "@/shared/api";
 import { unregisterPushSubscription } from "@/shared/lib/push/unregisterPushSubscription";
-import type { AuthUser, LoginRequest, SignupRequest } from "@/shared/mock/types";
+import type {
+  AuthUser,
+  LoginRequest,
+  SignupRequest,
+} from "@/shared/mock/types";
+
+/** 로그인이 대기열에 걸렸을 때 화면에 보여줄 상태. 대기 중이 아니면 null. */
+export interface LoginQueueState {
+  /** 남은 순번(1이면 다음 차례). */
+  position: number;
+  totalWaiting: number;
+  estimatedWaitSeconds: number;
+  /** 처음 받은 순번. 진행률의 분모라 대기 중에는 바뀌지 않는다. */
+  initialPosition: number;
+}
+
+/** 서버가 pollAfterMs를 안 줬을 때 쓰는 간격. */
+const DEFAULT_POLL_MS = 1000;
+
+/**
+ * 대기 티켓 보관 키. 새로고침해도 줄을 잃지 않으려면 티켓이 페이지 수명보다 오래 남아야 한다.
+ * 탭을 닫으면 사라지도록 sessionStorage를 쓴다 — 닫은 탭의 줄을 나중에 되살릴 이유가 없다.
+ */
+const TICKET_STORAGE_KEY = "naengsam.loginTicket";
+
+interface StoredTicket {
+  ticketId: string;
+  /** 마지막으로 본 대기 상태. 새로고침 직후 첫 폴링 응답 전에도 모달을 그대로 그리기 위해 통째로 저장한다. */
+  queue: LoginQueueState;
+}
+
+function readStoredTicket(): StoredTicket | null {
+  const raw = sessionStorage.getItem(TICKET_STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as StoredTicket;
+  } catch {
+    sessionStorage.removeItem(TICKET_STORAGE_KEY);
+    return null;
+  }
+}
+
+function writeStoredTicket(ticketId: string, queue: LoginQueueState) {
+  sessionStorage.setItem(
+    TICKET_STORAGE_KEY,
+    JSON.stringify({ ticketId, queue } satisfies StoredTicket),
+  );
+}
+
+function clearStoredTicket() {
+  sessionStorage.removeItem(TICKET_STORAGE_KEY);
+}
 
 interface SessionState {
   user: AuthUser | null;
   isAuthenticated: boolean;
   /** 앱 시작 시 세션 확인(bootstrap)이 끝났는지. 라우트 가드가 이 값을 기다린다. */
   hydrated: boolean;
+  /** 대기열에 걸린 로그인의 순번·예상 대기 시간. 대기 중이 아니면 null. */
+  loginQueue: LoginQueueState | null;
   /** 쿠키 세션으로 /me를 조회해 로그인 상태를 복원한다(앱 시작 1회). */
   bootstrap: () => Promise<void>;
   /** /me를 다시 조회해 activeRole·activeOrderId를 최신화한다(역할 토글 잠금 판정용). */
   refreshUser: () => Promise<void>;
   login: (dto: LoginRequest) => Promise<AuthUser>;
   signup: (dto: SignupRequest) => Promise<AuthUser>;
+  /**
+   * 새로고침으로 끊긴 대기열 폴링을 이어간다(저장된 티켓이 없으면 null).
+   * 차례가 되면 로그인까지 끝내고 사용자를 돌려준다. 티켓 만료·로그인 실패는 예외로 던져진다.
+   */
+  resumeQueuedLogin: () => Promise<AuthUser | null>;
   /** 로그인 유저의 본인인증(드리미 등록). 업로드 확인 실패는 예외로 던져진다(호출부에서 처리), 미로그인 시엔 null. */
-  verify: (idCardKey: string, criminalRecordKey: string) => Promise<AuthUser | null>;
+  verify: (
+    idCardKey: string,
+    criminalRecordKey: string,
+  ) => Promise<AuthUser | null>;
   logout: () => Promise<void>;
 }
 
@@ -31,9 +92,47 @@ function toAuthUser(dto: UserDto): AuthUser {
     activeRole: dto.activeRole,
     activeOrderId: dto.activeOrderId,
     activeOrderCd: dto.activeOrderCd,
-    // UserDto엔 평점이 없다. 평점 API 확정 전까지 0으로 둔다(마이페이지 표시용).
-    rating: 0,
+    // 드리미 평점은 승인된 드리미일 때만 내려온다(미등록·미승인이면 null → 마이페이지에서 숨김).
+    boormiRating: dto.boormiAvgScore ?? 0,
+    dreamiRating: dto.dreamiAvgScore ?? undefined,
   };
+}
+
+/**
+ * 차례가 올 때까지 대기 티켓을 폴링한다. 다음 호출까지의 간격은 서버가 준 `pollAfterMs`를 그대로 쓰며,
+ * 순번이 앞당겨질수록 짧아진다. 차례가 되면 그 폴링 응답에서 세션이 만들어지므로 여기서는 반환만 한다.
+ *
+ * 비밀번호가 틀렸거나 티켓이 만료되면 폴링 응답이 4xx로 떨어져 예외로 빠져나간다.
+ * 화면을 벗어나도 루프를 따로 끊지 않는다 — 티켓 수명(2분)이 지나면 만료 응답으로 스스로 끝난다.
+ *
+ * `ticketId`와 `initialPosition`을 따로 받는 이유: 재개 경로가 넘기는 폴링 응답(WAITING)에는 ticketId가 없고,
+ * 진행률의 분모는 새로 받은 순번이 아니라 처음 줄을 섰을 때의 순번이어야 바가 되감기지 않는다.
+ */
+async function waitInQueue(
+  ticketId: string,
+  first: LoginResultDto,
+  initialPosition: number,
+  onProgress: (state: LoginQueueState) => void,
+): Promise<void> {
+  let current = first;
+
+  while (current.status === "QUEUED" || current.status === "WAITING") {
+    const queue: LoginQueueState = {
+      position: current.position ?? 1,
+      totalWaiting: current.totalWaiting ?? 1,
+      estimatedWaitSeconds: current.estimatedWaitSeconds ?? 1,
+      initialPosition,
+    };
+    // 새로고침 후 재개가 최신 순번에서 이어지도록 매 폴링마다 갱신한다.
+    writeStoredTicket(ticketId, queue);
+    onProgress(queue);
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, current.pollAfterMs ?? DEFAULT_POLL_MS),
+    );
+    const { result } = await api.pollLoginQueue(ticketId);
+    current = result ?? {};
+  }
 }
 
 /** 회원가입 폼의 생년월일("YYYY.M.D") → 백엔드 ISO 날짜("YYYY-MM-DD"). */
@@ -41,6 +140,9 @@ function toIsoDate(birth: string): string {
   const [year, month, day] = birth.split(".");
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
+
+/** 재개 폴링이 이미 돌고 있는지. 스토어 상태로 두면 첫 진입 시점에는 아직 비어 있어 가드가 안 된다. */
+let resuming = false;
 
 /**
  * 로그인 세션(유저·역할)을 화면 간 공유하는 전역 스토어(#37 인증).
@@ -50,6 +152,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   user: null,
   isAuthenticated: false,
   hydrated: false,
+  // 새로고침 직후 첫 렌더부터 대기 모달이 그대로 떠 있도록 저장된 상태로 시작한다(로그인 폼 번쩍임 방지).
+  loginQueue: readStoredTicket()?.queue ?? null,
   bootstrap: async () => {
     // probe 헤더를 실어 401이어도 전역 로그인 리다이렉트를 유발하지 않게 한다(공개 페이지 보호).
     try {
@@ -79,12 +183,54 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
   login: async (dto) => {
-    // 로그인은 세션 쿠키만 발급(result 없음)하므로, 곧바로 /me로 사용자 정보를 조회한다.
-    await api.login({ email: dto.email, password: dto.password });
-    const { result } = await api.me();
-    const user = toAuthUser(result ?? {});
-    set({ user, isAuthenticated: true, hydrated: true });
-    return user;
+    try {
+      // 동시 로그인이 몰리면 세션 대신 대기 티켓이 온다. 이 경우 차례가 될 때까지 폴링한 뒤에야 세션이 생긴다.
+      const { result: ticket } = await api.login({
+        email: dto.email,
+        password: dto.password,
+      });
+      if (ticket?.status === "QUEUED" && ticket.ticketId) {
+        await waitInQueue(
+          ticket.ticketId,
+          ticket,
+          Math.max(ticket.position ?? 1, 1),
+          (loginQueue) => set({ loginQueue }),
+        );
+      }
+      // 로그인 응답엔 사용자 정보가 없으므로(세션 쿠키만 발급), 곧바로 /me로 조회한다.
+      const { result } = await api.me();
+      const user = toAuthUser(result ?? {});
+      set({ user, isAuthenticated: true, hydrated: true });
+      return user;
+    } finally {
+      clearStoredTicket();
+      set({ loginQueue: null });
+    }
+  },
+  resumeQueuedLogin: async () => {
+    const stored = readStoredTicket();
+    // 중복 진입 차단. StrictMode는 개발에서 effect를 두 번 돌리는데, 같은 티켓으로 두 루프가 돌면
+    // 하나가 결과를 소비하고 다른 하나는 만료(410)를 받아 성공한 로그인에 에러가 뜬다.
+    if (!stored || resuming) return null;
+    resuming = true;
+
+    try {
+      const { result } = await api.pollLoginQueue(stored.ticketId);
+      await waitInQueue(
+        stored.ticketId,
+        result ?? {},
+        stored.queue.initialPosition,
+        (loginQueue) => set({ loginQueue }),
+      );
+      const { result: me } = await api.me();
+      const user = toAuthUser(me ?? {});
+      set({ user, isAuthenticated: true, hydrated: true });
+      return user;
+    } finally {
+      resuming = false;
+      clearStoredTicket();
+      set({ loginQueue: null });
+    }
   },
   signup: async (dto) => {
     // 가입은 세션을 만들지 않는다(@PublicApi). 성공 후 곧바로 로그인해 세션을 생성한다.

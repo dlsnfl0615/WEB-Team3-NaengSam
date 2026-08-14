@@ -132,11 +132,12 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
                 type="button"
                 role="radio"
                 aria-checked={selected}
+                // 직접 입력은 "기타"에서만 쓴다. 그 외 태그로 옮기면 남은 입력값을 비운다.
                 onClick={() =>
                   update(
-                    tag === "없음"
-                      ? { requestTag: tag, etc: "" }
-                      : { requestTag: tag },
+                    tag === "기타"
+                      ? { requestTag: tag }
+                      : { requestTag: tag, etc: "" },
                   )
                 }
                 className={cn(
@@ -156,8 +157,7 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
           maxLength={255}
           value={form.etc}
           onChange={(e) => update({ etc: e.target.value })}
-          disabled={form.requestTag === "없음"}
-          className="disabled:cursor-not-allowed disabled:text-muted"
+          disabled={form.requestTag !== "기타"}
         />
       </div>
     </div>

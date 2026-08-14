@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { DeliveryTrackScreen } from "./DeliveryTrackScreen";
 
@@ -47,6 +47,8 @@ vi.mock("@/shared/lib", () => ({
   useDreamiLocationBroadcast: () => locationState,
   useSse: () => ({ status: "connected" }),
   useSseReconnectSync: vi.fn(),
+  // 히스토리 조작은 이 테스트의 관심사가 아니다. 화면 안 뒤로가기 경로만 직접 검증한다.
+  useLeaveGuard: vi.fn(),
   // 연락 시트는 이 테스트(GPS 안내)의 관심사가 아니라 렌더만 비운다.
   ContactSheet: () => null,
 }));
@@ -94,5 +96,25 @@ describe("DeliveryTrackScreen GPS 알림", () => {
     );
 
     expect(screen.queryByText("GPS를 허용해주세요.")).toBeNull();
+  });
+});
+
+describe("DeliveryTrackScreen 이탈 경고", () => {
+  it("실_배달_중_뒤로가기를_누르면_경고_모달을_띄운다", () => {
+    render(
+      <MemoryRouter initialEntries={["/delivery-track?orderId=order-1"]}>
+        <DeliveryTrackScreen />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("배송 화면을 나갈까요?")).toBeNull();
+
+    fireEvent.click(screen.getByLabelText("뒤로가기"));
+
+    expect(screen.getByText("배송 화면을 나갈까요?")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("계속 배송하기"));
+
+    expect(screen.queryByText("배송 화면을 나갈까요?")).toBeNull();
   });
 });

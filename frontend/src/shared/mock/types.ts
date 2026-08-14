@@ -52,7 +52,10 @@ export interface AuthUser {
   activeOrderId?: string;
   /** 진행 중인 주문의 상태. 로그인 후 복귀 화면과 토글 잠금 사유를 가르는 기준이다. */
   activeOrderCd?: string;
-  rating: number;
+  /** 부르미로서 받은 평균 평점. 모든 계정이 부르미이므로 항상 있다. */
+  boormiRating: number;
+  /** 드리미로서 받은 평균 평점. 승인된 드리미가 아니면 없다. */
+  dreamiRating?: number;
   email: string;
 }
 

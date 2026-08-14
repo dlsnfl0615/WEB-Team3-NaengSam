@@ -89,6 +89,9 @@ export function orderPayload(i) {
     destinationAddressLine2: "1층 로비",
     itemName: ITEM_NAMES[i % ITEM_NAMES.length],
     itemCd: "DOCUMENT",
+    // OrderRequest.itemSizeCd 는 @NotNull 이라 빠지면 주문이 전부 400(COMMON_001)으로 막힌다.
+    // 요금 배율이 1.0 인 S 로 고정한다 — 배율을 섞으면 요금 비교가 런마다 흔들린다.
+    itemSizeCd: "S",
     itemDetail: "부하테스트용 주문",
     deliveryRequest: "부하테스트",
   };

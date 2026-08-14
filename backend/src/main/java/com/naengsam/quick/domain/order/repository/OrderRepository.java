@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.order.repository;
 
+import com.naengsam.quick.domain.order.dto.CompletedSavingAggregate;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import jakarta.persistence.LockModeType;
@@ -44,16 +45,19 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
     long countByDreamiIdAndOrderCd(UUID dreamiId, OrderCd orderCd);
 
     /**
-     * 부르미 대시보드의 완료 건수 집계용.
+     * 부르미 대시보드의 누적 완료 건수·결제액·시장 환산 재료를 물건 유형별로 집계한다. 시장 환산 금액이 물건 유형 배율을 타므로
+     * 배율표를 SQL에 복제하는 대신 유형별로 나눠 받고 서비스에서 배율을 곱한다. {@code baseSection}(m)을 넘긴 거리만 초과 거리로 더한다.
      */
-    long countByBoormiIdAndOrderCd(UUID boormiId, OrderCd orderCd);
-
-    /**
-     * 부르미 대시보드의 절감액 계산용. 완료된 주문의 실제 결제 금액 합계이며, 완료 건이 없으면 0을 돌려준다.
-     */
-    @Query("SELECT COALESCE(SUM(o.deliveryAmount), 0) FROM Orders o "
-            + "WHERE o.boormiId = :boormiId AND o.orderCd = com.naengsam.quick.domain.order.entity.OrderCd.COMPLETED")
-    long sumCompletedDeliveryAmount(@Param("boormiId") UUID boormiId);
+    @Query("SELECT new com.naengsam.quick.domain.order.dto.CompletedSavingAggregate("
+            + "o.itemCd, COUNT(o), "
+            + "COALESCE(SUM(CASE WHEN o.deliveryDistance > :baseSection "
+            + "THEN o.deliveryDistance - :baseSection ELSE 0 END), 0), "
+            + "COALESCE(SUM(o.deliveryAmount), 0)) "
+            + "FROM Orders o WHERE o.boormiId = :boormiId "
+            + "AND o.orderCd = com.naengsam.quick.domain.order.entity.OrderCd.COMPLETED "
+            + "GROUP BY o.itemCd")
+    List<CompletedSavingAggregate> aggregateCompletedSavingByBoormi(@Param("boormiId") UUID boormiId,
+            @Param("baseSection") long baseSection);
 
     /**
      * 드리미 활동 내역 화면의 전체 건수 집계용(상태 무관).

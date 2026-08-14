@@ -10,6 +10,7 @@ function renderCard(overrides: Partial<Parameters<typeof OfferCard>[0]> = {}) {
   const utils = render(
     <OfferCard
       heading="새 드리미 요청 도착!"
+      dreamiId="00000000-0000-0000-0000-000000000001"
       name="드리미 '홍길동'"
       rating={4.5}
       pickupEtaMinutes={12}

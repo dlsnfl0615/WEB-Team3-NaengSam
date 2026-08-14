@@ -8,6 +8,7 @@ import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.payment.service.WalletService;
 import com.naengsam.quick.domain.user.dto.ActiveContext;
 import com.naengsam.quick.domain.user.dto.ActiveRole;
+import com.naengsam.quick.domain.user.dto.LoginCredential;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
 import com.naengsam.quick.domain.user.dto.SignUpRequest;
 import com.naengsam.quick.domain.user.dto.UserDto;
@@ -20,6 +21,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Slf4j
@@ -64,25 +66,45 @@ public class UserService {
 
     /**
      * 이메일/비밀번호를 검증하고 로그인에 성공하면 사용자 식별자를 반환한다. 반환된 식별자는 컨트롤러가 세션에 저장한다.
+     *
+     * <p>조회({@link #loadCredential})와 검증({@link #verify})을 나눈 채로 호출한다. 한 트랜잭션으로 묶으면
+     * {@code spring.jpa.open-in-view=false} 때문에 210,000회 해싱이 도는 내내 Hikari 커넥션 하나를 잡고 있어,
+     * 동시 로그인이 풀 크기(기본 10)를 넘는 순간 11번째부터 커넥션 타임아웃 500이 난다.
+     */
+    public UUID login(LoginRequest request) {
+        return verify(loadCredential(request.email()), request.password());
+    }
+
+    /**
+     * 로그인 검증에 필요한 값만 조회한다. 해싱 전에 커넥션을 반납하기 위해 조회만 하고 즉시 빠져나온다.
+     * 계정이 없어도 여기서 실패하므로 해싱 슬롯을 소모하지 않는다.
      */
     @Transactional(readOnly = true)
-    public UUID login(LoginRequest request) {
-        Boormi boormi = boormiRepository.findByEmail(request.email())
+    public LoginCredential loadCredential(String email) {
+        Boormi boormi = boormiRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.LOGIN_FAILED));
 
-        if (!PasswordHasher.matches(request.password(), boormi.getPassword())) {
+        return new LoginCredential(boormi.getBoormiId(), boormi.getPassword(), boormi.getUserCd());
+    }
+
+    /**
+     * 비밀번호를 검증하고 계정 상태를 확인한다. 210,000회 PBKDF2 해싱이 도는 지점이며 <b>트랜잭션 밖</b>이다.
+     * DB 를 건드리지 않으므로 {@code @Transactional} 을 붙이지 않는다.
+     */
+    public UUID verify(LoginCredential credential, String rawPassword) {
+        if (!PasswordHasher.matches(rawPassword, credential.passwordHash())) {
             throw new BusinessException(AuthErrorCode.LOGIN_FAILED);
         }
 
-        if (boormi.getUserCd().equals(UserCd.RESTRICTED) || boormi.getUserCd().equals(UserCd.BANNED)) {
+        if (credential.userCd().equals(UserCd.RESTRICTED) || credential.userCd().equals(UserCd.BANNED)) {
             throw new BusinessException(AuthErrorCode.SUSPENDED_ACCOUNT);
         }
 
-        if (boormi.getUserCd().equals(UserCd.DELETED)) {
+        if (credential.userCd().equals(UserCd.DELETED)) {
             throw new BusinessException(AuthErrorCode.WITHDRAWN_ACCOUNT);
         }
 
-        return boormi.getBoormiId();
+        return credential.boormiId();
     }
 
     /**
@@ -93,14 +115,14 @@ public class UserService {
         Boormi boormi = boormiRepository.findById(boormiId)
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_SESSION));
 
-        boolean flag = false;
-        if (boormi.isDreamiActivate()) {
-            flag = dreamiRepository.findById(boormiId)
-                    .map(d -> d.getRequestCd() == DreamiCd.APPROVED)
-                    .orElse(false);
-        }
+        Dreami dreami = boormi.isDreamiActivate()
+                ? dreamiRepository.findById(boormiId).orElse(null)
+                : null;
+        boolean approved = dreami != null && dreami.getRequestCd() == DreamiCd.APPROVED;
+        // 승인된 드리미일 때만 드리미 평점을 내려준다(미등록·미승인은 null).
+        BigDecimal dreamiAvgScore = approved ? dreami.getDreamiAvgScore() : null;
 
-        return UserDto.from(boormi, flag, userActivityResolver.resolve(boormiId));
+        return UserDto.from(boormi, approved, dreamiAvgScore, userActivityResolver.resolve(boormiId));
     }
 
     /**

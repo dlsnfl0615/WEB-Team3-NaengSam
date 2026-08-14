@@ -3,9 +3,10 @@ import {useLocation, useNavigate} from "react-router-dom";
 import {ROUTES} from "@/shared/config/routes";
 import {type SseHandlers, useExpiryCountdown, useSse} from "@/shared/lib";
 import {cn} from "@/shared/lib/cn";
-import {Toast, type Coords} from "@/shared/ui";
+import {type Coords} from "@/shared/ui";
 import type {DeliveryStatusResponseDto} from "@/shared/api";
 import {useMatchingStore} from "@/shared/store/matchingStore";
+import {useToastStore} from "@/shared/store/toastStore";
 import {useSessionStore} from "@/shared/store/sessionStore";
 import {useBoormiOrderStore} from "@/shared/store/boormiOrderStore";
 import {AwaitingBoormiCard} from "./AwaitingBoormiCard";
@@ -120,35 +121,37 @@ export function MatchingPopup() {
     // 거절/사유 선택 화면에서는 팝업을 숨겨 화면 접근을 막지 않는다.
     const onReasonScreen =
         pathname === ROUTES.rejectReason || pathname === ROUTES.driverReason;
+
+    // 매칭 안내(제안 마감·부르미 거절 등)는 전역 토스트 스택에 얹어 상단에서 내려오게 한다.
+    // 카드와 같은 하단 슬롯에 직접 그리면 카드가 떠 있는 동안 안내가 묻히고, 등장 방향도 카드와 겹쳐 헷갈린다.
+    useEffect(() => {
+        if (!message || onReasonScreen) return;
+        const {show, dismiss} = useToastStore.getState();
+        const id = show({
+            icon: "bell",
+            title: message,
+            persistent: true,
+            dedupeKey: "matching-message",
+        });
+        // 사용자가 토스트를 닫으면 스토어 메시지도 비운다 — 기존 '닫기' 버튼과 같은 동작이고,
+        // 남겨 두면 같은 안내가 다시 와도 새로 뜨지 않는다.
+        const unsubscribe = useToastStore.subscribe((state) => {
+            if (!state.toasts.some((toast) => toast.id === id)) clearMessage();
+        });
+        return () => {
+            unsubscribe();
+            dismiss(id);
+        };
+    }, [message, onReasonScreen, clearMessage]);
+
     if (onReasonScreen) return null;
 
     const call = pendingOffer;
     const offer = incomingDreami;
     const awaiting = awaitingBoormi;
 
-    // 카드가 없어도 매칭 안내(제안 마감·상대 거절 등)는 토스트로 알려야 한다.
-    if (!call && !offer && !awaiting) {
-        if (!message) return null;
-        return (
-            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center">
-                <div
-                    className="ds-sheet-up pointer-events-auto w-full max-w-[420px] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
-                    <Toast
-                        title={message}
-                        action={
-                            <button
-                                type="button"
-                                onClick={clearMessage}
-                                className="shrink-0 text-xs font-semibold text-track"
-                            >
-                                닫기
-                            </button>
-                        }
-                    />
-                </div>
-            </div>
-        );
-    }
+    // 매칭 안내는 위 이펙트가 전역 토스트로 띄우므로, 카드가 없으면 이 오버레이는 그릴 것이 없다.
+    if (!call && !offer && !awaiting) return null;
 
     const onAcceptCall = async () => {
         await acceptOffer();
@@ -220,6 +223,7 @@ export function MatchingPopup() {
                 ) : offer ? (
                     <OfferCard
                         heading="새 드리미 요청 도착!"
+                        dreamiId={offer.dreamiId}
                         name={
                             offer.profile?.name
                                 ? `드리미 '${offer.profile.name}'`

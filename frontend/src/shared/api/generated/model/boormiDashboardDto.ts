@@ -12,7 +12,7 @@ export interface BoormiDashboardDto {
   thisMonthCount?: number;
   thisMonthPaidAmount?: number;
   thisMonthSavedAmount?: number;
-  marketUnitPrice?: number;
+  thisMonthMarketAmount?: number;
   monthOverMonthGrowthPercent?: number;
   recentSixMonths?: MonthlySavingDto[];
 }
