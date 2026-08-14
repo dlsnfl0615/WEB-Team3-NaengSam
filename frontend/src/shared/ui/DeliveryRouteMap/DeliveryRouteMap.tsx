@@ -220,6 +220,10 @@ export function DeliveryRouteMap({
     const map = mapRef.current;
     if (status !== "ready" || !kakao || !map) return;
 
+    // 픽업 완료처럼 좌표는 그대로이고 캐릭터 이미지만 바뀌는 경우에도 즉시 반영한다.
+    // 이동 계획이 없으면 아래에서 조기 반환하므로 이미지 갱신은 그보다 먼저 해야 한다.
+    storeRef.current.driver.overlay?.setImageSrc(driverPinImage);
+
     const receivedAt = performance.now();
     if (!motion.target || motion.targetReceivedAt == null) {
       motion.target = driver;
