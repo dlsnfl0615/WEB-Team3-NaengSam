@@ -7,7 +7,7 @@ import {
   BlockingLoadErrorModal,
   Card,
   DeliveryRouteMap,
-  Icon,
+  DeliveryTimeline,
   MapCard,
   Modal,
   PhotoLightboxModal,
@@ -35,7 +35,11 @@ import type {
   DeliveryLocationDto,
   DeliveryStatusResponseDto,
 } from "@/shared/api";
-import { realTrackView } from "./statuses";
+import {
+  realTrackView,
+  DELIVERY_TIMELINE_STEPS,
+  deliveryTimelineCompletedCount,
+} from "./statuses";
 
 interface RealDeliveryTrackingProps {
   /** 추적할 주문 UUID(URL `?orderId=`). */
@@ -89,6 +93,15 @@ export function RealDeliveryTracking({
   // "마지막 확인 N분 전" 라벨을 계산할 기준 시각. lastSeenAt과 함께 잡고, 배너가 뜬 동안 주기적으로 갱신한다.
   const [labelNow, setLabelNow] = useState(() => Date.now());
 
+  // 타임라인 단계별 시각. "부름 접수"는 매칭 성사 시각(MATCHING.accepted_dtm)을 최초 조회 응답으로
+  // 받아온다. "픽업 완료"/"드림 완료"는 최초 조회 응답과 SSE 페이로드 둘 다에 실려 오므로
+  // 화면을 새로고침하지 않아도 그 순간 바로 채워진다.
+  const [matchingAcceptedDtm, setMatchingAcceptedDtm] = useState<
+    string | null
+  >(null);
+  const [deliveryStartDtm, setDeliveryStartDtm] = useState<string | null>(null);
+  const [deliveryEndDtm, setDeliveryEndDtm] = useState<string | null>(null);
+
   // 전역 토스트 스택에 올려둔 연결·위치 안내의 id(치울 때 필요).
   const noticeToastId = useRef<string | null>(null);
 
@@ -106,6 +119,9 @@ export function RealDeliveryTracking({
       // SSE가 아직 위치를 안 줬으면 응답의 currentLocation으로 시드한다.
       setLocation(loadedDetail.currentLocation ?? null);
       if (loadedDetail.status) setStatus(loadedDetail.status);
+      setMatchingAcceptedDtm(loadedDetail.matchingAcceptedDtm ?? null);
+      setDeliveryStartDtm(loadedDetail.deliveryStartDtm ?? null);
+      setDeliveryEndDtm(loadedDetail.deliveryEndDtm ?? null);
       // 드리미 연결 상태는 이벤트 공백으로 추론하지 않고 서버 스냅샷으로 잡는다.
       // 화면 재진입 시 즉시 정확하고, 끊긴 사이 놓친 오프라인 통보도 이 경로로 복구된다.
       const now = Date.now();
@@ -237,6 +253,7 @@ export function RealDeliveryTracking({
       const dto = forThisOrder(data);
       if (!dto) return;
       applyStatus(dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERING);
+      setDeliveryStartDtm(dto.deliveryStartDtm ?? null);
       showToast({
         icon: "bell",
         title: "드리미가 픽업을 완료했어요",
@@ -252,6 +269,7 @@ export function RealDeliveryTracking({
         dto.status ?? DeliveryStatusResponseDtoStatus.DELIVERED;
       clearToasts();
       applyStatus(completedStatus);
+      setDeliveryEndDtm(dto.deliveryEndDtm ?? null);
       navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
         replace: true,
       });
@@ -420,16 +438,16 @@ export function RealDeliveryTracking({
           />
         </MapCard>
 
-        <Card className="flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-pill bg-teal-50 text-teal-700">
-            <Icon name="pin" size={18} />
-          </span>
-          <div className="flex flex-col">
-            <span className="text-2xs text-muted">실시간 상태</span>
-            <span className="text-md font-bold text-navy-900">
-              {view.title}
-            </span>
-          </div>
+        <Card>
+          <DeliveryTimeline
+            steps={DELIVERY_TIMELINE_STEPS}
+            completedCount={deliveryTimelineCompletedCount(status)}
+            timestamps={[
+              formatArrivalTime(matchingAcceptedDtm),
+              formatArrivalTime(deliveryStartDtm),
+              formatArrivalTime(deliveryEndDtm),
+            ]}
+          />
         </Card>
       </main>
 

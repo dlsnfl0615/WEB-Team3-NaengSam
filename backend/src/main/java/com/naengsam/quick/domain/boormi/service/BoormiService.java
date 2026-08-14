@@ -219,11 +219,11 @@ public class BoormiService {
     }
 
     /**
-     * 부르미가 신청한 주문 목록을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하다.
+     * 부르미가 신청한 주문 목록 전체를 최신순으로 조회한다.
      */
     @Transactional(readOnly = true)
-    public BoormiOrdersResponse getMyOrders(UUID boormiId, String cursor, int size, OrderCd status) {
-        return orderService.getOrders(boormiId, Role.BOORMI, cursor, size, status);
+    public BoormiOrdersResponse getMyOrders(UUID boormiId) {
+        return orderService.getOrders(boormiId, Role.BOORMI);
     }
 
     /**

@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  BottomNav,
-  Button,
-  ScreenShell,
-  SegmentedToggle,
-  TopBar,
-} from "@/shared/ui";
+import { BottomNav, ScreenShell, SegmentedToggle, TopBar } from "@/shared/ui";
 import { ROUTES } from "@/shared/config/routes";
 import { useRole } from "@/shared/lib/role/useRole";
 import { useRoleSwitch } from "@/shared/lib/role/useRoleSwitch";
@@ -45,35 +39,21 @@ export function ActivityScreen() {
   // 드리미(실제 API) 소스
   const deliveries = useDreamiOrderStore((s) => s.deliveries);
   const dreamiLoading = useDreamiOrderStore((s) => s.loading);
-  const dreamiLoadingMore = useDreamiOrderStore((s) => s.loadingMore);
   const dreamiError = useDreamiOrderStore((s) => s.error);
-  const dreamiHasNext = useDreamiOrderStore((s) => s.hasNext);
-  const dreamiTotalCount = useDreamiOrderStore((s) => s.totalCount);
   const loadDreami = useDreamiOrderStore((s) => s.load);
-  const loadMoreDreami = useDreamiOrderStore((s) => s.loadMore);
-  const loadDreamiCount = useDreamiOrderStore((s) => s.loadCount);
 
   // 부르미(실제 API) 소스
   const orders = useBoormiOrderStore((s) => s.orders);
   const loading = useBoormiOrderStore((s) => s.loading);
-  const loadingMore = useBoormiOrderStore((s) => s.loadingMore);
   const boormiError = useBoormiOrderStore((s) => s.error);
-  const hasNext = useBoormiOrderStore((s) => s.hasNext);
-  const boormiTotalCount = useBoormiOrderStore((s) => s.totalCount);
   const load = useBoormiOrderStore((s) => s.load);
-  const loadMore = useBoormiOrderStore((s) => s.loadMore);
-  const loadBoormiCount = useBoormiOrderStore((s) => s.loadCount);
 
-  // 역할 탭 진입 시 각자의 목록과 전체 건수를 조회.
+  // 역할 탭 진입 시 각자의 전체 목록을 조회(필터가 클라이언트 필터링이라 일부만 있으면
+  // 아직 안 불러온 항목이 누락돼 보일 수 있어 전체를 가져온다).
   useEffect(() => {
-    if (isDriver) {
-      loadDreami();
-      loadDreamiCount();
-    } else {
-      load();
-      loadBoormiCount();
-    }
-  }, [isDriver, load, loadDreami, loadBoormiCount, loadDreamiCount]);
+    if (isDriver) loadDreami();
+    else load();
+  }, [isDriver, load, loadDreami]);
 
   const records: ActivityRecord[] = useMemo(
     () =>
@@ -129,8 +109,7 @@ export function ActivityScreen() {
         <FilterChips value={filter} onChange={setFilter} />
 
         <p className="text-xs text-muted">
-          {isDriver ? "수행한 배달" : "요청한 배달"} · 총{" "}
-          {isDriver ? dreamiTotalCount : boormiTotalCount}건
+          {isDriver ? "수행한 배달" : "요청한 배달"} · 총 {records.length}건
         </p>
 
         {isDriver && dreamiLoading && records.length === 0 ? (
@@ -163,28 +142,6 @@ export function ActivityScreen() {
           <p className="py-10 text-center text-sm text-muted">
             해당하는 내역이 없어요.
           </p>
-        )}
-
-        {isDriver && dreamiHasNext && (
-          <Button
-            variant="outline"
-            block
-            disabled={dreamiLoadingMore}
-            onClick={() => loadMoreDreami()}
-          >
-            {dreamiLoadingMore ? "불러오는 중…" : "더 보기"}
-          </Button>
-        )}
-
-        {!isDriver && hasNext && (
-          <Button
-            variant="outline"
-            block
-            disabled={loadingMore}
-            onClick={() => loadMore()}
-          >
-            {loadingMore ? "불러오는 중…" : "더 보기"}
-          </Button>
         )}
       </main>
     </ScreenShell>

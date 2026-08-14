@@ -23,6 +23,9 @@ export type { IconChipProps } from "./IconChip/IconChip";
 export { ProgressBar } from "./ProgressBar/ProgressBar";
 export type { ProgressBarProps } from "./ProgressBar/ProgressBar";
 
+export { DeliveryTimeline } from "./DeliveryTimeline/DeliveryTimeline";
+export type { DeliveryTimelineProps } from "./DeliveryTimeline/DeliveryTimeline";
+
 export { OfferCountdownBar } from "./OfferCountdownBar/OfferCountdownBar";
 export type { OfferCountdownBarProps } from "./OfferCountdownBar/OfferCountdownBar";
 
