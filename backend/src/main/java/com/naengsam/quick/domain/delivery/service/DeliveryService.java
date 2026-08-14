@@ -103,6 +103,12 @@ public class DeliveryService {
     /** 배달별 마지막 핑 시각. 쿨다운 판정에만 쓰는 휘발성 상태라 재시작하면 비워진다({@link #checkPingCooldown}). */
     private final Map<UUID, Instant> lastPingAt = new ConcurrentHashMap<>();
 
+    /** 경로·배송완료예상시간 계산이 실패한 뒤 다시 시도하기까지의 최소 간격. */
+    private static final Duration ROUTE_RETRY_COOLDOWN = Duration.ofSeconds(30);
+
+    /** 주문별 마지막 계산 실패 시각. 핑 쿨다운과 같은 성격의 휘발성 상태다({@link #onRouteRetryCooldown}). */
+    private final Map<UUID, Instant> lastRouteFailureAt = new ConcurrentHashMap<>();
+
     private final DeliveryRepository deliveryRepository;
     private final PickupCertificationRepository pickupCertificationRepository;
     private final DeliveryCertificationRepository deliveryCertificationRepository;
@@ -424,7 +430,8 @@ public class DeliveryService {
     }
 
     // 드리미의 첫 위치가 들어온 픽업 단계에서 '드리미→픽업지' 카카오 도보 경로와 배송완료예상시간을 1회만 계산해 저장한다.
-    // routePath가 이미 있거나 픽업 단계가 아니면 아무것도 하지 않는다. 카카오 실패는 위치 갱신을 막지 않고 다음 위치 전송 때 재시도한다.
+    // routePath가 이미 있거나 픽업 단계가 아니면 아무것도 하지 않는다.
+    // 카카오 실패는 위치 갱신을 막지 않고, ROUTE_RETRY_COOLDOWN이 지난 뒤 들어오는 위치 전송 때 재시도한다.
     //
     // 실패를 조용히 삼키면 화면은 '아직 GPS를 못 받아 계산 전'과 구분하지 못해 영원히 "계산 중…"에 머문다.
     // 그래서 실패 이유를 DELIVERY_ETA_UNAVAILABLE로 알려, 화면이 배지를 지우고 이유를 안내하게 한다.
@@ -434,6 +441,9 @@ public class DeliveryService {
         }
         DeliveryCd deliveryCd = delivery.getDeliveryCd();
         if (deliveryCd != PICKUP_NORMAL && deliveryCd != PICKUP_DELAYED) {
+            return;
+        }
+        if (onRouteRetryCooldown(delivery.getOrderId())) {
             return;
         }
         try {
@@ -453,13 +463,33 @@ public class DeliveryService {
 
             delivery.applyPickupRoute(routePathJson, estimatedCompletion);
         } catch (BusinessException e) {
-            log.warn("드리미→픽업지 경로·배송완료예상시간 계산 실패 — 다음 위치 전송 때 재시도", e);
-            alarmEtaUnavailableBySSE(delivery, e.getErrorCode());
+            log.warn("드리미→픽업지 경로·배송완료예상시간 계산 실패 — 쿨다운 뒤 재시도", e);
+            handleRouteFailure(delivery, e.getErrorCode());
         } catch (JacksonException e) {
             // 경로는 받았지만 직렬화가 깨진 경우. 사용자에게는 원인을 구분할 도리가 없으니 일시적 오류로 안내한다.
-            log.warn("드리미→픽업지 경로·배송완료예상시간 계산 실패 — 다음 위치 전송 때 재시도", e);
-            alarmEtaUnavailableBySSE(delivery, GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
+            log.warn("드리미→픽업지 경로·배송완료예상시간 계산 실패 — 쿨다운 뒤 재시도", e);
+            handleRouteFailure(delivery, GeneralErrorCode.EXTERNAL_SERVICE_ERROR);
         }
+    }
+
+    /**
+     * 계산 실패 직후 {@link #ROUTE_RETRY_COOLDOWN} 동안은 재시도를 건너뛴다. 드리미는 5초마다 위치를 보내는데
+     * 그때마다 카카오를 다시 부르면, 픽업지에서 너무 멀어 계속 실패하는 배달 하나가 분당 12회씩 외부 API를
+     * 두드리고 같은 실패 알림도 그만큼 반복된다.
+     *
+     * <p>재시도를 아예 멈추지는 않는다 — GPS가 한 번 튀어 엉뚱한 좌표가 잡힌 경우 영구 포기해 버리면 그
+     * 오측정 하나로 배달 내내 예상 시각이 안 뜬다. 드리미가 이동해 픽업지에 가까워지는 경우도 재시도가
+     * 있어야 회복된다.
+     *
+     * <p>기록은 핑 쿨다운({@link #checkPingCooldown})과 같은 이유로 인메모리다 — 재시작하면 사라지고
+     * 그 순간 재시도가 한 번 앞당겨지는 것이 전부라 DB에 남길 이유가 없다.
+     */
+    private boolean onRouteRetryCooldown(UUID orderId) {
+        Instant now = Instant.now();
+        // 쿨다운이 지난 기록은 지운다. 이걸 안 하면 끝난 배달의 항목이 맵에 영원히 남는다.
+        lastRouteFailureAt.values().removeIf(
+                failedAt -> Duration.between(failedAt, now).compareTo(ROUTE_RETRY_COOLDOWN) >= 0);
+        return lastRouteFailureAt.containsKey(orderId);
     }
 
     private String doPickupFinishByDreami(Delivery delivery, UUID dreamiId, String photoKey) {
@@ -682,10 +712,12 @@ public class DeliveryService {
                 itemNameOf(delivery));
     }
 
-    // 배송완료예상시간 계산 실패 이유를 알린다. 배지가 드리미·부르미 양쪽 화면에 떠 있으므로 양쪽 모두에게
-    // 보낸다(드리미는 "내가 픽업지에서 너무 멀다"를, 부르미는 "왜 예상 시각이 안 뜨는지"를 각각 알아야 한다).
-    // 여기서는 추가 조회 없이 발행만 해 위치 갱신 흐름을 절대 깨지 않는다.
-    private void alarmEtaUnavailableBySSE(Delivery delivery, BaseErrorCode errorCode) {
+    // 배송완료예상시간 계산 실패를 기록해 재시도 쿨다운을 걸고, 이유를 알린다. 배지가 드리미·부르미 양쪽
+    // 화면에 떠 있으므로 양쪽 모두에게 보낸다(드리미는 "내가 픽업지에서 너무 멀다"를, 부르미는 "왜 예상
+    // 시각이 안 뜨는지"를 각각 알아야 한다). 여기서는 추가 조회 없이 기록·발행만 해 위치 갱신 흐름을 깨지 않는다.
+    private void handleRouteFailure(Delivery delivery, BaseErrorCode errorCode) {
+        lastRouteFailureAt.put(delivery.getOrderId(), Instant.now());
+
         EtaUnavailableDto payload = EtaUnavailableDto.from(delivery.getOrderId(), errorCode);
         eventPublisher.publishEvent(new DeliveryNotificationEvent(
                 delivery.getDreamiId(), DeliveryEventType.DELIVERY_ETA_UNAVAILABLE, payload));
