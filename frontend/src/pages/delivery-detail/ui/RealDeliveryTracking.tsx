@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   ArrivalBadge,
+  BottomSheet,
   Button,
   BlockingLoadErrorModal,
   Card,
@@ -51,6 +52,9 @@ interface RealDeliveryTrackingProps {
 
 /** "마지막 확인 N분 전" 라벨을 다시 계산하는 주기. 분 단위 표시라 초 단위로 돌릴 필요가 없다. */
 const LAST_SEEN_LABEL_REFRESH_MS = 15000;
+
+/** 배달 완료 안내 시트를 보여주는 시간(ms). 이 시간이 지나면 자동으로 다음 화면으로 넘어간다. */
+const COMPLETION_SHEET_MS = 2000;
 
 /**
  * `delivery_dreami_offline` payload. SSE 전용이라 orval이 생성하지 않아 직접 선언한다
@@ -102,6 +106,9 @@ export function RealDeliveryTracking({
   >(null);
   const [deliveryStartDtm, setDeliveryStartDtm] = useState<string | null>(null);
   const [deliveryEndDtm, setDeliveryEndDtm] = useState<string | null>(null);
+
+  // 완료 SSE를 받으면 바로 화면을 넘기지 않고, 이 안내를 1초만 보여준 뒤 자동으로 넘어간다.
+  const [showCompletionSheet, setShowCompletionSheet] = useState(false);
 
   // 전역 토스트 스택에 올려둔 연결·위치 안내의 id(치울 때 필요).
   const noticeToastId = useRef<string | null>(null);
@@ -271,9 +278,8 @@ export function RealDeliveryTracking({
       clearToasts();
       applyStatus(completedStatus);
       setDeliveryEndDtm(dto.deliveryEndDtm ?? null);
-      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
-        replace: true,
-      });
+      // 바로 넘기지 않고 완료 안내 시트를 띄운다 — 다음 화면 전환은 아래 effect가 맡는다.
+      setShowCompletionSheet(true);
     },
     delivery_cancelled: (data) => {
       const dto = forThisOrder(data);
@@ -300,6 +306,17 @@ export function RealDeliveryTracking({
   useSseReconnectSync(sseStatus, refreshDeliveryDetail, {
     enabled: detailReady,
   });
+
+  // 완료 안내 시트를 잠깐 보여준 뒤 자동으로 다음 화면으로 넘어간다(버튼·탭으로 넘기지 않는다).
+  useEffect(() => {
+    if (!showCompletionSheet) return;
+    const timer = window.setTimeout(() => {
+      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
+        replace: true,
+      });
+    }, COMPLETION_SHEET_MS);
+    return () => window.clearTimeout(timer);
+  }, [showCompletionSheet, navigate, orderId]);
 
   // 배너가 떠 있는 동안만 "마지막 확인 N분 전" 라벨의 기준 시각을 갱신한다(정상일 때는 타이머를 걸지 않는다).
   // 기준 시각의 최초값은 markDreamiOffline이 lastSeenAt과 함께 잡아 주므로 여기서 따로 세팅하지 않는다.
@@ -596,6 +613,24 @@ export function RealDeliveryTracking({
         }
         onClose={closePickupPhoto}
       />
+
+      <BottomSheet
+        open={showCompletionSheet}
+        label="배달 완료"
+        onClose={() => {}}
+      >
+        <div className="flex flex-col items-center gap-3 py-4 text-center">
+          <img
+            src="/delivery-complete.jpg"
+            alt=""
+            aria-hidden="true"
+            className="h-auto w-[220px] rounded-md"
+          />
+          <p className="text-md font-bold text-navy-900">
+            배달이 완료됐어요
+          </p>
+        </div>
+      </BottomSheet>
     </ScreenShell>
   );
 }
