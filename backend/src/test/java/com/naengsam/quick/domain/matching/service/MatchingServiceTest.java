@@ -18,6 +18,8 @@ import com.naengsam.quick.domain.matching.event.DreamiAcceptedEvent;
 import com.naengsam.quick.domain.matching.event.DreamiInfoPayload;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
+import com.naengsam.quick.domain.matching.event.NotificationErrorPayload;
+import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
 import com.naengsam.quick.domain.matching.event.OrderCancelledByBoormiEvent;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
@@ -673,6 +675,65 @@ class MatchingServiceTest {
                 .isEqualTo(WaitingDreamiStatus.MATCHING);
         // 종료된 오퍼는 신규 pending 오퍼 조회에는 포함되지 않는다.
         assertThat(matchingService.findPendingOfferForDreami(dreamiId)).isEmpty();
+        // 실제로 DREAMI_EXPIRED로 전이됐으므로 만료된 offer ID로 OFFER_CLOSED를 한 번만 보낸다.
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(notificationService, times(1))
+                .notify(eq(dreamiId), eq(MatchingEventType.OFFER_CLOSED), captor.capture());
+        assertThat(((OfferClosedPayload) captor.getValue()).offerId()).isEqualTo(offer.offerId());
+    }
+
+    @Test
+    void 만료된_offer_수락_시도는_이전_offer_ID를_담은_OFFER_ERROR로_거부된다() {
+        // given (엔진이 이미 timeout으로 DREAMI_EXPIRED 처리한 오래된 offerId로 뒤늦게 수락 요청이 도착한 상황)
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchOffer expiredOffer = new MatchOffer(
+                UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.DREAMI_EXPIRED, LocalDateTime.now());
+        getOffersById().put(expiredOffer.offerId(), expiredOffer);
+
+        // when
+        matchingService.applyAcceptByDreami(expiredOffer.offerId());
+
+        // then
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(notificationService).notify(eq(dreamiId), eq(MatchingEventType.OFFER_ERROR), captor.capture());
+        NotificationErrorPayload payload = (NotificationErrorPayload) captor.getValue();
+        assertThat(payload.offerId()).isEqualTo(expiredOffer.offerId());
+    }
+
+    @Test
+    void 정상_신규_오퍼_수락에는_이전_오퍼의_오류나_ID가_섞이지_않는다() {
+        // given (드리미 응답 timeout으로 만료된 offer-1의 이력이 남아있는 채로, 같은 드리미에게 새 offer-2가 발급된 상황)
+        UUID orderId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+        when(order.getBoormiId()).thenReturn(boormiId);
+
+        matchingService.applyRegisterDreami(dreamiId, location);
+        matchingService.applyStartMatching(order);
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        MatchOffer offer1 = getOrderOfferGroups().get(orderId).offers().getFirst();
+        matchingService.applyExpireDreamiOffer(offer1.offerId());
+
+        MatchOffer offer2 = new MatchOffer(
+                UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
+        getOrderOfferGroups().get(orderId).addOffersAndOpen(List.of(offer2));
+        getOffersById().put(offer2.offerId(), offer2);
+
+        // when (새로 발급된 offer-2를 정상적으로 수락)
+        matchingService.applyAcceptByDreami(offer2.offerId());
+
+        // then (오류 알림 없이 정상 처리되고, 부르미에게 가는 정보에는 offer-2의 ID만 담긴다)
+        verify(notificationService, never()).notify(any(), eq(MatchingEventType.OFFER_ERROR), any());
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(notificationService).notify(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
+        DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
+        assertThat(payload.offerId()).isEqualTo(offer2.offerId());
+        assertThat(payload.offerId()).isNotEqualTo(offer1.offerId());
     }
 
     @Test
@@ -801,8 +862,9 @@ class MatchingServiceTest {
         // when (드리미 응답 timeout이 이미 수락된 뒤 뒤늦게 도착)
         matchingService.applyExpireDreamiOffer(offer.offerId());
 
-        // then (OFFERED 상태가 아니므로 무시되어야 한다)
+        // then (OFFERED 상태가 아니므로 무시되어야 한다 - 이벤트도 중복 발송되지 않는다)
         assertThat(offer.status()).isEqualTo(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+        verify(notificationService, never()).notify(any(), eq(MatchingEventType.OFFER_CLOSED), any());
     }
 
     @Test
