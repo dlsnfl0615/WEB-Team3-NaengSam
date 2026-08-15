@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { cn } from "@/shared/lib/cn";
 
 export interface DeliveryTimelineProps {
@@ -7,6 +8,11 @@ export interface DeliveryTimelineProps {
   completedCount: number;
   /** 완료된 단계별 시각(포맷된 문자열). steps와 같은 길이, 없거나 아직 완료 전이면 null. */
   timestamps?: (string | null)[];
+  /**
+   * 완료된 단계 줄의 점선과 시각 사이에 끼워 넣을 액션(예: 픽업 사진 보기). steps와 같은 길이,
+   * 없는 단계는 null. 해당 단계가 완료되고 시각이 있을 때만 보인다.
+   */
+  actions?: (ReactNode | null)[];
   /**
    * 진행 중인 구간(마지막으로 완료된 단계와 다음 단계 사이) 안에서의 진행률(0~1).
    * 드리미의 남은 직선거리 기준. steps를 다 완료했거나 아직 시작 전 구간이면 무시된다. 기본 0.
@@ -25,6 +31,7 @@ export function DeliveryTimeline({
   steps,
   completedCount,
   timestamps,
+  actions,
   segmentProgress = 0,
   className,
 }: DeliveryTimelineProps) {
@@ -60,6 +67,7 @@ export function DeliveryTimeline({
       {steps.map((step, index) => {
         const done = index < completedCount;
         const timestamp = timestamps?.[index];
+        const action = actions?.[index];
         return (
           <div
             key={step}
@@ -83,6 +91,7 @@ export function DeliveryTimeline({
             {done && timestamp && (
               <>
                 <span className="h-px min-w-3 flex-1 border-t border-dashed border-line" />
+                {action}
                 <span className="shrink-0 text-xs text-muted">
                   {timestamp}
                 </span>
