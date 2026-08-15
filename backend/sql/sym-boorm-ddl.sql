@@ -7,6 +7,7 @@ CREATE TABLE `BOORMI` (
                           `birthdate`            date          NOT NULL,
                           `user_cd`              enum('ACTIVE', 'DELETED', 'RESTRICTED', 'BANNED')  NULL,
                           `is_dreami_activated`  boolean       NULL      DEFAULT false,
+                          `is_admin`             boolean       NOT NULL  DEFAULT false,
                           `created_dtm`          timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                           `updated_dtm`          timestamp     NULL,
                           `deleted_dtm`          timestamp     NULL,
