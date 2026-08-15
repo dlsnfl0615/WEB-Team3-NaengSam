@@ -16,6 +16,9 @@ export interface DeliveryTimelineProps {
 }
 
 const ITEM_HEIGHT = 108;
+// 드리미 마스코트 핀 이미지(120x160, 3:4 비율) 크기. 세로선에 걸치는 폭이라 너무 크면 라벨과 겹친다.
+const MARKER_WIDTH = 24;
+const MARKER_HEIGHT = 32;
 
 /** 배달 진행 단계를 점 + 세로선으로 보여주는 타임라인(배민 배달 화면 스타일). */
 export function DeliveryTimeline({
@@ -54,12 +57,6 @@ export function DeliveryTimeline({
         className="absolute left-[4.5px] border-l border-dashed border-teal-700"
         style={{ top: ITEM_HEIGHT / 2, height: fillHeight }}
       />
-      {showProgressDot && (
-        <span
-          className="absolute left-[1.5px] size-2 rounded-full bg-teal-700 ring-2 ring-surface"
-          style={{ top: ITEM_HEIGHT / 2 + fillHeight - 4 }}
-        />
-      )}
       {steps.map((step, index) => {
         const done = index < completedCount;
         const timestamp = timestamps?.[index];
@@ -94,6 +91,20 @@ export function DeliveryTimeline({
           </div>
         );
       })}
+      {showProgressDot && (
+        <img
+          src="/dreami-pin.png"
+          alt=""
+          aria-hidden="true"
+          className="absolute"
+          style={{
+            left: 4.5 - MARKER_WIDTH / 2,
+            top: ITEM_HEIGHT / 2 + fillHeight - MARKER_HEIGHT / 2,
+            width: MARKER_WIDTH,
+            height: MARKER_HEIGHT,
+          }}
+        />
+      )}
     </div>
   );
 }
