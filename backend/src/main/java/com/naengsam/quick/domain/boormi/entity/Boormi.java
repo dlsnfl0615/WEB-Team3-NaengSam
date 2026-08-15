@@ -54,6 +54,9 @@ public class Boormi {
     @Column(name = "is_dreami_activated", nullable = false)
     private boolean isDreamiActivate;
 
+    @Column(name = "is_admin", nullable = false)
+    private boolean isAdmin;
+
     @Column(name = "created_dtm", nullable = false, insertable = false, updatable = false)
     private LocalDateTime createdDtm;
 
