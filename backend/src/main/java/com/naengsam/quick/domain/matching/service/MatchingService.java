@@ -555,6 +555,23 @@ public class MatchingService {
     }
 
     /**
+     * 해당 제안이 지금 이 드리미가 실제로 수락 가능한 상태인지 확인한다. {@code isDreamiOfferOwner}는 대상 드리미 일치만 보므로,
+     * 엔진이 이미 timeout으로 DREAMI_EXPIRED 처리한 오래된 offerId로도 통과해버린다. DB 전이(주문 상태 변경, 이벤트 발행)를 하기 전에
+     * 상태(OFFERED)와 TTL 경과 여부까지 함께 검증해, 이미 만료된 제안의 수락을 커밋 전에 차단한다.
+     *
+     * @param offerId  확인할 제안 UUID
+     * @param dreamiId 요청한 드리미 UUID
+     * @return 제안이 존재하고, dreamiId가 일치하고, 상태가 OFFERED이고, TTL이 아직 지나지 않았으면 true
+     */
+    public boolean isDreamiOfferAcceptable(UUID offerId, UUID dreamiId) {
+        return findOffer(offerId)
+                .filter(offer -> offer.dreamiId().equals(dreamiId))
+                .filter(offer -> offer.status() == MatchOfferStatus.OFFERED)
+                .filter(offer -> offer.statusUpdatedAt().plus(OFFER_TTL).isAfter(LocalDateTime.now(clock)))
+                .isPresent();
+    }
+
+    /**
      * 해당 제안이 속한 주문이 주어진 부르미의 것인지 확인한다. 제안이나 방이 존재하지 않으면 false.
      *
      * @param offerId  확인할 제안 UUID

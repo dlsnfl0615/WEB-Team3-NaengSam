@@ -118,11 +118,19 @@ public class DreamiService {
     /**
      * 드리미가 제안을 수락한다. 매칭엔진에 반영하기 전에 주문을 PENDING_BOORMI_CONFIRMATION으로 전이해 DB에도 반영한다. 매칭엔진 제출은 이 트랜잭션이 커밋된 뒤에
      * 일어난다.
+     *
+     * <p>{@code isDreamiOfferOwner}만으로는 부족하다 — 엔진이 이미 timeout으로 DREAMI_EXPIRED 처리한 오래된 offerId도
+     * 대상 드리미만 일치하면 통과해버린다. DB를 건드리기 전에 {@code isDreamiOfferAcceptable}로 상태(OFFERED)와 TTL까지 확인해,
+     * 이미 만료된 제안이 주문을 잘못 PENDING_BOORMI_CONFIRMATION으로 옮기거나 이벤트를 발행하지 않도록 막는다. 엔진의
+     * {@code acceptableOffer} 재검증은 이 검사와 무관하게 최종 방어선으로 유지된다.
      */
     @Transactional
     public void acceptOffer(UUID offerId, UUID dreamiId) {
         if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
             throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
+        }
+        if (!matchingService.isDreamiOfferAcceptable(offerId, dreamiId)) {
+            throw new BusinessException(MatchingErrorCode.OFFER_EXPIRED);
         }
         UUID orderId = matchingService.findOrderIdByOfferId(offerId)
                 .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
