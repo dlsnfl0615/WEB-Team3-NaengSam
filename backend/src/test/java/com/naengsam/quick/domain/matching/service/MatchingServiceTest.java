@@ -1693,6 +1693,56 @@ class MatchingServiceTest {
     }
 
     @Test
+    void OFFERED_상태이고_TTL이_지나지_않았으면_isDreamiOfferAcceptable은_true를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(
+                offerId, UUID.randomUUID(), dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
+        getOffersById().put(offerId, offer);
+
+        assertThat(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).isTrue();
+    }
+
+    @Test
+    void 대상_드리미가_다르면_OFFERED_상태여도_isDreamiOfferAcceptable은_false를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(
+                offerId, UUID.randomUUID(), UUID.randomUUID(), MatchOfferStatus.OFFERED, LocalDateTime.now());
+        getOffersById().put(offerId, offer);
+
+        assertThat(matchingService.isDreamiOfferAcceptable(offerId, UUID.randomUUID())).isFalse();
+    }
+
+    @Test
+    void 엔진이_이미_DREAMI_EXPIRED로_만료시킨_제안은_isDreamiOfferAcceptable이_false를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(
+                offerId, UUID.randomUUID(), dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
+        getOffersById().put(offerId, offer);
+        offer.expireByDreami(LocalDateTime.now());
+
+        assertThat(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).isFalse();
+    }
+
+    @Test
+    void OFFERED_상태여도_TTL이_지났으면_isDreamiOfferAcceptable은_false를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        LocalDateTime offeredAt = LocalDateTime.now().minus(matchingService.offerTtl()).minusSeconds(1);
+        MatchOffer offer = new MatchOffer(
+                offerId, UUID.randomUUID(), dreamiId, MatchOfferStatus.OFFERED, offeredAt);
+        getOffersById().put(offerId, offer);
+
+        assertThat(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).isFalse();
+    }
+
+    @Test
+    void 존재하지_않는_제안이면_isDreamiOfferAcceptable은_false를_반환한다() {
+        assertThat(matchingService.isDreamiOfferAcceptable(UUID.randomUUID(), UUID.randomUUID())).isFalse();
+    }
+
+    @Test
     void 제안이_속한_주문의_부르미와_요청한_부르미가_같으면_isBoormiOfferOwner는_true를_반환한다() {
         UUID offerId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();

@@ -21,6 +21,7 @@ import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties
 import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
 import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -191,6 +192,75 @@ class MatchingAssignmentProblemAssemblerTest {
         PreviousOfferInteraction interaction = problem.candidates().get(0).previousInteraction().orElseThrow();
         assertThat(interaction.outcome()).isEqualTo(PreviousOfferOutcome.BOORMI_EXPIRED);
         assertThat(interaction.occurredAt()).isEqualTo(EVALUATED_AT.minusMinutes(10));
+    }
+
+    // 드리미 응답 timeout 쿨다운 하의 다음 batch 재평가: 그룹은 WAITING, 드리미는 MATCHING이라 raw candidate 생성 대상은
+    // 되지만(problem.orders()/problem.dreamis()에 그대로 나타남), 직전 상호작용이 DREAMI_EXPIRED인 조합은 쿨다운이 끝나기
+    // 전에는 candidate에서 제외되고, 쿨다운이 끝난 뒤에는 같은 조합이 previousInteraction=DREAMI_EXPIRED를 유지한 채 다시 candidate로 생성된다.
+
+    @Test
+    void 드리미_응답_timeout_쿨다운_중에는_같은_주문_드리미_조합이_candidate에서_제외된다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        Duration dreamiExpirationCooldown = Duration.ofMinutes(5);
+        LocalDateTime expiredAt = EVALUATED_AT.minusMinutes(2); // 쿨다운(5분) 안에 있음
+        List<MatchOffer> offers = List.of(
+                new MatchOffer(UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.DREAMI_EXPIRED, expiredAt));
+        orderOfferGroups = List.of(new OrderOfferGroup(
+                orderId, UUID.randomUUID(), ORDER_LOCATION, null, offers, EVALUATED_AT.minusHours(1)));
+        waitingDreamis = List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING));
+
+        MatchingAssignmentProblem problem = assembleWithOutcomeCooldown(dreamiExpirationCooldown);
+
+        // 그룹 WAITING·드리미 MATCHING이라 raw candidate 생성 대상 자체에서는 빠지지 않는다.
+        assertThat(problem.orders()).extracting(MatchingOrderInput::orderId).containsExactly(orderId);
+        assertThat(problem.dreamis()).extracting(MatchingDreamiInput::dreamiId).containsExactly(dreamiId);
+        // 하지만 쿨다운이 남아있어 최종 candidate 목록에서는 제외된다.
+        assertThat(problem.candidates()).isEmpty();
+    }
+
+    @Test
+    void 드리미_응답_timeout_쿨다운이_끝난_후에는_같은_조합이_DREAMI_EXPIRED_이력을_유지한_채_다시_candidate로_생성된다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        Duration dreamiExpirationCooldown = Duration.ofMinutes(5);
+        LocalDateTime expiredAt = EVALUATED_AT.minusMinutes(6); // 쿨다운(5분)을 이미 지남
+        List<MatchOffer> offers = List.of(
+                new MatchOffer(UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.DREAMI_EXPIRED, expiredAt));
+        orderOfferGroups = List.of(new OrderOfferGroup(
+                orderId, UUID.randomUUID(), ORDER_LOCATION, null, offers, EVALUATED_AT.minusHours(1)));
+        waitingDreamis = List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING));
+
+        MatchingAssignmentProblem problem = assembleWithOutcomeCooldown(dreamiExpirationCooldown);
+
+        assertThat(problem.candidates()).hasSize(1);
+        PreviousOfferInteraction interaction = problem.candidates().get(0).previousInteraction().orElseThrow();
+        assertThat(interaction.outcome()).isEqualTo(PreviousOfferOutcome.DREAMI_EXPIRED);
+        assertThat(interaction.occurredAt()).isEqualTo(expiredAt);
+    }
+
+    private MatchingAssignmentProblem assembleWithOutcomeCooldown(Duration dreamiExpirationCooldown) {
+        GeoDistanceCalculator geoDistanceCalculator = mock(GeoDistanceCalculator.class);
+        when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(DISTANCE_METERS);
+        MatchingPolicyProperties properties = new MatchingPolicyProperties(
+                Duration.ofSeconds(1),
+                3,
+                OfferQuotaMode.FIXED,
+                5,
+                AssignmentPolicyType.LEGACY_ORDER_FIRST,
+                ScoringPolicyType.ORDER_WAIT,
+                EligibilityPolicyType.OUTCOME_COOLDOWN,
+                new MatchingPolicyProperties.Cooldown(
+                        Duration.ofMinutes(5), Duration.ofMinutes(10), dreamiExpirationCooldown),
+                new MatchingPolicyProperties.BalancedWeights(
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+        MatchingAssignmentProblemFactory factory = new MatchingAssignmentProblemFactory(
+                new OutcomeCooldownOfferPolicy(
+                        properties.cooldown().dreamiRejection(), properties.cooldown().boormiRejection(),
+                        properties.cooldown().dreamiExpiration()));
+        MatchingAssignmentProblemAssembler cooldownAssembler =
+                new MatchingAssignmentProblemAssembler(geoDistanceCalculator, factory, properties, CLOCK);
+        return cooldownAssembler.assemble(orderOfferGroups, waitingDreamis);
     }
 
     @Test
