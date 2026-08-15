@@ -529,3 +529,102 @@ describe("matchingStore accept/reject 경쟁 조건", () => {
     expect(useMatchingStore.getState().submitting).toBe(false);
   });
 });
+
+/**
+ * syncCurrentMatching의 HTTP 응답과 SSE 이벤트 사이의 순서 역전 방어. 요청이 나가 있는 사이 SSE로
+ * offer 상태가 바뀌면, 뒤늦게 도착한(이미 낡은) HTTP snapshot이 그 최신 상태를 덮어쓰면 안 된다.
+ */
+describe("matchingStore snapshot·SSE 순서 역전 방어", () => {
+  it("snapshot 요청 중 offer-2 SSE가 오면, offer-1 snapshot이 뒤늦게 응답해도 offer-2를 유지한다", async () => {
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+
+    const syncPromise = useMatchingStore.getState().syncCurrentMatching();
+    // 요청이 나가 있는 사이 offer-2가 SSE로 도착해 pendingOffer가 교체된다.
+    useMatchingStore.getState().receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    resolve(pendingSnapshot("offer-1") as never);
+    await syncPromise;
+
+    expect(useMatchingStore.getState().pendingOffer?.offerId).toBe("offer-2");
+  });
+
+  it("snapshot 요청 중 offer-2 SSE가 오면, null snapshot이 뒤늦게 응답해도 offer-2를 지우지 않는다", async () => {
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+
+    const syncPromise = useMatchingStore.getState().syncCurrentMatching();
+    useMatchingStore.getState().receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    resolve(snapshot({}) as never); // 요청 시점 기준 pendingOffer가 없었다는 낡은 snapshot
+    await syncPromise;
+
+    expect(useMatchingStore.getState().pendingOffer?.offerId).toBe("offer-2");
+  });
+
+  it("요청 중 SSE 변경이 없으면 snapshot이 정상 적용된다", async () => {
+    getCurrentStatus.mockResolvedValue(pendingSnapshot("offer-1") as never);
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    expect(useMatchingStore.getState().pendingOffer?.offerId).toBe("offer-1");
+  });
+
+  it("SSE 변경 없이 되찾은 최신 snapshot의 새 offer는 정상적으로 복구된다", async () => {
+    // 진입 직후처럼 로컬 상태가 비어 있다가, 폴링으로 서버가 들고 있던 offer를 처음 되찾는 경우.
+    expect(useMatchingStore.getState().pendingOffer).toBeNull();
+    getCurrentStatus.mockResolvedValue(pendingSnapshot("offer-복구") as never);
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    expect(useMatchingStore.getState().pendingOffer?.offerId).toBe("offer-복구");
+  });
+
+  it("부르미 incomingDreami도 동일하게 보호된다 - 낡은 snapshot이 새 dreami_info를 지우지 않는다", async () => {
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+
+    const syncPromise = useMatchingStore.getState().syncCurrentMatching();
+    // 요청이 나가 있는 사이 dreami_info SSE로 offer-2에 대한 확인 대기가 새로 생긴다.
+    useMatchingStore.getState().receiveDreamiInfo({
+      offerId: "offer-2",
+      orderId: "order-2",
+      dreamiId: "dreami-2",
+    });
+
+    resolve(snapshot({})); // 요청 시점 기준 incomingDreami가 없었다는 낡은 snapshot
+    await syncPromise;
+
+    expect(useMatchingStore.getState().incomingDreami?.offerId).toBe("offer-2");
+  });
+
+  it("온라인 상태 동기화는 offer revision과 무관하게 적용된다", async () => {
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+    useMatchingStore.setState({ online: false });
+
+    const syncPromise = useMatchingStore.getState().syncCurrentMatching();
+    // offer revision을 바꾸는 SSE가 요청 중간에 도착해도(pendingOffer 교체) 온라인 여부는 그대로 반영돼야 한다.
+    useMatchingStore.getState().receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    resolve(snapshot({ dreamiOnline: true }) as never);
+    await syncPromise;
+
+    const { online, pendingOffer } = useMatchingStore.getState();
+    expect(online).toBe(true);
+    expect(pendingOffer?.offerId).toBe("offer-2");
+  });
+
+  it("in-flight 동기화 요청 중복 방지는 그대로 유지된다", async () => {
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+
+    const first = useMatchingStore.getState().syncCurrentMatching();
+    const second = useMatchingStore.getState().syncCurrentMatching();
+
+    expect(getCurrentStatus).toHaveBeenCalledTimes(1);
+
+    resolve(snapshot({}) as never);
+    await Promise.all([first, second]);
+  });
+});
