@@ -158,7 +158,7 @@ public class MatchingService {
     public boolean registerDreami(UUID dreamiId, GeoPoint location) {
         if (dreamiMap.containsKey(dreamiId)) {
             notificationService.notify(dreamiId, MatchingEventType.OFFER_ERROR,
-                    new NotificationErrorPayload("이미 등록된 드리미입니다."));
+                    new NotificationErrorPayload(null, "이미 등록된 드리미입니다."));
             return false;
         }
         return matchingEngine.submit(new DreamiRegister(this, dreamiId, location));
@@ -174,7 +174,7 @@ public class MatchingService {
     public boolean removeDreami(UUID dreamiId) {
         if (!dreamiMap.containsKey(dreamiId)) {
             notificationService.notify(dreamiId, MatchingEventType.OFFER_ERROR,
-                    new NotificationErrorPayload("등록되지 않은 드리미입니다."));
+                    new NotificationErrorPayload(null, "등록되지 않은 드리미입니다."));
             return false;
         }
         return matchingEngine.submit(new DreamiRemove(this, dreamiId));
@@ -215,7 +215,7 @@ public class MatchingService {
         if (group == null || !group.isActive()) {
             if (group != null) {
                 notificationService.notify(group.boormiId(), MatchingEventType.OFFER_ERROR,
-                        new NotificationErrorPayload("이미 종료된 주문입니다."));
+                        new NotificationErrorPayload(null, "이미 종료된 주문입니다."));
             }
             return false;
         }
@@ -382,18 +382,19 @@ public class MatchingService {
         OrderOfferGroup group = orderOfferGroupsByOrderId.get(matchOffer.orderId());
         if (group == null) {
             notificationService.notify(matchOffer.dreamiId(), MatchingEventType.OFFER_ERROR,
-                    new NotificationErrorPayload("존재하지 않는 주문입니다."));
+                    new NotificationErrorPayload(matchOffer.offerId(), "존재하지 않는 주문입니다."));
             return;
         }
-        UUID acceptedDreamiId = matchOffer.dreamiId();
+        UUID acceptedOfferId = matchOffer.offerId();
         LocalDateTime now = LocalDateTime.now(clock);
 
         // 수락한 사람의 상태를 PENDING_BOORMI_CONFIRMATION로 변경
         // 나머지 매칭오퍼 상태를 WITHDRAW로 변경
         for (MatchOffer offer : group.offers()) {
-            // 수락한사람은 PENDING_BOORMI_CONFIRMATION
-            // 나머지 사람은 WITHDRAWN
-            if (offer.dreamiId().equals(acceptedDreamiId)) {
+            // 수락한 오퍼(offerId로 식별)는 PENDING_BOORMI_CONFIRMATION, 나머지는 WITHDRAWN.
+            // dreamiId로 매칭하면 쿨다운 재평가로 같은 드리미에게 재발급된 새 오퍼와 이력에 남은 이전 종료
+            // 오퍼(DREAMI_EXPIRED 등)를 동시에 건드리게 되어 이미 종료된 오퍼에서 잘못된 상태 전이가 난다.
+            if (offer.offerId().equals(acceptedOfferId)) {
                 offer.acceptByDreami(now);
                 matchingEngine.schedule(new ExpireBoormiOffer(this, offer.offerId()), BOORMI_OFFER_TTL);
                 // 부르미에게 수락한 드리미 정보를 넘겨 확인 팝업을 띄운다.
@@ -485,13 +486,15 @@ public class MatchingService {
     void applyExpireDreamiOffer(UUID offerId) {
         log.debug("드리미 응답시간 만료 액션 실행: offerId={}", offerId);
 
-        // 해당 match가 OFFERED 상태가 아니라면 다른 로직에 의해서 처리가 된거임
+        // 해당 match가 OFFERED 상태가 아니라면 이미 수락/거절/회수 등으로 처리가 끝난 것이므로, 이 timeout으로는 이벤트를 중복 발송하지 않는다.
         findOffer(offerId)
                 .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.OFFERED)
                 .ifPresent(matchOffer -> {
                     matchOffer.expireByDreami(LocalDateTime.now(clock));
                     releaseDreami(matchOffer.dreamiId());
                     moveGroupToWaitingIfExhausted(matchOffer.orderId());
+                    notificationService.notify(matchOffer.dreamiId(), MatchingEventType.OFFER_CLOSED,
+                            new OfferClosedPayload(matchOffer.offerId(), "응답 시간 초과"));
                 });
     }
 
@@ -682,13 +685,13 @@ public class MatchingService {
         // 이미 자신 matchOffer상태가 WITHDRAWN이면? -> 실패메시지
         if (offer.status() == MatchOfferStatus.WITHDRAWN) {
             notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_ERROR,
-                    new NotificationErrorPayload("이미 다른 드리미가 수락한 주문입니다."));
+                    new NotificationErrorPayload(offer.offerId(), "이미 다른 드리미가 수락한 주문입니다."));
             return Optional.empty();
         }
         // 정상적으로 수락 가능한 상태는 OFFERED 뿐. (거절/만료된 제안은 수락 불가)
         if (offer.status() != MatchOfferStatus.OFFERED) {
             notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_ERROR,
-                    new NotificationErrorPayload("이미 종료된 제안입니다."));
+                    new NotificationErrorPayload(offer.offerId(), "이미 종료된 제안입니다."));
             return Optional.empty();
         }
         return Optional.of(offer);
