@@ -658,16 +658,21 @@ class MatchingServiceTest {
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
 
-        // when (드리미 응답시간 만료 -> 재매칭 시도 시 후보에서 제외되어야 한다)
+        // when (드리미 응답시간 만료 -> 재매칭을 다시 시도해도 같은 드리미는 후보에서 제외되어야 한다)
         matchingService.applyExpireDreamiOffer(offer.offerId());
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
+        assertThat(offer.status()).isEqualTo(MatchOfferStatus.DREAMI_EXPIRED);
+        // 만료된 오퍼는 이력(group.offers())에는 그대로 남지만, 재매칭 스캔으로도 새 오퍼가 만들어지지 않는다.
         assertThat(group.offers()).hasSize(1);
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         assertThat(group.rematchRequired()).isTrue();
         assertThat(getDreamiMap().get(dreamiId).status())
                 .isEqualTo(WaitingDreamiStatus.MATCHING);
+        // 종료된 오퍼는 신규 pending 오퍼 조회에는 포함되지 않는다.
+        assertThat(matchingService.findPendingOfferForDreami(dreamiId)).isEmpty();
     }
 
     @Test
@@ -700,9 +705,13 @@ class MatchingServiceTest {
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
         assertThat(group.offers()).hasSize(2);
         MatchOffer secondOffer = group.offers().getLast();
+        assertThat(secondOffer.offerId()).isNotEqualTo(firstOffer.offerId());
         assertThat(secondOffer.dreamiId()).isEqualTo(dreamiId2);
         assertThat(secondOffer.status()).isEqualTo(MatchOfferStatus.OFFERED);
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+        // 만료된 첫 오퍼는 이력에는 남지만 pending 오퍼 조회에서는 제외되고, 새 오퍼만 조회된다.
+        assertThat(matchingService.findPendingOfferForDreami(dreamiId1)).isEmpty();
+        assertThat(matchingService.findPendingOfferForDreami(dreamiId2)).contains(secondOffer);
     }
 
     @Test
