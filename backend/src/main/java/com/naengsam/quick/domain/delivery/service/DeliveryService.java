@@ -7,6 +7,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.service.DirectionsService;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
+import com.naengsam.quick.domain.delivery.dto.ActiveDeliveryDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryContactDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
@@ -93,6 +94,10 @@ public class DeliveryService {
     private static final Set<DeliveryCd> CONTACT_CLOSED_STATUSES = EnumSet.of(
             DELIVERED, PICKUP_CANCELLED_BY_BOORMI, PICKUP_CANCELLED_BY_DREAMI, PICKUP_CANCELLED_BY_ADMIN,
             RETURNED, TERMINATED);
+
+    // 관리자 페이지의 "진행 중인 배달" 목록에 보여줄 상태(관리자가 강제 취소할 수 있는 단계와 동일).
+    private static final Set<DeliveryCd> ACTIVE_DELIVERY_STATUSES = EnumSet.of(
+            PICKUP_NORMAL, PICKUP_DELAYED, DELIVERING);
 
     /** 배달 1건당 핑 최소 간격. 프론트 버튼 잠금과 같은 값이다. */
     private static final Duration PING_COOLDOWN = Duration.ofSeconds(30);
@@ -238,6 +243,14 @@ public class DeliveryService {
                 .orElseThrow(() -> new BusinessException(UserErrorCode.USER_NOT_FOUND));
 
         return DeliveryContactDto.from(counterpart, viewerIsDreami);
+    }
+
+    // 관리자 페이지의 "진행 중인 배달" 목록. 특정 사용자로 스코프되지 않은 전체 조회라 다른 조회 메서드와 달리 소유권 검증이 없다.
+    @Transactional(readOnly = true)
+    public List<ActiveDeliveryDto> listActiveDeliveries() {
+        return deliveryRepository.findByDeliveryCdIn(ACTIVE_DELIVERY_STATUSES).stream()
+                .map(ActiveDeliveryDto::from)
+                .toList();
     }
 
     // 부르미가 연락 시트에서 '핑 보내기'를 눌렀을 때. 배달 상태는 건드리지 않고 드리미를 깨우는 알림만 보낸다.
