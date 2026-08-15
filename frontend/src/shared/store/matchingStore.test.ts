@@ -12,6 +12,7 @@ vi.mock("@/shared/api", () => ({
     getCurrentStatus: vi.fn(),
     getProfile: vi.fn(),
     acceptOffer: vi.fn(),
+    rejectOffer: vi.fn(),
   },
   isApiError: () => false,
 }));
@@ -19,6 +20,18 @@ vi.mock("@/shared/api", () => ({
 const getCurrentStatus = vi.mocked(api.getCurrentStatus);
 const getProfile = vi.mocked(api.getProfile);
 const acceptOffer = vi.mocked(api.acceptOffer);
+const rejectOfferApi = vi.mocked(api.rejectOffer);
+
+/** 응답 순서를 테스트 코드에서 직접 통제하기 위한 deferred promise. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 /** 필수 필드만 채운 pendingOffer(테스트에서 쓰지 않는 값은 전부 null). */
 function offer(overrides: Partial<PendingOffer> = {}): PendingOffer {
@@ -49,7 +62,9 @@ beforeEach(() => {
   getCurrentStatus.mockReset();
   getProfile.mockReset();
   acceptOffer.mockReset();
+  rejectOfferApi.mockReset();
   acceptOffer.mockResolvedValue(undefined as never);
+  rejectOfferApi.mockResolvedValue(undefined as never);
   getProfile.mockResolvedValue({ result: {} } as never);
   getCurrentStatus.mockResolvedValue(snapshot({}) as never);
   useMatchingStore.setState({
@@ -385,5 +400,132 @@ describe("matchingStore 부르미 응답 대기", () => {
     useMatchingStore.getState().clearOffers();
 
     expect(useMatchingStore.getState().awaitingBoormi).toBeNull();
+  });
+});
+
+/**
+ * accept/reject API 응답을 기다리는 사이 SSE로 새 offer가 도착해 pendingOffer가 교체되는 경쟁 조건.
+ * 요청 시작 시점의 offerId를 캡처해두고, 응답 이후에는 그 값으로만 "지금도 같은 offer인지"를 판단해야
+ * 방금 응답이 온 옛 offer가 이미 화면에 있는 새 offer를 지워버리는 사고를 막을 수 있다.
+ */
+describe("matchingStore accept/reject 경쟁 조건", () => {
+  it("offer-1 accept 진행 중 offer-2가 도착하면, offer-1이 뒤늦게 성공해도 offer-2를 유지하고 offer-1 대기 상태는 만들지 않는다", async () => {
+    const { promise, resolve } = deferred<void>();
+    acceptOffer.mockReturnValue(promise as never);
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-1", orderId: "order-1" }) });
+
+    const acceptPromise = useMatchingStore.getState().acceptOffer();
+    // offer-1 accept 응답이 오기 전에 offer-2 SSE가 먼저 도착한다.
+    useMatchingStore
+      .getState()
+      .receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    resolve();
+    await acceptPromise;
+
+    const { pendingOffer, awaitingBoormi, submitting } = useMatchingStore.getState();
+    expect(pendingOffer?.offerId).toBe("offer-2");
+    expect(awaitingBoormi).toBeNull();
+    expect(submitting).toBe(false);
+  });
+
+  it("offer-1 reject 진행 중 offer-2가 도착하면, offer-1 거절이 뒤늦게 성공해도 offer-2를 유지한다", async () => {
+    const { promise, resolve } = deferred<void>();
+    rejectOfferApi.mockReturnValue(promise as never);
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-1", orderId: "order-1" }) });
+
+    const rejectPromise = useMatchingStore.getState().rejectOffer();
+    useMatchingStore
+      .getState()
+      .receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    resolve();
+    await rejectPromise;
+
+    const { pendingOffer, submitting } = useMatchingStore.getState();
+    expect(pendingOffer?.offerId).toBe("offer-2");
+    expect(submitting).toBe(false);
+  });
+
+  it("offer-1 accept가 뒤늦게 실패해도 그 사이 도착한 offer-2를 지우지 않는다", async () => {
+    const { promise, reject } = deferred<void>();
+    acceptOffer.mockReturnValue(promise as never);
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-1", orderId: "order-1" }) });
+
+    const acceptPromise = useMatchingStore.getState().acceptOffer();
+    useMatchingStore
+      .getState()
+      .receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    reject(new Error("이미 만료된 제안이에요."));
+    await acceptPromise;
+
+    const { pendingOffer, awaitingBoormi, submitting } = useMatchingStore.getState();
+    expect(pendingOffer?.offerId).toBe("offer-2");
+    expect(awaitingBoormi).toBeNull();
+    expect(submitting).toBe(false);
+  });
+
+  it("이미 교체된 이전 offer의 offer_error는 새 pending offer를 지우거나 오류로 표시하지 않는다", () => {
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    useMatchingStore
+      .getState()
+      .receiveOfferError({ offerId: "offer-1", message: "이미 종료된 제안입니다." });
+
+    const { pendingOffer, message } = useMatchingStore.getState();
+    expect(pendingOffer?.offerId).toBe("offer-2");
+    expect(message).toBeNull();
+  });
+
+  it("현재 pendingOffer와 offerId가 일치하는 offer_error만 지우고 안내를 띄운다", () => {
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-1" }) });
+
+    useMatchingStore
+      .getState()
+      .receiveOfferError({ offerId: "offer-1", message: "이미 종료된 제안입니다." });
+
+    const { pendingOffer, message } = useMatchingStore.getState();
+    expect(pendingOffer).toBeNull();
+    expect(message).toBe("이미 종료된 제안입니다.");
+  });
+
+  it("현재 awaitingBoormi와 offerId가 일치하는 offer_error는 대기 상태만 지우고 다른 pendingOffer는 건드리지 않는다", () => {
+    useMatchingStore.setState({
+      pendingOffer: offer({ offerId: "offer-2", orderId: "order-2" }),
+      awaitingBoormi: {
+        offerId: "offer-1",
+        orderId: "order-1",
+        itemName: null,
+        acceptedAt: "2026-08-13T10:00:00",
+        expiresAt: "2026-08-13T10:00:30",
+      },
+    });
+
+    useMatchingStore.getState().receiveOfferError({ offerId: "offer-1", message: "만료됐어요." });
+
+    const { pendingOffer, awaitingBoormi } = useMatchingStore.getState();
+    expect(awaitingBoormi).toBeNull();
+    expect(pendingOffer?.offerId).toBe("offer-2");
+  });
+
+  it("accept/reject의 성공·실패 모든 경로에서 submitting은 항상 false로 복구된다", async () => {
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-a" }) });
+    await useMatchingStore.getState().acceptOffer();
+    expect(useMatchingStore.getState().submitting).toBe(false);
+
+    acceptOffer.mockRejectedValueOnce(new Error("실패"));
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-b" }) });
+    await useMatchingStore.getState().acceptOffer();
+    expect(useMatchingStore.getState().submitting).toBe(false);
+
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-c" }) });
+    await useMatchingStore.getState().rejectOffer();
+    expect(useMatchingStore.getState().submitting).toBe(false);
+
+    rejectOfferApi.mockRejectedValueOnce(new Error("실패"));
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-d" }) });
+    await useMatchingStore.getState().rejectOffer();
+    expect(useMatchingStore.getState().submitting).toBe(false);
   });
 });

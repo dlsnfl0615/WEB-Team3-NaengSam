@@ -347,11 +347,27 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   },
 
   // 매칭 처리가 실패했으면 그 제안은 더 진행되지 않는다 → 대기 카드도 남겨두지 않는다.
+  // offerId로 대상을 가려서, 이미 새 offer로 교체된 뒤 뒤늦게 도착한 오류가 그 새 offer를
+  // 지우거나 사용자에게 새 offer가 실패한 것처럼 보이게 하지 않는다.
   receiveOfferError: (payload) => {
-    const { message } = payload as { message?: string };
-    set({
-      awaitingBoormi: null,
-      message: message ?? "매칭 요청 처리에 실패했어요.",
+    const { offerId, message } = payload as { offerId?: string | null; message?: string };
+    set((s) => {
+      // 등록/주문 단위 오류처럼 특정 제안과 무관하면(offerId 없음) 안내만 띄우고 팝업 상태는 건드리지 않는다.
+      if (offerId == null) {
+        return { message: message ?? "매칭 요청 처리에 실패했어요." };
+      }
+      const matchesPending = s.pendingOffer?.offerId === offerId;
+      const matchesAwaiting = s.awaitingBoormi?.offerId === offerId;
+      // 지금 화면의 pendingOffer/awaitingBoormi 어느 쪽과도 관련 없으면, 이미 지나간 offer의
+      // 오래된 오류다 — 조용히 무시한다(상태도, 안내 메시지도 남기지 않는다).
+      if (!matchesPending && !matchesAwaiting) {
+        return {};
+      }
+      return {
+        pendingOffer: matchesPending ? null : s.pendingOffer,
+        awaitingBoormi: matchesAwaiting ? null : s.awaitingBoormi,
+        message: message ?? "매칭 요청 처리에 실패했어요.",
+      };
     });
   },
 
@@ -451,24 +467,36 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   acceptOffer: async () => {
     const { pendingOffer, submitting } = get();
     if (!pendingOffer || submitting) return null;
+    // API 응답을 기다리는 동안 SSE로 새 offer가 도착해 pendingOffer가 교체될 수 있다. 그러니
+    // 지금 요청 중인 offer를 미리 캡처해두고, 응답 이후에는 이 값으로만 판단한다.
+    const requestedOfferId = pendingOffer.offerId;
+    const requestedOrderId = pendingOffer.orderId;
+    const requestedItemName = pendingOffer.itemName;
     set({ submitting: true });
     try {
-      await api.acceptOffer(pendingOffer.offerId);
+      await api.acceptOffer(requestedOfferId);
       // 수락은 배달 시작이 아니라 '부르미 확인 대기'의 시작이다. 콜 카드를 내리고 대기 카드로 바꿔,
       // 드리미가 빈 화면에서 무슨 일이 일어나는지 모른 채 기다리지 않게 한다.
       const acceptedAt = Date.now();
-      set({
-        pendingOffer: null,
-        awaitingBoormi: {
-          offerId: pendingOffer.offerId,
-          orderId: pendingOffer.orderId,
-          itemName: pendingOffer.itemName,
-          acceptedAt: new Date(acceptedAt).toISOString(),
-          expiresAt: new Date(acceptedAt + BOORMI_CONFIRM_TTL_MS).toISOString(),
-        },
-        submitting: false,
+      set((current) => {
+        // 응답이 오는 사이 이미 다른 offer로 교체됐으면, 그 새 offer를 그대로 두고 submitting만
+        // 해제한다 — 방금 성공한 옛 offer로 화면을 덮어써 새 offer를 지우면 안 된다.
+        if (current.pendingOffer?.offerId !== requestedOfferId) {
+          return { submitting: false };
+        }
+        return {
+          pendingOffer: null,
+          awaitingBoormi: {
+            offerId: requestedOfferId,
+            orderId: requestedOrderId,
+            itemName: requestedItemName,
+            acceptedAt: new Date(acceptedAt).toISOString(),
+            expiresAt: new Date(acceptedAt + BOORMI_CONFIRM_TTL_MS).toISOString(),
+          },
+          submitting: false,
+        };
       });
-      return pendingOffer.orderId;
+      return requestedOrderId;
     } catch (e) {
       set({ submitting: false, message: toMessage(e, "수락에 실패했어요.") });
       return null;
@@ -478,10 +506,15 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   rejectOffer: async () => {
     const { pendingOffer, submitting } = get();
     if (!pendingOffer || submitting) return;
+    const requestedOfferId = pendingOffer.offerId;
     set({ submitting: true });
     try {
-      await api.rejectOffer(pendingOffer.offerId);
-      set({ pendingOffer: null });
+      await api.rejectOffer(requestedOfferId);
+      // accept와 같은 이유로, 응답을 기다리는 사이 교체된 새 offer는 건드리지 않는다.
+      set((current) => ({
+        pendingOffer:
+          current.pendingOffer?.offerId === requestedOfferId ? null : current.pendingOffer,
+      }));
     } catch (e) {
       set({ message: toMessage(e, "거절에 실패했어요.") });
     } finally {
