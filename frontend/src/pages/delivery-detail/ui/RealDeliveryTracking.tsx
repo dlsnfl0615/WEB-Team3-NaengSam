@@ -466,14 +466,9 @@ export function RealDeliveryTracking({
       <TopBar title="실시간 배송" onBack={backOrHome} actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
-            {view.title}
-          </h1>
-          <Button size="sm" variant="outline" onClick={openPickupPhoto}>
-            픽업사진
-          </Button>
-        </div>
+        <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
+          {view.title}
+        </h1>
 
         <MapCard
           height={340}
@@ -506,6 +501,18 @@ export function RealDeliveryTracking({
               formatArrivalTime(matchingAcceptedDtm),
               formatArrivalTime(deliveryStartDtm),
               formatArrivalTime(deliveryEndDtm),
+            ]}
+            actions={[
+              null,
+              <button
+                key="pickup-photo"
+                type="button"
+                onClick={openPickupPhoto}
+                className="-my-1 shrink-0 py-1 text-xs font-bold text-teal-700"
+              >
+                픽업사진
+              </button>,
+              null,
             ]}
             segmentProgress={segmentProgress}
           />
