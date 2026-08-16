@@ -28,13 +28,13 @@ dreamiAvgScore    DECIMAL(3,2), 기본 0
 4. 저장은 `PESSIMISTIC_WRITE` 락으로 다시 조회한 뒤 승인 여부를 한 번 더 확인하고 진행한다. "승인 여부 확인"과 "저장" 사이에 관리자가 승인을 확정해버리는 레이스(TOCTOU)가 실제로 있었고, 이 락 재확인이 그 안전장치다.
 5. 재제출은 `Dreami.create(dreamiId, ...)`로 새로 만든 엔티티를 그대로 `save()`하는데, PK(`dreamiId` = `boormiId`)가 이미 존재하는 값이라 JPA가 `persist`가 아니라 **`merge`로 처리해 같은 row를 덮어쓴다**(새 row가 생기는 게 아니라 같은 PK의 UPDATE다). 그 결과 상태가 `REQUESTED`로, 평점도 0으로 리셋된다. 이미 승인된 드리미의 재신청을 막는 이유가 여기 있다(리셋을 막기 위해).
 
-**검수(관리자)** — `DreamiReviewDebugController` (`/api/v1/debug/dreami-review`)
+**검수(관리자)** — `DreamiApproveController` (`/api/v1/debug/dreami-review`)
 
 - `GET /pending` — 심사 대기(`REQUESTED`) 목록. 신분증/범죄이력조회서를 다운로드 URL로 변환해 함께 내려준다.
-- `POST /{dreamiId}/approve` — `Dreami.approve()` + `Boormi.approve()`(`isDreamiActivate = true`)를 **함께** 처리한다. 과거엔 `Boormi` 쪽을 빼먹어서 "승인해도 활성화가 안 되는" 버그가 있었다.
+- `POST /{dreamiId}/approve` — `Dreami.approve()` + `Boormi.approve()`(`isDreamiActivate = true`)를 **함께** 처리한다.
 - `POST /{dreamiId}/reject` — `Dreami.reject(reason)` + 반려 이력 저장.
 
-> **주의 — 이 워크트리 기준 현재 상태**: `DreamiReviewDebugController`는 `@PublicApi`로 선언되어 있어 **로그인 검사를 건너뛴다**(완전 공개). 클래스 Javadoc에도 "임시 관리자 페이지, 운영 배포 전 제거/비활성화 필요"라고 명시돼 있다. 관리자 인증(`@AdminUser`)을 적용하는 변경은 별도 브랜치(`feat/455`)에만 있고 이 브랜치엔 아직 병합되지 않았다.
+세 엔드포인트 전부 `@AdminUser UUID adminId` 파라미터로 관리자 인증을 요구한다. `AdminUserArgumentResolver`가 세션이 없으면 `UNAUTHORIZED`, 로그인은 했지만 `Boormi.isAdmin()`이 false면 `FORBIDDEN_ROLE`을 던진다 — 로그인만으로는 안 되고 관리자 계정으로 로그인해야 호출할 수 있다. 원래는 `DreamiReviewDebugController`라는 이름으로 `@PublicApi`(로그인 검사 자체를 건너뜀, 완전 공개) 상태였는데, "운영 배포 전 제거/비활성화 필요"라고 명시돼 있던 그 임시 상태를 이 인증 요구로 대체한 것이다. `Boormi.isAdmin` 컬럼, 관리자 계정 시드용 `test-seed-accounts.sql`, 정적 관리자 페이지(`static/admin.html`)가 함께 추가됐다.
 
 `DreamiActivationChecker`는 "지금 드리미로 활동 가능한가?"(`Boormi.isDreamiActivate && Dreami.requestCd == APPROVED`)만 판정하는 순수 조회 컴포넌트다. 서비스 계층을 참조하지 않고 리포지토리에만 의존하도록 만들었는데, 매칭↔배달↔유저 사이 순환 참조를 만들지 않기 위해서다.
 
@@ -89,9 +89,45 @@ dreamiAvgScore    DECIMAL(3,2), 기본 0
 
 ## 8. 활동 내역 / 프로필
 
-- `GET /api/v1/dreami/deliveries` — 부르미/드리미 조회 로직을 `role` 파라미터 하나로 공용화한 주문 조회를 그대로 위임한다. 페이지네이션 파라미터는 제거되어 현재는 전체를 최신순으로 반환한다.
-- `GET /api/v1/dreami/deliveries/{orderId}` — 단건 조회. 목록에 페이지네이션이 없어도 딥링크/새로고침으로 상세에 바로 들어갈 수 있게 한다.
+### 활동 내역 목록 — `GET /api/v1/dreami/deliveries`
+
+`DreamiController.getDreamiOrders` → `DreamiService.getMyOrders` → `OrderService.getOrders(userId, Role.DREAMI, statusFilter, cursor, size)`로 이어진다. `getOrders`는 부르미/드리미가 공유하는 진입점이라 `role` 파라미터 하나로 호출부는 통일돼 있지만, **실제 DB 조회는 role별로 완전히 분리된 두 쿼리**로 나뉜다.
+
+```java
+List<OrderSummaryDto> rows;
+if (role == Role.BOORMI) {
+    rows = orderRepository.findPageByBoormiId(userId, orderCds, cursor.deliveryRequestDtm(),
+            cursor.orderId(), pageable);
+} else {
+    rows = orderRepository.findPageByDreamiId(userId, orderCds, cursor.deliveryRequestDtm(),
+            cursor.orderId(), pageable);
+}
+```
+
+`findPageByBoormiId`/`findPageByDreamiId`를 하나로 합쳐서 `(:role='BOORMI' AND boormiId=?) OR (:role='DREAMI' AND dreamiId=?)` 같은 단일 쿼리로 만들지 않은 이유: 이런 파라미터 의존 OR 조건은, JDBC 드라이버가 그 값을 리터럴로 치환해서 보내느냐(`useServerPrepStmts=false`, 흔한 기본값) 진짜 바인드 파라미터로 보내느냐(`useServerPrepStmts=true`)에 따라 MySQL 옵티마이저가 죽은 분기를 상수 접기로 지워줄 수도, 못 지워서 두 컬럼 인덱스 어느 쪽도 확정적으로 못 타고 풀스캔으로 떨어질 수도 있다. 이 둘 중 어느 쪽으로 동작하는지는 이 쿼리 코드가 아니라 커넥션 설정에 달린 문제라, role별로 쿼리 자체를 나눠서 각자 자기 인덱스만 확정적으로 타게 만들었다.
+
+`ORDERS`에는 이를 위한 복합 인덱스가 있다.
+
+```sql
+CREATE INDEX `IX_ORDERS_DREAMI_LIST` ON `ORDERS` (`dreami_id`, `delivery_request_dtm` DESC, `order_id` DESC);
+CREATE INDEX `IX_ORDERS_BOORMI_LIST` ON `ORDERS` (`boormi_id`, `delivery_request_dtm` DESC, `order_id` DESC);
+```
+
+등가 조건 컬럼(`dreami_id`/`boormi_id`)을 선두에 둬서 그 사용자 행으로 좁히고, 그 뒤에 정렬 컬럼을 그대로 둬서 `ORDER BY delivery_request_dtm DESC, order_id DESC`가 filesort 없이 인덱스 순서 그대로 나오게 한다.
+
+**왜 전체 반환에서 커서 페이지네이션으로 바뀌었나**: 예전엔 `LIMIT` 없이 그 사용자의 전 기간 배달 이력을 `SELECT *`로 통째로 가져왔다. 이력이 쌓일수록 매번 더 많은 행을 스캔·정렬·반환하는 구조였고, `Orders` 엔티티 전체를 매핑하다 보니 응답에 쓰이지도 않는 `route_path`(카카오 경로 좌표 JSON) 같은 대형 컬럼까지 행마다 읽어서 버리는 낭비도 있었다. 지금은 `OrderSummaryDto` 생성자 표현식으로 필요한 컬럼만 바로 투영하고, 커서 조건(`deliveryRequestDtm < :cursorDtm OR (= AND orderId < :cursorId)`)으로 한 페이지씩만 가져온다. 오프셋(`LIMIT n OFFSET m`)이 아니라 커서를 쓴 이유는, 오프셋은 뒷페이지로 갈수록 앞부분을 다 스캔하고 버려야 해서 느려지고 스크롤 중 새 행이 끼어들면 항목이 밀리는데, 커서는 인덱스로 위치를 바로 찾아가 몇 페이지째든 비용이 같고 밀림도 없기 때문이다.
+
+파라미터:
+
+- `status`(선택, 여러 값 가능): 생략하면 `OrderCd.values()` 전체로 채워 넣어 상태 무관 전체를 반환하고, 지정하면 그 상태들만 반환한다. 화면의 필터 탭 하나가 여러 orderCd를 묶는 경우(예: "진행중" = MATCHING/PENDING_BOORMI_CONFIRMATION/IN_PROGRESS/WAITING_CONFIRMATION) 그 값들을 한꺼번에 넘기면 된다.
+- `cursor`(선택): 이전 응답의 `nextCursor`를 그대로 넘기면 다음 페이지를 이어 받는다. `OrderCursor`가 `(deliveryRequestDtm, orderId)`를 Base64 opaque 문자열로 인코딩/디코딩한다. 첫 페이지는 생략(또는 빈 값), 형식이 깨진 값만 `INVALID_CURSOR`로 거부한다.
+- `size`(선택): 페이지 크기(기본 20, 최대 50). 요청한 크기보다 하나 더(`+1`) 가져와 봐서 그 여분이 있으면 `hasNext=true`로 잘라내고, 없으면 그대로 돌려주는 방식으로 `hasNext`를 판단한다.
+
+응답(`BoormiOrdersResponse`)은 `orders`/`nextCursor`/`hasNext` 세 필드다.
+
+- `GET /api/v1/dreami/deliveries/{orderId}` — 단건 조회. 목록이 커서 페이지네이션이라 특정 건이 몇 페이지째에 있는지와 무관하게, 딥링크/새로고침으로 상세에 바로 들어갈 수 있게 한다.
 - `GET /api/v1/dreami/deliveries/count` — 상태 무관 전체 건수(목록이 일부만 노출될 때 "총 N건" 표시용).
+- `GET /api/v1/dreami/deliveries/status-counts` — 활동 내역 화면의 탭(전체/진행중/완료/취소)별 개수. `GROUP BY order_cd`로 한 번에 집계해서, 목록 페이지네이션과 별개로 화면 진입 시 한 번만 호출하면 된다(탭 전환마다 다시 세지 않는다).
 - `GET /api/v1/dreami/{dreamiId}` — 다른 사람(부르미)이 드리미 프로필을 조회할 때 쓴다. 이름·평점·누적 반려 횟수를 함께 내려준다.
 
 ## 9. 에러 코드 (`DreamiErrorCode`)
