@@ -64,6 +64,14 @@ boormiId        UUID NOT NULL
 
 두 기능 다 `kakao.enabled`를 잘못 설정(오타 등)해도 기본은 "실제 카카오 호출"로 켜지도록 만들어져 있다(`matchIfMissing = true`) — 로컬/부하테스트에서 의도적으로 꺼야만 Dev 구현체가 뜬다. 어떤 구현체가 실제로 떠 있는지는 기동 로그로만 확인할 수 있다.
 
+### HTTP 클라이언트 구현 방식
+
+`KakaoCoordinatesService`/`KakaoDirectionsService` 둘 다 같은 방식으로 카카오를 호출한다.
+
+- **`RestClient` + `JdkClientHttpRequestFactory`**: `RestClient` 자체는 실제 통신 방법을 모르고 `ClientHttpRequestFactory`에 위임하는 추상화다. connect/read 타임아웃(§ 위 1초/2초)을 걸려면 이 팩토리를 직접 구성해야 해서, `HttpClient.newBuilder().connectTimeout(...)`으로 만든 JDK 표준 `HttpClient`를 `JdkClientHttpRequestFactory`로 감싸 썼다. Apache HttpClient5나 Jetty Client 같은 별도 라이브러리도 검토했지만, 카카오 API 하나만 호출하는 지금 규모에서는 의존성을 추가하지 않는 JDK 내장 `HttpClient`로 충분하다고 판단했다.
+- **`UriComponentsBuilder`로 쿼리 파라미터 조립**: 도로명주소에 한글·특수문자가 섞여 있어도 `.queryParam(...)`이 자동으로 UTF-8 인코딩을 해준다 — 문자열을 직접 이어붙여 URL을 만들면 인코딩을 매번 신경 써야 하는데 그 부담을 없앤다.
+- **응답 DTO에 `@JsonIgnoreProperties(ignoreUnknown = true)`**: `CoordinatesResponseDto`/`KakaoDirectionsResponseDto` 모두 이 애노테이션이 붙어 있다. 카카오 응답에 우리가 정의 안 한 필드(메타 정보 등)가 섞여 와도 역직렬화가 깨지지 않게 하는 방어적 설계 — 외부 API 응답은 우리가 스키마를 통제할 수 없으므로, 우리가 실제로 쓰는 필드만 명시하고 나머지는 무시하는 편이 안전하다.
+
 ## 4. `AddressErrorCode`
 
 카카오 길찾기 API가 돌려주는 상태 코드를 그대로 매핑한 것으로, 전부 `KakaoDirectionsService`에서만 던져진다(HTTP 400).
