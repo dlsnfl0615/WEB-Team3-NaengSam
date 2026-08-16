@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState, type ReactNode } from "react";
 import { api, isApiError } from "@/shared/api";
+import { useSessionStore } from "@/shared/store/sessionStore";
 import { RoleContext, type Role, type RoleChangeResult } from "./RoleContext";
 
 export interface RoleProviderProps {
@@ -24,23 +25,29 @@ function readStoredRole(): Role {
 
 /** 역할 모드를 화면 간에 공유하는 프로바이더. 조립 루트(main.tsx)에서 감쌉니다. */
 export function RoleProvider({ children }: RoleProviderProps) {
-  const [role, setRoleState] = useState<Role>(readStoredRole);
+  const [storedRole, setRoleState] = useState<Role>(readStoredRole);
 
   const setRole = useCallback((next: Role) => {
     sessionStorage.setItem(ROLE_STORAGE_KEY, next);
     setRoleState(next);
   }, []);
 
-  // 드리미 전환은 서버가 승인 여부·수행 중인 주문까지 검증한다(GET /api/v1/user/role).
-  // 부르미 복귀는 서버 제약이 없고, 검증 API는 방향 구분이 없어 호출하면 오히려 실패한다.
+  // 서버가 수행 중인 역할을 알려주면 그것이 진실이다 — 새로고침·직접 URL 진입으로 sessionStorage가
+  // 실제 상태와 어긋나 있어도 화면은 수행 중인 역할을 따른다. 수행 중인 것이 없으면(activeRole 없음)
+  // 사용자가 마지막으로 고른 역할을 유지한다.
+  const activeRole = useSessionStore((s) => s.user?.activeRole);
+  const role: Role = activeRole
+    ? activeRole === "DREAMI"
+      ? "드리미"
+      : "부르미"
+    : storedRole;
+
+  // 양방향 모두 서버가 검증한다(GET /api/v1/user/role?target=…). 매칭·배달이 진행 중이면
+  // 드리미→부르미 복귀도 막아야 하므로, 가려는 역할을 target으로 실어 보낸다.
   const requestRole = useCallback(
     async (next: Role): Promise<RoleChangeResult> => {
-      if (next === "부르미") {
-        setRole(next);
-        return { ok: true };
-      }
       try {
-        await api.changeRole();
+        await api.changeRole({ target: next === "드리미" ? "DREAMI" : "BOORMI" });
         setRole(next);
         return { ok: true };
       } catch (e) {

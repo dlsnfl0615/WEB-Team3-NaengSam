@@ -20,6 +20,10 @@ export function TextField({
   id,
   ...rest
 }: TextFieldProps) {
+  // 테두리·배경은 바깥 래퍼가 그리므로, 비활성 상태도 래퍼에서 표현해야 눈에 보인다.
+  // (bg-canvas는 앱 배경색이라 화면과 구분이 안 돼 bg-track을 쓴다.)
+  const disabled = rest.disabled === true
+
   return (
     <label className="flex flex-col gap-1.5">
       {label && (
@@ -27,10 +31,12 @@ export function TextField({
       )}
       <span
         className={cn(
-          'flex items-center gap-2 rounded-md border bg-surface px-3.5 py-3',
-          error
-            ? 'border-status-danger'
-            : 'border-line focus-within:border-teal-500',
+          'flex items-center gap-2 rounded-md border px-3.5 py-3',
+          disabled
+            ? 'cursor-not-allowed border-line bg-track'
+            : error
+              ? 'border-status-danger bg-surface'
+              : 'border-line bg-surface focus-within:border-teal-500',
         )}
       >
         {leadingIcon && (
@@ -40,7 +46,7 @@ export function TextField({
           id={id}
           aria-invalid={error ? true : undefined}
           className={cn(
-            'w-full bg-transparent text-md text-navy-900 outline-none placeholder:text-muted',
+            'w-full bg-transparent text-md text-navy-900 outline-none placeholder:text-muted disabled:cursor-not-allowed disabled:text-muted',
             className,
           )}
           {...rest}

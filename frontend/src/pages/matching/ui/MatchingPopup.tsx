@@ -1,12 +1,15 @@
 import {useEffect} from "react";
 import {useLocation, useNavigate} from "react-router-dom";
 import {ROUTES} from "@/shared/config/routes";
-import {type SseHandlers, useSse} from "@/shared/lib";
-import {Toast, type Coords} from "@/shared/ui";
+import {type SseHandlers, useExpiryCountdown, useSse} from "@/shared/lib";
+import {cn} from "@/shared/lib/cn";
+import {type Coords} from "@/shared/ui";
 import type {DeliveryStatusResponseDto} from "@/shared/api";
 import {useMatchingStore} from "@/shared/store/matchingStore";
+import {useToastStore} from "@/shared/store/toastStore";
 import {useSessionStore} from "@/shared/store/sessionStore";
 import {useBoormiOrderStore} from "@/shared/store/boormiOrderStore";
+import {AwaitingBoormiCard} from "./AwaitingBoormiCard";
 import {CallCard} from "./CallCard";
 import {OfferCard} from "./OfferCard";
 
@@ -54,6 +57,7 @@ export function MatchingPopup() {
     const pendingOffer = useMatchingStore((s) => s.pendingOffer);
     const dreamiCoords = useMatchingStore((s) => s.myLocation);
     const incomingDreami = useMatchingStore((s) => s.incomingDreami);
+    const awaitingBoormi = useMatchingStore((s) => s.awaitingBoormi);
     const submitting = useMatchingStore((s) => s.submitting);
     const acceptOffer = useMatchingStore((s) => s.acceptOffer);
     const rejectOffer = useMatchingStore((s) => s.rejectOffer);
@@ -62,6 +66,27 @@ export function MatchingPopup() {
     const clearOffers = useMatchingStore((s) => s.clearOffers);
     const message = useMatchingStore((s) => s.message);
     const clearMessage = useMatchingStore((s) => s.clearMessage);
+    const expirePendingOffer = useMatchingStore((s) => s.expirePendingOffer);
+    const expireIncomingDreami = useMatchingStore((s) => s.expireIncomingDreami);
+    const expireAwaitingBoormi = useMatchingStore((s) => s.expireAwaitingBoormi);
+
+    // 카드가 없어도(call/offer가 null) 항상 최상단에서 호출한다 — 훅이 그 경우 스스로 비활성 상태를 반환한다.
+    const callCountdown = useExpiryCountdown(pendingOffer?.offeredAt, pendingOffer?.expiresAt, {
+        onExpire: () => {
+            if (pendingOffer) expirePendingOffer(pendingOffer.offerId);
+        },
+    });
+    const offerCountdown = useExpiryCountdown(incomingDreami?.acceptedAt, incomingDreami?.expiresAt, {
+        onExpire: () => {
+            if (incomingDreami) expireIncomingDreami(incomingDreami.offerId);
+        },
+    });
+    // 드리미의 '부르미 응답 대기'. 서버가 이 대기의 결말을 알려주지 못한 채 TTL이 지나면 카드를 스스로 내린다.
+    const awaitingCountdown = useExpiryCountdown(awaitingBoormi?.acceptedAt, awaitingBoormi?.expiresAt, {
+        onExpire: () => {
+            if (awaitingBoormi) expireAwaitingBoormi(awaitingBoormi.offerId);
+        },
+    });
 
     // 매칭 이벤트는 스토어 액션에 위임한다(배달 진행 중 이벤트는 각 배달 화면이 구독).
     // delivery_started_* 는 배달이 실제로 시작됐다는 서버 신호이며, 이때 비로소 배달 화면으로 이동한다.
@@ -73,6 +98,10 @@ export function MatchingPopup() {
         offer_error: useMatchingStore.getState().receiveOfferError,
         delivery_started_dreami: (payload) => {
             const {orderId} = payload as DeliveryStatusResponseDto;
+            // BE가 이 시점에 드리미를 매칭 후보·대기열에서 이미 제거했으므로, FE도 온라인 상태를 맞춘다.
+            // 드리미가 의도적으로 오프라인 전환한 게 아니므로 goOffline API는 호출하지 않고 로컬 상태만 갱신한다.
+            // 부르미가 확정한 것이므로 '응답 대기' 카드도 여기서 내린다.
+            useMatchingStore.setState({online: false, pendingOffer: null, awaitingBoormi: null});
             navigate(`${ROUTES.deliveryTrack}?orderId=${orderId}`, {replace: true});
         },
         delivery_started_boormi: (payload) => {
@@ -92,34 +121,37 @@ export function MatchingPopup() {
     // 거절/사유 선택 화면에서는 팝업을 숨겨 화면 접근을 막지 않는다.
     const onReasonScreen =
         pathname === ROUTES.rejectReason || pathname === ROUTES.driverReason;
+
+    // 매칭 안내(제안 마감·부르미 거절 등)는 전역 토스트 스택에 얹어 상단에서 내려오게 한다.
+    // 카드와 같은 하단 슬롯에 직접 그리면 카드가 떠 있는 동안 안내가 묻히고, 등장 방향도 카드와 겹쳐 헷갈린다.
+    useEffect(() => {
+        if (!message || onReasonScreen) return;
+        const {show, dismiss} = useToastStore.getState();
+        const id = show({
+            icon: "bell",
+            title: message,
+            persistent: true,
+            dedupeKey: "matching-message",
+        });
+        // 사용자가 토스트를 닫으면 스토어 메시지도 비운다 — 기존 '닫기' 버튼과 같은 동작이고,
+        // 남겨 두면 같은 안내가 다시 와도 새로 뜨지 않는다.
+        const unsubscribe = useToastStore.subscribe((state) => {
+            if (!state.toasts.some((toast) => toast.id === id)) clearMessage();
+        });
+        return () => {
+            unsubscribe();
+            dismiss(id);
+        };
+    }, [message, onReasonScreen, clearMessage]);
+
     if (onReasonScreen) return null;
 
     const call = pendingOffer;
     const offer = incomingDreami;
+    const awaiting = awaitingBoormi;
 
-    // 카드가 없어도 매칭 안내(제안 마감·상대 거절 등)는 토스트로 알려야 한다.
-    if (!call && !offer) {
-        if (!message) return null;
-        return (
-            <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center">
-                <div
-                    className="ds-sheet-up pointer-events-auto w-full max-w-[420px] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
-                    <Toast
-                        title={message}
-                        action={
-                            <button
-                                type="button"
-                                onClick={clearMessage}
-                                className="shrink-0 text-xs font-semibold text-track"
-                            >
-                                닫기
-                            </button>
-                        }
-                    />
-                </div>
-            </div>
-        );
-    }
+    // 매칭 안내는 위 이펙트가 전역 토스트로 띄우므로, 카드가 없으면 이 오버레이는 그릴 것이 없다.
+    if (!call && !offer && !awaiting) return null;
 
     const onAcceptCall = async () => {
         await acceptOffer();
@@ -133,13 +165,29 @@ export function MatchingPopup() {
         // 이동은 하지 않는다 — 배달이 실제로 시작되면 delivery_started_boormi SSE가 이동시킨다.
     };
 
+    // 응답을 받아야 하는 카드(콜·드리미 요청)만 뒤 화면을 덮어 집중시킨다.
+    // 대기 카드는 누를 것이 없으므로 덮으면 사용자가 빠져나갈 방법 없이 앱 전체가 먹통이 된다
+    // → 배경을 깔지 않고 클릭도 통과시켜, 기다리는 동안 다른 화면을 계속 쓸 수 있게 한다.
+    const blocking = Boolean(call || offer);
+
     return (
-        <div className="fixed inset-0 z-40 flex items-end justify-center">
-            <div aria-hidden className="absolute inset-0 bg-ink/40"/>
+        <div
+            className={cn(
+                "fixed inset-0 z-40 flex items-end justify-center",
+                !blocking && "pointer-events-none",
+            )}
+        >
+            {blocking && <div aria-hidden className="absolute inset-0 bg-ink/40"/>}
             <div
-                className="ds-sheet-up relative w-full max-w-[420px] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
+                className={cn(
+                    "ds-sheet-up relative w-full max-w-[420px] px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]",
+                    !blocking && "pointer-events-auto",
+                )}
+            >
                 {call ? (
                     <CallCard
+                        key={call.offerId}
+                        offerId={call.offerId}
                         code={formatCode(call.orderId)}
                         price={
                             call.deliveryAmount != null
@@ -167,24 +215,31 @@ export function MatchingPopup() {
                         currentLocation={dreamiCoords ?? undefined}
                         deliveryDistance={formatDistance(call.deliveryDistance)}
                         eta={`${call.deliveryEta}분`}
+                        requestNote={call.deliveryRequest ?? undefined}
+                        countdown={callCountdown}
                         onReject={rejectOffer}
                         onAccept={onAcceptCall}
                     />
+                ) : offer ? (
+                    <OfferCard
+                        heading="새 드리미 요청 도착!"
+                        dreamiId={offer.dreamiId}
+                        name={
+                            offer.profile?.name
+                                ? `드리미 '${offer.profile.name}'`
+                                : "드리미 정보 확인 중"
+                        }
+                        rating={offer.profile?.dreamiAvgScore ?? 0}
+                        pickupEtaMinutes={offer.pickupEtaMinutes ?? null}
+                        countdown={offerCountdown}
+                        onReject={rejectDreami}
+                        onAccept={onAcceptOffer}
+                    />
                 ) : (
-                    offer && (
-                        <OfferCard
-                            heading="새 드리미 요청 도착!"
-                            name={
-                                offer.profile?.name
-                                    ? `드리미 '${offer.profile.name}'`
-                                    : "드리미 정보 확인 중"
-                            }
-                            rating={offer.profile?.dreamiAvgScore ?? 0}
-                            countLabel="거절"
-                            count={offer.profile?.rejectCount ?? 0}
-                            distance="-"
-                            onReject={rejectDreami}
-                            onAccept={onAcceptOffer}
+                    awaiting && (
+                        <AwaitingBoormiCard
+                            itemName={awaiting.itemName}
+                            countdown={awaitingCountdown}
                         />
                     )
                 )}

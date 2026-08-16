@@ -4,6 +4,7 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { UserDtoActiveOrderCd } from './userDtoActiveOrderCd';
 import type { UserDtoActiveRole } from './userDtoActiveRole';
 
 export interface UserDto {
@@ -11,6 +12,9 @@ export interface UserDto {
   email?: string;
   name?: string;
   isDreami?: boolean;
+  boormiAvgScore?: number;
+  dreamiAvgScore?: number;
   activeRole?: UserDtoActiveRole;
   activeOrderId?: string;
+  activeOrderCd?: UserDtoActiveOrderCd;
 }

@@ -1,10 +1,10 @@
 import { use, useState } from "react";
 import { useSessionStore } from "@/shared/store/sessionStore";
-import { Toast } from "@/shared/ui";
+import { Button, Card, Modal } from "@/shared/ui";
 import { SseContext } from "./SseContext";
 
 /**
- * 실시간 연결이 영구 종료(`closed`)됐을 때만 뜨는 안내 배너. 대표 사례는 사용자당 SSE 연결 상한 초과다.
+ * 실시간 연결이 영구 종료(`closed`)됐을 때만 뜨는 안내 모달. 대표 사례는 사용자당 SSE 연결 상한 초과다.
  * 브라우저의 무한 자동 재연결이 멈춘 상태이므로, 다른 탭을 닫고 사용자가 직접 다시 연결하도록 안내한다.
  * 닫기(dismiss)와 수동 재연결(`reconnect`)을 제공한다.
  */
@@ -25,31 +25,30 @@ export function SseStatusBanner() {
   if (!context || !isAuthenticated || status !== "closed" || dismissed) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center">
-      <div className="pointer-events-auto w-full max-w-[420px] px-4 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)]">
-        <Toast
-          title="실시간 연결이 종료됐어요"
-          description="다른 탭을 닫고 다시 시도해주세요."
-          action={
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={() => context.reconnect()}
-                className="shrink-0 text-xs font-semibold text-white"
-              >
-                다시 연결
-              </button>
-              <button
-                type="button"
-                onClick={() => setDismissed(true)}
-                className="shrink-0 text-xs font-semibold text-track"
-              >
-                닫기
-              </button>
-            </div>
-          }
-        />
-      </div>
-    </div>
+    <Modal
+      open
+      label="실시간 연결 종료 안내"
+      onClose={() => setDismissed(true)}
+    >
+      <Card className="flex flex-col gap-4 text-center">
+        <div className="flex flex-col gap-1">
+          <h2 className="text-md font-bold text-navy-900">
+            실시간 연결이 종료됐어요
+          </h2>
+          <p className="text-2xs text-muted">
+            다른 탭을 닫고 다시 시도해주세요.
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <Button variant="outline" block onClick={() => setDismissed(true)}>
+            닫기
+          </Button>
+          <Button block onClick={() => context.reconnect()}>
+            다시 연결
+          </Button>
+        </div>
+      </Card>
+    </Modal>
   );
 }

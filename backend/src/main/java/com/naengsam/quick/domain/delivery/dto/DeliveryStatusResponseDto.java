@@ -2,6 +2,7 @@ package com.naengsam.quick.domain.delivery.dto;
 
 import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 /**
@@ -12,7 +13,9 @@ public record DeliveryStatusResponseDto(
         UUID orderId,
         DeliveryCd status,
         DeliveryLocationDto currentLocation,
-        String message
+        String message,
+        LocalDateTime deliveryStartDtm,
+        LocalDateTime deliveryEndDtm
 ) {
     public static DeliveryStatusResponseDto from(Delivery delivery, String message) {
         DeliveryLocationDto currentLocation = delivery.getCurrentLatitude() == null
@@ -25,6 +28,8 @@ public record DeliveryStatusResponseDto(
                 delivery.getOrderId(),
                 delivery.getDeliveryCd(),
                 currentLocation,
-                message);
+                message,
+                delivery.getDeliveryStartDtm(),
+                delivery.getDeliveryEndDtm());
     }
 }

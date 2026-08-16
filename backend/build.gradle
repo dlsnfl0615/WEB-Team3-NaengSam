@@ -22,9 +22,14 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-webmvc'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis' // 로그인 대기열(순번·상태) 저장소
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus' // /actuator/prometheus 노출
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.2'
     implementation 'com.solapi:sdk:1.0.3'
+    // 웹푸시(VAPID JWT + aes128gcm 페이로드 암호화). BouncyCastle 프로바이더를 요구한다.
+    implementation 'nl.martijndwars:web-push:5.1.1'
+    implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+    implementation 'org.bouncycastle:bcpkix-jdk18on:1.78.1'
     implementation 'software.amazon.awssdk:s3:2.29.52' // S3 presigned url
     runtimeOnly 'com.h2database:h2'
     runtimeOnly 'com.mysql:mysql-connector-j'

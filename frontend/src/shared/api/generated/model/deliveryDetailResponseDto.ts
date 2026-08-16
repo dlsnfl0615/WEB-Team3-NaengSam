@@ -29,10 +29,24 @@ export interface DeliveryDetailResponseDto {
   destinationAddressLine1?: string;
   /** 물건 이름 */
   itemName?: string;
+  /** 부르미가 작성한 요청 사항. 없으면 null */
+  deliveryRequest?: string;
+  /** 부르미가 등록한 물품 사진 다운로드 URL. 사진이 없거나 조회 실패 시 null */
+  itemPhotoUrl?: string;
   /** 픽업지→도착지 카카오 추천 도보 경로 좌표 목록(픽업 후 지도 폴리라인용). 경로 정보가 없으면 빈 배열 */
   routePath?: RoutePointDto[];
   /** 드리미 위치→픽업지 카카오 추천 도보 경로 좌표 목록(픽업 전 지도 폴리라인용). 아직 계산 전이면 빈 배열 */
   deliveryRoutePath?: RoutePointDto[];
   /** 배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta). 아직 계산 전이면 null */
   estimatedCompletionTime?: string;
+  /** 매칭 성사(부르미가 드리미를 확정한) 시각. 매칭 기록이 없으면 null */
+  matchingAcceptedDtm?: string;
+  /** 픽업 완료(=배달 시작) 시각. 아직 픽업 전이면 null */
+  deliveryStartDtm?: string;
+  /** 배달(드림) 완료 시각. 아직 완료 전이면 null */
+  deliveryEndDtm?: string;
+  /** 드리미 위치가 끊긴 상태인지(true면 화면에 안내 필요) */
+  dreamiOffline?: boolean;
+  /** 마지막으로 드리미 위치를 받은 뒤 흐른 시간(초). 위치를 한 번도 못 받았으면 null */
+  secondsSinceLastLocation?: number;
 }

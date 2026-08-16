@@ -7,9 +7,12 @@ import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiProfileDto;
 import com.naengsam.quick.domain.dreami.dto.DreamiTodayStatsDto;
 import com.naengsam.quick.domain.dreami.dto.MonthlyRevenueDto;
+import com.naengsam.quick.domain.dreami.dto.DreamiReviewDto;
 import com.naengsam.quick.domain.dreami.dto.NearbyCallDto;
+import com.naengsam.quick.domain.dreami.dto.OfferItemPhotoDto;
 import com.naengsam.quick.domain.dreami.entity.Dreami;
 import com.naengsam.quick.domain.dreami.entity.DreamiCd;
+import com.naengsam.quick.domain.dreami.entity.DreamiRequestDeniedDetails;
 import com.naengsam.quick.domain.dreami.exception.DreamiErrorCode;
 import com.naengsam.quick.domain.dreami.repository.DreamiRepository;
 import com.naengsam.quick.domain.dreami.repository.DreamiRequestDeniedDetailsRepository;
@@ -21,6 +24,7 @@ import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -32,6 +36,8 @@ import com.naengsam.quick.domain.payment.dto.MonthlyMoneyAggregate;
 import com.naengsam.quick.domain.payment.entity.MoneyTxStatusCd;
 import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
 import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
+import com.naengsam.quick.domain.upload.service.S3PresignService;
+import com.naengsam.quick.domain.user.service.UserActivityResolver;
 import com.naengsam.quick.global.exception.BusinessException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -58,8 +64,10 @@ public class DreamiService {
     private final OrderService orderService;
     private final NearbyOrderFinder nearbyOrderFinder;
     private final MatchingService matchingService;
+    private final S3PresignService s3PresignService;
     private final MoneyTxRepository moneyTxRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final UserActivityResolver userActivityResolver;
 
     /**
      * 저장 직전에 락 걸린 조회로 승인 여부를 다시 확인한다. {@code assertNotAlreadyApproved}로 미리 확인했더라도, 그 뒤 저장
@@ -89,6 +97,9 @@ public class DreamiService {
 
     /**
      * 드리미를 온라인 상태로 전환한다. 승인된 드리미만 가능하며, 본인이 드리미/부르미 어느 역할로든 수행 중인 주문이 있으면(dreami_id == boormi_id) 온라인 전환할 수 없다.
+     *
+     * <p>이미 온라인인 것은 막지 않는다 — 클라이언트의 온라인 상태는 메모리에만 있어 새로고침하면 사라지는데, 여기서 거절해버리면 화면이 오프라인으로 굳은 채 되돌릴 방법이 없어진다.
+     * 중복 등록 자체는 {@code registerDreami}가 무시한다.
      */
     @Transactional(readOnly = true)
     public void goOnline(UUID dreamiId, GeoPoint location) {
@@ -97,7 +108,7 @@ public class DreamiService {
         if (dreami.getRequestCd() != DreamiCd.APPROVED) {
             throw new BusinessException(DreamiErrorCode.NOT_APPROVED);
         }
-        if (orderRepository.countActiveOrders(dreamiId) > 0) {
+        if (userActivityResolver.resolve(dreamiId).orderId() != null) {
             throw new BusinessException(DreamiErrorCode.ALREADY_HAS_ACTIVE_ORDER);
         }
 
@@ -115,10 +126,23 @@ public class DreamiService {
         }
         UUID orderId = matchingService.findOrderIdByOfferId(offerId)
                 .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
-        Orders order = orderRepository.findById(orderId)
+        Orders order = orderRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
 
-        order.markPendingBoormiConfirmation();
+        // 락을 잡은 뒤 재확인 — 다른 드리미가 먼저 커밋해 이미 MATCHING이 아니게 됐을 수 있다.
+        if (order.getOrderCd() == OrderCd.PENDING_BOORMI_CONFIRMATION) {
+            if (dreamiId.equals(order.getDreamiId())) {
+                // 본인이 이미 성공시킨 수락의 재시도(더블클릭/네트워크 재시도) — 멱등하게 조용히 반환한다.
+                return;
+            }
+            throw new BusinessException(MatchingErrorCode.ALREADY_ACCEPTED_BY_OTHER);
+        }
+
+        if (order.getOrderCd() != OrderCd.MATCHING) {
+            throw new BusinessException(MatchingErrorCode.NOT_ACCEPTABLE_STATUS);
+        }
+
+        order.markPendingBoormiConfirmation(dreamiId);
 
         // 엔진은 수락 즉시 부르미에게 확인 팝업을 보내고, 부르미의 확정은 주문이 PENDING_BOORMI_CONFIRMATION 인지
         // 검사하므로 커밋 후에 제출해야 한다. 커밋 후 처리는 MatchingService 의 리스너가 담당한다.
@@ -134,6 +158,24 @@ public class DreamiService {
             throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
         }
         matchingService.rejectByDreami(offerId);
+    }
+
+    /**
+     * 오퍼(수락 전 콜)의 물품 사진 URL을 조회한다. 아직 수락 전이라 주문의 dreami_id가 비어있어
+     * "이 주문의 드리미"로는 검증할 수 없으므로, 이 오퍼를 받은 드리미 본인인지로 검증한다.
+     * 매칭 엔진의 SSE 발송 경로(단일 스레드로 직렬화됨)에 S3 조회를 얹지 않기 위해, URL은 이렇게
+     * 드리미가 사진 버튼을 눌러 필요할 때만 호출하는 별도 API로 뗀다. 사진이 없거나 조회 실패 시 null.
+     */
+    @Transactional(readOnly = true)
+    public OfferItemPhotoDto getOfferItemPhoto(UUID offerId, UUID dreamiId) {
+        if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
+            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
+        }
+        UUID orderId = matchingService.findOrderIdByOfferId(offerId)
+                .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
+        String imageKey = orderService.getOrder(orderId).getImageKey();
+        String itemPhotoUrl = imageKey == null ? null : s3PresignService.resolveDownloadUrl(imageKey);
+        return new OfferItemPhotoDto(itemPhotoUrl);
     }
 
     /**
@@ -216,11 +258,33 @@ public class DreamiService {
     }
 
     /**
-     * 드리미가 수행한(수행 중인) 배달을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하다.
+     * 드리미가 수행한(수행 중인) 배달 전체를 최신순으로 조회한다.
      */
     @Transactional(readOnly = true)
-    public BoormiOrdersResponse getMyOrders(UUID dreamiId, String cursor, int size, OrderCd status) {
-        return orderService.getOrders(dreamiId, Role.DREAMI, cursor, size, status);
+    public BoormiOrdersResponse getMyOrders(UUID dreamiId) {
+        return orderService.getOrders(dreamiId, Role.DREAMI);
+    }
+
+    /**
+     * 배달 하나를 주문 id로 직접 조회한다. 활동 내역 상세 화면이 목록 페이지네이션(getMyOrders)과 무관하게
+     * 딥링크/새로고침으로 바로 들어왔을 때, 그 배달 하나만 정확히 찾기 위해 쓴다.
+     */
+    @Transactional(readOnly = true)
+    public OrderSummaryDto getMyDelivery(UUID dreamiId, UUID orderId) {
+        Orders order = orderService.getOrder(orderId);
+        if (!dreamiId.equals(order.getDreamiId())) {
+            throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
+        }
+        return OrderSummaryDto.from(order);
+    }
+
+    /**
+     * 활동 내역 화면의 "총 N건" 표시용 전체 배달 건수(상태 무관). 목록은 페이지네이션으로 일부만 들고 있어
+     * records.length 로는 실제 총 건수를 알 수 없어서 별도로 집계한다.
+     */
+    @Transactional(readOnly = true)
+    public OrderCountDto getMyDeliveryCount(UUID dreamiId) {
+        return OrderCountDto.of(orderRepository.countByDreamiId(dreamiId));
     }
 
     private long amountOf(Map<YearMonth, MonthlyMoneyAggregate> byMonth, YearMonth month) {
@@ -254,5 +318,42 @@ public class DreamiService {
         long todayCompletedCount = deliveryRepository.countDeliveredBetween(dreamiId, start, end);
 
         return DreamiTodayStatsDto.of(todayRevenue, todayCompletedCount);
+    }
+
+    /**
+     * 관리자 검수 대기 중(REQUESTED)인 드리미 인증 신청 목록을 조회한다. 신분증/범죄경력 사진은 presigned 다운로드 URL로 변환해 담는다.
+     */
+    @Transactional(readOnly = true)
+    public List<DreamiReviewDto> listPendingReviews() {
+        return dreamiRepository.findAllByRequestCd(DreamiCd.REQUESTED).stream()
+                .map(dreami -> DreamiReviewDto.of(dreami,
+                        s3PresignService.generateDownloadUrl(dreami.getIdCardKey()),
+                        s3PresignService.generateDownloadUrl(dreami.getCriminalRecordKey())))
+                .toList();
+    }
+
+    /**
+     * 관리자가 드리미 인증 신청을 승인한다.
+     */
+    @Transactional
+    public void approveReview(UUID dreamiId) {
+        Dreami dreami = dreamiRepository.findByDreamiId(dreamiId)
+                .orElseThrow(() -> new BusinessException(DreamiErrorCode.NOT_FOUND));
+        dreami.approve();
+
+        Boormi boormi = boormiRepository.findById(dreamiId)
+                .orElseThrow(() -> new BusinessException(DreamiErrorCode.NOT_FOUND));
+        boormi.approve();
+    }
+
+    /**
+     * 관리자가 드리미 인증 신청을 반려한다. 반려 사유는 드리미 프로필 조회에 쓰이는 반려 이력 테이블에도 함께 남긴다.
+     */
+    @Transactional
+    public void rejectReview(UUID dreamiId, String reason) {
+        Dreami dreami = dreamiRepository.findByDreamiId(dreamiId)
+                .orElseThrow(() -> new BusinessException(DreamiErrorCode.NOT_FOUND));
+        dreami.reject(reason);
+        dreamiRequestDeniedDetailsRepository.save(DreamiRequestDeniedDetails.create(dreamiId, reason));
     }
 }

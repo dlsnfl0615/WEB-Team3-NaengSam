@@ -9,13 +9,17 @@ import { RoleProvider } from "./shared/lib/role/RoleProvider";
 import { SseProvider } from "./shared/lib/sse/SseProvider";
 import { SseStatusBanner } from "./shared/lib/sse/SseStatusBanner";
 import { setUnauthorizedHandler } from "./shared/api";
+import { markForcedLogout } from "./shared/lib";
 import { useSessionStore } from "./shared/store/sessionStore";
 import { ROUTES } from "./shared/config/routes";
+import { ToastViewport } from "./shared/ui";
 
 // 세션 만료(401 AUTH_001~003) 시 로컬 세션을 비우고 로그인 화면으로 보낸다.
 // store.logout()이 아니라 setState로 비운다 — 이미 미인증 상태에서 api.logout을 부르면
 // 또 401이 나 무한 루프가 되기 때문이다.
 setUnauthorizedHandler(() => {
+  // 리다이렉트는 전체 리로드라 메모리로 사유를 넘길 수 없어 sessionStorage에 표식만 남긴다.
+  markForcedLogout();
   useSessionStore.setState({ user: null, isAuthenticated: false });
   if (window.location.pathname !== ROUTES.login) {
     window.location.assign(ROUTES.login);
@@ -31,6 +35,7 @@ createRoot(document.getElementById("root")!).render(
       <SseProvider>
         <App />
         <SseStatusBanner />
+        <ToastViewport />
       </SseProvider>
     </RoleProvider>
   </StrictMode>,

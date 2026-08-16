@@ -61,4 +61,28 @@ public class Dreami {
         dreami.dreamiAvgScore = BigDecimal.ZERO;
         return dreami;
     }
+
+    /**
+     * 관리자가 인증 신청을 승인한다.
+     */
+    public void approve() {
+        this.requestCd = DreamiCd.APPROVED;
+        this.reviewDtm = LocalDateTime.now();
+    }
+
+    /**
+     * 부르미가 남긴 리뷰를 반영해 드리미 평균 평점을 갱신한다.
+     */
+    public void updateAvgScore(BigDecimal avgScore) {
+        this.dreamiAvgScore = avgScore;
+    }
+
+    /**
+     * 관리자가 인증 신청을 반려한다.
+     */
+    public void reject(String detail) {
+        this.requestCd = DreamiCd.REJECTED;
+        this.reviewDtm = LocalDateTime.now();
+        this.rejectDetail = detail;
+    }
 }

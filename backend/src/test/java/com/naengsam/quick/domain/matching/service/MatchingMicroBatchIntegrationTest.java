@@ -20,11 +20,14 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanValidato
 import com.naengsam.quick.domain.matching.policy.config.AssignmentPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.EligibilityPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
+import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.Orders;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.UUID;
@@ -43,8 +46,10 @@ class MatchingMicroBatchIntegrationTest {
 
     private static MatchingPolicyProperties matchingPolicyProperties(int maxConcurrentOffers) {
         return new MatchingPolicyProperties(
-                Duration.ofMillis(200),
+                Duration.ofMillis(500),
                 maxConcurrentOffers,
+                OfferQuotaMode.FIXED,
+                5,
                 AssignmentPolicyType.LEGACY_ORDER_FIRST,
                 ScoringPolicyType.ORDER_WAIT,
                 EligibilityPolicyType.LEGACY,
@@ -62,9 +67,9 @@ class MatchingMicroBatchIntegrationTest {
 
     private MatchingService newMatchingService(int maxConcurrentOffers) {
         MatchingEngine matchingEngine = mock(MatchingEngine.class);
-        SseService sseService = mock(SseService.class);
-        MatchingActionScheduler matchingActionScheduler = mock(MatchingActionScheduler.class);
-        MatchingBatchDispatcher matchingBatchDispatcher = mock(MatchingBatchDispatcher.class);
+        NotificationService notificationService = mock(NotificationService.class);
+        // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 이 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
+        when(notificationService.isReachableNow(any())).thenReturn(true);
         DeliveryService deliveryService = mock(DeliveryService.class);
         Clock clock = Clock.systemDefaultZone();
 
@@ -74,15 +79,18 @@ class MatchingMicroBatchIntegrationTest {
         MatchingPolicyProperties properties = matchingPolicyProperties(maxConcurrentOffers);
         MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
         MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
-                new MatchingPlanValidator(new LegacyOfferPolicy()), matchingActionScheduler, sseService, OFFER_TTL);
+                new MatchingPlanValidator(new LegacyOfferPolicy()), mock(MatchingService.class),
+                notificationService, OFFER_TTL);
 
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
                 properties, clock);
 
         return new MatchingService(
-                matchingEngine, sseService, matchingActionScheduler, matchingBatchDispatcher, deliveryService, clock,
-                assembler, assignmentPolicy, matchingPlanApplier, properties);
+                matchingEngine, notificationService, deliveryService,
+                clock,
+                assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
+                new SimpleMeterRegistry());
     }
 
     @Test

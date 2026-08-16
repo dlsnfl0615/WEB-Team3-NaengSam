@@ -10,13 +10,14 @@ import type {
   CancelByAdmin200,
   CancelByBoormi200,
   CancelByDreami200,
+  ChangeRoleParams,
   ChargePoint200,
   ConfirmDreamiRequest,
   DeliveryPhotoRequest,
-  DevSubscribe200,
   DreamiAuthRequestDto,
   DreamiLocationRequest,
   DreamiOnlineRequest,
+  DreamiReviewRejectRequest,
   ExchangeMoneyToPoint200,
   ExchangeRequest,
   ExpectedValue200,
@@ -26,40 +27,53 @@ import type {
   FindNearbyCalls200,
   FindNearbyDreamis200,
   FindNearbyOrders200,
+  FindNearbyWaitingDreamis200,
   FinishDelivery200,
   GeoPoint,
   Get200,
+  GetBoormiDashboard200,
+  GetBoormiOrder200,
+  GetBoormiOrderCount200,
   GetBoormiOrders200,
-  GetBoormiOrdersParams,
   GetCoordinates200,
   GetCurrentStatus200,
   GetDashboard200,
+  GetDeliveryCompletion200,
+  GetDeliveryContact200,
   GetDeliveryDetail200,
+  GetDreamiOrder200,
+  GetDreamiOrderCount200,
   GetDreamiOrders200,
-  GetDreamiOrdersParams,
+  GetMyReview200,
+  GetOfferItemPhoto200,
   GetOrderOfferGroup200,
   GetParams,
+  GetPickupPhoto200,
   GetPresignedUrl200,
   GetPresignedUrlParams,
   GetProfile200,
+  GetReceivedReview200,
   GetTodayStats200,
   GetWallet200,
+  Login200,
   LoginRequest,
   MatchingStartRequest,
   Me200,
   NearbyDreamiRequest,
   NearbyOrderRequest,
-  OrderAndStart200,
-  OrderAndStartParams,
   OrderRequest,
+  Pending200,
   PickupFinishByDreami200,
   PointChargeRequest,
+  PollLoginQueue200,
+  PushSubscriptionRequest,
+  PushUnsubscribeRequest,
   PutParams,
   RegisterDreami200,
   RejectDreamiRequest,
+  ReviewContentRequest,
+  ReviewScoreRequest,
   SaveAddress200,
-  Seed200,
-  SeedParams,
   SendVerificationCodeRequest,
   SignUpRequest,
   Signup200,
@@ -67,9 +81,12 @@ import type {
   Subscribe204,
   SubscribeOrder200,
   UpdateDreamiLocation200,
+  VapidPublicKey200,
   VerifyCodeRequest,
   WaitingDreamis200,
-  WaitingOrders200
+  WaitingOrders200,
+  WriteContent200,
+  WriteScore200
 } from './model';
 
 import { customInstance } from '../http/customInstance';
@@ -191,16 +208,119 @@ const logout = (
     }
 
 /**
- * 이메일/비밀번호로 로그인하고 세션을 생성한다.
+ * 이메일/비밀번호로 로그인한다. 동시 로그인이 몰리면 세션 대신 대기 티켓(QUEUED)을 발급한다.
  * @summary 로그인
  */
 const login = (
     loginRequest: LoginRequest,
- options?: SecondParameter<typeof customInstance<void>>,) => {
-      return customInstance<void>(
+ options?: SecondParameter<typeof customInstance<Login200>>,) => {
+      return customInstance<Login200>(
       {url: `/api/v1/user/login`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
       data: loginRequest
+    },
+      options);
+    }
+
+/**
+ * 대기 티켓의 순번을 조회하고, 차례가 되면 그 자리에서 세션을 생성한다. 응답의 pollAfterMs 만큼 기다렸다가 다시 호출한다.
+ * @summary 로그인 대기열 상태 조회
+ */
+const pollLoginQueue = (
+    ticketId: string,
+ options?: SecondParameter<typeof customInstance<PollLoginQueue200>>,) => {
+      return customInstance<PollLoginQueue200>(
+      {url: `/api/v1/user/login/queue/${ticketId}`, method: 'POST'
+    },
+      options);
+    }
+
+/**
+ * 브라우저 PushSubscription.toJSON() 결과를 그대로 보낸다. 같은 endpoint를 다시 보내면 행을 새로 만들지 않고 소유자와 키를 갱신하는 멱등 연산이라, 앱 포그라운드 복귀마다 재등록해도 안전하다.
+ * @summary 웹푸시 구독 등록
+ */
+const createSubscription = (
+    pushSubscriptionRequest: PushSubscriptionRequest,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/push/subscriptions`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: pushSubscriptionRequest
+    },
+      options);
+    }
+
+/**
+ * 로그아웃 직전에 호출한다(로그아웃 후에는 세션이 없어 호출할 수 없다). 이미 없는 구독이어도 성공이다.
+ * @summary 웹푸시 구독 해제
+ */
+const deleteSubscription = (
+    pushUnsubscribeRequest: PushUnsubscribeRequest,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/push/subscriptions`, method: 'DELETE',
+      headers: {'Content-Type': 'application/json', },
+      data: pushUnsubscribeRequest
+    },
+      options);
+    }
+
+/**
+ * 별점만 남긴 상태로 다시 들어왔을 때 기존 리뷰를 확인한다.
+ * @summary 내가 남긴 리뷰 조회
+ */
+const getMyReview = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetMyReview200>>,) => {
+      return customInstance<GetMyReview200>(
+      {url: `/api/v1/orders/${orderId}/review`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 완료된 주문의 상대방에게 별점을 남긴다. 리뷰 내용은 이후 PATCH 로 채운다.
+ * @summary 별점 등록
+ */
+const writeScore = (
+    orderId: string,
+    reviewScoreRequest: ReviewScoreRequest,
+ options?: SecondParameter<typeof customInstance<WriteScore200>>,) => {
+      return customInstance<WriteScore200>(
+      {url: `/api/v1/orders/${orderId}/review`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: reviewScoreRequest
+    },
+      options);
+    }
+
+/**
+ * 먼저 남긴 별점 리뷰에 내용을 채우거나 수정한다.
+ * @summary 리뷰 내용 등록
+ */
+const writeContent = (
+    orderId: string,
+    reviewContentRequest: ReviewContentRequest,
+ options?: SecondParameter<typeof customInstance<WriteContent200>>,) => {
+      return customInstance<WriteContent200>(
+      {url: `/api/v1/orders/${orderId}/review`, method: 'PATCH',
+      headers: {'Content-Type': 'application/json', },
+      data: reviewContentRequest
+    },
+      options);
+    }
+
+/**
+ * 부르미 매칭 지도용. 기준 좌표 반경 내에서 콜을 기다리는 드리미를 최대 10명까지 가까운 순으로 반환한다.
+ * @summary 주변 대기 드리미 조회
+ */
+const findNearbyWaitingDreamis = (
+    nearbyDreamiRequest: NearbyDreamiRequest,
+ options?: SecondParameter<typeof customInstance<FindNearbyWaitingDreamis200>>,) => {
+      return customInstance<FindNearbyWaitingDreamis200>(
+      {url: `/api/v1/matching/dreamis/nearby`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: nearbyDreamiRequest
     },
       options);
     }
@@ -290,29 +410,14 @@ const findNearbyCalls = (
     }
 
 /**
- * orderId/dreamiId/boormiId로 배달을 시작(PICKUP_NORMAL)하고 식별자를 반환한다. orderId를 넘기면 해당 주문 식별자로 등록하고, 생략하면 새로 발급한다.
- * @summary 배달 시딩(dev)
+ * 부르미가 담당 드리미를 깨운다. 드리미에게 인앱(SSE) 알림과 웹푸시가 전달된다. 해당 주문의 부르미만 보낼 수 있고, 완료·취소 등 종료된 배달에서는 보낼 수 없다.
+ * @summary 드리미에게 핑 보내기
  */
-const seed = (
-    params?: SeedParams,
- options?: SecondParameter<typeof customInstance<Seed200>>,) => {
-      return customInstance<Seed200>(
-      {url: `/api/v1/delivery/test/seed`, method: 'POST',
-        params
-    },
-      options);
-    }
-
-/**
- * boormiId/dreamiId로 더미 주문을 DB에 저장하고, 해당 주문으로 배달을 시작(PICKUP_NORMAL)한 뒤 식별자를 반환한다.
- * @summary 주문 생성 + 배달 시작(dev)
- */
-const orderAndStart = (
-    params: OrderAndStartParams,
- options?: SecondParameter<typeof customInstance<OrderAndStart200>>,) => {
-      return customInstance<OrderAndStart200>(
-      {url: `/api/v1/delivery/test/order-and-start`, method: 'POST',
-        params
+const sendPing = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/delivery/orders/${orderId}/ping`, method: 'POST'
     },
       options);
     }
@@ -350,7 +455,7 @@ const finishDelivery = (
     }
 
 /**
- * 드리미가 5~10초마다 호출해 현재 위치만 전달한다. 성공 시 ack만 응답하고, 상태 변경은 SSE로 전달된다. 이미 취소/완료된 주문이면 폴링 중단 신호로 에러를 응답한다.
+ * 드리미가 5~10초마다 호출해 현재 위치를 전달한다. 첫 위치가 도착하면 서버가 계산한 '드리미→픽업지' 경로와 배송완료예상시간을 함께 응답한다(아직 계산 전이면 빈 목록/null). 상태 변경은 SSE로 전달된다. 이미 취소/완료된 주문이면 폴링 중단 신호로 에러를 응답한다.
  * @summary 드리미 위치 갱신
  */
 const updateDreamiLocation = (
@@ -428,18 +533,6 @@ const cancelOrderByBoormi = (
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
       {url: `/api/v1/debug/matching/orders/${orderId}/cancel`, method: 'POST'
-    },
-      options);
-    }
-
-/**
- * @summary 서버 폴백용 모든 요청 재매칭
- */
-const rematchWaitingGroups = (
-
- options?: SecondParameter<typeof customInstance<void>>,) => {
-      return customInstance<void>(
-      {url: `/api/v1/debug/matching/orders/rematch`, method: 'POST'
     },
       options);
     }
@@ -573,6 +666,33 @@ const findNearbyDreamis = (
     }
 
 /**
+ * @summary 드리미 인증 신청 반려
+ */
+const reject = (
+    dreamiId: string,
+    dreamiReviewRejectRequest: DreamiReviewRejectRequest,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/debug/dreami-review/${dreamiId}/reject`, method: 'POST',
+      headers: {'Content-Type': 'application/json', },
+      data: dreamiReviewRejectRequest
+    },
+      options);
+    }
+
+/**
+ * @summary 드리미 인증 신청 승인
+ */
+const approve = (
+    dreamiId: string,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/debug/dreami-review/${dreamiId}/approve`, method: 'POST'
+    },
+      options);
+    }
+
+/**
  * 출발지·도착지·물건유형으로 예상 가격/시간/거리를 계산한다.
  * @summary 예상 견적 조회
  */
@@ -588,15 +708,14 @@ const expectedValue = (
     }
 
 /**
- * 로그인한 부르미가 신청한 주문을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하며, cursor 는 이전 응답의 nextCursor 를 그대로 넘긴다.
+ * 로그인한 부르미가 신청한 주문 전체를 최신순으로 조회한다.
  * @summary 내 주문 목록 조회
  */
 const getBoormiOrders = (
-    params?: GetBoormiOrdersParams,
+
  options?: SecondParameter<typeof customInstance<GetBoormiOrders200>>,) => {
       return customInstance<GetBoormiOrders200>(
-      {url: `/api/v1/boormi/calls`, method: 'GET',
-        params
+      {url: `/api/v1/boormi/calls`, method: 'GET'
     },
       options);
     }
@@ -705,14 +824,16 @@ const getWallet = (
     }
 
 /**
- * 로그인 한 사용자가 부르미/드리미 전환 가능한지 확인한다.
+ * 로그인 한 사용자가 target 역할로 전환 가능한지 확인한다.
+ * 매칭·배달이 진행 중이면 어느 방향으로도 전환할 수 없다.
  * @summary 부르미/드리미 전환
  */
 const changeRole = (
-
+    params: ChangeRoleParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/user/role`, method: 'GET'
+      {url: `/api/v1/user/role`, method: 'GET',
+        params
     },
       options);
     }
@@ -758,7 +879,33 @@ const subscribe = (
     }
 
 /**
- * 드리미로서 응답 대기 중인 제안(pendingOffer)과, 부르미로서 확인 대기 중인 드리미 수락 정보(incomingDreami)를 반환한다. 진행 중인 것이 없으면 해당 필드는 null이다.
+ * 브라우저가 pushManager.subscribe의 applicationServerKey로 쓰는 공개키. 공개 상수이므로 로그인 없이 조회할 수 있다. 미설정(푸시 비활성)이면 publicKey는 null이며, 이 경우 프론트는 권한 요청 UI를 렌더하지 않는다.
+ * @summary Web Push VAPID 공개키 조회
+ */
+const vapidPublicKey = (
+
+ options?: SecondParameter<typeof customInstance<VapidPublicKey200>>,) => {
+      return customInstance<VapidPublicKey200>(
+      {url: `/api/v1/push/vapid-public-key`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 이 주문에서 상대방이 나에게 남긴 별점·리뷰 내용을 조회한다. 아직 안 남겼으면 result가 null이다.
+ * @summary 받은 리뷰 조회
+ */
+const getReceivedReview = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetReceivedReview200>>,) => {
+      return customInstance<GetReceivedReview200>(
+      {url: `/api/v1/orders/${orderId}/review/received`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 드리미로서 응답 대기 중인 제안(pendingOffer)과, 부르미로서 확인 대기 중인 드리미 수락 정보(incomingDreami)를 반환한다. 진행 중인 것이 없으면 해당 필드는 null이다. dreamiOnline은 드리미가 매칭엔진에 등록돼 오퍼를 기다리는 중인지다(새로고침 후 온라인 상태 복원용).
  * @summary 현재 매칭 상태 조회
  */
 const getCurrentStatus = (
@@ -784,15 +931,40 @@ const getProfile = (
     }
 
 /**
- * 로그인한 드리미가 수행한(수행 중인) 배달을 최신순 커서 페이지네이션으로 조회한다. status 로 단일 상태 필터링이 가능하며, cursor 는 이전 응답의 nextCursor 를 그대로 넘긴다.
+ * 수락 전 콜(오퍼)에서 부르미가 등록한 물품 사진 URL을 조회한다. 이 오퍼를 받은 드리미 본인만 조회할 수 있다.
+ * @summary 오퍼 물품 사진 조회
+ */
+const getOfferItemPhoto = (
+    offerId: string,
+ options?: SecondParameter<typeof customInstance<GetOfferItemPhoto200>>,) => {
+      return customInstance<GetOfferItemPhoto200>(
+      {url: `/api/v1/dreami/offers/${offerId}/item-photo`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 로그인한 드리미가 수행한(수행 중인) 배달 전체를 최신순으로 조회한다.
  * @summary 드리미 활동 내역 조회
  */
 const getDreamiOrders = (
-    params?: GetDreamiOrdersParams,
+
  options?: SecondParameter<typeof customInstance<GetDreamiOrders200>>,) => {
       return customInstance<GetDreamiOrders200>(
-      {url: `/api/v1/dreami/deliveries`, method: 'GET',
-        params
+      {url: `/api/v1/dreami/deliveries`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 배달 하나를 주문 id로 직접 조회한다. 활동 내역 상세 화면이 목록 페이지네이션을 거치지 않고 딥링크/새로고침으로 바로 들어왔을 때 쓴다.
+ * @summary 내 배달 단건 조회
+ */
+const getDreamiOrder = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetDreamiOrder200>>,) => {
+      return customInstance<GetDreamiOrder200>(
+      {url: `/api/v1/dreami/deliveries/${orderId}`, method: 'GET'
     },
       options);
     }
@@ -806,6 +978,19 @@ const findCurrentDeliveryCard = (
  options?: SecondParameter<typeof customInstance<FindCurrentDeliveryCard200>>,) => {
       return customInstance<FindCurrentDeliveryCard200>(
       {url: `/api/v1/dreami/deliveries/current/card`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 활동 내역 화면의 총 건수 표시용으로, 상태 무관하게 로그인한 드리미의 전체 배달 건수를 조회한다.
+ * @summary 내 배달 전체 건수 조회
+ */
+const getDreamiOrderCount = (
+
+ options?: SecondParameter<typeof customInstance<GetDreamiOrderCount200>>,) => {
+      return customInstance<GetDreamiOrderCount200>(
+      {url: `/api/v1/dreami/deliveries/count`, method: 'GET'
     },
       options);
     }
@@ -837,19 +1022,6 @@ const getTodayStats = (
     }
 
 /**
- * 임의 userId(boormiId/dreamiId)로 로그인 없이 SSE를 구독한다. 테스트 콘솔 전용.
- * @summary SSE 구독(dev)
- */
-const devSubscribe = (
-    userId: string,
- options?: SecondParameter<typeof customInstance<DevSubscribe200>>,) => {
-      return customInstance<DevSubscribe200>(
-      {url: `/api/v1/delivery/test/subscribe/${userId}`, method: 'GET'
-    },
-      options);
-    }
-
-/**
  * 추적 화면용. 출발지·도착지 좌표와 현재 드리미 위치를 반환한다.
  * @summary 배달 상세 조회
  */
@@ -858,6 +1030,45 @@ const getDeliveryDetail = (
  options?: SecondParameter<typeof customInstance<GetDeliveryDetail200>>,) => {
       return customInstance<GetDeliveryDetail200>(
       {url: `/api/v1/delivery/orders/${orderId}`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 배달 추적 화면의 픽업사진 버튼용. 픽업 전이거나 사진이 없으면 result.pickupPhotoUrl이 null이다.
+ * @summary 픽업 인증 사진 조회
+ */
+const getPickupPhoto = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetPickupPhoto200>>,) => {
+      return customInstance<GetPickupPhoto200>(
+      {url: `/api/v1/delivery/orders/${orderId}/pickup-photo`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 진행 중인 배달의 상대방(부르미↔드리미) 이름과 전화번호를 반환한다. 해당 배달의 당사자만 조회할 수 있고, 완료·취소·반송 등 종료된 배달에서는 조회할 수 없다.
+ * @summary 배달 상대방 연락처 조회
+ */
+const getDeliveryContact = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetDeliveryContact200>>,) => {
+      return customInstance<GetDeliveryContact200>(
+      {url: `/api/v1/delivery/orders/${orderId}/contact`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 완료 화면용. 물품명·담당 드리미·결제금액·소요시간을 반환한다.
+ * @summary 배달 완료 요약 조회
+ */
+const getDeliveryCompletion = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetDeliveryCompletion200>>,) => {
+      return customInstance<GetDeliveryCompletion200>(
+      {url: `/api/v1/delivery/orders/${orderId}/completion`, method: 'GET'
     },
       options);
     }
@@ -887,13 +1098,39 @@ const waitingOrders = (
     }
 
 /**
- * @summary 드리미 제거
+ * @summary 검수 대기 중인 드리미 인증 신청 목록 조회
  */
-const removeDreami = (
-    dreamiId: string,
- options?: SecondParameter<typeof customInstance<void>>,) => {
-      return customInstance<void>(
-      {url: `/api/v1/debug/matching/dreamis/${dreamiId}`, method: 'DELETE'
+const pending = (
+
+ options?: SecondParameter<typeof customInstance<Pending200>>,) => {
+      return customInstance<Pending200>(
+      {url: `/api/v1/debug/dreami-review/pending`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 홈 화면의 누적 이용 건수·절감 금액과 이번 달 이용 건수를 집계해 반환한다.
+ * @summary 부르미 대시보드 조회
+ */
+const getBoormiDashboard = (
+
+ options?: SecondParameter<typeof customInstance<GetBoormiDashboard200>>,) => {
+      return customInstance<GetBoormiDashboard200>(
+      {url: `/api/v1/boormi/dashboard`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * 주문 하나를 id로 직접 조회한다. 활동 내역 상세 화면이 목록 페이지네이션을 거치지 않고 딥링크/새로고침으로 바로 들어왔을 때 쓴다.
+ * @summary 내 주문 단건 조회
+ */
+const getBoormiOrder = (
+    orderId: string,
+ options?: SecondParameter<typeof customInstance<GetBoormiOrder200>>,) => {
+      return customInstance<GetBoormiOrder200>(
+      {url: `/api/v1/boormi/calls/${orderId}`, method: 'GET'
     },
       options);
     }
@@ -911,7 +1148,32 @@ const unsubscribeOrder = (
       options);
     }
 
-return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,seed,orderAndStart,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,rematchWaitingGroups,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,getCurrentStatus,getProfile,getDreamiOrders,findCurrentDeliveryCard,getDashboard,getTodayStats,devSubscribe,getDeliveryDetail,getOrderOfferGroup,waitingOrders,removeDreami,unsubscribeOrder}};
+/**
+ * 활동 내역 화면의 총 건수 표시용으로, 상태 무관하게 로그인한 부르미의 전체 주문 건수를 조회한다.
+ * @summary 내 주문 전체 건수 조회
+ */
+const getBoormiOrderCount = (
+
+ options?: SecondParameter<typeof customInstance<GetBoormiOrderCount200>>,) => {
+      return customInstance<GetBoormiOrderCount200>(
+      {url: `/api/v1/boormi/calls/count`, method: 'GET'
+    },
+      options);
+    }
+
+/**
+ * @summary 드리미 제거
+ */
+const removeDreami = (
+    dreamiId: string,
+ options?: SecondParameter<typeof customInstance<void>>,) => {
+      return customInstance<void>(
+      {url: `/api/v1/debug/matching/dreamis/${dreamiId}`, method: 'DELETE'
+    },
+      options);
+    }
+
+return {get,put,chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,pollLoginQueue,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,findNearbyWaitingDreamis,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,sendPing,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getReceivedReview,getCurrentStatus,getProfile,getOfferItemPhoto,getDreamiOrders,getDreamiOrder,findCurrentDeliveryCard,getDreamiOrderCount,getDashboard,getTodayStats,getDeliveryDetail,getPickupPhoto,getDeliveryContact,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,getBoormiDashboard,getBoormiOrder,unsubscribeOrder,getBoormiOrderCount,removeDreami}};
 export type GetResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['get']>>>
 export type PutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['put']>>>
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
@@ -921,14 +1183,20 @@ export type VerifyCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof 
 export type SignupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['signup']>>>
 export type LogoutResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['logout']>>>
 export type LoginResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['login']>>>
+export type PollLoginQueueResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['pollLoginQueue']>>>
+export type CreateSubscriptionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['createSubscription']>>>
+export type DeleteSubscriptionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['deleteSubscription']>>>
+export type GetMyReviewResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getMyReview']>>>
+export type WriteScoreResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['writeScore']>>>
+export type WriteContentResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['writeContent']>>>
+export type FindNearbyWaitingDreamisResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findNearbyWaitingDreamis']>>>
 export type VerifyUploadedDocumentsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['verifyUploadedDocuments']>>>
 export type GoOnlineResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['goOnline']>>>
 export type GoOfflineResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['goOffline']>>>
 export type RejectOfferResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['rejectOffer']>>>
 export type AcceptOfferResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['acceptOffer']>>>
 export type FindNearbyCallsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findNearbyCalls']>>>
-export type SeedResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['seed']>>>
-export type OrderAndStartResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['orderAndStart']>>>
+export type SendPingResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['sendPing']>>>
 export type PickupFinishByDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['pickupFinishByDreami']>>>
 export type FinishDeliveryResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['finishDelivery']>>>
 export type UpdateDreamiLocationResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['updateDreamiLocation']>>>
@@ -937,7 +1205,6 @@ export type CancelByBoormiResult = NonNullable<Awaited<ReturnType<ReturnType<typ
 export type CancelByAdminResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['cancelByAdmin']>>>
 export type StartMatchingResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['startMatching']>>>
 export type CancelOrderByBoormiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['cancelOrderByBoormi']>>>
-export type RematchWaitingGroupsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['rematchWaitingGroups']>>>
 export type FindNearbyOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findNearbyOrders']>>>
 export type RejectByDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['rejectByDreami']>>>
 export type ExpireDreamiOfferResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['expireDreamiOffer']>>>
@@ -948,6 +1215,8 @@ export type AcceptByBoormiResult = NonNullable<Awaited<ReturnType<ReturnType<typ
 export type WaitingDreamisResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['waitingDreamis']>>>
 export type RegisterDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['registerDreami']>>>
 export type FindNearbyDreamisResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findNearbyDreamis']>>>
+export type RejectResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['reject']>>>
+export type ApproveResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['approve']>>>
 export type ExpectedValueResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['expectedValue']>>>
 export type GetBoormiOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiOrders']>>>
 export type SubscribeOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['subscribeOrder']>>>
@@ -961,15 +1230,26 @@ export type ChangeRoleResult = NonNullable<Awaited<ReturnType<ReturnType<typeof 
 export type MeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['me']>>>
 export type GetPresignedUrlResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getPresignedUrl']>>>
 export type SubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['subscribe']>>>
+export type VapidPublicKeyResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['vapidPublicKey']>>>
+export type GetReceivedReviewResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getReceivedReview']>>>
 export type GetCurrentStatusResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getCurrentStatus']>>>
 export type GetProfileResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getProfile']>>>
+export type GetOfferItemPhotoResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getOfferItemPhoto']>>>
 export type GetDreamiOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrders']>>>
+export type GetDreamiOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrder']>>>
 export type FindCurrentDeliveryCardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['findCurrentDeliveryCard']>>>
+export type GetDreamiOrderCountResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDreamiOrderCount']>>>
 export type GetDashboardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDashboard']>>>
 export type GetTodayStatsResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getTodayStats']>>>
-export type DevSubscribeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['devSubscribe']>>>
 export type GetDeliveryDetailResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDeliveryDetail']>>>
+export type GetPickupPhotoResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getPickupPhoto']>>>
+export type GetDeliveryContactResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDeliveryContact']>>>
+export type GetDeliveryCompletionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDeliveryCompletion']>>>
 export type GetOrderOfferGroupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getOrderOfferGroup']>>>
 export type WaitingOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['waitingOrders']>>>
-export type RemoveDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['removeDreami']>>>
+export type PendingResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['pending']>>>
+export type GetBoormiDashboardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiDashboard']>>>
+export type GetBoormiOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiOrder']>>>
 export type UnsubscribeOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['unsubscribeOrder']>>>
+export type GetBoormiOrderCountResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiOrderCount']>>>
+export type RemoveDreamiResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['removeDreami']>>>

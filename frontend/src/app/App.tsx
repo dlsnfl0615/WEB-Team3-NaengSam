@@ -1,5 +1,6 @@
 import { BrowserRouter, useRoutes } from 'react-router-dom'
 import { MatchingPopup } from '@/pages/matching'
+import { PushNavigationBridge } from '@/shared/lib/push/PushNavigationBridge'
 import { routes } from './routes'
 
 function AppRoutes() {
@@ -12,6 +13,7 @@ function App() {
     <BrowserRouter>
       <AppRoutes />
       <MatchingPopup />
+      <PushNavigationBridge />
     </BrowserRouter>
   )
 }

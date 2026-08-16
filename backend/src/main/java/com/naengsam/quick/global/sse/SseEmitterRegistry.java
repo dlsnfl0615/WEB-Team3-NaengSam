@@ -12,7 +12,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 로그인 사용자별 SSE 연결을 보관하고 전송한다. 구독마다 서버 내부용 connectionId를 발급하므로, 같은 사용자의 여러 탭과 EventSource
- * 재연결을 독립적으로 유지한다. 도메인에 독립적인 순수 인프라이므로 어느 도메인이든 {@link SseService}를 통해 재사용한다.
+ * 재연결을 독립적으로 유지한다. 도메인에 독립적인 순수 인프라이며,
+ * {@link com.naengsam.quick.global.notification.NotificationService}의 IN_APP 채널이 {@link SseService}를 통해 사용한다.
  *
  * <p>연결 수/이벤트 전송량은 Micrometer 로 노출한다(Grafana 관측용). 연결 종료 카운트는 {@link #remove}와
  * {@link #disconnectAll}에서만 세는데, 둘 다 emitter를 완료시키기 전에 맵에서 먼저 제거하므로 complete →
@@ -94,6 +95,12 @@ public class SseEmitterRegistry {
             return;
         }
         connections.forEach((connectionId, emitter) -> sendRaw(userId, connectionId, emitter, eventName, payload));
+    }
+
+    /** 현재 사용자에게 등록된 SSE 연결이 하나라도 있는지 락 없이 조회한다. */
+    public boolean isConnected(UUID userId) {
+        Map<String, SseEmitter> connections = emitters.get(userId);
+        return connections != null && !connections.isEmpty();
     }
 
     private void sendRaw(UUID userId, String connectionId, SseEmitter emitter, String eventName, Object payload) {

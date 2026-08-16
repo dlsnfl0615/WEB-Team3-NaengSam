@@ -160,7 +160,8 @@ CREATE TABLE `MONEY_LEDGERS` (
 CREATE TABLE `POINT_TX` (
                             `point_tx_id`  binary(16)  NOT NULL,
                             `type`         enum('CHARGE', 'PAYMENT', 'REFUND', 'EXCHANGE_IN')  NOT NULL,
-                            `status`       enum('PAID', 'REFUNDED_PARTIAL', 'REFUNDED_FULL')  NOT NULL,
+                            -- 배달 콜 결제는 배달이 끝나기 전까지 PENDING 으로 남고, 배달 완료 시 PAID 로 확정된다.
+                            `status`       enum('PENDING', 'PAID', 'REFUNDED_PARTIAL', 'REFUNDED_FULL')  NOT NULL,
                             `amount`       bigint      NOT NULL,
                             `created_dtm`  timestamp   NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                             `updated_dtm`  timestamp   NULL,
@@ -274,11 +275,15 @@ CREATE TABLE `DELIVERY` (
                             `delivery_end_dtm`    timestamp   NULL,
                             `received_dtm`        timestamp   NULL,
                             `route_path`          text        NULL      COMMENT '드리미 위치→픽업지 카카오 도보 경로 좌표 JSON([{latitude, longitude}, ...])',
-                            `estimated_completion_dtm` timestamp NULL    COMMENT '배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta)'
+                            `estimated_completion_dtm` timestamp NULL    COMMENT '배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta)',
+                            `last_location_dtm`   timestamp   NULL      COMMENT '드리미가 마지막으로 위치를 전송한 시각(GPS 끊김 판정용)',
+                            `offline_sms_sent_dtm` timestamp  NULL      COMMENT '드리미 장시간 무소식 안내 문자 발송 시각(재발송 방지). 위치 수신이 재개되면 NULL 로 되돌린다'
 );
 -- 이미 배포된 DB에는 위 CREATE 대신 아래 ALTER 로 컬럼을 추가한다.
 -- ALTER TABLE `DELIVERY` ADD COLUMN `route_path` text NULL COMMENT '드리미 위치→픽업지 카카오 도보 경로 좌표 JSON([{latitude, longitude}, ...])';
 -- ALTER TABLE `DELIVERY` ADD COLUMN `estimated_completion_dtm` timestamp NULL COMMENT '배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta)';
+-- ALTER TABLE `DELIVERY` ADD COLUMN `last_location_dtm` timestamp NULL COMMENT '드리미가 마지막으로 위치를 전송한 시각(GPS 끊김 판정용)';
+-- ALTER TABLE `DELIVERY` ADD COLUMN `offline_sms_sent_dtm` timestamp NULL COMMENT '드리미 장시간 무소식 안내 문자 발송 시각(재발송 방지). 위치 수신이 재개되면 NULL 로 되돌린다';
 
 CREATE TABLE `DELIVERY_ACCIDENT` (
                                      `accident_id`       binary(16)   NOT NULL,
@@ -363,6 +368,8 @@ ALTER TABLE `EXCHANGES` ADD CONSTRAINT `PK_EXCHANGES` PRIMARY KEY (`exchanges_id
 
 ALTER TABLE `BOORMI_REVIEW` ADD CONSTRAINT `PK_BOORMI_REVIEW` PRIMARY KEY (`review_id`);
 
+ALTER TABLE `BOORMI_REVIEW` ADD CONSTRAINT `UQ_BOORMI_REVIEW_ORDER` UNIQUE (`order_id`);
+
 ALTER TABLE `CANCEL` ADD CONSTRAINT `PK_CANCEL` PRIMARY KEY (`cancel_id`);
 
 ALTER TABLE `ADDRESS` ADD CONSTRAINT `PK_ADDRESS` PRIMARY KEY (`address_id`);
@@ -393,6 +400,8 @@ ALTER TABLE `COMPENSATION_CLAIM` ADD CONSTRAINT `PK_COMPENSATION_CLAIM` PRIMARY 
 ALTER TABLE `DREAMI_REQUEST_DENIED_DETAILS` ADD CONSTRAINT `PK_DREAMI_REQUEST_DENIED_DETAILS` PRIMARY KEY (`reject_id`);
 
 ALTER TABLE `DREAMI_REVIEW` ADD CONSTRAINT `PK_DREAMI_REVIEW` PRIMARY KEY (`review_id`);
+
+ALTER TABLE `DREAMI_REVIEW` ADD CONSTRAINT `UQ_DREAMI_REVIEW_ORDER` UNIQUE (`order_id`);
 
 ALTER TABLE `PARTNER_HANDOFF` ADD CONSTRAINT `FK_PARTNER_TO_PARTNER_HANDOFF_1` FOREIGN KEY (`partner_id`) REFERENCES `PARTNER` (`partner_id`);
 
@@ -496,3 +505,33 @@ ALTER TABLE `UPLOAD_SESSION` ADD CONSTRAINT `PK_UPLOAD_SESSION` PRIMARY KEY (`up
 ALTER TABLE `UPLOAD_SESSION` ADD CONSTRAINT `UQ_UPLOAD_SESSION_S3_KEY` UNIQUE (`s3_key`);
 
 ALTER TABLE `UPLOAD_SESSION` ADD CONSTRAINT `FK_BOORMI_TO_UPLOAD_SESSION_1` FOREIGN KEY (`boormi_id`) REFERENCES `BOORMI` (`boormi_id`);
+
+-- ============================================================
+-- ERD 도구 생성분 이후 추가 (웹푸시 구독)
+-- ============================================================
+
+-- endpoint 는 (브라우저, 기기, 서비스워커 등록) 조합마다 유일하므로 그 자체가 기기 식별자다.
+-- unique 를 (boormi_id, endpoint) 가 아니라 endpoint 단독으로 거는 것이 핵심이다 - 공용 기기에서 계정이
+-- 바뀌면 두 번째 행을 만드는 대신 소유자를 재배정해야 이전 사용자가 새 사용자의 알림을 받지 않는다.
+CREATE TABLE `PUSH_SUBSCRIPTION` (
+                                     `push_subscription_id`  binary(16)    NOT NULL,
+                                     `boormi_id`             binary(16)    NOT NULL,
+                                     `endpoint`              varchar(512)  NOT NULL  COMMENT 'push 서비스 엔드포인트 URL. 브라우저·기기·SW 조합마다 유일하므로 이것이 기기 식별자다',
+                                     `p256dh`                varchar(255)  NOT NULL  COMMENT '클라이언트 공개키(base64url)',
+                                     `auth`                  varchar(255)  NOT NULL  COMMENT '클라이언트 인증 시크릿(base64url)',
+                                     `user_agent`            varchar(255)  NULL      COMMENT '디버깅용 기기 식별 문구',
+                                     `created_dtm`           timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP,
+                                     `last_success_dtm`      timestamp     NULL      COMMENT '마지막 전송 성공 시각',
+                                     `consecutive_failures`  int           NOT NULL  DEFAULT 0  COMMENT '연속 실패 횟수. 10회 도달 시 정리 대상'
+);
+
+ALTER TABLE `PUSH_SUBSCRIPTION` ADD CONSTRAINT `PK_PUSH_SUBSCRIPTION` PRIMARY KEY (`push_subscription_id`);
+
+-- varchar(512) unique 는 utf8mb4 기준 2048바이트로 InnoDB 3072바이트 키 한계 아래다.
+-- 768자를 넘기게 되면 해시 컬럼으로 바꿔야 한다.
+ALTER TABLE `PUSH_SUBSCRIPTION` ADD CONSTRAINT `UQ_PUSH_SUBSCRIPTION_ENDPOINT` UNIQUE (`endpoint`);
+
+-- 사용자에게 푸시를 보낼 때마다 findAllByBoormiId 가 실행된다.
+CREATE INDEX `IX_PUSH_SUBSCRIPTION_BOORMI` ON `PUSH_SUBSCRIPTION` (`boormi_id`);
+
+-- 이미 배포된 DB에는 위 블록을 그대로 실행하면 된다(신규 테이블이라 기존 데이터에 영향 없음).

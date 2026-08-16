@@ -245,7 +245,7 @@ describe("SseProvider", () => {
     expect(sseStatus).toBe("connecting");
   });
 
-  it("closed면 안내 배너가 뜨고, '다시 연결'은 새 연결을 맺는다", () => {
+  it("closed면 안내 모달이 뜨고, '다시 연결'은 새 연결을 맺는다", () => {
     render(
       <SseProvider>
         <SseStatusBanner />
@@ -256,6 +256,7 @@ describe("SseProvider", () => {
     act(() => {
       FakeEventSource.instances[0].fail(FakeEventSource.CLOSED);
     });
+    expect(screen.getByRole("dialog", { name: "실시간 연결 종료 안내" })).toBeTruthy();
     expect(screen.getByText("실시간 연결이 종료됐어요")).toBeTruthy();
 
     act(() => {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import { Button, Card, TextField } from "@/shared/ui";
 import { isApiError } from "@/shared/api";
 import { useWalletStore } from "@/shared/store/walletStore";
@@ -9,7 +9,7 @@ const MIN_AMOUNT = 1000;
 
 /** 머니를 포인트로 전환하는 본문. */
 export function ConvertForm() {
-  const navigate = useNavigate();
+  const backOrHome = useBackOrHome();
   const money = useWalletStore((s) => s.money);
   const points = useWalletStore((s) => s.points);
   const exchange = useWalletStore((s) => s.exchange);
@@ -30,7 +30,7 @@ export function ConvertForm() {
     setError(null);
     try {
       await exchange(amount);
-      navigate(-1);
+      backOrHome();
     } catch (e) {
       // 전환에 실패하면 화면에 머물러 사유를 보여준다(잔액 부족 등).
       setError(isApiError(e) ? e.message : "전환에 실패했어요.");
@@ -41,11 +41,9 @@ export function ConvertForm() {
   return (
     <>
       <h1 className="text-xl font-bold tracking-[-0.4px] text-navy-900">
-        머니를 포인트로
-        <br />
-        전환할까요?
+        머니를 포인트로 전환할까요?
       </h1>
-      <span className="h-[9px] w-3/4 rounded-[5px] bg-track" />
+      {/*<span className="h-[9px] w-3/4 rounded-[5px] bg-track" />*/}
 
       <Card className="flex flex-col gap-3">
         <div className="flex items-center justify-between">

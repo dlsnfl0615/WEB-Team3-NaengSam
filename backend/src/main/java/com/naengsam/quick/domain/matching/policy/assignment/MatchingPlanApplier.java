@@ -6,8 +6,8 @@ import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
-import com.naengsam.quick.domain.matching.service.MatchingActionScheduler;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -28,19 +28,19 @@ import java.util.stream.Collectors;
 public class MatchingPlanApplier {
 
     private final MatchingPlanValidator planValidator;
-    private final MatchingActionScheduler matchingActionScheduler;
-    private final SseService sseService;
+    private final MatchingService matchingService;
+    private final NotificationService notificationService;
     private final Duration offerTtl;
 
     public MatchingPlanApplier(
             MatchingPlanValidator planValidator,
-            MatchingActionScheduler matchingActionScheduler,
-            SseService sseService,
+            MatchingService matchingService,
+            NotificationService notificationService,
             Duration offerTtl
     ) {
         this.planValidator = planValidator;
-        this.matchingActionScheduler = matchingActionScheduler;
-        this.sseService = sseService;
+        this.matchingService = matchingService;
+        this.notificationService = notificationService;
         this.offerTtl = offerTtl;
     }
 
@@ -94,8 +94,8 @@ public class MatchingPlanApplier {
         group.addOffersAndOpen(newOffers);
 
         for (MatchOffer offer : newOffers) {
-            matchingActionScheduler.scheduleDreamiOfferTimeout(offer.offerId(), offerTtl);
-            sseService.send(offer.dreamiId(), MatchingEventType.OFFER_POPUP,
+            matchingService.scheduleDreamiOfferTimeout(offer.offerId(), offerTtl);
+            notificationService.notify(offer.dreamiId(), MatchingEventType.OFFER_POPUP,
                     OfferPopupPayload.from(offer, group.orderSummary(), offerTtl));
         }
     }

@@ -1,9 +1,12 @@
 node_modules/
 package-lock.json
 users.json
+users.prod.json
 seed.sql
 orders.json
 agents.json
 videos/
+result/
 .env.local
+.env.prod
 

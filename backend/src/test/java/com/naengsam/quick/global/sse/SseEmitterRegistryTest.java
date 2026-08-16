@@ -76,6 +76,16 @@ class SseEmitterRegistryTest {
     }
 
     @Test
+    void isConnected는_연결이_하나라도_있는_사용자만_true를_반환한다() {
+        UUID connected = UUID.randomUUID();
+        UUID disconnected = UUID.randomUUID();
+        connectionsOf(connected).put("connection-1", mock(SseEmitter.class));
+
+        assertThat(registry.isConnected(connected)).isTrue();
+        assertThat(registry.isConnected(disconnected)).isFalse();
+    }
+
+    @Test
     void send중_IOException이_나면_emitter를_제거한다() throws IOException {
         UUID userId = UUID.randomUUID();
         SseEmitter emitter = mock(SseEmitter.class);

@@ -20,9 +20,9 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
-import com.naengsam.quick.domain.matching.service.MatchingActionScheduler;
+import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
-import com.naengsam.quick.global.sse.SseService;
+import com.naengsam.quick.global.notification.NotificationService;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -47,8 +47,8 @@ class MatchingPlanApplierTest {
     private static final LocalDateTime APPLIED_AT = LocalDateTime.of(2026, 8, 10, 12, 0, 5);
     private static final Duration OFFER_TTL = Duration.ofSeconds(30);
 
-    private MatchingActionScheduler matchingActionScheduler;
-    private SseService sseService;
+    private MatchingService matchingService;
+    private NotificationService notificationService;
     private MatchingPlanApplier applier;
 
     private Map<UUID, OrderOfferGroup> orderOfferGroupsByOrderId;
@@ -58,10 +58,11 @@ class MatchingPlanApplierTest {
 
     @BeforeEach
     void setUp() {
-        matchingActionScheduler = mock(MatchingActionScheduler.class);
-        sseService = mock(SseService.class);
+        matchingService = mock(MatchingService.class);
+        notificationService = mock(NotificationService.class);
         applier = new MatchingPlanApplier(
-                new MatchingPlanValidator(new LegacyOfferPolicy()), matchingActionScheduler, sseService, OFFER_TTL);
+                new MatchingPlanValidator(new LegacyOfferPolicy()), matchingService,
+                notificationService, OFFER_TTL);
 
         orderOfferGroupsByOrderId = new HashMap<>();
         dreamiMap = new HashMap<>();
@@ -138,7 +139,7 @@ class MatchingPlanApplierTest {
 
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         assertThat(group.offers()).isEmpty();
-        verifyNoInteractions(matchingActionScheduler, sseService);
+        verifyNoInteractions(matchingService, notificationService);
     }
 
     @Test
@@ -161,8 +162,8 @@ class MatchingPlanApplierTest {
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
-        verify(matchingActionScheduler, times(3)).scheduleDreamiOfferTimeout(any(), eq(OFFER_TTL));
-        verify(sseService, times(3)).send(any(), eq(MatchingEventType.OFFER_POPUP), any());
+        verify(matchingService, times(3)).scheduleDreamiOfferTimeout(any(), eq(OFFER_TTL));
+        verify(notificationService, times(3)).notify(any(), eq(MatchingEventType.OFFER_POPUP), any());
     }
 
     @Test
@@ -180,7 +181,7 @@ class MatchingPlanApplierTest {
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         assertThat(offersById).isEmpty();
-        verifyNoInteractions(matchingActionScheduler, sseService);
+        verifyNoInteractions(matchingService, notificationService);
     }
 
     @Test
@@ -219,7 +220,7 @@ class MatchingPlanApplierTest {
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
         assertThat(group.offers()).hasSize(1);
-        verifyNoInteractions(matchingActionScheduler, sseService);
+        verifyNoInteractions(matchingService, notificationService);
     }
 
     private OrderOfferGroup registerGroup(UUID orderId) {

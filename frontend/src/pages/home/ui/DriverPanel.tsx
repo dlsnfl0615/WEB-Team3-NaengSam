@@ -75,7 +75,7 @@ export function DriverPanel() {
 
       <Card variant="hero" className="flex flex-col gap-3">
         <p className="text-xl font-bold tracking-[-0.4px]">드리미 시작하기</p>
-        <div className="h-[9px] w-3/4 rounded-[5px] bg-navy-700" />
+        {/*<div className="h-[9px] w-3/4 rounded-[5px] bg-navy-700" />*/}
         <Button variant="primary" arrow block onClick={() => navigate(ROUTES.matching)}>
           드리미 시작하기
         </Button>
@@ -100,9 +100,16 @@ export function DriverPanel() {
           }
         />
       ) : (
-        <p className="py-6 text-center text-sm text-muted">
-          진행 중인 드림이 없어요.
-        </p>
+        <div className="flex flex-col items-center py-6">
+          <img
+            src="/dreami-no-dream.png"
+            alt=""
+            className="h-20 w-20 object-contain"
+          />
+          <p className="text-center text-sm text-muted">
+            진행 중인 드림이 없어요.
+          </p>
+        </div>
       )}
 
       <div className="grid grid-cols-2 gap-3">

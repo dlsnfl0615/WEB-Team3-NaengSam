@@ -5,11 +5,17 @@
   "type": "module",
   "description": "매칭 실경로 부하테스트. 프론트엔드 빌드와 분리되어 있습니다.",
   "scripts": {
-    "loadtest": "node run.mjs",
+    "loadtest": "ENV_FILE=config/.env.local node run.mjs",
     "db:reset": "node run.mjs --only=reset",
     "seed": "node run.mjs --only=seed",
     "drive": "node run.mjs --only=drive",
     "watch": "node run.mjs --only=watch",
+    "pins:dreamis": "node dreami-pin-test.mjs",
+    "cleanup": "node run.mjs --only=cleanup",
+    "tunnel": "ssh -N -L 13306:10.0.2.198:3306 symboorm-web",
+    "prod": "ENV_FILE=config/.env.prod node run.mjs",
+    "prod:seed": "ENV_FILE=config/.env.prod node run.mjs --only=seed",
+    "prod:cleanup": "ENV_FILE=config/.env.prod node run.mjs --only=cleanup",
     "postinstall": "playwright install chromium"
   },
   "devDependencies": {

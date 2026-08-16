@@ -9,9 +9,11 @@ export interface MenuItem {
   onClick?: () => void;
 }
 
+/** 드리미 등록 항목의 라벨. 화면에서 인증 상태에 따라 뱃지·동작을 주입한다. */
+export const VERIFY_MENU_LABEL = "본인인증 · 드리미 등록";
+
 export const ACCOUNT_MENU: MenuItem[] = [
-  { label: "내 정보 수정" },
-  { label: "본인인증 · 드리미 등록", badge: "완료" },
+  { label: VERIFY_MENU_LABEL },
   { label: "알림 설정" },
 ];
 

@@ -1,15 +1,19 @@
 package com.naengsam.quick.domain.delivery.controller;
 
+import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
+import com.naengsam.quick.domain.delivery.dto.DeliveryContactDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryPhotoRequest;
 import com.naengsam.quick.domain.delivery.dto.DeliveryStatusResponseDto;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationRequest;
 import com.naengsam.quick.domain.delivery.dto.DreamiLocationResponseDto;
+import com.naengsam.quick.domain.delivery.dto.PickupPhotoDto;
 import com.naengsam.quick.domain.delivery.exception.DeliveryErrorCode;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
+import com.naengsam.quick.domain.user.exception.UserErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
@@ -43,6 +47,53 @@ public class DeliveryController {
     public DeliveryDetailResponseDto getDeliveryDetail(
             @PathVariable UUID orderId, @LoginUser UUID userId) {
         return deliveryService.getDeliveryDetail(orderId, userId);
+    }
+
+    // 배달 완료 화면을 로드할 때 호출하는 함수 — 추적용 위치·경로 없이 완료 요약만 필요할 때 쓴다.
+    @Operation(summary = "배달 완료 요약 조회", description = "완료 화면용. 물품명·담당 드리미·결제금액·소요시간을 반환한다.")
+    @ApiErrorCodes(enumClass = DeliveryErrorCode.class, codes = {"DELIVERY_NOT_FOUND"})
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
+    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"NOT_RESOURCE_OWNER"})
+    @ApiErrorCodes(enumClass = UserErrorCode.class, codes = {"USER_NOT_FOUND"})
+    @GetMapping("/orders/{orderId}/completion")
+    public DeliveryCompletionDto getDeliveryCompletion(
+            @PathVariable UUID orderId, @LoginUser UUID userId) {
+        return deliveryService.getDeliveryCompletion(orderId, userId);
+    }
+
+    @Operation(summary = "픽업 인증 사진 조회",
+            description = "배달 추적 화면의 픽업사진 버튼용. 픽업 전이거나 사진이 없으면 result.pickupPhotoUrl이 null이다.")
+    @ApiErrorCodes(enumClass = DeliveryErrorCode.class, codes = {"DELIVERY_NOT_FOUND"})
+    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"NOT_RESOURCE_OWNER"})
+    @GetMapping("/orders/{orderId}/pickup-photo")
+    public PickupPhotoDto getPickupPhoto(
+            @PathVariable UUID orderId, @LoginUser UUID userId) {
+        return deliveryService.getPickupPhoto(orderId, userId);
+    }
+
+    // 배달 화면에서 '연락하기'를 눌렀을 때만 호출하는 함수 — 개인정보라 상세 조회에 싣지 않고 분리했다.
+    @Operation(summary = "배달 상대방 연락처 조회",
+            description = "진행 중인 배달의 상대방(부르미↔드리미) 이름과 전화번호를 반환한다. 해당 배달의 당사자만 조회할 수 있고, "
+                    + "완료·취소·반송 등 종료된 배달에서는 조회할 수 없다.")
+    @ApiErrorCodes(enumClass = DeliveryErrorCode.class, codes = {"DELIVERY_NOT_FOUND", "CONTACT_NOT_AVAILABLE"})
+    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"NOT_RESOURCE_OWNER"})
+    @ApiErrorCodes(enumClass = UserErrorCode.class, codes = {"USER_NOT_FOUND"})
+    @GetMapping("/orders/{orderId}/contact")
+    public DeliveryContactDto getDeliveryContact(
+            @PathVariable UUID orderId, @LoginUser UUID userId) {
+        return deliveryService.getDeliveryContact(orderId, userId);
+    }
+
+    // 연락 시트의 '핑 보내기'. 부르미만 보낼 수 있고(드리미 화면에는 버튼이 없다), 배달 상태는 바뀌지 않는다.
+    @Operation(summary = "드리미에게 핑 보내기",
+            description = "부르미가 담당 드리미를 깨운다. 드리미에게 인앱(SSE) 알림과 웹푸시가 전달된다. "
+                    + "해당 주문의 부르미만 보낼 수 있고, 완료·취소 등 종료된 배달에서는 보낼 수 없다. "
+                    + "같은 배달에는 30초에 한 번만 보낼 수 있다.")
+    @PostMapping("/orders/{orderId}/ping")
+    @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
+            codes = {"DELIVERY_NOT_FOUND", "NOT_ORDER_BOORMI", "CONTACT_NOT_AVAILABLE", "PING_TOO_FREQUENT"})
+    public void sendPing(@PathVariable UUID orderId, @LoginUser UUID boormiId) {
+        deliveryService.sendPing(orderId, boormiId);
     }
 
     @Operation(summary = "드리미 위치 갱신",

@@ -16,7 +16,7 @@ public enum DeliveryErrorCode implements BaseErrorCode {
     RECEIPT_CONFIRMATION_TIMEOUT(
             HttpStatus.CONFLICT, "DELIVERY_007", "확인 시간이 지나 자동으로 완료 처리되었어요."),
     CANCELLATION_RESTRICTED_DURING_DELIVERY(
-            HttpStatus.CONFLICT, "DELIVERY_008", "지금 취소하면 패널티가 부과될 수 있어요."),
+            HttpStatus.CONFLICT, "DELIVERY_008", "배달 중에는 취소할 수 없어요."),
     DAMAGE_REPORT_IN_PROGRESS(HttpStatus.CONFLICT, "DELIVERY_009", "처리 중인 건이라 진행할 수 없어요."),
     DELIVERY_NOT_FOUND(HttpStatus.NOT_FOUND, "DELIVERY_010", "존재하지 않는 배달 주문입니다."),
     DELIVERY_ALREADY_CANCELLED(HttpStatus.CONFLICT, "DELIVERY_012", "이미 취소된 건에 대한 요청입니다."),
@@ -49,7 +49,11 @@ public enum DeliveryErrorCode implements BaseErrorCode {
             HttpStatus.CONFLICT, "DELIVERY_030", "이미 반송이 완료된 건은 배달 완료 처리를 할 수 없습니다."),
     NOT_ORDER_BOORMI(HttpStatus.FORBIDDEN, "DELIVERY_031", "접근 권한이 없습니다."),
     DELIVERY_START_NOT_ALLOWED(
-            HttpStatus.CONFLICT, "DELIVERY_032", "배달을 시작할 수 없는 주문 상태입니다.");
+            HttpStatus.CONFLICT, "DELIVERY_032", "배달을 시작할 수 없는 주문 상태입니다."),
+    CONTACT_NOT_AVAILABLE(
+            HttpStatus.CONFLICT, "DELIVERY_033", "배달이 진행 중일 때만 연락처를 볼 수 있어요."),
+    PING_TOO_FREQUENT(
+            HttpStatus.TOO_MANY_REQUESTS, "DELIVERY_034", "방금 핑을 보냈어요. 잠시 후 다시 시도해 주세요.");
 
     private final HttpStatus status;
     private final String code;

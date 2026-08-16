@@ -1,5 +1,9 @@
 import { cn } from "@/shared/lib/cn";
-import { ACTIVITY_FILTERS, type ActivityFilter } from "./records";
+import {
+  ACTIVITY_FILTERS,
+  ACTIVITY_FILTER_LABEL,
+  type ActivityFilter,
+} from "./records";
 
 export interface FilterChipsProps {
   value: ActivityFilter;
@@ -24,7 +28,7 @@ export function FilterChips({ value, onChange }: FilterChipsProps) {
               selected ? "bg-teal-700 text-white" : "bg-track text-muted",
             )}
           >
-            {filter}
+            {ACTIVITY_FILTER_LABEL[filter]}
           </button>
         );
       })}

@@ -34,6 +34,9 @@ import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
+import com.naengsam.quick.domain.user.dto.ActiveContext;
+import com.naengsam.quick.domain.user.dto.ActiveRole;
+import com.naengsam.quick.domain.user.service.UserActivityResolver;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.entity.Role;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
@@ -96,6 +99,9 @@ class DreamiServiceTest {
 
     @Mock
     private ApplicationEventPublisher eventPublisher;
+
+    @Mock
+    private UserActivityResolver userActivityResolver;
 
     @InjectMocks
     private DreamiService dreamiService;
@@ -327,7 +333,8 @@ class DreamiServiceTest {
         Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
         ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
         given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
-        given(orderRepository.countActiveOrders(dreamiId)).willReturn(1L);
+        given(userActivityResolver.resolve(dreamiId))
+                .willReturn(ActiveContext.of(ActiveRole.DREAMI, UUID.randomUUID(), OrderCd.IN_PROGRESS));
 
         Throwable thrown = catchThrowable(() -> dreamiService.goOnline(dreamiId, location));
 
@@ -342,7 +349,22 @@ class DreamiServiceTest {
         Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
         ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
         given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
-        given(orderRepository.countActiveOrders(dreamiId)).willReturn(0L);
+        given(userActivityResolver.resolve(dreamiId)).willReturn(ActiveContext.idle());
+
+        dreamiService.goOnline(dreamiId, location);
+
+        verify(matchingService).registerDreami(dreamiId, location);
+    }
+
+    @Test
+    void 온라인전환_이미_매칭_대기중이어도_거절하지_않는다() {
+        // 클라이언트 온라인 상태는 메모리에만 있어 새로고침하면 사라진다. 여기서 거절하면 화면이 오프라인으로 굳어 되돌릴 수 없다.
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        ReflectionTestUtils.setField(dreami, "requestCd", DreamiCd.APPROVED);
+        given(dreamiRepository.findById(dreamiId)).willReturn(Optional.of(dreami));
+        given(userActivityResolver.resolve(dreamiId)).willReturn(ActiveContext.dreamiWaiting());
 
         dreamiService.goOnline(dreamiId, location);
 
@@ -424,13 +446,13 @@ class DreamiServiceTest {
     @Test
     void 활동내역조회_role_DREAMI로_orderService에_위임한다() {
         UUID dreamiId = UUID.randomUUID();
-        BoormiOrdersResponse expected = BoormiOrdersResponse.of(List.of(), null, false);
-        given(orderService.getOrders(dreamiId, Role.DREAMI, null, 20, OrderCd.COMPLETED)).willReturn(expected);
+        BoormiOrdersResponse expected = BoormiOrdersResponse.of(List.of());
+        given(orderService.getOrders(dreamiId, Role.DREAMI)).willReturn(expected);
 
-        BoormiOrdersResponse result = dreamiService.getMyOrders(dreamiId, null, 20, OrderCd.COMPLETED);
+        BoormiOrdersResponse result = dreamiService.getMyOrders(dreamiId);
 
         assertThat(result).isSameAs(expected);
-        then(orderService).should().getOrders(dreamiId, Role.DREAMI, null, 20, OrderCd.COMPLETED);
+        then(orderService).should().getOrders(dreamiId, Role.DREAMI);
     }
 
     // ---------- acceptOffer ----------
@@ -445,7 +467,7 @@ class DreamiServiceTest {
 
         assertThat(errorCodeOf(thrown)).isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
         verify(eventPublisher, never()).publishEvent(any(DreamiAcceptedEvent.class));
-        verify(orderRepository, never()).findById(any());
+        verify(orderRepository, never()).findByOrderId(any());
     }
 
     @Test
@@ -467,16 +489,78 @@ class DreamiServiceTest {
         UUID dreamiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
-        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point); // 기본 상태 MATCHING
         given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
         given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.of(orderId));
-        given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
 
         dreamiService.acceptOffer(offerId, dreamiId);
 
         assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
+        assertThat(order.getDreamiId()).isEqualTo(dreamiId); // 수락한 드리미로 임시 배정
         verify(matchingService, never()).acceptByDreami(any()); // 커밋 전에는 엔진에 직접 제출하지 않는다
         verify(eventPublisher).publishEvent(new DreamiAcceptedEvent(offerId));
+    }
+
+    @Test
+    void 제안수락_이미_다른_드리미가_선점해_MATCHING이_아니면_ALREADY_ACCEPTED_BY_OTHER_예외() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID otherDreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        ReflectionTestUtils.setField(order, "orderCd", OrderCd.PENDING_BOORMI_CONFIRMATION);
+        ReflectionTestUtils.setField(order, "dreamiId", otherDreamiId);
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.of(orderId));
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
+
+        Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(offerId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(MatchingErrorCode.ALREADY_ACCEPTED_BY_OTHER);
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION); // 건드리지 않음
+        assertThat(order.getDreamiId()).isEqualTo(otherDreamiId); // 건드리지 않음
+        verify(eventPublisher, never()).publishEvent(any(DreamiAcceptedEvent.class));
+    }
+
+    @Test
+    void 제안수락_본인이_이미_성공시킨_수락을_재시도하면_예외없이_조용히_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        ReflectionTestUtils.setField(order, "orderCd", OrderCd.PENDING_BOORMI_CONFIRMATION);
+        ReflectionTestUtils.setField(order, "dreamiId", dreamiId);
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.of(orderId));
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
+
+        assertThatCode(() -> dreamiService.acceptOffer(offerId, dreamiId)).doesNotThrowAnyException();
+
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION); // 건드리지 않음
+        assertThat(order.getDreamiId()).isEqualTo(dreamiId); // 건드리지 않음
+        verify(eventPublisher, never()).publishEvent(any(DreamiAcceptedEvent.class)); // 재제출하지 않는다
+    }
+
+    @Test
+    void 제안수락_주문이_PENDING_BOORMI_CONFIRMATION도_아니고_MATCHING도_아니면_NOT_ACCEPTABLE_STATUS_예외() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        ReflectionTestUtils.setField(order, "orderCd", OrderCd.CANCELLED);
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.of(orderId));
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
+
+        Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(offerId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(MatchingErrorCode.NOT_ACCEPTABLE_STATUS);
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.CANCELLED); // 건드리지 않음
+        verify(eventPublisher, never()).publishEvent(any(DreamiAcceptedEvent.class));
     }
 
     // ---------- rejectOffer ----------
@@ -503,5 +587,69 @@ class DreamiServiceTest {
 
         verify(matchingService).rejectByDreami(offerId);
         verify(orderRepository, never()).findById(any());
+    }
+
+    // ---------- approveReview ----------
+
+    @Test
+    void 승인_정상이면_드리미와_부르미_둘_다_승인_상태로_바뀐다() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        Boormi boormi = activeBoormi();
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.of(dreami));
+        given(boormiRepository.findById(dreamiId)).willReturn(Optional.of(boormi));
+
+        dreamiService.approveReview(dreamiId);
+
+        assertThat(dreami.getRequestCd()).isEqualTo(DreamiCd.APPROVED);
+        assertThat(boormi.isDreamiActivate()).isTrue();
+    }
+
+    @Test
+    void 승인_드리미가_없으면_NOT_FOUND_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.approveReview(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+    }
+
+    @Test
+    void 승인_부르미가_없으면_NOT_FOUND_예외() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.of(dreami));
+        given(boormiRepository.findById(dreamiId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.approveReview(dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+    }
+
+    // ---------- rejectReview ----------
+
+    @Test
+    void 반려_정상이면_드리미_상태를_반려로_바꾸고_반려이력을_저장하며_부르미는_건드리지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        Dreami dreami = Dreami.create(dreamiId, "idCardKey", "criminalRecordKey");
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.of(dreami));
+
+        dreamiService.rejectReview(dreamiId, "사진이 흐릿함");
+
+        assertThat(dreami.getRequestCd()).isEqualTo(DreamiCd.REJECTED);
+        verify(dreamiRequestDeniedDetailsRepository).save(any());
+        verify(boormiRepository, never()).findById(any());
+    }
+
+    @Test
+    void 반려_드리미가_없으면_NOT_FOUND_예외이고_반려이력을_저장하지_않는다() {
+        UUID dreamiId = UUID.randomUUID();
+        given(dreamiRepository.findByDreamiId(dreamiId)).willReturn(Optional.empty());
+
+        Throwable thrown = catchThrowable(() -> dreamiService.rejectReview(dreamiId, "사유"));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(DreamiErrorCode.NOT_FOUND);
+        verify(dreamiRequestDeniedDetailsRepository, never()).save(any());
     }
 }

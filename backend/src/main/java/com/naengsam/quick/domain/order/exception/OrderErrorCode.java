@@ -21,10 +21,12 @@ public enum OrderErrorCode implements BaseErrorCode {
     INAPPROPRIATE_EXPRESSION(HttpStatus.BAD_REQUEST, "ORDER_011", "사용할 수 없는 표현이 포함되어 있어요."),
     MISSING_REQUIRED_INFO(HttpStatus.BAD_REQUEST, "ORDER_012", "필수 정보를 모두 입력해 주세요."),
     ORDER_EXPIRED(HttpStatus.GONE, "ORDER_013", "요청 시간이 만료되었어요. 다시 등록해 주세요."),
-    INVALID_CURSOR(HttpStatus.BAD_REQUEST, "ORDER_014", "잘못된 커서입니다."),
     NO_DREAMI_TO_CONFIRM(HttpStatus.CONFLICT, "ORDER_015", "확정할 드리미가 없어요."),
     INVALID_DREAMI_CONFIRMATION(HttpStatus.CONFLICT, "ORDER_016", "확정할 수 없는 상태예요."),
-    CANNOT_CANCEL(HttpStatus.CONFLICT, "ORDER_017", "취소할 수 없는 상태예요.");
+    CANNOT_CANCEL(HttpStatus.CONFLICT, "ORDER_017", "취소할 수 없는 상태예요."),
+    CANNOT_REVIEW(HttpStatus.CONFLICT, "ORDER_018", "완료된 요청만 리뷰할 수 있어요."),
+    ALREADY_REVIEWED(HttpStatus.CONFLICT, "ORDER_019", "이미 리뷰를 남겼어요."),
+    REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_020", "리뷰를 찾을 수 없습니다.");
 
     private final HttpStatus status;
     private final String code;

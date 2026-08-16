@@ -79,7 +79,7 @@ const ROAD_ADDRESSES = [
 const ITEM_NAMES = ["서류 봉투", "소형 박스", "USB 메모리", "계약서", "샘플 상자"];
 
 /** 부르미 i번이 쓸 주문 payload. 출발지와 도착지가 같아지지 않게 어긋나게 집는다. */
-function orderPayload(i) {
+export function orderPayload(i) {
   const origin = ROAD_ADDRESSES[i % ROAD_ADDRESSES.length];
   const destination = ROAD_ADDRESSES[(i + 1 + (i % 3)) % ROAD_ADDRESSES.length];
   return {
@@ -89,6 +89,9 @@ function orderPayload(i) {
     destinationAddressLine2: "1층 로비",
     itemName: ITEM_NAMES[i % ITEM_NAMES.length],
     itemCd: "DOCUMENT",
+    // OrderRequest.itemSizeCd 는 @NotNull 이라 빠지면 주문이 전부 400(COMMON_001)으로 막힌다.
+    // 요금 배율이 1.0 인 S 로 고정한다 — 배율을 섞으면 요금 비교가 런마다 흔들린다.
+    itemSizeCd: "S",
     itemDetail: "부하테스트용 주문",
     deliveryRequest: "부하테스트",
   };

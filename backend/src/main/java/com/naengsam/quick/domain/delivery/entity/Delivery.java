@@ -49,6 +49,12 @@ public class Delivery {
     @Column(name = "current_longitude", precision = 11, scale = 8)
     private BigDecimal currentLongitude;
 
+    @Column(name = "last_location_dtm")
+    private LocalDateTime lastLocationDtm; // 드리미가 마지막으로 위치를 전송한 시각 — GPS 끊김(무소식) 판정 기준
+
+    @Column(name = "offline_sms_sent_dtm")
+    private LocalDateTime offlineSmsSentDtm; // 장시간 무소식 안내 문자를 보낸 시각 — 유료 채널이라 재발송을 DB로 막는다
+
     @Column(name = "picked_up_dtm")
     private LocalDateTime pickedUpDtm;
 
@@ -78,9 +84,21 @@ public class Delivery {
         return delivery;
     }
 
+    // 좌표와 함께 '마지막으로 위치를 받은 시각'을 남긴다. 좌표가 그대로여도 이 시각은 갱신되므로,
+    // 드리미가 멈춰 있는 것(정상)과 위치 전송이 끊긴 것(비정상)을 구분할 수 있다.
     public void updateLocation(BigDecimal latitude, BigDecimal longitude) {
         this.currentLatitude = latitude;
         this.currentLongitude = longitude;
+        this.lastLocationDtm = LocalDateTime.now();
+        // 위치가 다시 들어왔으므로 안내 문자 기록을 되돌린다. 같은 배달에서 두 번째로 진짜 끊겼을 때도 알릴 수 있어야 한다
+        // (인메모리 notifiedOrders.retainAll 자가치유를 컬럼으로 영속화한 것).
+        this.offlineSmsSentDtm = null;
+    }
+
+    // 장시간 무소식 안내 문자를 보냈다고 기록한다. 발송 성공 여부와 무관하게 '시도했다'를 남긴다 —
+    // 유료 채널이므로 실패 시 재시도(=5초마다 재발송)보다 한 번만 보내고 마는 편이 안전하다.
+    public void markOfflineSmsSent() {
+        this.offlineSmsSentDtm = LocalDateTime.now();
     }
 
     // 드리미의 첫 위치가 잡힌 뒤 계산한 '드리미→픽업지' 경로와 배송완료예상시간을 한 번에 기록한다(최초 1회만 채운다).
@@ -90,6 +108,7 @@ public class Delivery {
     }
 
     // 픽업 완료 → 배달중 전이. 픽업/배달 시작 시각을 기록한다.
+
     public void markDelivering() {
         this.deliveryCd = DeliveryCd.DELIVERING;
         LocalDateTime now = LocalDateTime.now();

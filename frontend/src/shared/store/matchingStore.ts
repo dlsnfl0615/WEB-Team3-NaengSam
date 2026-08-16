@@ -17,7 +17,15 @@ const GEOLOCATION_TIMEOUT_MS = 10_000;
 /** SSE 장애 중 매칭 상태를 되찾기 위한 polling 주기(ms). */
 export const MATCHING_POLL_INTERVAL_MS = 3_000;
 
-/** 백엔드 SSE `offer_popup` payload. */
+type NearbyCallsLoadResult = "loaded" | "location-unavailable" | "failed";
+
+/** 위치 권한 거부·브라우저 미지원처럼 드리미 화면을 사용할 수 없는 오류. */
+class LocationAccessError extends Error {}
+
+/**
+ * 백엔드 SSE `offer_popup` payload. 물품 사진은 여기 안 실려온다 — 콜 카드에서 물품사진 버튼을
+ * 누른 시점에 `api.getOfferItemPhoto(offerId)`로 그때 조회한다(자세한 이유는 백엔드 OfferPopupPayload 참고).
+ */
 interface OfferPopupPayload {
   offerId: string;
   orderId: string;
@@ -33,8 +41,12 @@ interface OfferPopupPayload {
   destinationLongitude: number | null;
   destinationAlias: string | null;
   destinationAddressLine1: string | null;
-  imageKey: string | null;
-  ttlSeconds: number;
+  /** 부르미가 작성한 요청 사항. 없으면 null. */
+  deliveryRequest: string | null;
+  /** 제안이 생성된 시각. 응답 마감(expiresAt)과 함께 카운트다운 계산에 쓴다. */
+  offeredAt: string;
+  /** 응답 마감 절대 시각. */
+  expiresAt: string;
 }
 
 /** 드리미가 받은 제안. 픽업 거리만 주변 콜 캐시에서 보충한다. */
@@ -42,11 +54,42 @@ export interface PendingOffer extends OfferPopupPayload {
   distanceMeters?: number;
 }
 
+/**
+ * 드리미가 콜을 수락하고 부르미의 확정을 기다리는 상태.
+ *
+ * 백엔드는 이 대기 자체를 알려주는 이벤트나 스냅샷 필드를 두지 않는다(수락 응답이 곧 시작 신호다).
+ * 그래서 수락이 성공한 순간 프론트에서 만들고, 결말을 알려주는 기존 SSE 이벤트
+ * (`boormi_rejected`·`offer_closed`·`delivery_started_dreami`)에서 지운다. 이벤트를 하나도 못 받는
+ * 최악의 경우에도 화면에 남지 않도록 부르미 확인 TTL(`BOORMI_CONFIRM_TTL_MS`)로 스스로 만료된다.
+ */
+export interface AwaitingBoormi {
+  offerId: string;
+  orderId: string;
+  /** 수락한 콜의 물품명(카드에 무엇을 기다리는지 보여주기 위함). */
+  itemName: string | null;
+  /** 대기 시작 시각(ISO). 카운트다운 기준. */
+  acceptedAt: string;
+  /** 부르미 확인 마감 시각(ISO). */
+  expiresAt: string;
+}
+
+/**
+ * 부르미 확인 대기 TTL. 백엔드 `MatchingService.BOORMI_OFFER_TTL`(30초)과 같은 값이며,
+ * 대기 카드가 영원히 남지 않게 하는 상한으로만 쓴다(판정은 언제나 서버 이벤트가 한다).
+ */
+const BOORMI_CONFIRM_TTL_MS = 30_000;
+
 /** 부르미가 받은 드리미 수락 알림(SSE `dreami_info`) + 드리미 프로필. */
 export interface IncomingDreami {
   offerId: string;
   orderId: string;
   dreamiId: string;
+  /** 드리미 픽업 예상 소요 시간(분). 직선거리 기반 추정이며 위치를 모르면 null. */
+  pickupEtaMinutes?: number | null;
+  /** 드리미가 수락한 시각. 응답 마감(expiresAt)과 함께 카운트다운 계산에 쓴다. */
+  acceptedAt?: string;
+  /** 부르미 확인 응답 마감 절대 시각. */
+  expiresAt?: string;
   profile?: DreamiProfileDto;
 }
 
@@ -61,6 +104,8 @@ interface MatchingState {
   nearbyCallsError: string | null;
   pendingOffer: PendingOffer | null;
   incomingDreami: IncomingDreami | null;
+  /** 드리미가 수락하고 부르미 확정을 기다리는 중(드리미 화면 전용). */
+  awaitingBoormi: AwaitingBoormi | null;
   /** 마지막 오류/안내 메시지(팝업·화면에서 노출 후 clearMessage). */
   message: string | null;
   /** 수락·거절 요청 진행 중(버튼 중복 클릭 방지). */
@@ -78,8 +123,16 @@ interface MatchingState {
   receiveOfferError: (payload: unknown) => void;
   /** 화면 이탈·로그아웃 시 진행 중 팝업 정리. */
   clearOffers: () => void;
+  /** 드리미 응답 카운트다운 만료(로컬). offerId가 다르면(이미 새 제안으로 교체됐으면) 무시한다. */
+  expirePendingOffer: (offerId: string) => void;
+  /** 부르미 확인 카운트다운 만료(로컬). offerId가 다르면 무시한다. */
+  expireIncomingDreami: (offerId: string) => void;
+  /** 드리미의 '부르미 응답 대기' 종료(로컬 TTL 만료). offerId가 다르면 무시한다. */
+  expireAwaitingBoormi: (offerId: string) => void;
+  /** 배달이 실제로 시작돼(delivery_started_dreami) 대기가 끝났을 때 정리. */
+  clearAwaitingBoormi: () => void;
   /** 드리미 화면 진입 시(및 폴링 시) 실행: 좌표를 구해 주변 콜을 조회한다. 온라인 여부와 무관하게 항상 동작한다. */
-  loadNearbyCalls: () => Promise<void>;
+  loadNearbyCalls: () => Promise<NearbyCallsLoadResult>;
   /** 드리미 온라인 전환. myLocation이 있으면 재사용하고, 없으면 새로 조회한다. */
   goOnline: () => Promise<void>;
   goOffline: () => Promise<void>;
@@ -121,13 +174,18 @@ function geolocationMessage(error: GeolocationPositionError): string {
 function getCurrentCoords(): Promise<Coords> {
   return new Promise((resolve, reject) => {
     if (!navigator.geolocation) {
-      reject(new Error("이 브라우저에서는 위치를 사용할 수 없어요."));
+      reject(new LocationAccessError("이 브라우저에서는 위치를 사용할 수 없어요."));
       return;
     }
     navigator.geolocation.getCurrentPosition(
       ({ coords }) =>
         resolve({ latitude: coords.latitude, longitude: coords.longitude }),
-      (error) => reject(new Error(geolocationMessage(error))),
+      (error) =>
+        reject(
+          error.code === error.PERMISSION_DENIED
+            ? new LocationAccessError(geolocationMessage(error))
+            : new Error(geolocationMessage(error)),
+        ),
       {
         enableHighAccuracy: true,
         timeout: GEOLOCATION_TIMEOUT_MS,
@@ -153,8 +211,8 @@ function str(v: string | undefined): string | null {
 }
 
 /**
- * 스냅샷의 PendingOfferDto(offerId + OrderSummaryDto) → store의 PendingOffer로 매핑한다.
- * ttlSeconds는 스냅샷에 없으므로 0으로 둔다(팝업은 ttl로 카운트다운·자동만료를 하지 않는다).
+ * 스냅샷의 PendingOfferDto(offerId + OrderSummaryDto + offeredAt/expiresAt) → store의 PendingOffer로 매핑한다.
+ * offeredAt/expiresAt은 SSE 팝업과 같은 값이라 폴링으로 복구해도 카운트다운이 정확하다.
  */
 function pendingOfferFromSnapshot(
   dto: PendingOfferDto,
@@ -177,8 +235,9 @@ function pendingOfferFromSnapshot(
     destinationLongitude: num(summary.destinationLongitude),
     destinationAlias: str(summary.destinationAlias),
     destinationAddressLine1: str(summary.destinationAddressLine1),
-    imageKey: str(summary.imageKey),
-    ttlSeconds: 0,
+    deliveryRequest: str(summary.deliveryRequest),
+    offeredAt: dto.offeredAt ?? "",
+    expiresAt: dto.expiresAt ?? "",
     distanceMeters: nearbyCalls.find((c) => c.orderId === orderId)?.distanceMeters,
   };
 }
@@ -189,6 +248,12 @@ function pendingOfferFromSnapshot(
  */
 let pollTimer: ReturnType<typeof setInterval> | null = null;
 let syncing = false;
+
+/**
+ * 온라인/오프라인 전환이 서버 응답을 기다리는 중인지. 그 사이 도착한 동기화 응답은 전환 이전 상태를
+ * 담고 있어, 방금 누른 시작하기/종료를 되돌려버린다.
+ */
+let togglingOnline = false;
 
 /**
  * 실 매칭 상태 전역 스토어. 수락·거절·최종 확정을 실제 매칭 API로 처리한다.
@@ -207,6 +272,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   nearbyCallsError: null,
   pendingOffer: null,
   incomingDreami: null,
+  awaitingBoormi: null,
   message: null,
   submitting: false,
 
@@ -224,33 +290,48 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     }));
   },
 
-  // 드리미: 제안 마감(선착순 마감·거절 처리 완료 등).
+  // 드리미: 제안 마감(선착순 마감·거절 처리 완료 등). 이미 수락해 대기 중이던 제안이 마감된 것이면
+  // '부르미 응답 대기' 카드도 함께 내린다.
   receiveOfferClosed: (payload) => {
     const { offerId, reason } = payload as { offerId: string; reason?: string };
     set((s) =>
-      s.pendingOffer?.offerId === offerId
-        ? { pendingOffer: null, message: reason ?? "제안이 마감됐어요." }
+      s.pendingOffer?.offerId === offerId || s.awaitingBoormi?.offerId === offerId
+        ? {
+            pendingOffer:
+              s.pendingOffer?.offerId === offerId ? null : s.pendingOffer,
+            awaitingBoormi:
+              s.awaitingBoormi?.offerId === offerId ? null : s.awaitingBoormi,
+            message: reason ?? "제안이 마감됐어요.",
+          }
         : {},
     );
   },
 
-  // 드리미: 부르미가 거절함.
+  // 드리미: 부르미가 거절함. 수락 후 띄워둔 '부르미 응답 대기' 카드를 내리는 지점이기도 하다.
   receiveBoormiRejected: (payload) => {
     const { offerId } = payload as { offerId: string };
     set((s) => ({
       pendingOffer: s.pendingOffer?.offerId === offerId ? null : s.pendingOffer,
+      awaitingBoormi:
+        s.awaitingBoormi?.offerId === offerId ? null : s.awaitingBoormi,
       message: "부르미가 요청을 거절했어요.",
     }));
   },
 
   // 부르미: 드리미가 수락 → 프로필을 붙여 확정 카드를 띄운다.
   receiveDreamiInfo: (payload) => {
-    const { offerId, orderId, dreamiId } = payload as {
+    const { offerId, orderId, dreamiId, pickupEtaMinutes, acceptedAt, expiresAt } = payload as {
       offerId: string;
       orderId: string;
       dreamiId: string;
+      pickupEtaMinutes?: number | null;
+      acceptedAt?: string;
+      expiresAt?: string;
     };
-    set({ incomingDreami: { offerId, orderId, dreamiId }, message: null });
+    set({
+      incomingDreami: { offerId, orderId, dreamiId, pickupEtaMinutes, acceptedAt, expiresAt },
+      message: null,
+    });
     api
       .getProfile(dreamiId)
       .then(({ result }) => {
@@ -265,16 +346,47 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
       });
   },
 
+  // 매칭 처리가 실패했으면 그 제안은 더 진행되지 않는다 → 대기 카드도 남겨두지 않는다.
   receiveOfferError: (payload) => {
     const { message } = payload as { message?: string };
-    set({ message: message ?? "매칭 요청 처리에 실패했어요." });
+    set({
+      awaitingBoormi: null,
+      message: message ?? "매칭 요청 처리에 실패했어요.",
+    });
   },
 
   clearOffers: () =>
     set({
       pendingOffer: null,
       incomingDreami: null,
+      awaitingBoormi: null,
     }),
+
+  // 드리미 카운트다운 만료(로컬). 그 사이 새 제안으로 교체됐으면(offerId 다름) 건드리지 않는다.
+  expirePendingOffer: (offerId) =>
+    set((s) =>
+      s.pendingOffer?.offerId === offerId ? { pendingOffer: null } : {},
+    ),
+
+  // 부르미 카운트다운 만료(로컬). 그 사이 다른 확인 대기로 교체됐으면 건드리지 않는다.
+  expireIncomingDreami: (offerId) =>
+    set((s) =>
+      s.incomingDreami?.offerId === offerId ? { incomingDreami: null } : {},
+    ),
+
+  // 부르미 확인 TTL이 지나도록 아무 이벤트도 못 받은 경우의 안전장치. 결말은 서버가 알고 있으므로
+  // 단정적인 문구 대신 대기 종료만 알리고, 다음 오퍼를 받을 수 있는 상태로 되돌린다.
+  expireAwaitingBoormi: (offerId) =>
+    set((s) =>
+      s.awaitingBoormi?.offerId === offerId
+        ? {
+            awaitingBoormi: null,
+            message: "부르미의 응답을 받지 못했어요. 다음 콜을 기다려주세요.",
+          }
+        : {},
+    ),
+
+  clearAwaitingBoormi: () => set({ awaitingBoormi: null }),
 
   // 온라인 여부와 무관하게 화면 진입 시(및 폴링 시) 항상 실행한다. myLocation이 이미 있으면 재사용한다.
   loadNearbyCalls: async () => {
@@ -291,8 +403,12 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
         count: NEARBY_COUNT,
       });
       set({ nearbyCalls: result ?? [], nearbyCallsError: null });
+      return "loaded";
     } catch (e) {
       set({ nearbyCallsError: toMessage(e, "주변 콜을 불러오지 못했어요.") });
+      return e instanceof LocationAccessError
+        ? "location-unavailable"
+        : "failed";
     }
   },
 
@@ -302,6 +418,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
 
     // loadNearbyCalls가 이미 구해둔 좌표를 재사용한다(위치를 다시 물어 실패하는 경로를 없앤다).
     let coords = get().myLocation;
+    togglingOnline = true;
     try {
       if (!coords) {
         coords = await getCurrentCoords();
@@ -314,15 +431,20 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
         online: false,
         message: toMessage(e, "온라인 전환에 실패했어요."),
       });
+    } finally {
+      togglingOnline = false;
     }
   },
 
   goOffline: async () => {
+    togglingOnline = true;
     try {
       await api.goOffline();
       set({ online: false, pendingOffer: null });
     } catch (e) {
       set({ message: toMessage(e, "오프라인 전환에 실패했어요.") });
+    } finally {
+      togglingOnline = false;
     }
   },
 
@@ -332,7 +454,20 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     set({ submitting: true });
     try {
       await api.acceptOffer(pendingOffer.offerId);
-      set({ pendingOffer: null, submitting: false });
+      // 수락은 배달 시작이 아니라 '부르미 확인 대기'의 시작이다. 콜 카드를 내리고 대기 카드로 바꿔,
+      // 드리미가 빈 화면에서 무슨 일이 일어나는지 모른 채 기다리지 않게 한다.
+      const acceptedAt = Date.now();
+      set({
+        pendingOffer: null,
+        awaitingBoormi: {
+          offerId: pendingOffer.offerId,
+          orderId: pendingOffer.orderId,
+          itemName: pendingOffer.itemName,
+          acceptedAt: new Date(acceptedAt).toISOString(),
+          expiresAt: new Date(acceptedAt + BOORMI_CONFIRM_TTL_MS).toISOString(),
+        },
+        submitting: false,
+      });
       return pendingOffer.orderId;
     } catch (e) {
       set({ submitting: false, message: toMessage(e, "수락에 실패했어요.") });
@@ -401,6 +536,18 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
       return;
     } finally {
       syncing = false;
+    }
+
+    // 드리미 온라인 여부는 서버(매칭엔진 등록 상태)가 진실 소스다. 이 스토어는 메모리에만 있어
+    // 새로고침하면 online이 false로 돌아가는데 서버 등록은 살아 있다. 그대로 두면 화면은 오프라인인데
+    // 오퍼는 계속 오고, 종료 버튼이 online에 묶여 있어 빠져나갈 수도 없다.
+    // 전환 요청이 날아가 있는 동안에는 방금 누른 조작을 되돌리게 되므로 건너뛴다.
+    if (
+      data.dreamiOnline !== undefined &&
+      !togglingOnline &&
+      get().online !== data.dreamiOnline
+    ) {
+      set({ online: data.dreamiOnline });
     }
 
     // 수락·거절 요청이 진행 중이면 사용자의 조작과 충돌하지 않도록 스냅샷을 덮어쓰지 않는다.

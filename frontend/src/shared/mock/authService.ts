@@ -17,7 +17,7 @@ export function signup(dto: SignupRequest): Promise<AuthUser> {
     id: "u-new",
     name: dto.name || "새 사용자",
     roles: ["부르미"],
-    rating: 0,
+    boormiRating: 0,
     email: dto.email,
   });
 }

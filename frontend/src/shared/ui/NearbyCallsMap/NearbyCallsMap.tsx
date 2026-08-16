@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { loadKakaoMaps } from "@/shared/lib";
 import { cn } from "@/shared/lib/cn";
-import { pinImage } from "../DeliveryRouteMap/pinImage";
+import { makePinOverlay } from "../DeliveryRouteMap/pinOverlay";
+import type { PinOverlayHandle } from "../DeliveryRouteMap/pinOverlay";
 import type { Coords } from "../DeliveryRouteMap/DeliveryRouteMap";
 
 export interface NearbyCall {
@@ -31,10 +32,25 @@ export interface NearbyCallsMapProps {
   fallbackMessage?: string | null;
   height?: number;
   flat?: boolean;
+  /** 드리미 화면은 주변 부름, 부르미 화면은 주변 드리미를 표시한다. */
+  mode?: "nearby-calls" | "nearby-dreamis";
 }
 
-const MY_LOCATION_COLOR = "#0d1b3d"; // navy-900
-const CALL_COLOR = "#00b7a7"; // teal-500
+// DeliveryRouteMap의 pickup/dropoff 색·라벨 배경 토큰을 그대로 재사용한다(같은 의미의 핀이므로).
+const MY_LOCATION_STYLE = {
+  color: "#0d1b3d",
+  label: "드리미",
+  bg: "bg-teal-500",
+  imageSrc: "/dreami-pin-searching.png",
+};
+const CALL_STYLE = { color: "#0d1b3d", label: "픽업 장소", bg: "bg-navy-900" }; // navy-900
+const NEARBY_CALL_STYLE = { ...CALL_STYLE, pinSize: "small" as const };
+const DREAMI_DOT_STYLE = {
+  color: "#00b7a7",
+  label: "드리미",
+  bg: "bg-teal-500",
+  variant: "glow-dot" as const,
+};
 
 /**
  * 내 위치 핀 1개 + 주변 콜 핀 N개를 보여주는 지도. goOnline 여부와 무관하게
@@ -48,12 +64,13 @@ export function NearbyCallsMap({
   fallbackMessage,
   height = 280,
   flat = false,
+  mode = "nearby-calls",
 }: NearbyCallsMapProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const kakaoRef = useRef<typeof window.kakao | null>(null);
   const mapRef = useRef<ReturnType<typeof window.kakao.maps.Map> | null>(null);
-  const myMarkerRef = useRef<unknown>(null);
-  const callMarkersRef = useRef<Map<string, unknown>>(new Map());
+  const myMarkerRef = useRef<PinOverlayHandle | null>(null);
+  const callMarkersRef = useRef<Map<string, PinOverlayHandle>>(new Map());
   const [status, setStatus] = useState<"loading" | "ready" | "disabled">(
     "loading",
   );
@@ -81,6 +98,8 @@ export function NearbyCallsMap({
 
     return () => {
       cancelled = true;
+      myMarkerRef.current?.setMap(null);
+      callMarkersRef.current.forEach((marker) => marker.setMap(null));
       kakaoRef.current = null;
       mapRef.current = null;
       myMarkerRef.current = null;
@@ -95,18 +114,17 @@ export function NearbyCallsMap({
     if (status !== "ready" || !kakao || !map || !center) return;
     const pos = new kakao.maps.LatLng(center.latitude, center.longitude);
     if (myMarkerRef.current) {
-      (myMarkerRef.current as ReturnType<typeof kakao.maps.Marker>).setPosition(
-        pos,
-      );
+      myMarkerRef.current.setPosition(pos);
     } else {
-      myMarkerRef.current = new kakao.maps.Marker({
+      myMarkerRef.current = makePinOverlay(
+        kakao,
         map,
-        position: pos,
-        image: pinImage(kakao, MY_LOCATION_COLOR),
-      });
+        pos,
+        mode === "nearby-calls" ? MY_LOCATION_STYLE : CALL_STYLE,
+      );
       map.setCenter(pos);
     }
-  }, [status, center]);
+  }, [status, center, mode]);
 
   // 콜 핀: calls 목록에 맞춰 마커를 새로 그린다(사라진 콜의 마커는 지운다).
   useEffect(() => {
@@ -114,7 +132,7 @@ export function NearbyCallsMap({
     const map = mapRef.current;
     if (status !== "ready" || !kakao || !map) return;
 
-    const next = new Map<string, unknown>();
+    const next = new Map<string, PinOverlayHandle>();
     calls.forEach((call) => {
       const pos = new kakao.maps.LatLng(
         call.location.latitude,
@@ -122,27 +140,30 @@ export function NearbyCallsMap({
       );
       const existing = callMarkersRef.current.get(call.id);
       if (existing) {
-        (existing as ReturnType<typeof kakao.maps.Marker>).setPosition(pos);
+        existing.setPosition(pos);
         next.set(call.id, existing);
         return;
       }
-      const marker = new kakao.maps.Marker({
+      const marker = makePinOverlay(
+        kakao,
         map,
-        position: pos,
-        image: pinImage(kakao, CALL_COLOR),
-      });
-      kakao.maps.event.addListener(marker, "click", () => onCallClick?.(call));
+        pos,
+        mode === "nearby-calls"
+          ? { ...NEARBY_CALL_STYLE, label: call.itemName ?? CALL_STYLE.label }
+          : DREAMI_DOT_STYLE,
+        onCallClick ? () => onCallClick(call) : undefined,
+      );
       next.set(call.id, marker);
     });
 
     // 이번 목록에 없는 기존 마커는 지도에서 제거한다.
     callMarkersRef.current.forEach((marker, id) => {
       if (!next.has(id)) {
-        (marker as ReturnType<typeof kakao.maps.Marker>).setMap(null);
+        marker.removeSmoothly();
       }
     });
     callMarkersRef.current = next;
-  }, [status, calls, onCallClick]);
+  }, [status, calls, onCallClick, mode]);
 
   if (status === "disabled") {
     return (

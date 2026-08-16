@@ -1,6 +1,7 @@
 package com.naengsam.quick.domain.boormi.dto;
 
 import com.naengsam.quick.domain.boormi.entity.ItemCd;
+import com.naengsam.quick.domain.boormi.entity.ItemSizeCd;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 
@@ -13,6 +14,9 @@ ExpectedValueRequest(
         String destinationAddressLine1,
 
         @NotNull
-        ItemCd itemCd
+        ItemCd itemCd,
+
+        @NotNull
+        ItemSizeCd itemSizeCd
 ) {
 }

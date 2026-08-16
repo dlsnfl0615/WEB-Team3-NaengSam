@@ -12,6 +12,8 @@ import java.util.UUID;
 /**
  * 배달 추적 화면용 상세 응답. 출발지·도착지 좌표는 Orders에서, 상태·현재 드리미 위치는 Delivery에서 조합한다.
  * currentLocation은 드리미의 최신 위치 스냅샷이다(아직 갱신 전이면 null).
+ *
+ * 픽업사진은 부르미가 버튼을 눌렀을 때 {@code GET /api/v1/delivery/orders/{orderId}/pickup-photo}로 그때 조회한다.
  */
 public record DeliveryDetailResponseDto(
         @Schema(description = "주문 ID", example = "018f1c2e-8a4b-7c3d-9e0f-1a2b3c4d5e6f")
@@ -44,6 +46,13 @@ public record DeliveryDetailResponseDto(
         @Schema(description = "물건 이름", example = "서류봉투")
         String itemName,
 
+        @Schema(description = "부르미가 작성한 요청 사항. 없으면 null", example = "문 앞에 놓아주세요", nullable = true)
+        String deliveryRequest,
+
+        @Schema(description = "부르미가 등록한 물품 사진 다운로드 URL. 사진이 없거나 조회 실패 시 null",
+                example = "https://s3.ap-northeast-2.amazonaws.com/...", nullable = true)
+        String itemPhotoUrl,
+
         @Schema(description = "픽업지→도착지 카카오 추천 도보 경로 좌표 목록(픽업 후 지도 폴리라인용). 경로 정보가 없으면 빈 배열")
         List<RoutePointDto> routePath,
 
@@ -51,10 +60,29 @@ public record DeliveryDetailResponseDto(
         List<RoutePointDto> deliveryRoutePath,
 
         @Schema(description = "배송완료예상시간(드리미→픽업지 소요 + 주문 delivery_eta). 아직 계산 전이면 null")
-        LocalDateTime estimatedCompletionTime
+        LocalDateTime estimatedCompletionTime,
+
+        @Schema(description = "매칭 성사(부르미가 드리미를 확정한) 시각. 매칭 기록이 없으면 null", nullable = true)
+        LocalDateTime matchingAcceptedDtm,
+
+        @Schema(description = "픽업 완료(=배달 시작) 시각. 아직 픽업 전이면 null", nullable = true)
+        LocalDateTime deliveryStartDtm,
+
+        @Schema(description = "배달(드림) 완료 시각. 아직 완료 전이면 null", nullable = true)
+        LocalDateTime deliveryEndDtm,
+
+        @Schema(description = "드리미 위치가 끊긴 상태인지(true면 화면에 안내 필요)", example = "false")
+        boolean dreamiOffline,
+
+        @Schema(description = "마지막으로 드리미 위치를 받은 뒤 흐른 시간(초). 위치를 한 번도 못 받았으면 null",
+                example = "7")
+        Long secondsSinceLastLocation
 ) {
     public static DeliveryDetailResponseDto from(Delivery delivery, Orders order,
-            List<RoutePointDto> routePath, List<RoutePointDto> deliveryRoutePath) {
+            String itemPhotoUrl,
+            List<RoutePointDto> routePath, List<RoutePointDto> deliveryRoutePath,
+            LocalDateTime matchingAcceptedDtm,
+            boolean dreamiOffline, Long secondsSinceLastLocation) {
         DeliveryLocationDto currentLocation = delivery.getCurrentLatitude() == null
                 ? null
                 : new DeliveryLocationDto(
@@ -72,8 +100,15 @@ public record DeliveryDetailResponseDto(
                 order.getDestinationLongitude(),
                 order.getDestinationAddressLine1(),
                 order.getItemName(),
+                order.getDeliveryRequest(),
+                itemPhotoUrl,
                 routePath,
                 deliveryRoutePath,
-                delivery.getEstimatedCompletionDtm());
+                delivery.getEstimatedCompletionDtm(),
+                matchingAcceptedDtm,
+                delivery.getDeliveryStartDtm(),
+                delivery.getDeliveryEndDtm(),
+                dreamiOffline,
+                secondsSinceLastLocation);
     }
 }

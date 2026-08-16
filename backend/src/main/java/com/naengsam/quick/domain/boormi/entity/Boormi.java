@@ -63,7 +63,8 @@ public class Boormi {
     @Column(name = "deleted_dtm")
     private LocalDateTime deletedDtm;
 
-    @Column(name = "boormi_avg_score", nullable = false, insertable = false, updatable = false)
+    // insertable=false 로 INSERT 에서는 제외해 DB 기본값(0)을 쓰고, 리뷰 등록 시 UPDATE 로만 갱신한다.
+    @Column(name = "boormi_avg_score", nullable = false, insertable = false)
     private BigDecimal boormiAvgScore;
 
     @Column(name = "restricted_dtm")
@@ -85,5 +86,20 @@ public class Boormi {
         boormi.userCd = UserCd.ACTIVE;
         boormi.isDreamiActivate = false;
         return boormi;
+    }
+
+    /**
+     * 관리자가 인증 신청을 승인한다.
+     */
+    public void approve() {
+        this.isDreamiActivate = true;
+    }
+
+    /**
+     * 드리미가 남긴 리뷰를 반영해 부르미 평균 평점을 갱신한다.
+     */
+    public void updateAvgScore(BigDecimal avgScore) {
+        this.boormiAvgScore = avgScore;
+        this.updatedDtm = LocalDateTime.now();
     }
 }

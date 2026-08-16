@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from "react";
+import { DELIVERY_MAP_SMOOTH_MODE } from "@/shared/config";
 import { loadKakaoMaps } from "@/shared/lib";
 import { cn } from "@/shared/lib/cn";
-import { pinImageSrc } from "./pinImage";
+import { planDriverMotion } from "./driverMotion";
+import { makePinOverlay } from "./pinOverlay";
+import type { KakaoMap, PinOverlayHandle, PinStyle } from "./pinOverlay";
 
 /** 위·경도 좌표쌍. */
 export interface Coords {
@@ -18,6 +21,12 @@ export interface DeliveryRouteMapProps {
   driver?: Coords;
   /** 드리미 핀 라벨. 기본값은 "드리미". (내 위치 등으로 사용될 수 있음)*/
   driverLabel?: string;
+  /** 드리미 핀에 사용할 캐릭터 이미지 URL. 없으면 기본 핀 SVG를 사용한다. */
+  driverPinImage?: string;
+  /** 드리미 핀이 표시되는 동안 driverPinImage와 400ms 간격으로 교대할 이미지 URL. */
+  driverRunningPinImage?: string;
+  /** 픽업 핀 라벨. 기본값은 "픽업 장소"(주문의 item_name을 넣으면 그 이름으로 표시). */
+  pickupLabel?: string;
   /** 추천 이동경로 좌표 목록. 있으면 폴리라인으로 그린다(첫 로드부터 표시). */
   route?: Coords[];
   /** 지도 높이(px). 기본 340. */
@@ -27,104 +36,88 @@ export interface DeliveryRouteMapProps {
 }
 
 type Role = "pickup" | "dropoff" | "driver";
-type KakaoMap = ReturnType<typeof window.kakao.maps.Map>;
-type KakaoLatLng = ReturnType<typeof window.kakao.maps.LatLng>;
 
-interface DeliveryPinOverlay {
-  setMap(map: KakaoMap | null): void;
-  setPosition(position: KakaoLatLng): void;
+interface DriverMotionState {
+  target?: Coords;
+  targetReceivedAt?: number;
+  averageSpeedMps?: number;
 }
 
 /** 역할별 핀 색(theme.css 토큰 hex 재사용)·라벨 텍스트·라벨 배경(토큰 유틸). */
-const ROLE: Record<Role, { color: string; label: string; bg: string }> = {
+const ROLE: Record<Role, PinStyle> = {
   pickup: { color: "#0d1b3d", label: "픽업 장소", bg: "bg-navy-900" }, // navy-900
-  dropoff: { color: "#00b7a7", label: "도착지", bg: "bg-teal-500" }, // teal-500
-  driver: { color: "#b26a00", label: "드리미", bg: "bg-status-warning" }, // status-warning
+  dropoff: { color: "#b26a00", label: "도착지", bg: "bg-status-warning" }, // status-warning
+  driver: { color: "#00b7a7", label: "드리미", bg: "bg-teal-500" }, // teal-500
 };
-
-/** 핀과 역할 라벨을 하나의 AbstractOverlay로 만든다. */
-function makePinOverlay(
-  kakao: typeof window.kakao,
-  map: KakaoMap,
-  position: KakaoLatLng,
-  role: Role,
-  label: string,
-): DeliveryPinOverlay {
-  const root = document.createElement("div");
-  root.className =
-    "pointer-events-none absolute flex flex-col items-center gap-0.5 whitespace-nowrap";
-  root.style.transform = "translate(-50%, -100%)";
-
-  const labelElement = document.createElement("div");
-  labelElement.className = cn(
-    "rounded-pill px-1.5 py-0.5 text-2xs font-semibold text-white shadow-card",
-    ROLE[role].bg,
-  );
-  labelElement.textContent = label;
-
-  const pin = document.createElement("span");
-  pin.setAttribute("aria-hidden", "true");
-  pin.style.width = "30px";
-  pin.style.height = "40px";
-  pin.style.backgroundImage = `url("${pinImageSrc(ROLE[role].color)}")`;
-  pin.style.backgroundPosition = "center";
-  pin.style.backgroundRepeat = "no-repeat";
-  pin.style.backgroundSize = "contain";
-
-  root.append(labelElement, pin);
-
-  class PinOverlay extends kakao.maps.AbstractOverlay {
-    private position = position;
-
-    onAdd() {
-      this.getPanels().overlayLayer.appendChild(root);
-    }
-
-    draw() {
-      const point = this.getProjection().pointFromCoords(this.position);
-      root.style.left = `${point.x}px`;
-      root.style.top = `${point.y}px`;
-    }
-
-    onRemove() {
-      root.remove();
-    }
-
-    setMap(nextMap: KakaoMap | null) {
-      super.setMap(nextMap);
-    }
-
-    setPosition(nextPosition: KakaoLatLng) {
-      this.position = nextPosition;
-      if (this.getMap()) this.draw();
-    }
-  }
-
-  const overlay = new PinOverlay();
-  overlay.setMap(map);
-  return overlay;
-}
 
 /** 핀 오버레이를 처음이면 생성하고, 이미 있으면 위치만 옮긴다. */
 function upsertMarker(
   kakao: typeof window.kakao,
   map: KakaoMap,
-  store: { overlay?: DeliveryPinOverlay },
+  store: { overlay?: PinOverlayHandle },
   role: Role,
   coords: Coords,
   label: string,
+  smooth = false,
+  imageSrc?: string,
+  runningImageSrc?: string,
 ) {
   const pos = new kakao.maps.LatLng(coords.latitude, coords.longitude);
   if (store.overlay) {
+    if (role === "driver") {
+      store.overlay.setImageSrc(imageSrc, runningImageSrc);
+    }
     store.overlay.setPosition(pos);
     return;
   }
-  store.overlay = makePinOverlay(kakao, map, pos, role, label);
+  store.overlay = makePinOverlay(
+    kakao,
+    map,
+    pos,
+    { ...ROLE[role], label, imageSrc },
+    undefined,
+    smooth,
+  );
+  if (role === "driver") {
+    store.overlay.setImageSrc(imageSrc, runningImageSrc);
+  }
+}
+
+/** 드리미 핀을 처음이면 생성하고, 이미 있으면 픽셀 기반 애니메이션으로 옮긴다. */
+function upsertSmoothDriver(
+  kakao: typeof window.kakao,
+  map: KakaoMap,
+  store: { overlay?: PinOverlayHandle },
+  coords: Coords,
+  label: string,
+  imageSrc?: string,
+  runningImageSrc?: string,
+  durationMs?: number,
+) {
+  const position = new kakao.maps.LatLng(coords.latitude, coords.longitude);
+  store.overlay?.setImageSrc(imageSrc, runningImageSrc);
+  if (store.overlay && durationMs != null) {
+    store.overlay.setSmoothPosition(position, durationMs);
+    return;
+  }
+  if (store.overlay) {
+    store.overlay.setPosition(position);
+    return;
+  }
+  store.overlay = makePinOverlay(
+    kakao,
+    map,
+    position,
+    { ...ROLE.driver, label, imageSrc },
+    undefined,
+    true,
+  );
+  store.overlay.setImageSrc(imageSrc, runningImageSrc);
 }
 
 /**
  * 출발지·도착지·드리미 세 핀(라벨 포함)을 좌표로 표시하는 추적 지도. 지오코딩하지 않고 좌표만 받는다.
- * pickup/dropoff는 정적 핀(변경 시 갱신), driver는 좌표가 바뀔 때마다 이동한다(보간 없음).
+ * pickup/dropoff는 정적 핀이고, driver는 공통 설정에 따라 즉시 이동하거나 픽셀 기반으로 부드럽게 이동한다.
  * VITE_KAKAO_MAP_KEY가 없으면 좌표 텍스트로 폴백한다.
  */
 export function DeliveryRouteMap({
@@ -132,6 +125,9 @@ export function DeliveryRouteMap({
   dropoff,
   driver,
   driverLabel = "드리미", // 기본 값은 "드리미"
+  driverPinImage,
+  driverRunningPinImage,
+  pickupLabel,
   route,
   height = 340,
   flat = false,
@@ -139,13 +135,14 @@ export function DeliveryRouteMap({
   const containerRef = useRef<HTMLDivElement>(null);
   const kakaoRef = useRef<typeof window.kakao | null>(null);
   const mapRef = useRef<KakaoMap | null>(null);
-  const storeRef = useRef<Record<Role, { overlay?: DeliveryPinOverlay }>>({
+  const storeRef = useRef<Record<Role, { overlay?: PinOverlayHandle }>>({
     pickup: {},
     dropoff: {},
     driver: {},
   });
   const routeLineRef = useRef<unknown>(null);
   const didFitRef = useRef(false);
+  const driverMotionRef = useRef<DriverMotionState>({});
   const [status, setStatus] = useState<"loading" | "ready" | "disabled">(
     "loading",
   );
@@ -181,6 +178,7 @@ export function DeliveryRouteMap({
       storeRef.current = { pickup: {}, dropoff: {}, driver: {} };
       routeLineRef.current = null;
       didFitRef.current = false;
+      driverMotionRef.current = {};
     };
   }, []);
 
@@ -192,15 +190,101 @@ export function DeliveryRouteMap({
     const entries: [Role, Coords | undefined][] = [
       ["pickup", pickup],
       ["dropoff", dropoff],
-      ["driver", driver],
     ];
+    if (!DELIVERY_MAP_SMOOTH_MODE) entries.push(["driver", driver]);
     entries.forEach(([role, coords]) => {
       if (coords) {
-        const label = role === "driver" ? driverLabel : ROLE[role].label;
-        upsertMarker(kakao, map, storeRef.current[role], role, coords, label);
+        const label =
+          role === "driver"
+            ? driverLabel
+            : role === "pickup"
+              ? pickupLabel ?? ROLE.pickup.label
+              : ROLE[role].label;
+        upsertMarker(
+          kakao,
+          map,
+          storeRef.current[role],
+          role,
+          coords,
+          label,
+          false,
+          role === "driver" ? driverPinImage : undefined,
+          role === "driver" ? driverRunningPinImage : undefined,
+        );
       }
     });
-  }, [status, pickup, dropoff, driver, driverLabel]);
+  }, [
+    status,
+    pickup,
+    dropoff,
+    driver,
+    driverLabel,
+    driverPinImage,
+    driverRunningPinImage,
+    pickupLabel,
+  ]);
+
+  // SMOOTH 모드에서는 원본 좌표와 분리된 표시 좌표만 보간한다. 서버 전송·SSE 좌표는 건드리지 않는다.
+  useEffect(() => {
+    const motion = driverMotionRef.current;
+    if (!DELIVERY_MAP_SMOOTH_MODE) return;
+    if (!driver) return;
+    const kakao = kakaoRef.current;
+    const map = mapRef.current;
+    if (status !== "ready" || !kakao || !map) return;
+
+    // 픽업 완료처럼 좌표는 그대로이고 캐릭터 이미지만 바뀌는 경우에도 즉시 반영한다.
+    // 이동 계획이 없으면 아래에서 조기 반환하므로 이미지 갱신은 그보다 먼저 해야 한다.
+    storeRef.current.driver.overlay?.setImageSrc(
+      driverPinImage,
+      driverRunningPinImage,
+    );
+
+    const receivedAt = performance.now();
+    if (!motion.target || motion.targetReceivedAt == null) {
+      motion.target = driver;
+      motion.targetReceivedAt = receivedAt;
+      upsertSmoothDriver(
+        kakao,
+        map,
+        storeRef.current.driver,
+        driver,
+        driverLabel,
+        driverPinImage,
+        driverRunningPinImage,
+      );
+      return;
+    }
+
+    const plan = planDriverMotion({
+      previousTarget: motion.target,
+      previousReceivedAt: motion.targetReceivedAt,
+      previousAverageSpeedMps: motion.averageSpeedMps,
+      nextTarget: driver,
+      receivedAt,
+    });
+    if (!plan) return;
+
+    motion.target = driver;
+    motion.targetReceivedAt = receivedAt;
+    motion.averageSpeedMps = plan.averageSpeedMps;
+    upsertSmoothDriver(
+      kakao,
+      map,
+      storeRef.current.driver,
+      driver,
+      driverLabel,
+      driverPinImage,
+      driverRunningPinImage,
+      plan.durationMs,
+    );
+  }, [
+    status,
+    driver,
+    driverLabel,
+    driverPinImage,
+    driverRunningPinImage,
+  ]);
 
   // 추천 이동경로를 폴리라인으로 그린다(좌표가 바뀌면 다시 그림). 핀처럼 ref에 보관해 중복 생성을 막는다.
   useEffect(() => {
