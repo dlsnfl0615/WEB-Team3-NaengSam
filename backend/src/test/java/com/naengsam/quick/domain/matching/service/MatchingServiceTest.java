@@ -44,6 +44,7 @@ import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties
 import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.Action;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
@@ -155,7 +156,8 @@ class MatchingServiceTest {
                 notificationService, OFFER_TTL, orderService);
         matchingAssignmentProblemAssembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
-                matchingPolicyProperties, Clock.systemDefaultZone());
+                matchingPolicyProperties, Clock.systemDefaultZone(),
+                new OfferScopeResolver(matchingPolicyProperties.offerScopes()), new SimpleMeterRegistry());
 
         matchingService = new MatchingService(
                 matchingEngine, notificationService, deliveryService,
@@ -1226,7 +1228,8 @@ class MatchingServiceTest {
                 Instant.parse("2026-08-16T01:00:00Z"), ZoneId.systemDefault());
         matchingAssignmentProblemAssembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
-                matchingPolicyProperties, fifoClock);
+                matchingPolicyProperties, fifoClock,
+                new OfferScopeResolver(matchingPolicyProperties.offerScopes()), new SimpleMeterRegistry());
         matchingService = new MatchingService(
                 matchingEngine, notificationService, deliveryService,
                 fifoClock,

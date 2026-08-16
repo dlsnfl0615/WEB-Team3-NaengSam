@@ -25,28 +25,28 @@ class OfferScopeResolverTest {
     void 대기시간이_59초면_좁은_scope를_고른다() {
         OfferScope scope = resolver.resolve(Duration.ofSeconds(59));
 
-        assertThat(scope.radiusMeters()).isEqualTo(3_000);
+        assertThat(scope.maxPickupDistanceMeters()).isEqualTo(3_000);
     }
 
     @Test
     void 대기시간이_60초_경계면_넓은_scope로_전환된다() {
         OfferScope scope = resolver.resolve(Duration.ofSeconds(60));
 
-        assertThat(scope.radiusMeters()).isEqualTo(6_000);
+        assertThat(scope.maxPickupDistanceMeters()).isEqualTo(6_000);
     }
 
     @Test
     void 대기시간이_61초면_넓은_scope를_유지한다() {
         OfferScope scope = resolver.resolve(Duration.ofSeconds(61));
 
-        assertThat(scope.radiusMeters()).isEqualTo(6_000);
+        assertThat(scope.maxPickupDistanceMeters()).isEqualTo(6_000);
     }
 
     @Test
     void 대기시간이_음수면_0으로_취급해_가장_좁은_scope를_고른다() {
         OfferScope scope = resolver.resolve(Duration.ofSeconds(-1));
 
-        assertThat(scope.radiusMeters()).isEqualTo(3_000);
+        assertThat(scope.maxPickupDistanceMeters()).isEqualTo(3_000);
     }
 
     @Test
@@ -82,7 +82,7 @@ class OfferScopeResolverTest {
     }
 
     @Test
-    void radiusMeters가_0_이하면_예외() {
+    void maxPickupDistanceMeters가_0_이하면_예외() {
         Throwable thrown = catchThrowable(() -> new OfferScopeResolver(List.of(
                 new OfferScopeThreshold(Duration.ZERO, 0))));
 

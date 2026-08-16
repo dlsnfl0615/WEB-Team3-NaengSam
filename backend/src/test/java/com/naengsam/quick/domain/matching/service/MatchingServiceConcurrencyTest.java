@@ -26,6 +26,7 @@ import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties
 import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -117,7 +118,8 @@ class MatchingServiceConcurrencyTest {
                 notificationService, OFFER_TTL, orderService);
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
-                properties, Clock.systemDefaultZone());
+                properties, Clock.systemDefaultZone(), new OfferScopeResolver(properties.offerScopes()),
+                new SimpleMeterRegistry());
 
         BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
         when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);

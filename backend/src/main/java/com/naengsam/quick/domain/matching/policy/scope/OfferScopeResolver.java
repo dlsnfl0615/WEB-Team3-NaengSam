@@ -10,7 +10,8 @@ import java.util.TreeMap;
 /**
  * 주문 대기시간에 따라 적용할 {@link OfferScope}를 고른다. {@code matching.offer-scopes[]}로 설정된 임계값 중,
  * 대기시간 이하인 것 중 가장 큰(가장 최근에 조건을 만족한) minOrderWait의 scope를 적용한다.
- * <p>아직 이 scope로 실제 후보를 거르지는 않는다 - 어떤 scope를 적용해야 하는지 고르는 역할까지만 담당한다.
+ * <p>어떤 scope를 적용해야 하는지 고르는 역할만 담당하며, 실제로 후보를 거르는 건
+ * {@link com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler}가 한다.
  */
 public class OfferScopeResolver {
 
@@ -41,7 +42,7 @@ public class OfferScopeResolver {
                         "offer-scope의 minOrderWait는 null이거나 음수일 수 없습니다: " + minOrderWait);
             }
 
-            OfferScope scope = new OfferScope(threshold.radiusMeters());
+            OfferScope scope = new OfferScope(threshold.maxPickupDistanceMeters());
             OfferScope duplicate = result.put(minOrderWait, scope);
             if (duplicate != null) {
                 throw new IllegalArgumentException(

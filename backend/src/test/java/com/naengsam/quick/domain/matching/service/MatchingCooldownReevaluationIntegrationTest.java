@@ -25,6 +25,7 @@ import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibilityPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -121,7 +122,7 @@ class MatchingCooldownReevaluationIntegrationTest {
 
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(eligibilityPolicy),
-                properties, clock);
+                properties, clock, new OfferScopeResolver(properties.offerScopes()), new SimpleMeterRegistry());
 
         BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
         // 이 파일은 쿨다운 재평가를 다루지, DB 경합을 다루지 않으므로 부르미 timeout은 항상 성공한 것으로 둔다.

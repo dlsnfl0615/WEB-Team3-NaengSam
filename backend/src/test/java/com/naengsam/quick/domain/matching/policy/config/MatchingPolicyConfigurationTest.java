@@ -40,7 +40,7 @@ class MatchingPolicyConfigurationTest {
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=LEGACY",
                         "matching.offer-scopes[0].min-order-wait=0s",
-                        "matching.offer-scopes[0].radius-meters=3000"
+                        "matching.offer-scopes[0].max-pickup-distance-meters=3000"
                 )
                 .run(context -> {
                     assertThat(context).hasSingleBean(MatchingPolicyProperties.class);
@@ -72,7 +72,7 @@ class MatchingPolicyConfigurationTest {
                         "matching.cooldown.boormi-rejection=10m",
                         "matching.cooldown.dreami-expiration=3m",
                         "matching.offer-scopes[0].min-order-wait=0s",
-                        "matching.offer-scopes[0].radius-meters=3000"
+                        "matching.offer-scopes[0].max-pickup-distance-meters=3000"
                 )
                 .run(context -> {
                     assertThat(context.getBean("matchingAssignmentPolicy"))
@@ -104,7 +104,7 @@ class MatchingPolicyConfigurationTest {
                         "matching.balanced-weights.target-order-wait=6m",
                         "matching.balanced-weights.target-dreami-wait=8m",
                         "matching.offer-scopes[0].min-order-wait=0s",
-                        "matching.offer-scopes[0].radius-meters=3000"
+                        "matching.offer-scopes[0].max-pickup-distance-meters=3000"
                 )
                 .run(context -> {
                     MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
@@ -133,7 +133,7 @@ class MatchingPolicyConfigurationTest {
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=LEGACY",
                         "matching.offer-scopes[0].min-order-wait=0s",
-                        "matching.offer-scopes[0].radius-meters=3000"
+                        "matching.offer-scopes[0].max-pickup-distance-meters=3000"
                 )
                 .run(context -> {
                     MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
@@ -150,7 +150,7 @@ class MatchingPolicyConfigurationTest {
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=LEGACY",
                         "matching.offer-scopes[0].min-order-wait=0s",
-                        "matching.offer-scopes[0].radius-meters=3000"
+                        "matching.offer-scopes[0].max-pickup-distance-meters=3000"
                 )
                 .run(context -> {
                     MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
@@ -170,7 +170,7 @@ class MatchingPolicyConfigurationTest {
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=LEGACY",
                         "matching.offer-scopes[0].min-order-wait=0s",
-                        "matching.offer-scopes[0].radius-meters=3000"
+                        "matching.offer-scopes[0].max-pickup-distance-meters=3000"
                 )
                 .run(context -> {
                     MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
@@ -194,7 +194,7 @@ class MatchingPolicyConfigurationTest {
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=LEGACY",
                         "matching.offer-scopes[0].min-order-wait=0s",
-                        "matching.offer-scopes[0].radius-meters=3000"
+                        "matching.offer-scopes[0].max-pickup-distance-meters=3000"
                 )
                 .run(context -> {
                     MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
@@ -214,18 +214,18 @@ class MatchingPolicyConfigurationTest {
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=LEGACY",
                         "matching.offer-scopes[0].min-order-wait=0s",
-                        "matching.offer-scopes[0].radius-meters=3000",
+                        "matching.offer-scopes[0].max-pickup-distance-meters=3000",
                         "matching.offer-scopes[1].min-order-wait=60s",
-                        "matching.offer-scopes[1].radius-meters=6000"
+                        "matching.offer-scopes[1].max-pickup-distance-meters=6000"
                 )
                 .run(context -> {
                     MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
 
                     assertThat(properties.offerScopes()).hasSize(2);
                     assertThat(properties.offerScopes().get(0).minOrderWait()).isEqualTo(Duration.ZERO);
-                    assertThat(properties.offerScopes().get(0).radiusMeters()).isEqualTo(3000);
+                    assertThat(properties.offerScopes().get(0).maxPickupDistanceMeters()).isEqualTo(3000);
                     assertThat(properties.offerScopes().get(1).minOrderWait()).isEqualTo(Duration.ofSeconds(60));
-                    assertThat(properties.offerScopes().get(1).radiusMeters()).isEqualTo(6000);
+                    assertThat(properties.offerScopes().get(1).maxPickupDistanceMeters()).isEqualTo(6000);
                 });
     }
 
@@ -256,7 +256,7 @@ class MatchingPolicyConfigurationTest {
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=LEGACY",
                         "matching.offer-scopes[0].min-order-wait=10s",
-                        "matching.offer-scopes[0].radius-meters=3000"
+                        "matching.offer-scopes[0].max-pickup-distance-meters=3000"
                 )
                 .run(context -> assertThat(context).hasFailed());
     }
@@ -273,7 +273,7 @@ class MatchingPolicyConfigurationTest {
                         "matching.scoring-policy=ORDER_WAIT",
                         "matching.eligibility-policy=LEGACY",
                         "matching.offer-scopes[0].min-order-wait=0s",
-                        "matching.offer-scopes[0].radius-meters=3000"
+                        "matching.offer-scopes[0].max-pickup-distance-meters=3000"
                 )
                 .run(context -> assertThat(context).hasFailed());
     }

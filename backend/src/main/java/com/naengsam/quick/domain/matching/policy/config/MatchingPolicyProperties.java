@@ -53,11 +53,11 @@ public record MatchingPolicyProperties(
     }
 
     /**
-     * 주문 대기시간이 minOrderWait 이상이 되면 radiusMeters 반경을 적용한다는 임계값 하나.
+     * 주문 대기시간이 minOrderWait 이상이 되면 maxPickupDistanceMeters 반경을 적용한다는 임계값 하나.
      */
     public record OfferScopeThreshold(
             Duration minOrderWait,
-            long radiusMeters
+            long maxPickupDistanceMeters
     ) {
     }
 }
