@@ -9,6 +9,7 @@ import com.naengsam.quick.domain.matching.policy.assignment.ScoreBasedGreedyAssi
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibilityPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import com.naengsam.quick.domain.matching.policy.scoring.MatchingScorePolicy;
@@ -70,6 +71,11 @@ public class MatchingPolicyConfiguration {
                         cooldown.dreamiRejection(), cooldown.boormiRejection(), cooldown.dreamiExpiration());
             }
         };
+    }
+
+    @Bean
+    public OfferScopeResolver offerScopeResolver() {
+        return new OfferScopeResolver(properties.offerScopes());
     }
 
     @Bean
