@@ -123,6 +123,9 @@ public class DreamiService {
      * 대상 드리미만 일치하면 통과해버린다. DB를 건드리기 전에 {@code isDreamiOfferAcceptable}로 상태(OFFERED)와 TTL까지 확인해,
      * 이미 만료된 제안이 주문을 잘못 PENDING_BOORMI_CONFIRMATION으로 옮기거나 이벤트를 발행하지 않도록 막는다. 엔진의
      * {@code acceptableOffer} 재검증은 이 검사와 무관하게 최종 방어선으로 유지된다.
+     *
+     * <p>멱등 재시도 판단도 dreamiId만으로는 부족하다 — 같은 드리미라도 그 사이 새 오퍼(재매칭)로 넘어갔을 수 있어, 실제로
+     * 지금 확정 대기 중인 offerId({@code order.getPendingOfferId()})까지 일치해야 "본인의 이전 수락 재시도"로 본다.
      */
     @Transactional
     public void acceptOffer(UUID offerId, UUID dreamiId) {
@@ -139,8 +142,8 @@ public class DreamiService {
 
         // 락을 잡은 뒤 재확인 — 다른 드리미가 먼저 커밋해 이미 MATCHING이 아니게 됐을 수 있다.
         if (order.getOrderCd() == OrderCd.PENDING_BOORMI_CONFIRMATION) {
-            if (dreamiId.equals(order.getDreamiId())) {
-                // 본인이 이미 성공시킨 수락의 재시도(더블클릭/네트워크 재시도) — 멱등하게 조용히 반환한다.
+            if (dreamiId.equals(order.getDreamiId()) && offerId.equals(order.getPendingOfferId())) {
+                // 본인이 이미 성공시킨 "바로 이 offerId"의 재시도(더블클릭/네트워크 재시도) — 멱등하게 조용히 반환한다.
                 return;
             }
             throw new BusinessException(MatchingErrorCode.ALREADY_ACCEPTED_BY_OTHER);
@@ -150,7 +153,7 @@ public class DreamiService {
             throw new BusinessException(MatchingErrorCode.NOT_ACCEPTABLE_STATUS);
         }
 
-        order.markPendingBoormiConfirmation(dreamiId);
+        order.markPendingBoormiConfirmation(dreamiId, offerId);
 
         // 엔진은 수락 즉시 부르미에게 확인 팝업을 보내고, 부르미의 확정은 주문이 PENDING_BOORMI_CONFIRMATION 인지
         // 검사하므로 커밋 후에 제출해야 한다. 커밋 후 처리는 MatchingService 의 리스너가 담당한다.

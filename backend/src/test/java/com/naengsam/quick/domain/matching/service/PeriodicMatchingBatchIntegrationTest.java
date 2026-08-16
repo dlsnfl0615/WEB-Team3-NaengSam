@@ -31,6 +31,7 @@ import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOffe
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -130,11 +131,15 @@ class PeriodicMatchingBatchIntegrationTest {
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(eligibilityPolicy),
                 properties, clock);
 
+        BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
+        // 이 파일은 DB 경합을 다루지 않으므로, 부르미 timeout이 항상 DB 갱신에 성공한 것으로 둔다.
+        when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);
+
         MatchingService matchingService = new MatchingService(
                 matchingEngine, notificationService, deliveryService,
                 clock,
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
-                new SimpleMeterRegistry());
+                new SimpleMeterRegistry(), boormiOfferExpirationService);
 
         new PeriodicMatchingBatchScheduler(matchingEngine, properties, matchingService).start();
 

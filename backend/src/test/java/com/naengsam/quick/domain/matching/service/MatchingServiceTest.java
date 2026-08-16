@@ -47,6 +47,7 @@ import com.naengsam.quick.domain.matching.service.engine.Action;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
@@ -83,6 +84,7 @@ class MatchingServiceTest {
     private MatchingPlanApplier matchingPlanApplier;
     private MatchingPolicyProperties matchingPolicyProperties;
     private GeoDistanceCalculator geoDistanceCalculator;
+    private BoormiOfferExpirationService boormiOfferExpirationService;
 
     /**
      * 예전 legacy attemptOfferRound(top-3, 오래_대기한_순)와 가장 가까운 조합. 이 조합으로 배치 매칭 사이클을 실행하면 이 파일의 기존
@@ -113,6 +115,9 @@ class MatchingServiceTest {
         when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(500.0);
         // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 별도 명시가 없는 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
         when(notificationService.isReachableNow(any())).thenReturn(true);
+        boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
+        // 이 파일의 테스트는 DB 경합을 다루지 않으므로, 부르미 timeout이 항상 DB 갱신에 성공한 것으로 둔다.
+        when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);
 
         matchingPolicyProperties = matchingPolicyProperties();
         matchingAssignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
@@ -127,7 +132,7 @@ class MatchingServiceTest {
                 matchingEngine, notificationService, deliveryService,
                 Clock.systemDefaultZone(),
                 matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
-                geoDistanceCalculator, new SimpleMeterRegistry());
+                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService);
     }
 
     @Test
@@ -225,7 +230,7 @@ class MatchingServiceTest {
                 matchingEngine, notificationService, deliveryService,
                 Clock.systemDefaultZone(),
                 mockAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
-                geoDistanceCalculator, new SimpleMeterRegistry());
+                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService);
 
         UUID connectedDreamiId = UUID.randomUUID();
         UUID ghostDreamiId = UUID.randomUUID();
@@ -797,11 +802,48 @@ class MatchingServiceTest {
         matchingService.applyRunMatchingAssignmentCycle();
 
         // then
+        assertThat(offer.status()).isEqualTo(MatchOfferStatus.BOORMI_EXPIRED);
+        // DB 주문도 같은 잠금 경로로 MATCHING/dreamiId=null로 되돌렸는지 확인한다.
+        verify(boormiOfferExpirationService).expire(orderId, dreamiId);
+
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
         assertThat(group.offers()).hasSize(2);
         assertThat(group.offers().getLast().dreamiId()).isEqualTo(dreamiId);
         assertThat(group.offers().getLast().status()).isEqualTo(MatchOfferStatus.OFFERED);
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(notificationService).notify(eq(dreamiId), eq(MatchingEventType.OFFER_CLOSED), captor.capture());
+        assertThat(((OfferClosedPayload) captor.getValue()).offerId()).isEqualTo(offer.offerId());
+    }
+
+    @Test
+    void DB_주문이_이미_다른_경로로_처리됐으면_부르미_timeout은_인메모리_상태를_바꾸지_않는다() {
+        // given (부르미 확정이 먼저 DB 잠금을 잡아 이미 IN_PROGRESS로 넘어간 상황을 흉내낸다)
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+
+        matchingService.applyRegisterDreami(dreamiId, location);
+        matchingService.applyStartMatching(order);
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        MatchOffer offer =
+                getOrderOfferGroups().get(orderId).offers().getFirst();
+        matchingService.applyAcceptByDreami(offer.offerId());
+
+        when(boormiOfferExpirationService.expire(orderId, dreamiId)).thenReturn(false);
+
+        // when
+        matchingService.applyExpireBoormiOffer(offer.offerId());
+
+        // then (DB가 승자이므로 인메모리 오퍼/드리미/그룹 상태는 그대로 두고, 종료 알림도 보내지 않는다)
+        assertThat(offer.status()).isEqualTo(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+        assertThat(getDreamiMap().get(dreamiId).status()).isEqualTo(WaitingDreamiStatus.PROPOSED);
+        assertThat(getOrderOfferGroups().get(orderId).status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+        verify(notificationService, never()).notify(eq(dreamiId), eq(MatchingEventType.OFFER_CLOSED), any());
     }
 
     @Test
@@ -1588,7 +1630,7 @@ class MatchingServiceTest {
                 matchingEngine, notificationService, deliveryService,
                 Clock.systemDefaultZone(),
                 mockAssembler, mockAssignmentPolicy, mockPlanApplier, matchingPolicyProperties,
-                geoDistanceCalculator, new SimpleMeterRegistry());
+                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService);
 
         MatchingAssignmentProblem problem = new MatchingAssignmentProblem(LocalDateTime.now(), List.of(), List.of(), List.of());
         MatchingPlan plan = new MatchingPlan(List.of());

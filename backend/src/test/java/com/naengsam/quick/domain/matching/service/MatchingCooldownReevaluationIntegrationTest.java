@@ -27,6 +27,7 @@ import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOffe
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -95,11 +96,15 @@ class MatchingCooldownReevaluationIntegrationTest {
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(eligibilityPolicy),
                 properties, clock);
 
+        BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
+        // 이 파일은 쿨다운 재평가를 다루지, DB 경합을 다루지 않으므로 부르미 timeout은 항상 성공한 것으로 둔다.
+        when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);
+
         return new MatchingService(
                 matchingEngine, notificationService, deliveryService,
                 clock,
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
-                new SimpleMeterRegistry());
+                new SimpleMeterRegistry(), boormiOfferExpirationService);
     }
 
     @Test

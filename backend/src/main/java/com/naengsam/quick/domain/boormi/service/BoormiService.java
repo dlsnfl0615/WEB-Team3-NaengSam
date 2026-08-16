@@ -168,7 +168,11 @@ public class BoormiService {
      */
     @Transactional
     public void confirmDreami(UUID boormiId, UUID orderId, UUID offerId) {
-        Orders order = orderService.getOrder(orderId);
+        // 드리미 수락(DreamiService.acceptOffer)·부르미 거절·부르미 응답 timeout(BoormiOfferExpirationService)과
+        // 동일한 비관적 쓰기 락 경로를 타야, 이 확정과 timeout이 동시에 들어와도 먼저 락을 잡은 쪽이 승자가 되고
+        // 나머지는 갱신된 최신 상태를 다시 읽게 된다 — orderService.getOrder(unlocked findById)로는 이 보장이 없다.
+        Orders order = orderRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
 
         if (!order.getBoormiId().equals(boormiId)) {
             throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
@@ -197,7 +201,9 @@ public class BoormiService {
      */
     @Transactional
     public void rejectDreami(UUID boormiId, UUID orderId, UUID offerId) {
-        Orders order = orderService.getOrder(orderId);
+        // confirmDreami와 같은 이유로 잠금 조회를 쓴다 — timeout과의 경합에서 먼저 락을 잡은 쪽이 승자가 된다.
+        Orders order = orderRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
 
         if (!order.getBoormiId().equals(boormiId)) {
             throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
