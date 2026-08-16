@@ -38,6 +38,9 @@ interface BoormiOrderState {
   activityError: string | null;
   /** 탭별(전체/진행중/완료/취소) 개수. 화면 진입 시 한 번만 받아온다. */
   activityCounts: FilterCounts | null;
+  /** 필터 전환/재조회마다 증가하는 세대 번호. 응답이 왔을 때 이 값이 요청 시점과 다르면(그 사이 다른
+   * 필터로 전환됐다는 뜻) 응답을 버린다 — 느린 응답이 최신 상태를 덮어쓰는 레이스를 막는다. */
+  activityEpoch: number;
   /** 필터 탭을 정하고 그 필터의 첫 페이지를 새로 받는다(기존 목록은 버린다). */
   loadActivityFirstPage: (filter: ActivityFilter) => Promise<void>;
   /** 현재 필터의 다음 페이지를 이어 받는다. 이미 없거나(hasNext=false) 로딩 중이면 아무것도 안 한다. */
@@ -92,12 +95,22 @@ export const useBoormiOrderStore = create<BoormiOrderState>((set, get) => ({
   activityLoadingMore: false,
   activityError: null,
   activityCounts: null,
+  activityEpoch: 0,
 
   loadActivityFirstPage: async (filter) => {
-    set({ activityLoading: true, activityError: null, activityFilter: filter });
+    const epoch = get().activityEpoch + 1;
+    // 새 필터 조회를 시작하는 순간, 이전 세대에서 이미 떠 있던 "더 보기" 요청도 함께 무효화한다.
+    set({
+      activityLoading: true,
+      activityLoadingMore: false,
+      activityError: null,
+      activityFilter: filter,
+      activityEpoch: epoch,
+    });
     try {
       const status = filter === "전체" ? undefined : FILTER_ORDER_CDS[filter];
       const { result } = await api.getBoormiOrders({ status });
+      if (get().activityEpoch !== epoch) return; // 그 사이 다른 필터로 전환됨 — 이 응답은 버린다
       set({
         activityOrders: (result?.orders ?? []).map(toBoormiOrder),
         activityCursor: result?.nextCursor ?? null,
@@ -105,6 +118,7 @@ export const useBoormiOrderStore = create<BoormiOrderState>((set, get) => ({
         activityLoading: false,
       });
     } catch (e) {
+      if (get().activityEpoch !== epoch) return;
       set({
         activityLoading: false,
         activityError: isApiError(e) ? e.message : "활동 내역을 불러오지 못했어요.",
@@ -113,12 +127,18 @@ export const useBoormiOrderStore = create<BoormiOrderState>((set, get) => ({
   },
 
   loadActivityMore: async () => {
-    const { activityHasNext, activityLoadingMore, activityLoading, activityCursor, activityFilter } = get();
+    const { activityHasNext, activityLoadingMore, activityLoading, activityCursor, activityFilter, activityEpoch } =
+      get();
     if (!activityHasNext || activityLoadingMore || activityLoading) return;
+    const epoch = activityEpoch; // 지금 목록이 속한 세대 — 응답이 온 뒤 필터가 바뀌었으면 병합하지 않는다
     set({ activityLoadingMore: true });
     try {
       const status = activityFilter === "전체" ? undefined : FILTER_ORDER_CDS[activityFilter];
       const { result } = await api.getBoormiOrders({ status, cursor: activityCursor ?? undefined });
+      if (get().activityEpoch !== epoch) {
+        set({ activityLoadingMore: false });
+        return;
+      }
       set((s) => ({
         activityOrders: [...s.activityOrders, ...(result?.orders ?? []).map(toBoormiOrder)],
         activityCursor: result?.nextCursor ?? null,
@@ -126,6 +146,10 @@ export const useBoormiOrderStore = create<BoormiOrderState>((set, get) => ({
         activityLoadingMore: false,
       }));
     } catch (e) {
+      if (get().activityEpoch !== epoch) {
+        set({ activityLoadingMore: false });
+        return;
+      }
       set({
         activityLoadingMore: false,
         activityError: isApiError(e) ? e.message : "활동 내역을 불러오지 못했어요.",
