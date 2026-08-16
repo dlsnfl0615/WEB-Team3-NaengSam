@@ -58,15 +58,16 @@ public class OrderService {
         OrderCursor cursor = OrderCursor.decode(cursorToken)
                 .orElseThrow(() -> new BusinessException(OrderErrorCode.INVALID_CURSOR));
         Pageable pageable = PageRequest.of(0, resolvePageSize(size) + 1);
-        List<OrderCd> orderCds = (statusFilter == null || statusFilter.isEmpty())
-                ? List.of(OrderCd.values())
-                : statusFilter;
+        List<OrderCd> orderCds = resolveOrderCds(statusFilter);
 
-        List<OrderSummaryDto> rows = role == Role.BOORMI
-                ? orderRepository.findPageByBoormiId(userId, orderCds, cursor.deliveryRequestDtm(),
-                        cursor.orderId(), pageable)
-                : orderRepository.findPageByDreamiId(userId, orderCds, cursor.deliveryRequestDtm(),
-                        cursor.orderId(), pageable);
+        List<OrderSummaryDto> rows;
+        if (role == Role.BOORMI) {
+            rows = orderRepository.findPageByBoormiId(userId, orderCds, cursor.deliveryRequestDtm(),
+                    cursor.orderId(), pageable);
+        } else {
+            rows = orderRepository.findPageByDreamiId(userId, orderCds, cursor.deliveryRequestDtm(),
+                    cursor.orderId(), pageable);
+        }
 
         return toPageResponse(rows, resolvePageSize(size));
     }
@@ -76,16 +77,30 @@ public class OrderService {
      */
     @Transactional(readOnly = true)
     public List<OrderStatusCountDto> getStatusCounts(UUID userId, Role role) {
-        return role == Role.BOORMI
-                ? orderRepository.countGroupedByOrderCdForBoormi(userId)
-                : orderRepository.countGroupedByOrderCdForDreami(userId);
+        if (role == Role.BOORMI) {
+            return orderRepository.countGroupedByOrderCdForBoormi(userId);
+        }
+        return orderRepository.countGroupedByOrderCdForDreami(userId);
+    }
+
+    /**
+     * 필터 탭이 비어 있으면(전체 탭) {@link OrderCd#values()} 전체로 채운다.
+     */
+    private List<OrderCd> resolveOrderCds(List<OrderCd> statusFilter) {
+        if (statusFilter == null || statusFilter.isEmpty()) {
+            return List.of(OrderCd.values());
+        }
+        return statusFilter;
     }
 
     private BoormiOrdersResponse toPageResponse(List<OrderSummaryDto> rows, int pageSize) {
         boolean hasNext = rows.size() > pageSize;
-        List<OrderSummaryDto> page = hasNext ? rows.subList(0, pageSize) : rows;
-        String nextCursor = hasNext ? OrderCursor.of(page.getLast()).encode() : null;
-        return BoormiOrdersResponse.of(page, nextCursor, hasNext);
+        if (!hasNext) {
+            return BoormiOrdersResponse.of(rows, null, false);
+        }
+        List<OrderSummaryDto> page = rows.subList(0, pageSize);
+        String nextCursor = OrderCursor.of(page.getLast()).encode();
+        return BoormiOrdersResponse.of(page, nextCursor, true);
     }
 
     private int resolvePageSize(Integer size) {
