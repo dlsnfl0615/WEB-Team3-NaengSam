@@ -25,7 +25,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/v1/debug/dreami-review")
 @RequiredArgsConstructor
-public class DreamiReviewDebugController {
+public class DreamiApproveController {
 
     private final DreamiService dreamiService;
 
