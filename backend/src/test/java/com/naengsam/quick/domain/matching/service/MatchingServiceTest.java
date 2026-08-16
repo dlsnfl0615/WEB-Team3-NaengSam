@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -51,6 +52,7 @@ import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.domain.order.service.OrderService;
+import com.naengsam.quick.domain.order.service.PendingOfferStateService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
@@ -93,6 +95,7 @@ class MatchingServiceTest {
     private GeoDistanceCalculator geoDistanceCalculator;
     private BoormiOfferExpirationService boormiOfferExpirationService;
     private OrderService orderService;
+    private PendingOfferStateService pendingOfferStateService;
 
     /**
      * 예전 legacy attemptOfferRound(top-3, 오래_대기한_순)와 가장 가까운 조합. 이 조합으로 배치 매칭 사이클을 실행하면 이 파일의 기존
@@ -139,6 +142,10 @@ class MatchingServiceTest {
             Collection<UUID> orderIds = invocation.getArgument(0);
             return orderIds.stream().collect(Collectors.toMap(id -> id, id -> defaultMatchingOrder));
         });
+        pendingOfferStateService = mock(PendingOfferStateService.class);
+        // 이 파일의 테스트는 대부분 부르미 확정이 DB와 일치하는 정상 경로를 검증하므로, 기본값을 항상 true로 둔다.
+        // 가드 자체를 검증하는 테스트는 doReturn(false)로 재스텁한다.
+        lenient().when(pendingOfferStateService.isCurrent(any(), any(), any())).thenReturn(true);
 
         matchingPolicyProperties = matchingPolicyProperties();
         matchingAssignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
@@ -153,7 +160,7 @@ class MatchingServiceTest {
                 matchingEngine, notificationService, deliveryService,
                 Clock.systemDefaultZone(),
                 matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
-                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService, orderService);
+                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService, orderService, pendingOfferStateService);
     }
 
     @Test
@@ -255,7 +262,7 @@ class MatchingServiceTest {
                 matchingEngine, notificationService, deliveryService,
                 Clock.systemDefaultZone(),
                 mockAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
-                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService, orderService);
+                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService, orderService, pendingOfferStateService);
 
         UUID connectedDreamiId = UUID.randomUUID();
         UUID ghostDreamiId = UUID.randomUUID();
@@ -397,6 +404,37 @@ class MatchingServiceTest {
 
         // then
         verify(deliveryService, times(1)).startDelivery(orderId, dreamiId, boormiId);
+    }
+
+    @Test
+    void DB_주문_상태가_이_오퍼와_일치하지_않으면_부르미_수락을_무시한다() {
+        // given (DB 확정 대기가 그 사이 다른 경로로 바뀐 경우 - 예: 타임아웃이 먼저 처리돼 이미 MATCHING으로 되돌아감)
+        UUID orderId = UUID.randomUUID();
+
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+
+        when(order.getOrderId()).thenReturn(orderId);
+        lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
+
+        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+        matchingService.applyStartMatching(order);
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        OrderOfferGroup group = getOrderOfferGroups().get(orderId);
+        MatchOffer offer = group.offers().getFirst();
+
+        matchingService.applyAcceptByDreami(offer.offerId());
+        doReturn(false).when(pendingOfferStateService).isCurrent(any(), any(), any());
+
+        // when
+        matchingService.applyAcceptByBoormi(offer.offerId());
+
+        // then
+        assertThat(offer.status()).isEqualTo(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+        verify(deliveryService, never()).startDelivery(any(), any(), any());
     }
 
     @Test
@@ -1193,7 +1231,7 @@ class MatchingServiceTest {
                 fifoClock,
                 matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier,
                 matchingPolicyProperties, geoDistanceCalculator, new SimpleMeterRegistry(),
-                boormiOfferExpirationService, orderService);
+                boormiOfferExpirationService, orderService, pendingOfferStateService);
 
         UUID orderId = UUID.randomUUID();
         GeoPoint location = mock(GeoPoint.class);
@@ -2009,7 +2047,7 @@ class MatchingServiceTest {
                 matchingEngine, notificationService, deliveryService,
                 Clock.systemDefaultZone(),
                 mockAssembler, mockAssignmentPolicy, mockPlanApplier, matchingPolicyProperties,
-                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService, orderService);
+                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService, orderService, pendingOfferStateService);
 
         MatchingAssignmentProblem problem = new MatchingAssignmentProblem(LocalDateTime.now(), List.of(), List.of(), List.of());
         MatchingPlan plan = new MatchingPlan(List.of());
