@@ -2,6 +2,7 @@ package com.naengsam.quick.domain.matching.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -26,8 +27,10 @@ import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibility
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -35,6 +38,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
@@ -52,9 +56,13 @@ class MatchingCooldownReevaluationIntegrationTest {
     private static final Duration BOORMI_REJECTION_COOLDOWN = Duration.ofMinutes(15);
     private static final Duration DREAMI_EXPIRATION_COOLDOWN = Duration.ofMinutes(5);
 
-    private static Orders orderMock(UUID orderId) {
+    private OrderService orderService;
+
+    private Orders orderMock(UUID orderId) {
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
         return order;
     }
 
@@ -99,12 +107,13 @@ class MatchingCooldownReevaluationIntegrationTest {
         BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
         // 이 파일은 쿨다운 재평가를 다루지, DB 경합을 다루지 않으므로 부르미 timeout은 항상 성공한 것으로 둔다.
         when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);
+        orderService = mock(OrderService.class);
 
         return new MatchingService(
                 matchingEngine, notificationService, deliveryService,
                 clock,
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
-                new SimpleMeterRegistry(), boormiOfferExpirationService);
+                new SimpleMeterRegistry(), boormiOfferExpirationService, orderService);
     }
 
     @Test

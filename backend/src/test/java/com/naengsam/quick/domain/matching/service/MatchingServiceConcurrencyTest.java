@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.matching.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -27,14 +28,17 @@ import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -60,6 +64,7 @@ class MatchingServiceConcurrencyTest {
     private MatchingEngine matchingEngine;
     private MatchingService matchingService;
     private ExecutorService requestThreads;
+    private OrderService orderService;
 
     private static MatchingPolicyProperties matchingPolicyProperties() {
         return new MatchingPolicyProperties(
@@ -98,12 +103,13 @@ class MatchingServiceConcurrencyTest {
 
         BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
         when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);
+        orderService = mock(OrderService.class);
 
         matchingService = new MatchingService(matchingEngine, notificationService,
                 mock(DeliveryService.class),
                 Clock.systemDefaultZone(),
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
-                new SimpleMeterRegistry(), boormiOfferExpirationService);
+                new SimpleMeterRegistry(), boormiOfferExpirationService, orderService);
         requestThreads = Executors.newFixedThreadPool(16);
     }
 
@@ -141,6 +147,8 @@ class MatchingServiceConcurrencyTest {
         GeoPoint location = mock(GeoPoint.class);
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
@@ -186,6 +194,8 @@ class MatchingServiceConcurrencyTest {
         GeoPoint location = mock(GeoPoint.class);
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
@@ -228,6 +238,8 @@ class MatchingServiceConcurrencyTest {
         GeoPoint location = mock(GeoPoint.class);
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
@@ -266,6 +278,8 @@ class MatchingServiceConcurrencyTest {
         GeoPoint location = mock(GeoPoint.class);
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));
@@ -309,6 +323,8 @@ class MatchingServiceConcurrencyTest {
         GeoPoint location = mock(GeoPoint.class);
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
 
         matchingService.registerDreami(dreamiId, location);
         awaitUntil(() -> getDreamiMap().containsKey(dreamiId), Duration.ofSeconds(5));

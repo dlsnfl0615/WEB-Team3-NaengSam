@@ -27,8 +27,10 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
@@ -88,6 +90,7 @@ public class MatchingService {
     // 부르미 응답 timeout을 DB 주문에도 반영하는 트랜잭션 서비스. MatchingService가 OrderRepository를
     // 직접 다루지 않도록 분리했다(도메인 간 독립성 유지) — 자세한 이유는 이 서비스의 Javadoc 참고.
     private final BoormiOfferExpirationService boormiOfferExpirationService;
+    private final OrderService orderService;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -331,18 +334,28 @@ public class MatchingService {
     }
 
     void applyStartMatching(Orders order) {
-        log.debug("매칭 시작 액션 실행: orderId={}", order.getOrderId());
+        UUID orderId = order.getOrderId();
+        log.debug("매칭 시작 액션 실행: orderId={}", orderId);
 
         // 큐에 쌓여 있는 동안 다른 액션이 먼저 방을 만들었을 수 있으므로 엔진 스레드에서 다시 확인한다.
-        if (isActiveGroupExists(order.getOrderId())) {
-            log.debug("이미 진행 중인 방이 있어 매칭 시작을 건너뜀: orderId={}", order.getOrderId());
+        if (isActiveGroupExists(orderId)) {
+            log.debug("이미 진행 중인 방이 있어 매칭 시작을 건너뜀: orderId={}", orderId);
             return;
         }
 
-        GeoPoint boormiLocation = new GeoPoint(order.getOriginLatitude(), order.getOriginLongitude());
-        OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), boormiLocation,
-                OrderSummaryDto.from(order), new ArrayList<>(), LocalDateTime.now(clock));
-        orderOfferGroupsByOrderId.put(order.getOrderId(), group);
+        // 큐에 쌓여 있는 동안 취소 등으로 주문 상태가 바뀌었을 수 있으므로, 액션이 들고 온 order(제출 시점 스냅샷)를
+        // 그대로 믿지 않고 orderId로 최신 DB 엔티티를 다시 조회한다. 취소 이벤트가 유실돼도 여기서 최종적으로 막힌다.
+        Optional<Orders> latestOrder = orderService.findOrder(orderId);
+        if (latestOrder.isEmpty() || latestOrder.get().getOrderCd() != OrderCd.MATCHING) {
+            log.debug("주문이 없거나 매칭 시작 가능한 상태(MATCHING)가 아니라 건너뜀: orderId={}", orderId);
+            return;
+        }
+
+        Orders latest = latestOrder.get();
+        GeoPoint boormiLocation = new GeoPoint(latest.getOriginLatitude(), latest.getOriginLongitude());
+        OrderOfferGroup group = new OrderOfferGroup(latest.getOrderId(), latest.getBoormiId(), boormiLocation,
+                OrderSummaryDto.from(latest), new ArrayList<>(), LocalDateTime.now(clock));
+        orderOfferGroupsByOrderId.put(latest.getOrderId(), group);
     }
 
     void applyCancelOrderByBoormi(UUID orderId) {

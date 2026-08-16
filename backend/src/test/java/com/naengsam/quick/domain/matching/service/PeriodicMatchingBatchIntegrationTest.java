@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.matching.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -30,12 +31,15 @@ import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibility
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
@@ -52,6 +56,7 @@ class PeriodicMatchingBatchIntegrationTest {
     private static final Duration BATCH_INTERVAL = Duration.ofMillis(30);
 
     private MatchingEngine matchingEngine;
+    private OrderService orderService;
 
     @AfterEach
     void tearDown() {
@@ -99,9 +104,11 @@ class PeriodicMatchingBatchIntegrationTest {
         };
     }
 
-    private static Orders orderMock(UUID orderId) {
+    private Orders orderMock(UUID orderId) {
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
         return order;
     }
 
@@ -134,12 +141,13 @@ class PeriodicMatchingBatchIntegrationTest {
         BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
         // 이 파일은 DB 경합을 다루지 않으므로, 부르미 timeout이 항상 DB 갱신에 성공한 것으로 둔다.
         when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);
+        orderService = mock(OrderService.class);
 
         MatchingService matchingService = new MatchingService(
                 matchingEngine, notificationService, deliveryService,
                 clock,
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
-                new SimpleMeterRegistry(), boormiOfferExpirationService);
+                new SimpleMeterRegistry(), boormiOfferExpirationService, orderService);
 
         new PeriodicMatchingBatchScheduler(matchingEngine, properties, matchingService).start();
 
