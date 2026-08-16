@@ -1,6 +1,8 @@
 package com.naengsam.quick.domain.order.service;
 
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderCursor;
+import com.naengsam.quick.domain.order.dto.OrderStatusCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Cancel;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
@@ -15,6 +17,8 @@ import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +26,9 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 public class OrderService {
+
+    private static final int DEFAULT_PAGE_SIZE = 20;
+    private static final int MAX_PAGE_SIZE = 50;
 
     private final OrderRepository orderRepository;
     private final CancelRepository cancelRepository;
@@ -40,14 +47,52 @@ public class OrderService {
     }
 
     /**
-     * 로그인한 사용자가 role(부르미/드리미)로 참여한 주문 전체를 최신순으로 조회한다. 필터링(전체/진행중/완료/취소)은
-     * 클라이언트에서 하므로 여기서는 상태 무관하게 전체를 반환한다.
+     * 로그인한 사용자가 role(부르미/드리미)로 참여한 주문을 최신순으로 커서 페이지네이션 조회한다. {@code statusFilter}가
+     * 비어 있으면(전체 탭) {@link OrderCd#values()} 전체로 채워 넘긴다 — 화면의 필터 탭 하나가 여러 상태를 묶는 경우
+     * (예: "진행중")까지 이미 프론트에서 구체적인 상태 목록으로 넘겨준다고 가정한다. 한 페이지보다 하나 더 가져와 보고
+     * {@code hasNext}를 판단한 뒤, 실제로는 요청한 크기만큼만 잘라 돌려준다.
      */
     @Transactional(readOnly = true)
-    public BoormiOrdersResponse getOrders(UUID userId, Role role) {
-        List<Orders> rows = orderRepository.findAllByRole(userId, role.name());
-        List<OrderSummaryDto> orders = rows.stream().map(OrderSummaryDto::from).toList();
-        return BoormiOrdersResponse.of(orders);
+    public BoormiOrdersResponse getOrders(UUID userId, Role role, List<OrderCd> statusFilter, String cursorToken,
+            Integer size) {
+        OrderCursor cursor = OrderCursor.decode(cursorToken)
+                .orElseThrow(() -> new BusinessException(OrderErrorCode.INVALID_CURSOR));
+        Pageable pageable = PageRequest.of(0, resolvePageSize(size) + 1);
+        List<OrderCd> orderCds = (statusFilter == null || statusFilter.isEmpty())
+                ? List.of(OrderCd.values())
+                : statusFilter;
+
+        List<OrderSummaryDto> rows = role == Role.BOORMI
+                ? orderRepository.findPageByBoormiId(userId, orderCds, cursor.deliveryRequestDtm(),
+                        cursor.orderId(), pageable)
+                : orderRepository.findPageByDreamiId(userId, orderCds, cursor.deliveryRequestDtm(),
+                        cursor.orderId(), pageable);
+
+        return toPageResponse(rows, resolvePageSize(size));
+    }
+
+    /**
+     * 활동 내역 화면의 상태별(전체/진행중/완료/취소) 탭 개수. 화면 진입 시 한 번만 호출해 탭 전환마다 다시 세지 않는다.
+     */
+    @Transactional(readOnly = true)
+    public List<OrderStatusCountDto> getStatusCounts(UUID userId, Role role) {
+        return role == Role.BOORMI
+                ? orderRepository.countGroupedByOrderCdForBoormi(userId)
+                : orderRepository.countGroupedByOrderCdForDreami(userId);
+    }
+
+    private BoormiOrdersResponse toPageResponse(List<OrderSummaryDto> rows, int pageSize) {
+        boolean hasNext = rows.size() > pageSize;
+        List<OrderSummaryDto> page = hasNext ? rows.subList(0, pageSize) : rows;
+        String nextCursor = hasNext ? OrderCursor.of(page.getLast()).encode() : null;
+        return BoormiOrdersResponse.of(page, nextCursor, hasNext);
+    }
+
+    private int resolvePageSize(Integer size) {
+        if (size == null || size <= 0) {
+            return DEFAULT_PAGE_SIZE;
+        }
+        return Math.min(size, MAX_PAGE_SIZE);
     }
 
     /**
