@@ -87,10 +87,6 @@ presigned URL 검증을 "S3에 파일이 존재하는가"만으로 하면 다음
 
 - 처음에는 key 문자열 자체에 `boormiId`를 접두어로 넣고 `startsWith` 검사만 했는데, 이러면 purpose나 resourceId까지는 구분할 수 없었다. 지금은 `UploadSession` row 전체를 비교하는 방식으로 강화되어 있다.
 
-### 남아있던 한계, 지금은 해소된 것으로 보임
-
-이 설계를 처음 정리한 시점엔 "같은 목적·같은 주문 안에서의 재사용(replay)은 아직 안 막힘 — 픽업/배달 검증 경로가 `consume()`을 안 불러서, 같은 키를 여러 번 다시 제출해도 통과할 수 있다"는 한계가 남아 있었다(교차-주문/교차-유저 재사용은 막혀 있어 위험도는 낮다고 평가됨). 하지만 지금 코드를 보면 `DeliveryService`의 픽업 완료(`doPickupFinishByDreami`)·배달 완료 경로 둘 다 `validateScope`+`isFileUploaded`만 부르는 별도 메서드가 아니라 **`checkUpload(...)`를 그대로 호출**하고 있고, `checkUpload`는 마지막에 `consume(key)`까지 수행한다. 즉 이 한계는 이미 해소된 것으로 보인다 — 같은 키로 픽업/배달 완료를 두 번 제출하면 두 번째 호출은 `markConsumedIfIssued`가 `0`을 반환해 세션이 이미 `CONSUMED`임을 알 수 있다(다만 §4에서 보듯 `checkUpload`의 반환값 자체를 호출부가 분기에 쓰지는 않는다 — 이중 제출을 막는 실제 방어선은 `Delivery`의 상태 머신 쪽에 있다).
-
 ## 6. 로컬/운영 분리
 
 - `Uploader` 인터페이스: `generateUploadUrl`, `generateDownloadUrl`, `exists`.
