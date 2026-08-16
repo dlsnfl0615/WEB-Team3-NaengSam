@@ -46,7 +46,7 @@ export const options = {
   scenarios: {
     reading: {
       executor: "constant-vus",
-      vus: Number(__ENV.VUS || 30),
+      vus: Number(__ENV.VUS || 20),
       duration: __ENV.DURATION || "5m",
     },
   },
@@ -138,7 +138,19 @@ function fetchPage(cookie, cursor) {
 }
 
 export default function () {
-  const cookie = loginOnceForThisVU();
+  // loginOnceForThisVU가 실패하면(대기열 만석 등) 아래 for 루프까지 가지도 못하고 여기서 바로
+  // 예외가 던져진다 — 그 상태로 함수를 빠져나가면 맨 아래 sleep(1)을 못 타서, 로그인 실패가
+  // 페이지 조회 실패와 달리 pacing 없이 즉시 재시도되며 동일한 폭주 되먹임을 일으킨다. 그래서
+  // 로그인 실패도 페이지 조회 실패와 똑같이 sleep(1)을 타고 이번 iteration을 끝내도록 감싼다.
+  let cookie;
+  try {
+    cookie = loginOnceForThisVU();
+  } catch (e) {
+    console.error(e.message);
+    sleep(1);
+    return;
+  }
+
   let cursor = undefined;
 
   for (let page = 0; page < MAX_PAGES; page++) {
