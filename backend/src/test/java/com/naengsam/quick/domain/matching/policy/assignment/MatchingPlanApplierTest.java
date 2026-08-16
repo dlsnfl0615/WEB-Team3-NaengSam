@@ -112,6 +112,61 @@ class MatchingPlanApplierTest {
     }
 
     @Test
+    void 생성된_오퍼는_proposal의_offerPolicySnapshot을_그대로_저장한다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        registerGroup(orderId);
+        registerDreami(dreamiId);
+        MatchingAssignmentProblem problem = problem(
+                List.of(orderInput(orderId, 3)), List.of(dreamiId), List.of(orderId), List.of(dreamiId));
+        OfferPolicySnapshot proposalSnapshot = snapshot();
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId, proposalSnapshot)));
+
+        applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
+
+        MatchOffer createdOffer = offersById.values().iterator().next();
+        assertThat(createdOffer.offerPolicySnapshot()).isEqualTo(proposalSnapshot);
+    }
+
+    @Test
+    void 이미_생성된_오퍼의_스냅샷은_이후_라운드에서_scope가_넓어져도_바뀌지_않는다() {
+        UUID orderNarrow = UUID.randomUUID();
+        UUID dreamiNarrow = UUID.randomUUID();
+        registerGroup(orderNarrow);
+        registerDreami(dreamiNarrow);
+        OfferPolicySnapshot narrowSnapshot = new OfferPolicySnapshot(Duration.ZERO, EVALUATED_AT, 0L, 0.0, 3_000);
+        MatchingAssignmentProblem firstRoundProblem = problem(
+                List.of(orderInput(orderNarrow, 3)), List.of(dreamiNarrow), List.of(orderNarrow), List.of(dreamiNarrow));
+        MatchingPlan firstRoundPlan =
+                new MatchingPlan(List.of(new MatchingProposal(orderNarrow, dreamiNarrow, narrowSnapshot)));
+        applyPlan(firstRoundPlan, firstRoundProblem);
+
+        MatchOffer narrowOffer = offersById.values().iterator().next();
+
+        // 다음 배치 라운드: 다른 주문의 대기시간이 임계값을 넘어 넓은 scope가 적용된 새 제안이 들어온다.
+        UUID orderWide = UUID.randomUUID();
+        UUID dreamiWide = UUID.randomUUID();
+        registerGroup(orderWide);
+        registerDreami(dreamiWide);
+        OfferPolicySnapshot wideSnapshot = new OfferPolicySnapshot(Duration.ofSeconds(60), EVALUATED_AT, 61L, 0.0, 6_000);
+        MatchingAssignmentProblem secondRoundProblem = problem(
+                List.of(orderInput(orderWide, 3)), List.of(dreamiWide), List.of(orderWide), List.of(dreamiWide));
+        MatchingPlan secondRoundPlan =
+                new MatchingPlan(List.of(new MatchingProposal(orderWide, dreamiWide, wideSnapshot)));
+        applyPlan(secondRoundPlan, secondRoundProblem);
+
+        assertThat(narrowOffer.offerPolicySnapshot()).isEqualTo(narrowSnapshot);
+        MatchOffer wideOffer = offersById.values().stream()
+                .filter(offer -> offer.dreamiId().equals(dreamiWide))
+                .findFirst().orElseThrow();
+        assertThat(wideOffer.offerPolicySnapshot()).isEqualTo(wideSnapshot);
+    }
+
+    private void applyPlan(MatchingPlan plan, MatchingAssignmentProblem problem) {
+        applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
+    }
+
+    @Test
     void maxConcurrentOffers보다_적은_제안도_허용된다() {
         UUID orderId = UUID.randomUUID();
         UUID dreami1 = UUID.randomUUID();

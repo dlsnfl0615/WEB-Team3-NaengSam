@@ -3,6 +3,8 @@ package com.naengsam.quick.domain.matching.model;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.naengsam.quick.domain.matching.policy.scope.OfferPolicySnapshot;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -107,6 +109,31 @@ class MatchOfferTest {
                 () -> new MatchOffer(OFFER_ID, ORDER_ID, DREAMI_ID, MatchOfferStatus.OFFERED, null));
 
         assertThat(thrown).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void 생성시_전달한_offerPolicySnapshot을_그대로_보관한다() {
+        OfferPolicySnapshot snapshot = snapshot();
+        MatchOffer offer = new MatchOffer(
+                OFFER_ID, ORDER_ID, DREAMI_ID, MatchOfferStatus.OFFERED, CREATED_AT, snapshot);
+
+        assertThat(offer.offerPolicySnapshot()).isEqualTo(snapshot);
+    }
+
+    @Test
+    void 상태가_전이돼도_offerPolicySnapshot은_생성_시점_그대로_유지된다() {
+        OfferPolicySnapshot snapshot = snapshot();
+        MatchOffer offer = new MatchOffer(
+                OFFER_ID, ORDER_ID, DREAMI_ID, MatchOfferStatus.OFFERED, CREATED_AT, snapshot);
+
+        offer.acceptByDreami(OCCURRED_AT);
+        offer.rejectByBoormi(OCCURRED_AT);
+
+        assertThat(offer.offerPolicySnapshot()).isEqualTo(snapshot);
+    }
+
+    private OfferPolicySnapshot snapshot() {
+        return new OfferPolicySnapshot(Duration.ZERO, CREATED_AT, 0L, 500.0, 3_000);
     }
 
     private MatchOffer offeredOffer() {

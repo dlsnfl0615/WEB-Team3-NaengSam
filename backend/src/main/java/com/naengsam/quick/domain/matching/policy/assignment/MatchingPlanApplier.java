@@ -27,6 +27,9 @@ import java.util.stream.Collectors;
  * {@link OrderOfferGroup#addOffersAndOpen(List)}을 호출하고, Proposal이 없는 주문은 건드리지 않아 WAITING을
  * 유지한다. {@link MatchingPlanValidator#validate}가 통과해야만 상태 변경을 시작하므로, 잘못된 plan은 어떤
  * 맵/도메인 객체도 건드리지 않은 채 거부된다.
+ * <p>각 proposal의 {@link MatchingProposal#offerPolicySnapshot()}은 생성되는 {@link MatchOffer}에 그대로
+ * 실린다. 그 뒤 offer-scopes 설정이 바뀌거나 다음 배치에서 더 넓은 scope가 적용돼도, 이미 만들어진 오퍼는 자신이
+ * 만들어진 시점의 스냅샷을 그대로 유지한다 — 넓어진 scope는 그 이후 새로 만들어지는 오퍼에만 적용된다.
  */
 public class MatchingPlanApplier {
 
@@ -102,7 +105,8 @@ public class MatchingPlanApplier {
             WaitingDreami dreami = dreamiMap.get(proposal.dreamiId());
             UUID offerId = UUID.randomUUID();
             MatchOffer offer = new MatchOffer(
-                    offerId, orderId, proposal.dreamiId(), MatchOfferStatus.OFFERED, appliedAt);
+                    offerId, orderId, proposal.dreamiId(), MatchOfferStatus.OFFERED, appliedAt,
+                    proposal.offerPolicySnapshot());
             newOffers.add(offer);
 
             offersById.put(offerId, offer);

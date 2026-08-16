@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.matching.model;
 
+import com.naengsam.quick.domain.matching.policy.scope.OfferPolicySnapshot;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -15,14 +16,23 @@ public final class MatchOffer {
     // 마지막 상태 전이(또는 생성) 시각. PreviousOfferInteraction.occurredAt을 만드는 데 쓰이므로, 항상 호출자가
     // (엔진의 Clock으로) 넘겨준 시각을 그대로 저장한다 — 내부에서 LocalDateTime.now()를 부르지 않는다.
     private volatile LocalDateTime statusUpdatedAt;
+    // 이 오퍼가 생성된 순간 적용됐던 offer scope 스냅샷. 생성 이후 설정이 바뀌거나 다음 배치에서 scope가
+    // 넓어져도, 이미 만들어진 오퍼는 그 시점의 판단 근거를 그대로 유지한다(불변).
+    private final OfferPolicySnapshot offerPolicySnapshot;
 
     public MatchOffer(UUID offerId, UUID orderId, UUID dreamiId, MatchOfferStatus status, LocalDateTime createdAt) {
+        this(offerId, orderId, dreamiId, status, createdAt, null);
+    }
+
+    public MatchOffer(UUID offerId, UUID orderId, UUID dreamiId, MatchOfferStatus status, LocalDateTime createdAt,
+            OfferPolicySnapshot offerPolicySnapshot) {
         this.offerId = offerId;
         this.orderId = orderId;
         this.dreamiId = dreamiId;
         this.status = status;
         requireNonNullOccurredAt(createdAt);
         this.statusUpdatedAt = createdAt;
+        this.offerPolicySnapshot = offerPolicySnapshot;
     }
 
     public UUID offerId() {
@@ -43,6 +53,10 @@ public final class MatchOffer {
 
     public LocalDateTime statusUpdatedAt() {
         return statusUpdatedAt;
+    }
+
+    public OfferPolicySnapshot offerPolicySnapshot() {
+        return offerPolicySnapshot;
     }
 
     public void acceptByDreami(LocalDateTime occurredAt) {
