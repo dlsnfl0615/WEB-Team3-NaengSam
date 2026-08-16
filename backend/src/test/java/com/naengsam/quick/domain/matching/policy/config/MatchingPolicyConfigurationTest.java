@@ -38,7 +38,9 @@ class MatchingPolicyConfigurationTest {
                         "matching.offer-quota-mode=FIXED",
                         "matching.assignment-policy=LEGACY_ORDER_FIRST",
                         "matching.scoring-policy=ORDER_WAIT",
-                        "matching.eligibility-policy=LEGACY"
+                        "matching.eligibility-policy=LEGACY",
+                        "matching.offer-scopes[0].min-order-wait=0s",
+                        "matching.offer-scopes[0].radius-meters=3000"
                 )
                 .run(context -> {
                     assertThat(context).hasSingleBean(MatchingPolicyProperties.class);
@@ -68,7 +70,9 @@ class MatchingPolicyConfigurationTest {
                         "matching.balanced-weights.target-dreami-wait=5m",
                         "matching.cooldown.dreami-rejection=5m",
                         "matching.cooldown.boormi-rejection=10m",
-                        "matching.cooldown.dreami-expiration=3m"
+                        "matching.cooldown.dreami-expiration=3m",
+                        "matching.offer-scopes[0].min-order-wait=0s",
+                        "matching.offer-scopes[0].radius-meters=3000"
                 )
                 .run(context -> {
                     assertThat(context.getBean("matchingAssignmentPolicy"))
@@ -98,7 +102,9 @@ class MatchingPolicyConfigurationTest {
                         "matching.balanced-weights.dreami-wait-weight=4",
                         "matching.balanced-weights.max-matching-distance=500",
                         "matching.balanced-weights.target-order-wait=6m",
-                        "matching.balanced-weights.target-dreami-wait=8m"
+                        "matching.balanced-weights.target-dreami-wait=8m",
+                        "matching.offer-scopes[0].min-order-wait=0s",
+                        "matching.offer-scopes[0].radius-meters=3000"
                 )
                 .run(context -> {
                     MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
@@ -125,7 +131,9 @@ class MatchingPolicyConfigurationTest {
                         "matching.offer-quota-mode=DYNAMIC",
                         "matching.assignment-policy=LEGACY_ORDER_FIRST",
                         "matching.scoring-policy=ORDER_WAIT",
-                        "matching.eligibility-policy=LEGACY"
+                        "matching.eligibility-policy=LEGACY",
+                        "matching.offer-scopes[0].min-order-wait=0s",
+                        "matching.offer-scopes[0].radius-meters=3000"
                 )
                 .run(context -> {
                     MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
@@ -140,7 +148,9 @@ class MatchingPolicyConfigurationTest {
                         "matching.offer-quota-mode=FIXED",
                         "matching.assignment-policy=LEGACY_ORDER_FIRST",
                         "matching.scoring-policy=ORDER_WAIT",
-                        "matching.eligibility-policy=LEGACY"
+                        "matching.eligibility-policy=LEGACY",
+                        "matching.offer-scopes[0].min-order-wait=0s",
+                        "matching.offer-scopes[0].radius-meters=3000"
                 )
                 .run(context -> {
                     MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
@@ -158,7 +168,9 @@ class MatchingPolicyConfigurationTest {
                         "matching.offer-quota-mode=DYNAMIC",
                         "matching.assignment-policy=LEGACY_ORDER_FIRST",
                         "matching.scoring-policy=ORDER_WAIT",
-                        "matching.eligibility-policy=LEGACY"
+                        "matching.eligibility-policy=LEGACY",
+                        "matching.offer-scopes[0].min-order-wait=0s",
+                        "matching.offer-scopes[0].radius-meters=3000"
                 )
                 .run(context -> {
                     MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
@@ -180,12 +192,73 @@ class MatchingPolicyConfigurationTest {
                         "matching.offer-quota-mode=FIXED",
                         "matching.assignment-policy=LEGACY_ORDER_FIRST",
                         "matching.scoring-policy=ORDER_WAIT",
-                        "matching.eligibility-policy=LEGACY"
+                        "matching.eligibility-policy=LEGACY",
+                        "matching.offer-scopes[0].min-order-wait=0s",
+                        "matching.offer-scopes[0].radius-meters=3000"
                 )
                 .run(context -> {
                     MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
                     assertThat(properties.batchInterval()).isEqualTo(Duration.ofMillis(250));
                 });
+    }
+
+    @Test
+    void offer_scopes가_대기시간_오름차순으로_바인딩된다() {
+        contextRunner
+                .withPropertyValues(
+                        "matching.batch-interval=200ms",
+                        "matching.dynamic-quota-max=5",
+                        "matching.max-concurrent-offers=3",
+                        "matching.offer-quota-mode=FIXED",
+                        "matching.assignment-policy=LEGACY_ORDER_FIRST",
+                        "matching.scoring-policy=ORDER_WAIT",
+                        "matching.eligibility-policy=LEGACY",
+                        "matching.offer-scopes[0].min-order-wait=0s",
+                        "matching.offer-scopes[0].radius-meters=3000",
+                        "matching.offer-scopes[1].min-order-wait=60s",
+                        "matching.offer-scopes[1].radius-meters=6000"
+                )
+                .run(context -> {
+                    MatchingPolicyProperties properties = context.getBean(MatchingPolicyProperties.class);
+
+                    assertThat(properties.offerScopes()).hasSize(2);
+                    assertThat(properties.offerScopes().get(0).minOrderWait()).isEqualTo(Duration.ZERO);
+                    assertThat(properties.offerScopes().get(0).radiusMeters()).isEqualTo(3000);
+                    assertThat(properties.offerScopes().get(1).minOrderWait()).isEqualTo(Duration.ofSeconds(60));
+                    assertThat(properties.offerScopes().get(1).radiusMeters()).isEqualTo(6000);
+                });
+    }
+
+    @Test
+    void offer_scopes가_비어있으면_빈_생성이_실패한다() {
+        contextRunner
+                .withPropertyValues(
+                        "matching.batch-interval=200ms",
+                        "matching.dynamic-quota-max=5",
+                        "matching.max-concurrent-offers=3",
+                        "matching.offer-quota-mode=FIXED",
+                        "matching.assignment-policy=LEGACY_ORDER_FIRST",
+                        "matching.scoring-policy=ORDER_WAIT",
+                        "matching.eligibility-policy=LEGACY"
+                )
+                .run(context -> assertThat(context).hasFailed());
+    }
+
+    @Test
+    void offer_scopes가_0부터_시작하지_않으면_빈_생성이_실패한다() {
+        contextRunner
+                .withPropertyValues(
+                        "matching.batch-interval=200ms",
+                        "matching.dynamic-quota-max=5",
+                        "matching.max-concurrent-offers=3",
+                        "matching.offer-quota-mode=FIXED",
+                        "matching.assignment-policy=LEGACY_ORDER_FIRST",
+                        "matching.scoring-policy=ORDER_WAIT",
+                        "matching.eligibility-policy=LEGACY",
+                        "matching.offer-scopes[0].min-order-wait=10s",
+                        "matching.offer-scopes[0].radius-meters=3000"
+                )
+                .run(context -> assertThat(context).hasFailed());
     }
 
     @Test
@@ -198,7 +271,9 @@ class MatchingPolicyConfigurationTest {
                         "matching.offer-quota-mode=FIXED",
                         "matching.assignment-policy=UNKNOWN_POLICY",
                         "matching.scoring-policy=ORDER_WAIT",
-                        "matching.eligibility-policy=LEGACY"
+                        "matching.eligibility-policy=LEGACY",
+                        "matching.offer-scopes[0].min-order-wait=0s",
+                        "matching.offer-scopes[0].radius-meters=3000"
                 )
                 .run(context -> assertThat(context).hasFailed());
     }

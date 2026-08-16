@@ -37,6 +37,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -65,7 +66,8 @@ class MatchingMicroBatchIntegrationTest {
                 new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10),
                         Duration.ofMinutes(3)),
                 new MatchingPolicyProperties.BalancedWeights(
-                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)),
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
     }
 
     private OrderService orderService;

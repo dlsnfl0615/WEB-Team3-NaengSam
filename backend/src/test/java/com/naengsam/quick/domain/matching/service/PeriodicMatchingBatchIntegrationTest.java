@@ -42,6 +42,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -95,7 +96,8 @@ class PeriodicMatchingBatchIntegrationTest {
                 eligibilityPolicyType,
                 cooldown,
                 new MatchingPolicyProperties.BalancedWeights(
-                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)),
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
     }
 
     private static MatchingEligibilityPolicy matchingEligibilityPolicy(MatchingPolicyProperties properties) {

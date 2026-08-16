@@ -93,7 +93,8 @@ class MatchingAssignmentProblemAssemblerTest {
                 new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10),
                         Duration.ofMinutes(3)),
                 new MatchingPolicyProperties.BalancedWeights(
-                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)),
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
     }
 
     @BeforeEach
@@ -253,7 +254,8 @@ class MatchingAssignmentProblemAssemblerTest {
                 new MatchingPolicyProperties.Cooldown(
                         Duration.ofMinutes(5), Duration.ofMinutes(10), dreamiExpirationCooldown),
                 new MatchingPolicyProperties.BalancedWeights(
-                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)),
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
         MatchingAssignmentProblemFactory factory = new MatchingAssignmentProblemFactory(
                 new OutcomeCooldownOfferPolicy(
                         properties.cooldown().dreamiRejection(), properties.cooldown().boormiRejection(),

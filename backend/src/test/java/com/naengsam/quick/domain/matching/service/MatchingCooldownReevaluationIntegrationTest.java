@@ -84,7 +84,8 @@ class MatchingCooldownReevaluationIntegrationTest {
                 EligibilityPolicyType.OUTCOME_COOLDOWN,
                 cooldown,
                 new MatchingPolicyProperties.BalancedWeights(
-                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)),
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
     }
 
     private MatchingService newMatchingService(int maxConcurrentOffers, MutableClock clock) {
