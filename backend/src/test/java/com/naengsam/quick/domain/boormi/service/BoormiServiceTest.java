@@ -467,7 +467,7 @@ BoormiServiceTest {
     void 취소_주문이_없으면_ORDER_NOT_FOUND_예외() {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
-        given(orderService.getOrder(orderId))
+        given(orderService.getOrderForUpdate(orderId))
                 .willThrow(new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
 
         Throwable thrown = catchThrowable(() -> boormiService.unsubscribeOrder(boormiId, orderId));
@@ -484,7 +484,7 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = order(UUID.randomUUID(), OrderCd.MATCHING);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        given(orderService.getOrderForUpdate(orderId)).willReturn(order);
 
         Throwable thrown = catchThrowable(() -> boormiService.unsubscribeOrder(boormiId, orderId));
 
@@ -500,7 +500,7 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.IN_PROGRESS);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        given(orderService.getOrderForUpdate(orderId)).willReturn(order);
 
         Throwable thrown = catchThrowable(() -> boormiService.unsubscribeOrder(boormiId, orderId));
 
@@ -516,7 +516,7 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.MATCHING);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        given(orderService.getOrderForUpdate(orderId)).willReturn(order);
 
         boormiService.unsubscribeOrder(boormiId, orderId);
 
@@ -524,6 +524,22 @@ BoormiServiceTest {
         then(paymentService).should().refundByPoint(orderId);
         then(matchingService).should(never()).cancelOrderByBoormi(any()); // 커밋 전에는 엔진에 직접 제출하지 않는다
         then(eventPublisher).should().publishEvent(new OrderCancelledByBoormiEvent(orderId));
+    }
+
+    /**
+     * 동시 취소(더블클릭·재시도) 두 건이 같은 MATCHING 스냅샷을 읽고 함께 통과하지 않도록, 상태 검사부터 취소·환불까지가 주문 행 락 안에서
+     * 일어나야 한다. 잠기지 않은 조회로 되돌아가면 이 테스트가 깨진다.
+     */
+    @Test
+    void 취소는_주문을_비관적_락으로_읽어_상태_검사와_취소를_직렬화한다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        given(orderService.getOrderForUpdate(orderId)).willReturn(order(boormiId, OrderCd.MATCHING));
+
+        boormiService.unsubscribeOrder(boormiId, orderId);
+
+        then(orderService).should().getOrderForUpdate(orderId);
+        then(orderService).should(never()).getOrder(any());
     }
 
     @Test
