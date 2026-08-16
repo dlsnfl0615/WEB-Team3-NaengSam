@@ -32,6 +32,7 @@ import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.domain.order.service.OrderService;
+import com.naengsam.quick.domain.order.service.PendingOfferStateService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -67,6 +68,7 @@ class MatchingServiceConcurrencyTest {
     private MatchingService matchingService;
     private ExecutorService requestThreads;
     private OrderService orderService;
+    private PendingOfferStateService pendingOfferStateService;
 
     private static MatchingPolicyProperties matchingPolicyProperties() {
         return new MatchingPolicyProperties(
@@ -97,6 +99,8 @@ class MatchingServiceConcurrencyTest {
         MatchingPolicyProperties properties = matchingPolicyProperties();
         MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
         orderService = mock(OrderService.class);
+        pendingOfferStateService = mock(PendingOfferStateService.class);
+        lenient().when(pendingOfferStateService.isCurrent(any(), any(), any())).thenReturn(true);
         // 배치 오퍼 생성 직전 가드가 findOrders(orderId 목록)를 한 번에 호출하므로, 각 테스트가 개별 orderId에
         // 등록해 둔 findOrder 스텁으로 위임한다.
         lenient().when(orderService.findOrders(any())).thenAnswer(invocation -> {
@@ -121,7 +125,7 @@ class MatchingServiceConcurrencyTest {
                 mock(DeliveryService.class),
                 Clock.systemDefaultZone(),
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
-                new SimpleMeterRegistry(), boormiOfferExpirationService, orderService);
+                new SimpleMeterRegistry(), boormiOfferExpirationService, orderService, pendingOfferStateService);
         requestThreads = Executors.newFixedThreadPool(16);
     }
 

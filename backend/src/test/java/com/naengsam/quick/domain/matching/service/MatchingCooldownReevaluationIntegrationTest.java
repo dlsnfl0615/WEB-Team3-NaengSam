@@ -31,6 +31,7 @@ import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.domain.order.service.OrderService;
+import com.naengsam.quick.domain.order.service.PendingOfferStateService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -60,6 +61,7 @@ class MatchingCooldownReevaluationIntegrationTest {
     private static final Duration DREAMI_EXPIRATION_COOLDOWN = Duration.ofMinutes(5);
 
     private OrderService orderService;
+    private PendingOfferStateService pendingOfferStateService;
 
     private Orders orderMock(UUID orderId) {
         Orders order = mock(Orders.class);
@@ -100,6 +102,8 @@ class MatchingCooldownReevaluationIntegrationTest {
                 cooldown.dreamiRejection(), cooldown.boormiRejection(), cooldown.dreamiExpiration());
         MatchingAssignmentPolicy assignmentPolicy = new ScoreBasedGreedyAssignmentPolicy(new OrderWaitScorePolicy());
         orderService = mock(OrderService.class);
+        pendingOfferStateService = mock(PendingOfferStateService.class);
+        lenient().when(pendingOfferStateService.isCurrent(any(), any(), any())).thenReturn(true);
         // 배치 오퍼 생성 직전 가드가 findOrders(orderId 목록)를 한 번에 호출하므로, orderMock()이 개별 orderId에
         // 등록해 둔 findOrder 스텁으로 위임한다.
         lenient().when(orderService.findOrders(any())).thenAnswer(invocation -> {
@@ -126,7 +130,7 @@ class MatchingCooldownReevaluationIntegrationTest {
                 matchingEngine, notificationService, deliveryService,
                 clock,
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
-                new SimpleMeterRegistry(), boormiOfferExpirationService, orderService);
+                new SimpleMeterRegistry(), boormiOfferExpirationService, orderService, pendingOfferStateService);
     }
 
     @Test

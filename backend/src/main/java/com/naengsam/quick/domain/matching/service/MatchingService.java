@@ -31,6 +31,7 @@ import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.domain.order.service.OrderService;
+import com.naengsam.quick.domain.order.service.PendingOfferStateService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
@@ -91,6 +92,9 @@ public class MatchingService {
     // 직접 다루지 않도록 분리했다(도메인 간 독립성 유지) — 자세한 이유는 이 서비스의 Javadoc 참고.
     private final BoormiOfferExpirationService boormiOfferExpirationService;
     private final OrderService orderService;
+    // 부르미 확정 액션이 큐에 쌓여 있는 동안 DB 주문이 다른 경로로 바뀌었는지 확인하는 검증 서비스. 위와 같은 이유로
+    // MatchingService가 OrderRepository를 직접 다루지 않도록 분리했다.
+    private final PendingOfferStateService pendingOfferStateService;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -445,6 +449,15 @@ public class MatchingService {
 
         findOffer(offerId).ifPresentOrElse(
                 matchOffer -> {
+                    // 큐에 쌓여 있는 동안 DB 주문이 이 오퍼/드리미와 더 이상 일치하지 않게 바뀌었을 수 있으므로
+                    // (예: 타임아웃이 먼저 처리돼 이미 MATCHING으로 되돌아간 뒤 뒤늦게 실행되는 경우), 최신 DB
+                    // 상태를 마지막으로 확인한다.
+                    if (!pendingOfferStateService.isCurrent(matchOffer.orderId(), offerId, matchOffer.dreamiId())) {
+                        log.debug("DB 주문 상태가 이 오퍼와 더 이상 일치하지 않아 부르미 수락을 무시함: offerId={}, orderId={}",
+                                offerId, matchOffer.orderId());
+                        return;
+                    }
+
                     matchOffer.confirmByBoormi(LocalDateTime.now(clock)); // 부르미까지 수락 완료
                     findOrderOfferGroup(matchOffer.orderId())
                             .ifPresentOrElse(
