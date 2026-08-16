@@ -100,6 +100,7 @@ export * from './nearbyDreamiRequest';
 export * from './nearbyOrderDto';
 export * from './nearbyOrderRequest';
 export * from './offerItemPhotoDto';
+export * from './offerPolicyDto';
 export * from './orderCountDto';
 export * from './orderOfferGroupDto';
 export * from './orderOfferGroupDtoStatus';

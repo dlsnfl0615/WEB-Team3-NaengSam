@@ -30,6 +30,13 @@ export interface CallCardProps {
   dropoffDistance?: string;
   /** 물품 유형. 값이 없으면 항목을 숨긴다. */
   itemType?: string;
+  /** 나(드리미)-픽업지 거리. 오퍼에 저장된 offer scope 스냅샷 기준이며, 값이 없으면 항목을 숨긴다. */
+  pickupDistance?: string;
+  /**
+   * 대기 시간이 길어져 탐색 범위가 넓어진 상태에서 온 콜이면 그 사실을 알리는 안내 문구.
+   * 값이 없으면(기본 범위에서 온 콜이면) 표시하지 않는다.
+   */
+  expandedScopeNotice?: string;
   /** 부르미가 작성한 요청 사항. 값이 없으면 항목을 숨긴다. */
   requestNote?: string;
   /** 콜 수락 응답 카운트다운(드리미가 콜을 선택하는 시간). */
@@ -54,6 +61,8 @@ export function CallCard({
   eta,
   dropoffDistance,
   itemType,
+  pickupDistance,
+  expandedScopeNotice,
   requestNote,
   countdown,
   onReject,
@@ -106,6 +115,10 @@ export function CallCard({
 
       <p className="break-words text-base font-bold text-navy-900">{route}</p>
 
+      {expandedScopeNotice && (
+        <Badge tone="info" className="self-start">{expandedScopeNotice}</Badge>
+      )}
+
       {requestNote && (
         <p className="text-xs text-muted">{requestNote}</p>
       )}
@@ -113,6 +126,9 @@ export function CallCard({
       <div className="h-px bg-track" />
 
       <div className="flex items-start">
+        {pickupDistance && (
+          <CallStat label="픽업 거리" value={pickupDistance} />
+        )}
         <CallStat label="배송 거리" value={deliveryDistance} />
         <CallStat
           label="픽업 후 배송"
