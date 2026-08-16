@@ -18,16 +18,17 @@ public class PendingOfferStateService {
     private final OrderRepository orderRepository;
 
     /**
-     * 주어진 orderId/offerId/dreamiId가 DB 주문의 현재 확정 대기 상태와 정확히 일치하는지 확인한다.
+     * 주어진 orderId/dreamiId가 DB 주문의 현재 확정 상태와 정확히 일치하는지 확인한다. offerId 자체의 신선도는
+     * {@code BoormiService.confirmDreami}의 잠금 트랜잭션에서 이미 검증됐고, 그 트랜잭션이 커밋되며
+     * {@code pendingOfferId}를 비웠으므로 여기서는 더 이상 확인할 수 없다(항상 null).
      *
-     * @return 주문이 존재하고, {@code order_cd}가 {@link OrderCd#PENDING_BOORMI_CONFIRMATION}이며,
-     *         {@code pending_offer_id}와 {@code dreami_id}가 각각 offerId/dreamiId와 같으면 true
+     * @return 주문이 존재하고, {@code order_cd}가 {@link OrderCd#IN_PROGRESS}이며,
+     *         {@code dreami_id}가 dreamiId와 같으면 true
      */
     @Transactional(readOnly = true)
-    public boolean isCurrent(UUID orderId, UUID offerId, UUID dreamiId) {
+    public boolean isCurrent(UUID orderId, UUID dreamiId) {
         return orderRepository.findById(orderId)
-                .filter(order -> order.getOrderCd() == OrderCd.PENDING_BOORMI_CONFIRMATION)
-                .filter(order -> offerId.equals(order.getPendingOfferId()))
+                .filter(order -> order.getOrderCd() == OrderCd.IN_PROGRESS)
                 .filter(order -> dreamiId.equals(order.getDreamiId()))
                 .isPresent();
     }

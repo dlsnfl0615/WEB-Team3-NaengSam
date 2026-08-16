@@ -451,8 +451,9 @@ public class MatchingService {
                 matchOffer -> {
                     // 큐에 쌓여 있는 동안 DB 주문이 이 오퍼/드리미와 더 이상 일치하지 않게 바뀌었을 수 있으므로
                     // (예: 타임아웃이 먼저 처리돼 이미 MATCHING으로 되돌아간 뒤 뒤늦게 실행되는 경우), 최신 DB
-                    // 상태를 마지막으로 확인한다.
-                    if (!pendingOfferStateService.isCurrent(matchOffer.orderId(), offerId, matchOffer.dreamiId())) {
+                    // 상태를 마지막으로 확인한다. offerId 자체는 BoormiService.confirmDreami의 잠금 트랜잭션에서
+                    // 이미 검증됐고 커밋 시 pendingOfferId가 비워지므로, 여기서는 IN_PROGRESS 전이와 dreamiId만 확인한다.
+                    if (!pendingOfferStateService.isCurrent(matchOffer.orderId(), matchOffer.dreamiId())) {
                         log.debug("DB 주문 상태가 이 오퍼와 더 이상 일치하지 않아 부르미 수락을 무시함: offerId={}, orderId={}",
                                 offerId, matchOffer.orderId());
                         return;

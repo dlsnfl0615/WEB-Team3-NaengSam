@@ -18,8 +18,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
- * 매칭엔진의 부르미 확정 액션이 실행되는 시점에, DB 주문이 여전히 그 오퍼/드리미와 일치하는 확정 대기 상태인지
- * {@link PendingOfferStateService}가 정확히 판별하는지 검증한다.
+ * 매칭엔진의 부르미 확정 액션이 실행되는 시점에, DB 주문이 여전히 그 확정과 일치하는 상태인지
+ * {@link PendingOfferStateService}가 정확히 판별하는지 검증한다. BoormiService.confirmDreami 커밋 시점에
+ * 주문은 이미 IN_PROGRESS로 전이되고 pendingOfferId는 비워지므로, 이 시점의 진실은 IN_PROGRESS + dreamiId 일치다.
  */
 @ExtendWith(MockitoExtension.class)
 class PendingOfferStateServiceTest {
@@ -30,52 +31,35 @@ class PendingOfferStateServiceTest {
     @InjectMocks
     private PendingOfferStateService pendingOfferStateService;
 
-    private static Orders order(OrderCd orderCd, UUID dreamiId, UUID pendingOfferId) {
+    private static Orders order(OrderCd orderCd, UUID dreamiId) {
         GeoPoint point = new GeoPoint(new BigDecimal("37.0"), new BigDecimal("127.0"));
         Orders order = Orders.create(UUID.randomUUID(), UUID.randomUUID(), point, point);
         ReflectionTestUtils.setField(order, "orderCd", orderCd);
         ReflectionTestUtils.setField(order, "dreamiId", dreamiId);
-        ReflectionTestUtils.setField(order, "pendingOfferId", pendingOfferId);
         return order;
     }
 
     @Test
-    void 주문_상태가_PENDING_BOORMI_CONFIRMATION이고_offerId_dreamiId가_모두_일치하면_true를_반환한다() {
+    void 주문_상태가_IN_PROGRESS이고_dreamiId가_일치하면_true를_반환한다() {
         UUID orderId = UUID.randomUUID();
-        UUID offerId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        Orders order = order(OrderCd.PENDING_BOORMI_CONFIRMATION, dreamiId, offerId);
+        Orders order = order(OrderCd.IN_PROGRESS, dreamiId);
         given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
 
-        boolean current = pendingOfferStateService.isCurrent(orderId, offerId, dreamiId);
+        boolean current = pendingOfferStateService.isCurrent(orderId, dreamiId);
 
         assertThat(current).isTrue();
     }
 
     @Test
-    void 주문_상태가_PENDING_BOORMI_CONFIRMATION이_아니면_false를_반환한다() {
+    void 주문_상태가_IN_PROGRESS가_아니면_false를_반환한다() {
+        // 타임아웃이 먼저 처리돼 이미 MATCHING으로 되돌아간 뒤 뒤늦게 실행되는 경우.
         UUID orderId = UUID.randomUUID();
-        UUID offerId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        Orders order = order(OrderCd.MATCHING, dreamiId, offerId);
+        Orders order = order(OrderCd.MATCHING, dreamiId);
         given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
 
-        boolean current = pendingOfferStateService.isCurrent(orderId, offerId, dreamiId);
-
-        assertThat(current).isFalse();
-    }
-
-    @Test
-    void pending_offer_id가_다르면_false를_반환한다() {
-        // 그 사이 새 오퍼 라운드가 돌아 pendingOfferId가 갱신된 상황 - 확정 요청이 들고 온 offerId는 옛 라운드의 것.
-        UUID orderId = UUID.randomUUID();
-        UUID staleOfferId = UUID.randomUUID();
-        UUID currentOfferId = UUID.randomUUID();
-        UUID dreamiId = UUID.randomUUID();
-        Orders order = order(OrderCd.PENDING_BOORMI_CONFIRMATION, dreamiId, currentOfferId);
-        given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
-
-        boolean current = pendingOfferStateService.isCurrent(orderId, staleOfferId, dreamiId);
+        boolean current = pendingOfferStateService.isCurrent(orderId, dreamiId);
 
         assertThat(current).isFalse();
     }
@@ -83,13 +67,12 @@ class PendingOfferStateServiceTest {
     @Test
     void dreami_id가_다르면_false를_반환한다() {
         UUID orderId = UUID.randomUUID();
-        UUID offerId = UUID.randomUUID();
         UUID currentDreamiId = UUID.randomUUID();
         UUID otherDreamiId = UUID.randomUUID();
-        Orders order = order(OrderCd.PENDING_BOORMI_CONFIRMATION, currentDreamiId, offerId);
+        Orders order = order(OrderCd.IN_PROGRESS, currentDreamiId);
         given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
 
-        boolean current = pendingOfferStateService.isCurrent(orderId, offerId, otherDreamiId);
+        boolean current = pendingOfferStateService.isCurrent(orderId, otherDreamiId);
 
         assertThat(current).isFalse();
     }
@@ -99,7 +82,7 @@ class PendingOfferStateServiceTest {
         UUID orderId = UUID.randomUUID();
         given(orderRepository.findById(orderId)).willReturn(Optional.empty());
 
-        boolean current = pendingOfferStateService.isCurrent(orderId, UUID.randomUUID(), UUID.randomUUID());
+        boolean current = pendingOfferStateService.isCurrent(orderId, UUID.randomUUID());
 
         assertThat(current).isFalse();
     }

@@ -145,7 +145,7 @@ class MatchingServiceTest {
         pendingOfferStateService = mock(PendingOfferStateService.class);
         // 이 파일의 테스트는 대부분 부르미 확정이 DB와 일치하는 정상 경로를 검증하므로, 기본값을 항상 true로 둔다.
         // 가드 자체를 검증하는 테스트는 doReturn(false)로 재스텁한다.
-        lenient().when(pendingOfferStateService.isCurrent(any(), any(), any())).thenReturn(true);
+        lenient().when(pendingOfferStateService.isCurrent(any(), any())).thenReturn(true);
 
         matchingPolicyProperties = matchingPolicyProperties();
         matchingAssignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
@@ -426,7 +426,7 @@ class MatchingServiceTest {
         MatchOffer offer = group.offers().getFirst();
 
         matchingService.applyAcceptByDreami(offer.offerId());
-        doReturn(false).when(pendingOfferStateService).isCurrent(any(), any(), any());
+        doReturn(false).when(pendingOfferStateService).isCurrent(any(), any());
 
         // when
         matchingService.applyAcceptByBoormi(offer.offerId());

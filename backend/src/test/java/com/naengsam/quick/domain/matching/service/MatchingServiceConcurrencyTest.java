@@ -100,7 +100,7 @@ class MatchingServiceConcurrencyTest {
         MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
         orderService = mock(OrderService.class);
         pendingOfferStateService = mock(PendingOfferStateService.class);
-        lenient().when(pendingOfferStateService.isCurrent(any(), any(), any())).thenReturn(true);
+        lenient().when(pendingOfferStateService.isCurrent(any(), any())).thenReturn(true);
         // 배치 오퍼 생성 직전 가드가 findOrders(orderId 목록)를 한 번에 호출하므로, 각 테스트가 개별 orderId에
         // 등록해 둔 findOrder 스텁으로 위임한다.
         lenient().when(orderService.findOrders(any())).thenAnswer(invocation -> {
