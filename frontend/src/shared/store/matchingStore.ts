@@ -475,6 +475,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     togglingOnline = true;
     try {
       await api.goOffline();
+      bumpMatchingRevision();
       set({ online: false, pendingOffer: null });
     } catch (e) {
       set({ message: toMessage(e, "오프라인 전환에 실패했어요.") });
@@ -552,6 +553,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
       await api.confirmDreami(incomingDreami.orderId, {
         offerId: incomingDreami.offerId,
       });
+      bumpMatchingRevision();
       set({ incomingDreami: null, submitting: false });
       return incomingDreami.orderId;
     } catch (e) {
@@ -568,6 +570,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
       await api.rejectDreami(incomingDreami.orderId, {
         offerId: incomingDreami.offerId,
       });
+      bumpMatchingRevision();
       set({ incomingDreami: null });
     } catch (e) {
       set({ message: toMessage(e, "거절에 실패했어요.") });
