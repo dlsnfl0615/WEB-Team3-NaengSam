@@ -37,7 +37,10 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Stream;
@@ -96,9 +99,20 @@ class MatchingCooldownReevaluationIntegrationTest {
         MatchingEligibilityPolicy eligibilityPolicy = new OutcomeCooldownOfferPolicy(
                 cooldown.dreamiRejection(), cooldown.boormiRejection(), cooldown.dreamiExpiration());
         MatchingAssignmentPolicy assignmentPolicy = new ScoreBasedGreedyAssignmentPolicy(new OrderWaitScorePolicy());
+        orderService = mock(OrderService.class);
+        // 배치 오퍼 생성 직전 가드가 findOrders(orderId 목록)를 한 번에 호출하므로, orderMock()이 개별 orderId에
+        // 등록해 둔 findOrder 스텁으로 위임한다.
+        lenient().when(orderService.findOrders(any())).thenAnswer(invocation -> {
+            Collection<UUID> orderIds = invocation.getArgument(0);
+            Map<UUID, Orders> result = new HashMap<>();
+            for (UUID id : orderIds) {
+                orderService.findOrder(id).ifPresent(order -> result.put(id, order));
+            }
+            return result;
+        });
         MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
                 new MatchingPlanValidator(eligibilityPolicy), mock(MatchingService.class),
-                notificationService, OFFER_TTL);
+                notificationService, OFFER_TTL, orderService);
 
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(eligibilityPolicy),
@@ -107,7 +121,6 @@ class MatchingCooldownReevaluationIntegrationTest {
         BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
         // 이 파일은 쿨다운 재평가를 다루지, DB 경합을 다루지 않으므로 부르미 timeout은 항상 성공한 것으로 둔다.
         when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);
-        orderService = mock(OrderService.class);
 
         return new MatchingService(
                 matchingEngine, notificationService, deliveryService,

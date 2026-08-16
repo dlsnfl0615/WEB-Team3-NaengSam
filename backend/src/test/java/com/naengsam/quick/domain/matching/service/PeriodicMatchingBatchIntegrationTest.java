@@ -39,6 +39,9 @@ import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
@@ -130,9 +133,20 @@ class PeriodicMatchingBatchIntegrationTest {
 
         MatchingEligibilityPolicy eligibilityPolicy = matchingEligibilityPolicy(properties);
         MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+        orderService = mock(OrderService.class);
+        // 배치 오퍼 생성 직전 가드가 findOrders(orderId 목록)를 한 번에 호출하므로, orderMock()이 개별 orderId에
+        // 등록해 둔 findOrder 스텁으로 위임한다.
+        lenient().when(orderService.findOrders(any())).thenAnswer(invocation -> {
+            Collection<UUID> orderIds = invocation.getArgument(0);
+            Map<UUID, Orders> result = new HashMap<>();
+            for (UUID id : orderIds) {
+                orderService.findOrder(id).ifPresent(order -> result.put(id, order));
+            }
+            return result;
+        });
         MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
                 new MatchingPlanValidator(eligibilityPolicy), mock(MatchingService.class),
-                notificationService, OFFER_TTL);
+                notificationService, OFFER_TTL, orderService);
 
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(eligibilityPolicy),
@@ -141,7 +155,6 @@ class PeriodicMatchingBatchIntegrationTest {
         BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
         // 이 파일은 DB 경합을 다루지 않으므로, 부르미 timeout이 항상 DB 갱신에 성공한 것으로 둔다.
         when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);
-        orderService = mock(OrderService.class);
 
         MatchingService matchingService = new MatchingService(
                 matchingEngine, notificationService, deliveryService,
