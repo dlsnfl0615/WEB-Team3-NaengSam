@@ -214,6 +214,9 @@ public class BoormiService {
         if (!order.getOrderCd().equals(OrderCd.PENDING_BOORMI_CONFIRMATION)) {
             throw new BusinessException(OrderErrorCode.CANNOT_CANCEL);
         }
+        if (!offerId.equals(order.getPendingOfferId())) {
+            throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
+        }
         if (!matchingService.isBoormiOfferOwner(offerId, boormiId)) {
             throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
         }

@@ -674,6 +674,7 @@ BoormiServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID offerId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION);
+        ReflectionTestUtils.setField(order, "pendingOfferId", offerId);
         given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
         given(matchingService.isBoormiOfferOwner(offerId, boormiId)).willReturn(false);
 
@@ -682,6 +683,26 @@ BoormiServiceTest {
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
         assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
+        then(eventPublisher).should(never()).publishEvent(any(BoormiRejectedDreamiEvent.class));
+    }
+
+    @Test
+    void 거절_offerId가_해당_주문의_pendingOfferId와_다르면_NOT_OFFER_OWNER_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID otherOrderOfferId = UUID.randomUUID(); // 같은 부르미의 다른 주문에 걸린 오퍼
+        UUID thisOrderOfferId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION);
+        ReflectionTestUtils.setField(order, "pendingOfferId", thisOrderOfferId);
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.rejectDreami(boormiId, orderId, otherOrderOfferId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
+        then(matchingService).should(never()).isBoormiOfferOwner(any(), any());
         then(eventPublisher).should(never()).publishEvent(any(BoormiRejectedDreamiEvent.class));
     }
 
