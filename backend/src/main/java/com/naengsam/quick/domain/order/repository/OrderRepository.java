@@ -1,6 +1,7 @@
 package com.naengsam.quick.domain.order.repository;
 
 import com.naengsam.quick.domain.order.dto.CompletedSavingAggregate;
+import com.naengsam.quick.domain.order.dto.NearbyCallOrderDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import jakarta.persistence.LockModeType;
@@ -58,6 +59,17 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
             + "GROUP BY o.itemCd")
     List<CompletedSavingAggregate> aggregateCompletedSavingByBoormi(@Param("boormiId") UUID boormiId,
             @Param("baseSection") long baseSection);
+
+    /**
+     * 주변 콜 목록에 필요한 주문 컬럼만 id 목록으로 한 번에 조회한다. 대상은 최대 10건(MAX_NEARBY_ORDER_COUNT)이라 청크 분할이 필요 없다. {@code IN} 결과의 행
+     * 순서는 보장되지 않으므로 거리순 정렬은 호출부가 다시 맞춘다.
+     */
+    @Query("SELECT new com.naengsam.quick.domain.order.dto.NearbyCallOrderDto("
+            + "o.orderId, o.itemName, o.itemCd, o.orderCd, o.deliveryAmount, o.deliveryEta, "
+            + "o.originAddressLine1, o.originAddressLine2, "
+            + "o.destinationAddressLine1, o.destinationAddressLine2) "
+            + "FROM Orders o WHERE o.orderId IN :orderIds")
+    List<NearbyCallOrderDto> findNearbyCallOrders(@Param("orderIds") List<UUID> orderIds);
 
     /**
      * 드리미 활동 내역 화면의 전체 건수 집계용(상태 무관).

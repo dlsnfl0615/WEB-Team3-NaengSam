@@ -97,7 +97,6 @@ public class DreamiController {
             description = "내 위치·동선 기준으로 콜을 정렬해 리스트/지도뷰로 제공하며 예상 수익·소요시간을 함께 표시한다.")
     @PostMapping("/calls/nearby")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
     public List<NearbyCallDto> findNearbyCalls(@Valid @RequestBody NearbyOrderRequest request) {
         return dreamiService.findNearbyCalls(request);
     }

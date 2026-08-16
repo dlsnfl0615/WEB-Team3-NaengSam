@@ -24,6 +24,7 @@ import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.NearbyCallOrderDto;
 import com.naengsam.quick.domain.order.dto.OrderCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -205,22 +206,28 @@ public class DreamiService {
 
     /**
      * 드리미가 지정한 좌표 반경 내에 열려있는 콜(주문)을 거리순으로 조회한다. 각 콜에 예상 수익/소요시간을 함께 담아 반환한다.
+     *
+     * <p>matching이 돌려준 건 위치/거리뿐이라 화면에 보여줄 품목/예상수익/ETA는 order 도메인에서 채운다. 주문마다 조회하면 최대 10번의 PK 조회가 되므로 id를 모아 한 번에
+     * 읽고, 거리순은 matching이 돌려준 순서로 다시 맞춘다.
      */
     @Transactional(readOnly = true)
     public List<NearbyCallDto> findNearbyCalls(NearbyOrderRequest request) {
-        return nearbyOrderFinder.find(request).stream()
-                .map(this::toNearbyCallDto)
-                .toList();
-    }
+        List<NearbyOrderDto> nearbyOrders = nearbyOrderFinder.find(request);
+        if (nearbyOrders.isEmpty()) {
+            return List.of();
+        }
 
-    /**
-     * matching이 돌려준 건 위치/거리뿐이라, 화면에 보여줄 품목/예상수익/ETA는 order 도메인에서 주문을 다시 조회해 채운다. 방금 nearbyOrderFinder가 찾아준 주문이라 사실상 항상
-     * 존재한다.
-     */
-    private NearbyCallDto toNearbyCallDto(NearbyOrderDto nearby) {
-        Orders order = orderRepository.findById(nearby.orderId())
-                .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
-        return NearbyCallDto.from(nearby, order);
+        // 인메모리 매칭 엔진이 orderId로 키를 잡고 있어 중복 id는 나오지 않는다.
+        Map<UUID, NearbyCallOrderDto> ordersById = orderRepository
+                .findNearbyCallOrders(nearbyOrders.stream().map(NearbyOrderDto::orderId).toList())
+                .stream()
+                .collect(Collectors.toMap(NearbyCallOrderDto::orderId, order -> order));
+
+        // 매칭 엔진(인메모리)과 DB가 어긋나 주문이 없는 건은 목록에서 빼고 나머지는 그대로 보여준다.
+        return nearbyOrders.stream()
+                .filter(nearby -> ordersById.containsKey(nearby.orderId()))
+                .map(nearby -> NearbyCallDto.from(nearby, ordersById.get(nearby.orderId())))
+                .toList();
     }
 
     /**
