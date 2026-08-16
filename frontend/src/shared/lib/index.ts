@@ -50,6 +50,10 @@ export {
 } from "./delivery/useDeliveryDetailGate";
 export { ContactSheet, type ContactSheetProps } from "./delivery/ContactSheet";
 export {
+  ETA_UNAVAILABLE_TITLE,
+  type EtaUnavailablePayload,
+} from "./delivery/etaUnavailable";
+export {
   useExpiryCountdown,
   type UseExpiryCountdownOptions,
   type ExpiryCountdownState,

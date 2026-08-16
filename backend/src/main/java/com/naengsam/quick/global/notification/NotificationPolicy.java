@@ -45,7 +45,10 @@ public class NotificationPolicy {
             // 의미가 있다. TTL 60초는 offline_self와 같은 이유 — 1분 넘게 못 닿는 기기에 뒤늦게 도착하는
             // "확인해 주세요"는 소음이고, 이 임계값이면 Urgency: high가 붙어 잠든 기기를 실제로 깨운다.
             Map.entry("delivery_ping", ChannelPlan.inAppAndWebPush(
-                    "부르미가 핑을 보냈어요", "앱을 열어 배달 상황을 알려주세요", Duration.ofSeconds(60)))
+                    "부르미가 핑을 보냈어요", "앱을 열어 배달 상황을 알려주세요", Duration.ofSeconds(60))),
+            // 등록하지 않아도 기본값이 인앱 전용이지만, 실패가 이어지는 동안 재시도 쿨다운(30초)마다 반복 발행되는
+            // 이벤트라 실수로 웹푸시를 타면 알림 폭탄이 된다. 그 위험을 못 박아두려고 명시적으로 등록한다.
+            Map.entry("delivery_eta_unavailable", ChannelPlan.inAppOnly())
     );
 
     /**

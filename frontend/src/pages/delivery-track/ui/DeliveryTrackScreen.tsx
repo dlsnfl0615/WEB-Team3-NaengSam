@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
@@ -31,6 +31,8 @@ import {
   useDreamiLocationBroadcast,
   useLeaveGuard,
   formatArrivalTime,
+  ETA_UNAVAILABLE_TITLE,
+  type EtaUnavailablePayload,
   type SseHandlers,
 } from "@/shared/lib";
 
@@ -81,6 +83,15 @@ export function DeliveryTrackScreen() {
   // 아직 경로가 없는 동안에만 includeRoute=true로 요청하고, 한 번 받으면 false가 돼 이후엔 좌표를 중복 수신하지 않는다.
   const [livePickupRoute, setLivePickupRoute] = useState<RoutePointDto[]>();
   const [liveCompletionTime, setLiveCompletionTime] = useState<string>();
+  // 서버가 배송완료예상시간을 계산하지 못했다는 통보. 담겨 있으면 지도 위 예상 시각 배지를 지운다
+  // ("계산 중…"으로 두면 아직 GPS를 못 받은 상태와 구분되지 않는다).
+  const [etaUnavailable, setEtaUnavailable] =
+    useState<EtaUnavailablePayload | null>(null);
+  // 배지를 지운 이유를 알리는 토스트. 배지와 달리 잠깐만 띄운다 — 지도 위 뒤로가기를 계속 가리면 안 되고,
+  // 실패가 이어지는 동안 서버 재시도 쿨다운(30초)마다 같은 이벤트가 오므로 첫 회에만 세운다(etaNoticeShown).
+  const [etaNotice, setEtaNotice] = useState<EtaUnavailablePayload | null>(null);
+  // 되돌릴 필요는 없다 — 계산이 한 번 성공하면 서버는 이 배달에 대해 다시 계산하지 않으므로 재실패가 없다.
+  const etaNoticeShown = useRef(false);
   const includeRoute = livePickupRoute === undefined;
   const handleLocationResult = useCallback(
     (result: DreamiLocationResponseDto | undefined) => {
@@ -171,12 +182,28 @@ export function DeliveryTrackScreen() {
     return () => clearTimeout(timer);
   }, [pinged]);
 
+  // 계산 실패 안내도 핑과 같은 방식으로 잠깐만 띄운다(배지가 사라진 상태 자체가 지속 신호 역할을 한다).
+  useEffect(() => {
+    if (!etaNotice) return;
+    const timer = setTimeout(() => setEtaNotice(null), 6000);
+    return () => clearTimeout(timer);
+  }, [etaNotice]);
+
   const sseHandlers: SseHandlers = {
     // "delivery_ping"은 백엔드에서 결정한 이름(DeliveryEventType.DELIVERY_PING)
     delivery_ping: (data) => {
       const dto = data as DeliveryStatusResponseDto;
       if (dto?.orderId !== orderId) return;
       setPinged(true);
+    },
+    // 서버가 '드리미→픽업지' 경로 계산에 실패했다(내가 픽업지에서 너무 멀거나 카카오 응답 지연 등).
+    delivery_eta_unavailable: (data) => {
+      const dto = data as EtaUnavailablePayload;
+      if (dto?.orderId !== orderId) return;
+      setEtaUnavailable(dto);
+      if (etaNoticeShown.current) return; // 재시도 쿨다운마다 다시 오므로 토스트는 첫 회만
+      etaNoticeShown.current = true;
+      setEtaNotice(dto);
     },
     delivery_cancelled: (data) => {
       const dto = data as DeliveryStatusResponseDto;
@@ -236,6 +263,9 @@ export function DeliveryTrackScreen() {
   const arrivalTime = formatArrivalTime(
     liveCompletionTime ?? detail?.estimatedCompletionTime,
   );
+  // 서버는 위치 전송마다 계산을 다시 시도한다. 픽업지에 가까워지거나 카카오가 회복돼 예상 시각이
+  // 채워지면 지난 실패는 무시하고 배지를 되살린다.
+  const etaFailure = arrivalTime ? null : etaUnavailable;
 
   const onAction = async () => {
     if (!detailReady) return;
@@ -320,8 +350,19 @@ export function DeliveryTrackScreen() {
         </div>
       )}
 
-      {/* GPS 경고가 떠 있을 땐 그쪽이 더 급하므로 핑 토스트는 양보한다(같은 자리에 겹쳐 뜨지 않게). */}
-      {pinged && !locationError && (
+      {/* 배송 예상 시각 배지를 지운 이유. GPS 경고가 떠 있으면 그게 더 급한 원인이므로 양보한다. */}
+      {etaNotice && !locationError && (
+        <div className="ds-toast-down fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
+          <Toast
+            icon="pin"
+            title={ETA_UNAVAILABLE_TITLE}
+            description={etaNotice.message}
+          />
+        </div>
+      )}
+
+      {/* GPS 경고·계산 실패 안내가 떠 있을 땐 그쪽이 더 급하므로 핑 토스트는 양보한다(같은 자리에 겹쳐 뜨지 않게). */}
+      {pinged && !locationError && !etaNotice && (
         <div className="ds-toast-down fixed inset-x-0 top-4 z-50 mx-auto max-w-[420px] px-4">
           <Toast
             icon="bell"
@@ -336,7 +377,10 @@ export function DeliveryTrackScreen() {
         <MapCard
           flat
           height={440}
-          overlay={<ArrivalBadge arrivalTime={arrivalTime} />}
+          // 계산에 실패했으면 배지를 통째로 지운다. 실패 이유는 알약에 넣기엔 문구가 길어 토스트로 안내한다.
+          overlay={
+            etaFailure ? undefined : <ArrivalBadge arrivalTime={arrivalTime} />
+          }
         >
           <DeliveryRouteMap
             flat

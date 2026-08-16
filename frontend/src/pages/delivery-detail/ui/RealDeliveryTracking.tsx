@@ -28,6 +28,8 @@ import {
   formatArrivalTime,
   formatLastSeen,
   distanceMeters,
+  ETA_UNAVAILABLE_TITLE,
+  type EtaUnavailablePayload,
   type SseHandlers,
 } from "@/shared/lib";
 import { ROUTES } from "@/shared/config/routes";
@@ -113,6 +115,14 @@ export function RealDeliveryTracking({
   // 전역 토스트 스택에 올려둔 연결·위치 안내의 id(치울 때 필요).
   const noticeToastId = useRef<string | null>(null);
 
+  // 서버가 배송완료예상시간을 계산하지 못했다는 통보. 담겨 있으면 지도 위 예상 시각 배지를 지운다
+  // ("계산 중…"으로 두면 아직 GPS를 못 받은 상태와 구분되지 않는다).
+  const [etaUnavailable, setEtaUnavailable] =
+    useState<EtaUnavailablePayload | null>(null);
+  // 실패가 이어지는 동안 서버 재시도 쿨다운(30초)마다 같은 이벤트가 오므로 토스트는 첫 회만 띄운다.
+  // 되돌릴 필요는 없다 — 계산이 한 번 성공하면 서버는 이 배달에 대해 다시 계산하지 않으므로 재실패가 없다.
+  const etaNoticeShown = useRef(false);
+
   // 상세 조회 성공 전에는 SSE·취소 등 모든 배달 기능을 차단한다.
   const {
     detail,
@@ -183,6 +193,9 @@ export function RealDeliveryTracking({
     status === DeliveryStatusResponseDtoStatus.PICKUP_DELAYED;
   const routePath = isPickup ? deliveryRoutePath : orderRoutePath;
   const arrivalTime = formatArrivalTime(detail?.estimatedCompletionTime);
+  // 서버는 위치 전송마다 계산을 다시 시도한다. 드리미가 픽업지에 가까워지거나 카카오가 회복돼
+  // 예상 시각이 채워지면(delivery_location 핸들러의 상세 재조회) 지난 실패는 무시하고 배지를 되살린다.
+  const etaFailure = arrivalTime ? null : etaUnavailable;
 
   // 픽업 사진은 배달 도중(픽업 완료 시점)에야 생기는 값이라 detail 스냅샷에 실어두면 SSE로 픽업
   // 완료를 알린 뒤에도 새로고침 전까지 stale하게 "사진 없음"으로 보일 수 있다. 그래서 버튼을 누른
@@ -295,6 +308,21 @@ export function RealDeliveryTracking({
       const dto = data as DreamiOfflinePayload;
       if (dto?.orderId !== orderId) return;
       markDreamiOffline(dto.secondsSinceLastLocation ?? 0);
+    },
+    // 서버가 '드리미→픽업지' 경로 계산에 실패했다(너무 멀거나 카카오 응답 지연 등).
+    // payload가 DeliveryStatusResponseDto가 아니라서 forThisOrder를 쓰지 않는다.
+    delivery_eta_unavailable: (data) => {
+      const dto = data as EtaUnavailablePayload;
+      if (dto?.orderId !== orderId) return;
+      setEtaUnavailable(dto);
+      if (etaNoticeShown.current) return;
+      etaNoticeShown.current = true;
+      showToast({
+        icon: "pin",
+        title: ETA_UNAVAILABLE_TITLE,
+        description: dto.message,
+        dedupeKey: `eta-unavailable:${orderId}`,
+      });
     },
   };
 
@@ -489,7 +517,10 @@ export function RealDeliveryTracking({
 
         <MapCard
           height={340}
-          overlay={<ArrivalBadge arrivalTime={arrivalTime} />}
+          // 계산에 실패했으면 배지를 통째로 지운다. 실패 이유는 알약에 넣기엔 문구가 길어 토스트로 안내한다.
+          overlay={
+            etaFailure ? undefined : <ArrivalBadge arrivalTime={arrivalTime} />
+          }
         >
           <DeliveryRouteMap
             pickup={pickup}
