@@ -180,6 +180,9 @@ public class BoormiService {
         if (!order.getOrderCd().equals(OrderCd.PENDING_BOORMI_CONFIRMATION)) {
             throw new BusinessException(OrderErrorCode.INVALID_DREAMI_CONFIRMATION);
         }
+        if (!offerId.equals(order.getPendingOfferId())) {
+            throw new BusinessException(OrderErrorCode.NO_DREAMI_TO_CONFIRM);
+        }
 
         UUID dreamiId = matchingService.findDreamiIdByOfferId(offerId)
                 .orElseThrow(() -> new BusinessException(OrderErrorCode.NO_DREAMI_TO_CONFIRM));
