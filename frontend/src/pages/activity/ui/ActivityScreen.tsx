@@ -109,7 +109,7 @@ export function ActivityScreen() {
         <FilterChips value={filter} onChange={setFilter} />
 
         <p className="text-xs text-muted">
-          {isDriver ? "수행한 배달" : "요청한 배달"} · 총 {records.length}건
+          {isDriver ? "수행한 배달" : "요청한 배달"} · 총 {visible.length}건
         </p>
 
         {isDriver && dreamiLoading && records.length === 0 ? (
