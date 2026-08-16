@@ -1,8 +1,22 @@
 package com.naengsam.quick.domain.payment.service;
 
-import com.naengsam.quick.domain.payment.entity.*;
+import com.naengsam.quick.domain.payment.entity.MoneyLedger;
+import com.naengsam.quick.domain.payment.entity.MoneyTx;
+import com.naengsam.quick.domain.payment.entity.MoneyTxTypeCd;
+import com.naengsam.quick.domain.payment.entity.MoneyWallet;
+import com.naengsam.quick.domain.payment.entity.PointLedger;
+import com.naengsam.quick.domain.payment.entity.PointTx;
+import com.naengsam.quick.domain.payment.entity.PointTxTypeCd;
+import com.naengsam.quick.domain.payment.entity.PointWallet;
+import com.naengsam.quick.domain.payment.entity.Wallet;
 import com.naengsam.quick.domain.payment.exception.PaymentErrorCode;
-import com.naengsam.quick.domain.payment.repository.*;
+import com.naengsam.quick.domain.payment.repository.MoneyLedgerRepository;
+import com.naengsam.quick.domain.payment.repository.MoneyTxRepository;
+import com.naengsam.quick.domain.payment.repository.MoneyWalletRepository;
+import com.naengsam.quick.domain.payment.repository.PointLedgerRepository;
+import com.naengsam.quick.domain.payment.repository.PointTxRepository;
+import com.naengsam.quick.domain.payment.repository.PointWalletRepository;
+import com.naengsam.quick.domain.payment.repository.WalletRepository;
 import com.naengsam.quick.global.exception.BusinessException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
