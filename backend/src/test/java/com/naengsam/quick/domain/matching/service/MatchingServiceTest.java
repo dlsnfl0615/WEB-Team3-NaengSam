@@ -53,7 +53,9 @@ import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -1015,6 +1017,18 @@ class MatchingServiceTest {
     @Test
     void 주문_시작하면_top3_드리미에게_각각_OFFER_POPUP을_보낸다() {
         // given
+        MutableClock fifoClock = MutableClock.startingAt(
+                Instant.parse("2026-08-16T01:00:00Z"), ZoneId.systemDefault());
+        matchingAssignmentProblemAssembler = new MatchingAssignmentProblemAssembler(
+                geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
+                matchingPolicyProperties, fifoClock);
+        matchingService = new MatchingService(
+                matchingEngine, notificationService, deliveryService,
+                fifoClock,
+                matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier,
+                matchingPolicyProperties, geoDistanceCalculator, new SimpleMeterRegistry(),
+                boormiOfferExpirationService);
+
         UUID orderId = UUID.randomUUID();
         GeoPoint location = mock(GeoPoint.class);
         Orders order = mock(Orders.class);
@@ -1025,9 +1039,13 @@ class MatchingServiceTest {
         UUID dreamiId3 = UUID.randomUUID();
         UUID dreamiId4 = UUID.randomUUID();
         matchingService.applyRegisterDreami(dreamiId1, location);
+        fifoClock.advance(Duration.ofSeconds(1));
         matchingService.applyRegisterDreami(dreamiId2, location);
+        fifoClock.advance(Duration.ofSeconds(1));
         matchingService.applyRegisterDreami(dreamiId3, location);
+        fifoClock.advance(Duration.ofSeconds(1));
         matchingService.applyRegisterDreami(dreamiId4, location);
+        fifoClock.advance(Duration.ofSeconds(1));
 
         // when (매칭 시작 후 재매칭 스캔이 첫 오퍼 라운드를 만든다)
         matchingService.applyStartMatching(order);
@@ -1986,5 +2004,42 @@ class MatchingServiceTest {
                         matchingService,
                         "offerIdsByDreamiId"
                 );
+    }
+
+    /**
+     * 드리미 등록 시각을 명시적으로 전진시켜 FIFO 우선순위를 결정적으로 검증하기 위한 테스트 전용 Clock.
+     */
+    private static final class MutableClock extends Clock {
+
+        private Instant current;
+        private final ZoneId zone;
+
+        private MutableClock(Instant current, ZoneId zone) {
+            this.current = current;
+            this.zone = zone;
+        }
+
+        static MutableClock startingAt(Instant instant, ZoneId zone) {
+            return new MutableClock(instant, zone);
+        }
+
+        void advance(Duration duration) {
+            current = current.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return zone;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return new MutableClock(current, zone);
+        }
+
+        @Override
+        public Instant instant() {
+            return current;
+        }
     }
 }
