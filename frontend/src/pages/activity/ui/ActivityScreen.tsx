@@ -93,7 +93,10 @@ export function ActivityScreen() {
     [isDriver, deliveries, orders],
   );
 
-  const totalCount = counts?.[filter] ?? records.length;
+  // counts는 목록과 별개의 요청이라 늦게 도착할 수 있다(혹은 실패해 영구히 안 올 수도 있다) — 그 경우
+  // 로드된 페이지 크기(records.length)를 총 개수인 것처럼 보여주면 실제보다 작게 표시되므로, 확정된
+  // 값이 오기 전까진 "…"로 둔다.
+  const totalCount = counts ? counts[filter] : null;
 
   /**
    * 진행 중인 건은 실시간 상세로 보낸다(드리미는 실 추적 페이지, 부르미도 실 추적 페이지).
@@ -138,7 +141,7 @@ export function ActivityScreen() {
         <FilterChips value={filter} onChange={onFilterChange} />
 
         <p className="text-xs text-muted">
-          {isDriver ? "수행한 배달" : "요청한 배달"} · 총 {totalCount}건
+          {isDriver ? "수행한 배달" : "요청한 배달"} · 총 {totalCount ?? "…"}건
         </p>
 
         {isDriver && dreamiLoading && records.length === 0 ? (
