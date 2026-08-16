@@ -1672,16 +1672,41 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 취소할_진행중인_방이_없으면_큐에_제출되지_않고_false를_반환한다() {
-        // given
+    void 그룹이_없어도_취소_액션이_큐에_제출된다() {
+        // given (사전 검사 없이 항상 제출하며, 실제 존재 여부는 엔진 스레드가 판단한다)
         UUID orderId = UUID.randomUUID();
+        when(matchingEngine.submit(any())).thenReturn(true);
 
         // when
         boolean result = matchingService.cancelOrderByBoormi(orderId);
 
         // then
-        assertThat(result).isFalse();
-        verify(matchingEngine, never()).submit(any());
+        assertThat(result).isTrue();
+        ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
+        verify(matchingEngine).submit(captor.capture());
+        assertThat(captor.getValue()).isInstanceOf(CancelOrderByBoormi.class);
+        assertThat(((CancelOrderByBoormi) captor.getValue()).orderId()).isEqualTo(orderId);
+    }
+
+    @Test
+    void 이미_종료된_그룹이어도_취소_액션이_큐에_제출된다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        OrderOfferGroup group = new OrderOfferGroup(
+                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(), LocalDateTime.now());
+        group.cancel();
+        getOrderOfferGroups().put(orderId, group);
+        when(matchingEngine.submit(any())).thenReturn(true);
+
+        // when
+        boolean result = matchingService.cancelOrderByBoormi(orderId);
+
+        // then
+        assertThat(result).isTrue();
+        ArgumentCaptor<Action> captor = ArgumentCaptor.forClass(Action.class);
+        verify(matchingEngine).submit(captor.capture());
+        assertThat(captor.getValue()).isInstanceOf(CancelOrderByBoormi.class);
+        assertThat(((CancelOrderByBoormi) captor.getValue()).orderId()).isEqualTo(orderId);
     }
 
     @Test
@@ -1718,12 +1743,9 @@ class MatchingServiceTest {
     }
 
     @Test
-    void 부르미_주문취소_이벤트를_받으면_엔진_큐에_CancelOrderByBoormi_액션이_제출된다() {
-        // given
+    void 부르미_주문취소_이벤트를_받으면_그룹_존재_여부와_무관하게_엔진_큐에_CancelOrderByBoormi_액션이_제출된다() {
+        // given (진행 중인 방이 없어도 이벤트 리스너는 항상 취소 액션을 제출한다)
         UUID orderId = UUID.randomUUID();
-        OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(), LocalDateTime.now());
-        getOrderOfferGroups().put(orderId, group);
 
         // when
         matchingService.onOrderCancelledByBoormi(new OrderCancelledByBoormiEvent(orderId));

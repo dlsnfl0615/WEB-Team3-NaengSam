@@ -155,13 +155,11 @@ public class MatchingDebugController {
         matchingService.expireBoormiOffer(offerId);
     }
 
-    @Operation(summary = "부르미가 매칭 진행 중인 주문을 취소")
-    @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
+    @Operation(summary = "부르미가 매칭 진행 중인 주문을 취소",
+            description = "취소는 항상 액션 큐에 제출되며 멱등하게 처리된다. 방이 없거나 이미 종료된 방이어도 에러 없이 그대로 끝난다.")
     @PostMapping("/orders/{orderId}/cancel")
     public void cancelOrderByBoormi(@PathVariable UUID orderId) {
-        if (!matchingService.cancelOrderByBoormi(orderId)) {
-            throw new BusinessException(GeneralErrorCode.CONFLICT);
-        }
+        matchingService.cancelOrderByBoormi(orderId);
     }
 
     record DreamiView(UUID dreamiId, GeoPoint location,
