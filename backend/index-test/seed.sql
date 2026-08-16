@@ -4,6 +4,7 @@
 SET @test_boormi_id = X'46000000000000000000000000000001';
 SET @order_id_prefix = '46000000000000000001';
 SET @order_count = 10000;
+SET SESSION cte_max_recursion_depth = 10000;
 
 START TRANSACTION;
 
@@ -39,13 +40,6 @@ INSERT INTO `BOORMI` (
     0
 );
 
-CREATE TEMPORARY TABLE `INDEX_TEST_DIGIT` (
-    `n` tinyint NOT NULL PRIMARY KEY
-);
-
-INSERT INTO `INDEX_TEST_DIGIT` (`n`)
-VALUES (0), (1), (2), (3), (4), (5), (6), (7), (8), (9);
-
 -- 10,000건 중 1~10번 주문만 인메모리 매칭 엔진에도 등록한다.
 -- 나머지 9,990건은 빈 테이블에 가까운 측정을 피하기 위한 배경 데이터다.
 INSERT INTO `ORDERS` (
@@ -71,6 +65,13 @@ INSERT INTO `ORDERS` (
     `delivery_request`,
     `delivery_request_dtm`,
     `dreami_id`
+)
+WITH RECURSIVE sequence_numbers (`sequence_no`) AS (
+    SELECT 1
+    UNION ALL
+    SELECT `sequence_no` + 1
+    FROM sequence_numbers
+    WHERE `sequence_no` < @order_count
 )
 SELECT
     UNHEX(CONCAT(@order_id_prefix, LPAD(HEX(sequence_no), 12, '0'))),
@@ -105,19 +106,7 @@ SELECT
     '성능테스트 주문',
     TIMESTAMPADD(SECOND, -sequence_no, CURRENT_TIMESTAMP),
     NULL
-FROM (
-    SELECT
-        d0.n
-        + d1.n * 10
-        + d2.n * 100
-        + d3.n * 1000
-        + 1 AS sequence_no
-    FROM `INDEX_TEST_DIGIT` d0
-    CROSS JOIN `INDEX_TEST_DIGIT` d1
-    CROSS JOIN `INDEX_TEST_DIGIT` d2
-    CROSS JOIN `INDEX_TEST_DIGIT` d3
-) sequence_numbers
-WHERE sequence_no <= @order_count;
+FROM sequence_numbers;
 
 COMMIT;
 
