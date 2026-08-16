@@ -40,7 +40,7 @@ CREATE INDEX IX_DELIVERY_STATUS_LAST_LOCATION ON DELIVERY (delivery_cd, last_loc
 | `add-index.sql` | 복합인덱스 생성 + `ANALYZE TABLE` |
 | `drop-index.sql` | 다음 회차를 위한 롤백 |
 
-측정 결과 원본은 `results/<N>라운드/` 아래에 회차별로 담겨 있다.
+측정 결과 원본은 `results/Round<N>/` 아래에 회차별로 담겨 있다.
 정리된 수치는 아래 [측정 결과](#측정-결과)에 있다.
 
 ## 목 데이터 구성
@@ -85,11 +85,11 @@ MYSQL='docker exec -i symboorm-delivery-index-test-mysql mysql --table -uroot -p
 RESULTS=index-test/delivery-stale-location-index-test/results
 
 ROUND=1                        # 회차. 4 ~ 7 을 한 바퀴 돌 때마다 8번에서 올린다.
-OUT=$RESULTS/${ROUND}라운드
+OUT=$RESULTS/Round$ROUND
 mkdir -p $OUT
 ```
 
-회차마다 `results/1라운드/`, `results/2라운드/` … 로 폴더가 나뉜다.
+회차마다 `results/Round1/`, `results/Round2/` … 로 폴더가 나뉜다.
 `ROUND` 를 올리지 않고 4번을 다시 실행하면 **직전 회차 파일을 덮어쓰므로** 주의한다.
 쉘을 새로 열면 `MYSQL` / `RESULTS` / `ROUND` / `OUT` 이 사라지니 이 블록을 다시 실행한다.
 
@@ -169,7 +169,7 @@ eval $MYSQL < index-test/delivery-stale-location-index-test/drop-index.sql
 eval $MYSQL < index-test/delivery-stale-location-index-test/seed.sql
 
 ROUND=$((ROUND + 1))
-OUT=$RESULTS/${ROUND}라운드
+OUT=$RESULTS/Round$ROUND
 mkdir -p $OUT
 echo "다음 회차: $ROUND -> $OUT"
 # 이제 4번으로 돌아간다
@@ -178,9 +178,9 @@ echo "다음 회차: $ROUND -> $OUT"
 총 3회차를 돌리면 아래처럼 남는다.
 
 ```
-results/1라운드/before-1.txt  results/1라운드/after-1.txt
-results/2라운드/before-2.txt  results/2라운드/after-2.txt
-results/3라운드/before-3.txt  results/3라운드/after-3.txt
+results/Round1/before-1.txt  results/Round1/after-1.txt
+results/Round2/before-2.txt  results/Round2/after-2.txt
+results/Round3/before-3.txt  results/Round3/after-3.txt
 ```
 
 한 조건당 3회씩 돌리고 **avg 기준 중앙값 회차**를 아래 결과 표에 싣는다.
@@ -198,7 +198,7 @@ results/3라운드/before-3.txt  results/3라운드/after-3.txt
 | OS | macOS (Darwin 24.6.0) |
 | DB | Docker MySQL 8.0 (포트 3308) |
 | DELIVERY 행 수 | 20,000 (진행중 1,000 / 매칭 500) |
-| 반복 | 조건당 3회, `select_avg_us` 기준 **중앙값 회차** 채택 (개선 전 = 2라운드, 개선 후 = 1라운드) |
+| 반복 | 조건당 3회, `select_avg_us` 기준 **중앙값 회차** 채택 (개선 전 = Round2, 개선 후 = Round1) |
 
 | 지표 | 개선 전 | 개선 후 | 차이 |
 | --- | --- | --- | --- |
@@ -220,11 +220,11 @@ results/3라운드/before-3.txt  results/3라운드/after-3.txt
 
 | 회차 | 개선 전 `select_avg_us` | 개선 후 `select_avg_us` | 개선 전 `update_avg_us` | 개선 후 `update_avg_us` |
 | --- | ---: | ---: | ---: | ---: |
-| 1라운드 | 5,822.4 | **720.0** | 11.46 | **13.98** |
-| 2라운드 | **5,856.5** | 738.8 | **11.75** | 15.37 |
-| 3라운드 | 8,572.7 | 702.1 | 12.03 | 13.90 |
+| Round1 | 5,822.4 | **720.0** | 11.46 | **13.98** |
+| Round2 | **5,856.5** | 738.8 | **11.75** | 15.37 |
+| Round3 | 8,572.7 | 702.1 | 12.03 | 13.90 |
 
-굵게 표시한 것이 채택한 중앙값 회차다. 개선 전 3라운드(8,572.7 µs)가 튀는데,
+굵게 표시한 것이 채택한 중앙값 회차다. 개선 전 Round3(8,572.7 µs)가 튀는데,
 같은 회차의 EXPLAIN ANALYZE 5회도 6.35~10.4 ms 로 흔들렸다. 다른 프로세스와 CPU 를 나눠 쓴
 영향으로 보이며, 스캔량(20,001)은 세 회차 모두 동일했다. 이런 이상치 때문에 평균이 아니라
 중앙값 회차를 채택했다 — `n-plus-1-nearby-test/README.md` 와 같은 방식이다.
