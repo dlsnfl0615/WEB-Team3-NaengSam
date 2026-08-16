@@ -54,10 +54,12 @@ public class MatchingPolicyConfiguration {
     }
 
     @Bean
-    public MatchingAssignmentPolicy matchingAssignmentPolicy(MatchingScorePolicy matchingScorePolicy) {
+    public MatchingAssignmentPolicy matchingAssignmentPolicy(
+            MatchingScorePolicy matchingScorePolicy, OfferScopeResolver offerScopeResolver) {
         return switch (properties.assignmentPolicy()) {
-            case LEGACY_ORDER_FIRST -> new LegacyOrderFirstAssignmentPolicy(matchingScorePolicy);
-            case SCORE_BASED_GREEDY -> new ScoreBasedGreedyAssignmentPolicy(matchingScorePolicy);
+            case LEGACY_ORDER_FIRST ->
+                    new LegacyOrderFirstAssignmentPolicy(matchingScorePolicy, offerScopeResolver);
+            case SCORE_BASED_GREEDY -> new ScoreBasedGreedyAssignmentPolicy(matchingScorePolicy, offerScopeResolver);
         };
     }
 

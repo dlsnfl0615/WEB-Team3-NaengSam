@@ -102,7 +102,8 @@ class MatchingCooldownReevaluationIntegrationTest {
         MatchingPolicyProperties.Cooldown cooldown = properties.cooldown();
         MatchingEligibilityPolicy eligibilityPolicy = new OutcomeCooldownOfferPolicy(
                 cooldown.dreamiRejection(), cooldown.boormiRejection(), cooldown.dreamiExpiration());
-        MatchingAssignmentPolicy assignmentPolicy = new ScoreBasedGreedyAssignmentPolicy(new OrderWaitScorePolicy());
+        MatchingAssignmentPolicy assignmentPolicy = new ScoreBasedGreedyAssignmentPolicy(
+                new OrderWaitScorePolicy(), new OfferScopeResolver(properties.offerScopes()));
         orderService = mock(OrderService.class);
         pendingOfferStateService = mock(PendingOfferStateService.class);
         lenient().when(pendingOfferStateService.isCurrent(any(), any())).thenReturn(true);

@@ -150,7 +150,8 @@ class MatchingServiceTest {
         lenient().when(pendingOfferStateService.isCurrent(any(), any())).thenReturn(true);
 
         matchingPolicyProperties = matchingPolicyProperties();
-        matchingAssignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+        matchingAssignmentPolicy = new LegacyOrderFirstAssignmentPolicy(
+                new OrderWaitScorePolicy(), new OfferScopeResolver(matchingPolicyProperties.offerScopes()));
         matchingPlanApplier = new MatchingPlanApplier(
                 new MatchingPlanValidator(new LegacyOfferPolicy()), mock(MatchingService.class),
                 notificationService, OFFER_TTL, orderService);

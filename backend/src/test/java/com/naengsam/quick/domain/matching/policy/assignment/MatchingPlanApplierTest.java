@@ -23,6 +23,7 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferPolicySnapshot;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -100,7 +101,7 @@ class MatchingPlanApplierTest {
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderId, 3)), List.of(dreami1, dreami2), List.of(orderId), List.of(dreami1, dreami2));
         MatchingPlan plan = new MatchingPlan(List.of(
-                new MatchingProposal(orderId, dreami1), new MatchingProposal(orderId, dreami2)));
+                new MatchingProposal(orderId, dreami1, snapshot()), new MatchingProposal(orderId, dreami2, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -118,7 +119,7 @@ class MatchingPlanApplierTest {
         registerDreami(dreami1);
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderId, 3)), List.of(dreami1), List.of(orderId), List.of(dreami1));
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreami1)));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreami1, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -137,7 +138,7 @@ class MatchingPlanApplierTest {
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderWithProposal, 3), orderInput(orderWithoutProposal, 3)),
                 List.of(dreamiId), List.of(orderWithProposal, orderWithoutProposal), List.of(dreamiId));
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderWithProposal, dreamiId)));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderWithProposal, dreamiId, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -175,9 +176,9 @@ class MatchingPlanApplierTest {
                 List.of(orderInput(orderId, 3)), List.of(dreami1, dreami2, dreami3),
                 List.of(orderId), List.of(dreami1, dreami2, dreami3));
         MatchingPlan plan = new MatchingPlan(List.of(
-                new MatchingProposal(orderId, dreami1),
-                new MatchingProposal(orderId, dreami2),
-                new MatchingProposal(orderId, dreami3)));
+                new MatchingProposal(orderId, dreami1, snapshot()),
+                new MatchingProposal(orderId, dreami2, snapshot()),
+                new MatchingProposal(orderId, dreami3, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -192,7 +193,8 @@ class MatchingPlanApplierTest {
         MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
                 EVALUATED_AT, List.of(orderInput(orderId, 1)), List.of(), List.of());
         // 문제에 존재하지 않는 orderId에 대한 제안 -> validator가 거부해야 한다.
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(UUID.randomUUID(), UUID.randomUUID())));
+        MatchingPlan plan = new MatchingPlan(
+                List.of(new MatchingProposal(UUID.randomUUID(), UUID.randomUUID(), snapshot())));
 
         Throwable thrown = catchThrowable(() -> applier.apply(
                 problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId));
@@ -211,7 +213,7 @@ class MatchingPlanApplierTest {
         registerDreami(dreamiId);
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderId, 1)), List.of(dreamiId), List.of(orderId), List.of(dreamiId));
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId)));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -234,7 +236,7 @@ class MatchingPlanApplierTest {
         registerDreami(newDreamiId);
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderId, 3)), List.of(newDreamiId), List.of(orderId), List.of(newDreamiId));
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, newDreamiId)));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, newDreamiId, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -257,7 +259,7 @@ class MatchingPlanApplierTest {
         doReturn(Map.of(orderId, cancelledOrder)).when(orderService).findOrders(any());
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderId, 3)), List.of(dreamiId), List.of(orderId), List.of(dreamiId));
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId)));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId, snapshot())));
 
         // when
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
@@ -279,7 +281,7 @@ class MatchingPlanApplierTest {
         doReturn(Map.of()).when(orderService).findOrders(any());
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderId, 3)), List.of(dreamiId), List.of(orderId), List.of(dreamiId));
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId)));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId, snapshot())));
 
         // when
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
@@ -306,7 +308,7 @@ class MatchingPlanApplierTest {
         registerDreami(dreamiId);
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderId, 3)), List.of(dreamiId), List.of(orderId), List.of(dreamiId));
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId)));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -333,6 +335,10 @@ class MatchingPlanApplierTest {
 
     private MatchingOrderInput orderInput(UUID orderId, int maxConcurrentOffers) {
         return new MatchingOrderInput(orderId, LOCATION, Duration.ZERO, maxConcurrentOffers);
+    }
+
+    private OfferPolicySnapshot snapshot() {
+        return new OfferPolicySnapshot(Duration.ZERO, EVALUATED_AT, 0L, 0.0, 3_000);
     }
 
     private MatchingAssignmentProblem problem(

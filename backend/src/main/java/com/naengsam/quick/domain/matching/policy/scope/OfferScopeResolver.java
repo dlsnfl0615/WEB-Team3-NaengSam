@@ -25,8 +25,21 @@ public class OfferScopeResolver {
      * 주문 대기시간에 해당하는 scope를 찾는다. 음수 대기시간은 0으로 취급한다.
      */
     public OfferScope resolve(Duration orderWaitingTime) {
+        return floorEntry(orderWaitingTime).getValue();
+    }
+
+    /**
+     * 주문 대기시간에 해당하는 scope를 고를 때 실제로 선택된 임계값의 key(minOrderWait)를 반환한다.
+     * {@link com.naengsam.quick.domain.matching.policy.scope.OfferPolicySnapshot}가 "어떤 scope가 적용됐는지"를
+     * 남길 때 쓴다.
+     */
+    public Duration resolveScopeKey(Duration orderWaitingTime) {
+        return floorEntry(orderWaitingTime).getKey();
+    }
+
+    private Map.Entry<Duration, OfferScope> floorEntry(Duration orderWaitingTime) {
         Duration waitingTime = orderWaitingTime.isNegative() ? Duration.ZERO : orderWaitingTime;
-        return scopesByMinWait.floorEntry(waitingTime).getValue();
+        return scopesByMinWait.floorEntry(waitingTime);
     }
 
     private static NavigableMap<Duration, OfferScope> toValidatedMap(List<OfferScopeThreshold> thresholds) {

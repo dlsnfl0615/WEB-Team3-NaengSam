@@ -137,7 +137,8 @@ class PeriodicMatchingBatchIntegrationTest {
         when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(500.0);
 
         MatchingEligibilityPolicy eligibilityPolicy = matchingEligibilityPolicy(properties);
-        MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+        MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(
+                new OrderWaitScorePolicy(), new OfferScopeResolver(properties.offerScopes()));
         orderService = mock(OrderService.class);
         pendingOfferStateService = mock(PendingOfferStateService.class);
         lenient().when(pendingOfferStateService.isCurrent(any(), any())).thenReturn(true);

@@ -260,7 +260,8 @@ class MatchingAssignmentProblemAssemblerTest {
         assertThat(meterRegistry.counter("matching.candidates.filtered", "reason", "pickup_distance_exceeded")
                 .count()).isEqualTo(2.0);
 
-        MatchingPlan plan = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy()).createPlan(problem);
+        MatchingPlan plan = new LegacyOrderFirstAssignmentPolicy(
+                new OrderWaitScorePolicy(), new OfferScopeResolver(properties.offerScopes())).createPlan(problem);
 
         assertThat(plan.proposals()).isEmpty();
     }
