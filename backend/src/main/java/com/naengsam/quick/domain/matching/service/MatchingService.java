@@ -28,6 +28,7 @@ import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
@@ -84,6 +85,9 @@ public class MatchingService {
     private final MatchingPolicyProperties matchingPolicyProperties;
     private final GeoDistanceCalculator geoDistanceCalculator;
     private final MeterRegistry meterRegistry;
+    // 부르미 응답 timeout을 DB 주문에도 반영하는 트랜잭션 서비스. MatchingService가 OrderRepository를
+    // 직접 다루지 않도록 분리했다(도메인 간 독립성 유지) — 자세한 이유는 이 서비스의 Javadoc 참고.
+    private final BoormiOfferExpirationService boormiOfferExpirationService;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -509,10 +513,23 @@ public class MatchingService {
         findOffer(offerId)
                 .filter(matchOffer -> matchOffer.status() == MatchOfferStatus.PENDING_BOORMI_CONFIRMATION)
                 .ifPresent(matchOffer -> {
+                    // DB 주문 잠금(OrderRepository.findByOrderId의 PESSIMISTIC_WRITE)을 먼저 확보해, 그 사이
+                    // 부르미가 이미 확정/거절해 DB가 더 이상 이 드리미의 PENDING_BOORMI_CONFIRMATION이 아니게
+                    // 됐으면(경합 패배) 인메모리 상태를 전혀 건드리지 않는다 — DB가 이겼으므로 그 결과를 그대로 둔다.
+                    boolean expired = boormiOfferExpirationService.expire(matchOffer.orderId(), matchOffer.dreamiId());
+                    if (!expired) {
+                        log.debug("DB 주문이 이미 다른 경로로 처리되어 부르미 timeout을 무시함: orderId={}, dreamiId={}",
+                                matchOffer.orderId(), matchOffer.dreamiId());
+                        return;
+                    }
+
                     // 드리미가 다시 배달이 가능하게 바꿔야함
                     matchOffer.expireByBoormi(LocalDateTime.now(clock));
                     releaseDreami(matchOffer.dreamiId());
                     moveGroupToWaitingIfExhausted(matchOffer.orderId());
+
+                    notificationService.notify(matchOffer.dreamiId(), MatchingEventType.OFFER_CLOSED,
+                            new OfferClosedPayload(matchOffer.offerId(), "부르미 응답 시간이 만료됐어요."));
                 });
     }
 
