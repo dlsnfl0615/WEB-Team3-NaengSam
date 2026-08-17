@@ -22,7 +22,11 @@ import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
+import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
@@ -93,8 +97,28 @@ class MatchingAssignmentProblemAssemblerTest {
                 new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10),
                         Duration.ofMinutes(3)),
                 new MatchingPolicyProperties.BalancedWeights(
-                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)),
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
     }
+
+    private static MatchingPolicyProperties matchingPolicyPropertiesWithOfferScopes(
+            List<MatchingPolicyProperties.OfferScopeThreshold> offerScopes) {
+        return new MatchingPolicyProperties(
+                Duration.ofSeconds(1),
+                3,
+                OfferQuotaMode.FIXED,
+                5,
+                AssignmentPolicyType.LEGACY_ORDER_FIRST,
+                ScoringPolicyType.ORDER_WAIT,
+                EligibilityPolicyType.LEGACY,
+                new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10),
+                        Duration.ofMinutes(3)),
+                new MatchingPolicyProperties.BalancedWeights(
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)),
+                offerScopes);
+    }
+
+    private MeterRegistry meterRegistry;
 
     @BeforeEach
     void setUp() {
@@ -103,7 +127,10 @@ class MatchingAssignmentProblemAssemblerTest {
 
         MatchingPolicyProperties properties = matchingPolicyProperties();
         MatchingAssignmentProblemFactory factory = new MatchingAssignmentProblemFactory(new LegacyOfferPolicy());
-        assembler = new MatchingAssignmentProblemAssembler(geoDistanceCalculator, factory, properties, CLOCK);
+        meterRegistry = new SimpleMeterRegistry();
+        assembler = new MatchingAssignmentProblemAssembler(
+                geoDistanceCalculator, factory, properties, CLOCK,
+                new OfferScopeResolver(properties.offerScopes()), meterRegistry);
         orderOfferGroups = List.of();
         waitingDreamis = List.of();
     }
@@ -113,11 +140,17 @@ class MatchingAssignmentProblemAssemblerTest {
     }
 
     private MatchingAssignmentProblem assemble(MatchingPolicyProperties properties) {
+        return assemble(properties, DISTANCE_METERS);
+    }
+
+    private MatchingAssignmentProblem assemble(MatchingPolicyProperties properties, double distanceMeters) {
         GeoDistanceCalculator geoDistanceCalculator = mock(GeoDistanceCalculator.class);
-        when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(DISTANCE_METERS);
+        when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(distanceMeters);
         MatchingAssignmentProblemFactory factory = new MatchingAssignmentProblemFactory(new LegacyOfferPolicy());
-        MatchingAssignmentProblemAssembler dynamicAssembler =
-                new MatchingAssignmentProblemAssembler(geoDistanceCalculator, factory, properties, CLOCK);
+        meterRegistry = new SimpleMeterRegistry();
+        MatchingAssignmentProblemAssembler dynamicAssembler = new MatchingAssignmentProblemAssembler(
+                geoDistanceCalculator, factory, properties, CLOCK,
+                new OfferScopeResolver(properties.offerScopes()), meterRegistry);
         return dynamicAssembler.assemble(orderOfferGroups, waitingDreamis);
     }
 
@@ -172,6 +205,82 @@ class MatchingAssignmentProblemAssemblerTest {
 
         assertThat(problem.candidates()).hasSize(1);
         assertThat(problem.candidates().get(0).distanceMeters()).isEqualTo(DISTANCE_METERS);
+    }
+
+    /**
+     * offer scope 기반 최대 픽업거리 필터: 주문 대기시간으로 고른 scope의 maxPickupDistanceMeters를 넘는 후보는
+     * candidate 자체가 만들어지지 않고, 그 사실이 pickup_distance_exceeded 지표로 남는다.
+     */
+    @Test
+    void 거리가_scope의_최대_픽업거리와_같으면_후보에_포함된다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        orderOfferGroups = List.of(group(orderId, OrderOfferGroupStatus.WAITING));
+        waitingDreamis = List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING));
+        MatchingPolicyProperties properties = matchingPolicyPropertiesWithOfferScopes(
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
+
+        MatchingAssignmentProblem problem = assemble(properties, 3_000.0);
+
+        assertThat(problem.candidates()).hasSize(1);
+        assertThat(meterRegistry.counter("matching.candidates.filtered", "reason", "pickup_distance_exceeded")
+                .count()).isZero();
+    }
+
+    @Test
+    void 거리가_scope의_최대_픽업거리를_넘으면_후보에서_제외되고_지표가_증가한다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        orderOfferGroups = List.of(group(orderId, OrderOfferGroupStatus.WAITING));
+        waitingDreamis = List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING));
+        MatchingPolicyProperties properties = matchingPolicyPropertiesWithOfferScopes(
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
+
+        MatchingAssignmentProblem problem = assemble(properties, 3_000.1);
+
+        assertThat(problem.candidates()).isEmpty();
+        assertThat(meterRegistry.counter("matching.candidates.filtered", "reason", "pickup_distance_exceeded")
+                .count()).isEqualTo(1.0);
+    }
+
+    @Test
+    void 주문의_모든_드리미가_거리_초과면_그_주문의_candidate가_전부_비고_배정_정책도_빈_plan을_만든다() {
+        UUID orderId = UUID.randomUUID();
+        orderOfferGroups = List.of(group(orderId, OrderOfferGroupStatus.WAITING));
+        waitingDreamis = List.of(
+                dreami(UUID.randomUUID(), WaitingDreamiStatus.MATCHING),
+                dreami(UUID.randomUUID(), WaitingDreamiStatus.MATCHING));
+        MatchingPolicyProperties properties = matchingPolicyPropertiesWithOfferScopes(
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
+
+        MatchingAssignmentProblem problem = assemble(properties, 3_000.1);
+
+        assertThat(problem.orders()).extracting(MatchingOrderInput::orderId).containsExactly(orderId);
+        assertThat(problem.candidates()).isEmpty();
+        assertThat(meterRegistry.counter("matching.candidates.filtered", "reason", "pickup_distance_exceeded")
+                .count()).isEqualTo(2.0);
+
+        MatchingPlan plan = new LegacyOrderFirstAssignmentPolicy(
+                new OrderWaitScorePolicy(), new OfferScopeResolver(properties.offerScopes())).createPlan(problem);
+
+        assertThat(plan.proposals()).isEmpty();
+    }
+
+    @Test
+    void 주문_대기시간이_길어져_더_넓은_scope가_적용되면_이전에_제외되던_거리의_후보도_포함된다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        // 매칭 시작 후 61초가 지나, 두 번째 임계값(60초 이상 -> 6000m)이 적용되는 주문.
+        orderOfferGroups = List.of(new OrderOfferGroup(
+                orderId, UUID.randomUUID(), ORDER_LOCATION, null, List.of(), EVALUATED_AT.minusSeconds(61)));
+        waitingDreamis = List.of(dreami(dreamiId, WaitingDreamiStatus.MATCHING));
+        MatchingPolicyProperties properties = matchingPolicyPropertiesWithOfferScopes(List.of(
+                new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000),
+                new MatchingPolicyProperties.OfferScopeThreshold(Duration.ofSeconds(60), 6_000)));
+
+        MatchingAssignmentProblem problem = assemble(properties, 5_000.0);
+
+        assertThat(problem.candidates()).hasSize(1);
     }
 
     @Test
@@ -253,13 +362,15 @@ class MatchingAssignmentProblemAssemblerTest {
                 new MatchingPolicyProperties.Cooldown(
                         Duration.ofMinutes(5), Duration.ofMinutes(10), dreamiExpirationCooldown),
                 new MatchingPolicyProperties.BalancedWeights(
-                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)),
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
         MatchingAssignmentProblemFactory factory = new MatchingAssignmentProblemFactory(
                 new OutcomeCooldownOfferPolicy(
                         properties.cooldown().dreamiRejection(), properties.cooldown().boormiRejection(),
                         properties.cooldown().dreamiExpiration()));
-        MatchingAssignmentProblemAssembler cooldownAssembler =
-                new MatchingAssignmentProblemAssembler(geoDistanceCalculator, factory, properties, CLOCK);
+        MatchingAssignmentProblemAssembler cooldownAssembler = new MatchingAssignmentProblemAssembler(
+                geoDistanceCalculator, factory, properties, CLOCK,
+                new OfferScopeResolver(properties.offerScopes()), new SimpleMeterRegistry());
         return cooldownAssembler.assemble(orderOfferGroups, waitingDreamis);
     }
 

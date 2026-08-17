@@ -26,6 +26,7 @@ import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties
 import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -82,7 +83,8 @@ class MatchingServiceConcurrencyTest {
                 new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10),
                         Duration.ofMinutes(3)),
                 new MatchingPolicyProperties.BalancedWeights(
-                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)),
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
     }
 
     @BeforeEach
@@ -97,7 +99,8 @@ class MatchingServiceConcurrencyTest {
         when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(500.0);
 
         MatchingPolicyProperties properties = matchingPolicyProperties();
-        MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+        MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(
+                new OrderWaitScorePolicy(), new OfferScopeResolver(properties.offerScopes()));
         orderService = mock(OrderService.class);
         pendingOfferStateService = mock(PendingOfferStateService.class);
         lenient().when(pendingOfferStateService.isCurrent(any(), any())).thenReturn(true);
@@ -116,7 +119,8 @@ class MatchingServiceConcurrencyTest {
                 notificationService, OFFER_TTL, orderService);
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
-                properties, Clock.systemDefaultZone());
+                properties, Clock.systemDefaultZone(), new OfferScopeResolver(properties.offerScopes()),
+                new SimpleMeterRegistry());
 
         BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
         when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);

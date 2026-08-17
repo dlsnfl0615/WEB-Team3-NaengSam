@@ -44,6 +44,7 @@ import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties
 import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.Action;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
@@ -113,7 +114,8 @@ class MatchingServiceTest {
                 new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10),
                         Duration.ofMinutes(3)),
                 new MatchingPolicyProperties.BalancedWeights(
-                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)),
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
     }
 
     @BeforeEach
@@ -148,13 +150,15 @@ class MatchingServiceTest {
         lenient().when(pendingOfferStateService.isCurrent(any(), any())).thenReturn(true);
 
         matchingPolicyProperties = matchingPolicyProperties();
-        matchingAssignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+        matchingAssignmentPolicy = new LegacyOrderFirstAssignmentPolicy(
+                new OrderWaitScorePolicy(), new OfferScopeResolver(matchingPolicyProperties.offerScopes()));
         matchingPlanApplier = new MatchingPlanApplier(
                 new MatchingPlanValidator(new LegacyOfferPolicy()), mock(MatchingService.class),
                 notificationService, OFFER_TTL, orderService);
         matchingAssignmentProblemAssembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
-                matchingPolicyProperties, Clock.systemDefaultZone());
+                matchingPolicyProperties, Clock.systemDefaultZone(),
+                new OfferScopeResolver(matchingPolicyProperties.offerScopes()), new SimpleMeterRegistry());
 
         matchingService = new MatchingService(
                 matchingEngine, notificationService, deliveryService,
@@ -1225,7 +1229,8 @@ class MatchingServiceTest {
                 Instant.parse("2026-08-16T01:00:00Z"), ZoneId.systemDefault());
         matchingAssignmentProblemAssembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
-                matchingPolicyProperties, fifoClock);
+                matchingPolicyProperties, fifoClock,
+                new OfferScopeResolver(matchingPolicyProperties.offerScopes()), new SimpleMeterRegistry());
         matchingService = new MatchingService(
                 matchingEngine, notificationService, deliveryService,
                 fifoClock,

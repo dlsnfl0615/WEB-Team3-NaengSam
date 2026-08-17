@@ -29,6 +29,7 @@ import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibilityPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -42,6 +43,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -95,7 +97,8 @@ class PeriodicMatchingBatchIntegrationTest {
                 eligibilityPolicyType,
                 cooldown,
                 new MatchingPolicyProperties.BalancedWeights(
-                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+                        1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)),
+                List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
     }
 
     private static MatchingEligibilityPolicy matchingEligibilityPolicy(MatchingPolicyProperties properties) {
@@ -134,7 +137,8 @@ class PeriodicMatchingBatchIntegrationTest {
         when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(500.0);
 
         MatchingEligibilityPolicy eligibilityPolicy = matchingEligibilityPolicy(properties);
-        MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+        MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(
+                new OrderWaitScorePolicy(), new OfferScopeResolver(properties.offerScopes()));
         orderService = mock(OrderService.class);
         pendingOfferStateService = mock(PendingOfferStateService.class);
         lenient().when(pendingOfferStateService.isCurrent(any(), any())).thenReturn(true);
@@ -154,7 +158,7 @@ class PeriodicMatchingBatchIntegrationTest {
 
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(eligibilityPolicy),
-                properties, clock);
+                properties, clock, new OfferScopeResolver(properties.offerScopes()), new SimpleMeterRegistry());
 
         BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
         // 이 파일은 DB 경합을 다루지 않으므로, 부르미 timeout이 항상 DB 갱신에 성공한 것으로 둔다.

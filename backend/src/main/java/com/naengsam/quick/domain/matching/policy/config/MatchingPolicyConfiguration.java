@@ -9,6 +9,7 @@ import com.naengsam.quick.domain.matching.policy.assignment.ScoreBasedGreedyAssi
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibilityPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import com.naengsam.quick.domain.matching.policy.scoring.MatchingScorePolicy;
@@ -53,10 +54,12 @@ public class MatchingPolicyConfiguration {
     }
 
     @Bean
-    public MatchingAssignmentPolicy matchingAssignmentPolicy(MatchingScorePolicy matchingScorePolicy) {
+    public MatchingAssignmentPolicy matchingAssignmentPolicy(
+            MatchingScorePolicy matchingScorePolicy, OfferScopeResolver offerScopeResolver) {
         return switch (properties.assignmentPolicy()) {
-            case LEGACY_ORDER_FIRST -> new LegacyOrderFirstAssignmentPolicy(matchingScorePolicy);
-            case SCORE_BASED_GREEDY -> new ScoreBasedGreedyAssignmentPolicy(matchingScorePolicy);
+            case LEGACY_ORDER_FIRST ->
+                    new LegacyOrderFirstAssignmentPolicy(matchingScorePolicy, offerScopeResolver);
+            case SCORE_BASED_GREEDY -> new ScoreBasedGreedyAssignmentPolicy(matchingScorePolicy, offerScopeResolver);
         };
     }
 
@@ -70,6 +73,11 @@ public class MatchingPolicyConfiguration {
                         cooldown.dreamiRejection(), cooldown.boormiRejection(), cooldown.dreamiExpiration());
             }
         };
+    }
+
+    @Bean
+    public OfferScopeResolver offerScopeResolver() {
+        return new OfferScopeResolver(properties.offerScopes());
     }
 
     @Bean

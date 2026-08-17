@@ -5,6 +5,7 @@ import {
   type CurrentMatchingStatusDto,
   type DreamiProfileDto,
   type NearbyCallDto,
+  type OfferPolicyDto,
   type PendingOfferDto,
 } from "@/shared/api";
 import type { Coords } from "@/shared/ui";
@@ -47,6 +48,11 @@ interface OfferPopupPayload {
   offeredAt: string;
   /** 응답 마감 절대 시각. */
   expiresAt: string;
+  /**
+   * 이 오퍼가 생성될 때 적용된 offer scope 스냅샷(픽업거리·허용 반경 등). 서버가 그 시점에 실제로 판단한
+   * 값을 그대로 내려주므로, 프론트는 offer-scopes 설정을 다시 해석하지 않고 이 값을 그대로 표시한다.
+   */
+  offerPolicy?: OfferPolicyDto;
 }
 
 /** 드리미가 받은 제안. 픽업 거리만 주변 콜 캐시에서 보충한다. */
@@ -211,8 +217,9 @@ function str(v: string | undefined): string | null {
 }
 
 /**
- * 스냅샷의 PendingOfferDto(offerId + OrderSummaryDto + offeredAt/expiresAt) → store의 PendingOffer로 매핑한다.
- * offeredAt/expiresAt은 SSE 팝업과 같은 값이라 폴링으로 복구해도 카운트다운이 정확하다.
+ * 스냅샷의 PendingOfferDto(offerId + OrderSummaryDto + offeredAt/expiresAt/offerPolicy) → store의
+ * PendingOffer로 매핑한다. offeredAt/expiresAt/offerPolicy는 SSE 팝업과 같은 값이라 폴링으로 복구해도
+ * 카운트다운과 픽업거리·확장 범위 표시가 정확하다.
  */
 function pendingOfferFromSnapshot(
   dto: PendingOfferDto,
@@ -238,6 +245,7 @@ function pendingOfferFromSnapshot(
     deliveryRequest: str(summary.deliveryRequest),
     offeredAt: dto.offeredAt ?? "",
     expiresAt: dto.expiresAt ?? "",
+    offerPolicy: dto.offerPolicy,
     distanceMeters: nearbyCalls.find((c) => c.orderId === orderId)?.distanceMeters,
   };
 }

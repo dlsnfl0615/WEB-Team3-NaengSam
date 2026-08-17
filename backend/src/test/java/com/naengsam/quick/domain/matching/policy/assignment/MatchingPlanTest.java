@@ -3,6 +3,9 @@ package com.naengsam.quick.domain.matching.policy.assignment;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 
+import com.naengsam.quick.domain.matching.policy.scope.OfferPolicySnapshot;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -117,6 +120,10 @@ class MatchingPlanTest {
     }
 
     private MatchingProposal proposal(UUID orderId, UUID dreamiId) {
-        return new MatchingProposal(orderId, dreamiId);
+        return new MatchingProposal(orderId, dreamiId, snapshot());
+    }
+
+    private OfferPolicySnapshot snapshot() {
+        return new OfferPolicySnapshot(Duration.ZERO, LocalDateTime.of(2026, 8, 9, 9, 0), 0L, 0.0, 3_000);
     }
 }

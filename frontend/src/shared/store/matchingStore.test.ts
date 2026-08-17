@@ -231,6 +231,58 @@ describe("matchingStore polling 복구", () => {
     expect(pendingOffer?.expiresAt).toBe("2026-08-11T10:00:30");
   });
 
+  it("스냅샷의 offerPolicy를 pendingOffer로 그대로 threading한다(폴링 복구 시 픽업거리·확장 안내의 전제)", async () => {
+    getCurrentStatus.mockResolvedValue(
+      snapshot({
+        pendingOffer: {
+          offerId: "offer-1",
+          orderSummary: { orderId: "order-1", deliveryEta: 15, deliveryAmount: 3000 },
+          offeredAt: "2026-08-11T10:00:00",
+          expiresAt: "2026-08-11T10:00:30",
+          offerPolicy: {
+            scopeKeySeconds: 60,
+            evaluatedAt: "2026-08-11T10:00:00",
+            orderWaitingSeconds: 61,
+            pickupDistanceMeters: 4000,
+            maxPickupDistanceMeters: 6000,
+          },
+        },
+      }) as never,
+    );
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    expect(useMatchingStore.getState().pendingOffer?.offerPolicy).toEqual({
+      scopeKeySeconds: 60,
+      evaluatedAt: "2026-08-11T10:00:00",
+      orderWaitingSeconds: 61,
+      pickupDistanceMeters: 4000,
+      maxPickupDistanceMeters: 6000,
+    });
+  });
+
+  it("receiveOfferPopup(SSE)은 offerPolicy를 pendingOffer에 그대로 반영한다", () => {
+    useMatchingStore.getState().receiveOfferPopup(
+      offer({
+        offerPolicy: {
+          scopeKeySeconds: 0,
+          evaluatedAt: "2026-08-13T10:00:00",
+          orderWaitingSeconds: 5,
+          pickupDistanceMeters: 800,
+          maxPickupDistanceMeters: 3000,
+        },
+      }),
+    );
+
+    expect(useMatchingStore.getState().pendingOffer?.offerPolicy).toEqual({
+      scopeKeySeconds: 0,
+      evaluatedAt: "2026-08-13T10:00:00",
+      orderWaitingSeconds: 5,
+      pickupDistanceMeters: 800,
+      maxPickupDistanceMeters: 3000,
+    });
+  });
+
   it("receiveDreamiInfo는 acceptedAt/expiresAt을 incomingDreami에 반영한다", async () => {
     useMatchingStore.getState().receiveDreamiInfo({
       offerId: "offer-2",
