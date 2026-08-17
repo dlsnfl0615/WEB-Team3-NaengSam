@@ -18,6 +18,8 @@ import com.naengsam.quick.domain.matching.event.DreamiAcceptedEvent;
 import com.naengsam.quick.domain.matching.event.DreamiInfoPayload;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
 import com.naengsam.quick.domain.matching.event.MatchingStartRequestedEvent;
+import com.naengsam.quick.domain.matching.event.NotificationErrorPayload;
+import com.naengsam.quick.domain.matching.event.OfferClosedPayload;
 import com.naengsam.quick.domain.matching.event.OfferPopupPayload;
 import com.naengsam.quick.domain.matching.event.OrderCancelledByBoormiEvent;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
@@ -45,12 +47,15 @@ import com.naengsam.quick.domain.matching.service.engine.Action;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -81,6 +86,7 @@ class MatchingServiceTest {
     private MatchingPlanApplier matchingPlanApplier;
     private MatchingPolicyProperties matchingPolicyProperties;
     private GeoDistanceCalculator geoDistanceCalculator;
+    private BoormiOfferExpirationService boormiOfferExpirationService;
 
     /**
      * 예전 legacy attemptOfferRound(top-3, 오래_대기한_순)와 가장 가까운 조합. 이 조합으로 배치 매칭 사이클을 실행하면 이 파일의 기존
@@ -111,6 +117,9 @@ class MatchingServiceTest {
         when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(500.0);
         // 오퍼 후보 선정이 SSE liveness로 걸러지므로, 별도 명시가 없는 테스트의 드리미는 모두 연결돼 있는 것으로 둔다.
         when(notificationService.isReachableNow(any())).thenReturn(true);
+        boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
+        // 이 파일의 테스트는 DB 경합을 다루지 않으므로, 부르미 timeout이 항상 DB 갱신에 성공한 것으로 둔다.
+        when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);
 
         matchingPolicyProperties = matchingPolicyProperties();
         matchingAssignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
@@ -125,7 +134,7 @@ class MatchingServiceTest {
                 matchingEngine, notificationService, deliveryService,
                 Clock.systemDefaultZone(),
                 matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
-                geoDistanceCalculator, new SimpleMeterRegistry());
+                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService);
     }
 
     @Test
@@ -223,7 +232,7 @@ class MatchingServiceTest {
                 matchingEngine, notificationService, deliveryService,
                 Clock.systemDefaultZone(),
                 mockAssembler, matchingAssignmentPolicy, matchingPlanApplier, matchingPolicyProperties,
-                geoDistanceCalculator, new SimpleMeterRegistry());
+                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService);
 
         UUID connectedDreamiId = UUID.randomUUID();
         UUID ghostDreamiId = UUID.randomUUID();
@@ -658,16 +667,80 @@ class MatchingServiceTest {
         MatchOffer offer =
                 getOrderOfferGroups().get(orderId).offers().getFirst();
 
-        // when (드리미 응답시간 만료 -> 재매칭 시도 시 후보에서 제외되어야 한다)
+        // when (드리미 응답시간 만료 -> 재매칭을 다시 시도해도 같은 드리미는 후보에서 제외되어야 한다)
         matchingService.applyExpireDreamiOffer(offer.offerId());
+        matchingService.applyRunMatchingAssignmentCycle();
 
         // then
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
+        assertThat(offer.status()).isEqualTo(MatchOfferStatus.DREAMI_EXPIRED);
+        // 만료된 오퍼는 이력(group.offers())에는 그대로 남지만, 재매칭 스캔으로도 새 오퍼가 만들어지지 않는다.
         assertThat(group.offers()).hasSize(1);
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         assertThat(group.rematchRequired()).isTrue();
         assertThat(getDreamiMap().get(dreamiId).status())
                 .isEqualTo(WaitingDreamiStatus.MATCHING);
+        // 종료된 오퍼는 신규 pending 오퍼 조회에는 포함되지 않는다.
+        assertThat(matchingService.findPendingOfferForDreami(dreamiId)).isEmpty();
+        // 실제로 DREAMI_EXPIRED로 전이됐으므로 만료된 offer ID로 OFFER_CLOSED를 한 번만 보낸다.
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(notificationService, times(1))
+                .notify(eq(dreamiId), eq(MatchingEventType.OFFER_CLOSED), captor.capture());
+        assertThat(((OfferClosedPayload) captor.getValue()).offerId()).isEqualTo(offer.offerId());
+    }
+
+    @Test
+    void 만료된_offer_수락_시도는_이전_offer_ID를_담은_OFFER_ERROR로_거부된다() {
+        // given (엔진이 이미 timeout으로 DREAMI_EXPIRED 처리한 오래된 offerId로 뒤늦게 수락 요청이 도착한 상황)
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchOffer expiredOffer = new MatchOffer(
+                UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.DREAMI_EXPIRED, LocalDateTime.now());
+        getOffersById().put(expiredOffer.offerId(), expiredOffer);
+
+        // when
+        matchingService.applyAcceptByDreami(expiredOffer.offerId());
+
+        // then
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(notificationService).notify(eq(dreamiId), eq(MatchingEventType.OFFER_ERROR), captor.capture());
+        NotificationErrorPayload payload = (NotificationErrorPayload) captor.getValue();
+        assertThat(payload.offerId()).isEqualTo(expiredOffer.offerId());
+    }
+
+    @Test
+    void 정상_신규_오퍼_수락에는_이전_오퍼의_오류나_ID가_섞이지_않는다() {
+        // given (드리미 응답 timeout으로 만료된 offer-1의 이력이 남아있는 채로, 같은 드리미에게 새 offer-2가 발급된 상황)
+        UUID orderId = UUID.randomUUID();
+        UUID boormiId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+        when(order.getBoormiId()).thenReturn(boormiId);
+
+        matchingService.applyRegisterDreami(dreamiId, location);
+        matchingService.applyStartMatching(order);
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        MatchOffer offer1 = getOrderOfferGroups().get(orderId).offers().getFirst();
+        matchingService.applyExpireDreamiOffer(offer1.offerId());
+
+        MatchOffer offer2 = new MatchOffer(
+                UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
+        getOrderOfferGroups().get(orderId).addOffersAndOpen(List.of(offer2));
+        getOffersById().put(offer2.offerId(), offer2);
+
+        // when (새로 발급된 offer-2를 정상적으로 수락)
+        matchingService.applyAcceptByDreami(offer2.offerId());
+
+        // then (오류 알림 없이 정상 처리되고, 부르미에게 가는 정보에는 offer-2의 ID만 담긴다)
+        verify(notificationService, never()).notify(any(), eq(MatchingEventType.OFFER_ERROR), any());
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(notificationService).notify(eq(boormiId), eq(MatchingEventType.DREAMI_INFO), captor.capture());
+        DreamiInfoPayload payload = (DreamiInfoPayload) captor.getValue();
+        assertThat(payload.offerId()).isEqualTo(offer2.offerId());
+        assertThat(payload.offerId()).isNotEqualTo(offer1.offerId());
     }
 
     @Test
@@ -700,9 +773,13 @@ class MatchingServiceTest {
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
         assertThat(group.offers()).hasSize(2);
         MatchOffer secondOffer = group.offers().getLast();
+        assertThat(secondOffer.offerId()).isNotEqualTo(firstOffer.offerId());
         assertThat(secondOffer.dreamiId()).isEqualTo(dreamiId2);
         assertThat(secondOffer.status()).isEqualTo(MatchOfferStatus.OFFERED);
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+        // 만료된 첫 오퍼는 이력에는 남지만 pending 오퍼 조회에서는 제외되고, 새 오퍼만 조회된다.
+        assertThat(matchingService.findPendingOfferForDreami(dreamiId1)).isEmpty();
+        assertThat(matchingService.findPendingOfferForDreami(dreamiId2)).contains(secondOffer);
     }
 
     @Test
@@ -727,11 +804,48 @@ class MatchingServiceTest {
         matchingService.applyRunMatchingAssignmentCycle();
 
         // then
+        assertThat(offer.status()).isEqualTo(MatchOfferStatus.BOORMI_EXPIRED);
+        // DB 주문도 같은 잠금 경로로 MATCHING/dreamiId=null로 되돌렸는지 확인한다.
+        verify(boormiOfferExpirationService).expire(orderId, dreamiId);
+
         OrderOfferGroup group = getOrderOfferGroups().get(orderId);
         assertThat(group.offers()).hasSize(2);
         assertThat(group.offers().getLast().dreamiId()).isEqualTo(dreamiId);
         assertThat(group.offers().getLast().status()).isEqualTo(MatchOfferStatus.OFFERED);
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+
+        ArgumentCaptor<Object> captor = ArgumentCaptor.forClass(Object.class);
+        verify(notificationService).notify(eq(dreamiId), eq(MatchingEventType.OFFER_CLOSED), captor.capture());
+        assertThat(((OfferClosedPayload) captor.getValue()).offerId()).isEqualTo(offer.offerId());
+    }
+
+    @Test
+    void DB_주문이_이미_다른_경로로_처리됐으면_부르미_timeout은_인메모리_상태를_바꾸지_않는다() {
+        // given (부르미 확정이 먼저 DB 잠금을 잡아 이미 IN_PROGRESS로 넘어간 상황을 흉내낸다)
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+
+        matchingService.applyRegisterDreami(dreamiId, location);
+        matchingService.applyStartMatching(order);
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        MatchOffer offer =
+                getOrderOfferGroups().get(orderId).offers().getFirst();
+        matchingService.applyAcceptByDreami(offer.offerId());
+
+        when(boormiOfferExpirationService.expire(orderId, dreamiId)).thenReturn(false);
+
+        // when
+        matchingService.applyExpireBoormiOffer(offer.offerId());
+
+        // then (DB가 승자이므로 인메모리 오퍼/드리미/그룹 상태는 그대로 두고, 종료 알림도 보내지 않는다)
+        assertThat(offer.status()).isEqualTo(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+        assertThat(getDreamiMap().get(dreamiId).status()).isEqualTo(WaitingDreamiStatus.PROPOSED);
+        assertThat(getOrderOfferGroups().get(orderId).status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+        verify(notificationService, never()).notify(eq(dreamiId), eq(MatchingEventType.OFFER_CLOSED), any());
     }
 
     @Test
@@ -792,8 +906,9 @@ class MatchingServiceTest {
         // when (드리미 응답 timeout이 이미 수락된 뒤 뒤늦게 도착)
         matchingService.applyExpireDreamiOffer(offer.offerId());
 
-        // then (OFFERED 상태가 아니므로 무시되어야 한다)
+        // then (OFFERED 상태가 아니므로 무시되어야 한다 - 이벤트도 중복 발송되지 않는다)
         assertThat(offer.status()).isEqualTo(MatchOfferStatus.PENDING_BOORMI_CONFIRMATION);
+        verify(notificationService, never()).notify(any(), eq(MatchingEventType.OFFER_CLOSED), any());
     }
 
     @Test
@@ -902,6 +1017,18 @@ class MatchingServiceTest {
     @Test
     void 주문_시작하면_top3_드리미에게_각각_OFFER_POPUP을_보낸다() {
         // given
+        MutableClock fifoClock = MutableClock.startingAt(
+                Instant.parse("2026-08-16T01:00:00Z"), ZoneId.systemDefault());
+        matchingAssignmentProblemAssembler = new MatchingAssignmentProblemAssembler(
+                geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
+                matchingPolicyProperties, fifoClock);
+        matchingService = new MatchingService(
+                matchingEngine, notificationService, deliveryService,
+                fifoClock,
+                matchingAssignmentProblemAssembler, matchingAssignmentPolicy, matchingPlanApplier,
+                matchingPolicyProperties, geoDistanceCalculator, new SimpleMeterRegistry(),
+                boormiOfferExpirationService);
+
         UUID orderId = UUID.randomUUID();
         GeoPoint location = mock(GeoPoint.class);
         Orders order = mock(Orders.class);
@@ -912,9 +1039,13 @@ class MatchingServiceTest {
         UUID dreamiId3 = UUID.randomUUID();
         UUID dreamiId4 = UUID.randomUUID();
         matchingService.applyRegisterDreami(dreamiId1, location);
+        fifoClock.advance(Duration.ofSeconds(1));
         matchingService.applyRegisterDreami(dreamiId2, location);
+        fifoClock.advance(Duration.ofSeconds(1));
         matchingService.applyRegisterDreami(dreamiId3, location);
+        fifoClock.advance(Duration.ofSeconds(1));
         matchingService.applyRegisterDreami(dreamiId4, location);
+        fifoClock.advance(Duration.ofSeconds(1));
 
         // when (매칭 시작 후 재매칭 스캔이 첫 오퍼 라운드를 만든다)
         matchingService.applyStartMatching(order);
@@ -1517,7 +1648,7 @@ class MatchingServiceTest {
                 matchingEngine, notificationService, deliveryService,
                 Clock.systemDefaultZone(),
                 mockAssembler, mockAssignmentPolicy, mockPlanApplier, matchingPolicyProperties,
-                geoDistanceCalculator, new SimpleMeterRegistry());
+                geoDistanceCalculator, new SimpleMeterRegistry(), boormiOfferExpirationService);
 
         MatchingAssignmentProblem problem = new MatchingAssignmentProblem(LocalDateTime.now(), List.of(), List.of(), List.of());
         MatchingPlan plan = new MatchingPlan(List.of());
@@ -1684,6 +1815,56 @@ class MatchingServiceTest {
     }
 
     @Test
+    void OFFERED_상태이고_TTL이_지나지_않았으면_isDreamiOfferAcceptable은_true를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(
+                offerId, UUID.randomUUID(), dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
+        getOffersById().put(offerId, offer);
+
+        assertThat(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).isTrue();
+    }
+
+    @Test
+    void 대상_드리미가_다르면_OFFERED_상태여도_isDreamiOfferAcceptable은_false를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(
+                offerId, UUID.randomUUID(), UUID.randomUUID(), MatchOfferStatus.OFFERED, LocalDateTime.now());
+        getOffersById().put(offerId, offer);
+
+        assertThat(matchingService.isDreamiOfferAcceptable(offerId, UUID.randomUUID())).isFalse();
+    }
+
+    @Test
+    void 엔진이_이미_DREAMI_EXPIRED로_만료시킨_제안은_isDreamiOfferAcceptable이_false를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchOffer offer = new MatchOffer(
+                offerId, UUID.randomUUID(), dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
+        getOffersById().put(offerId, offer);
+        offer.expireByDreami(LocalDateTime.now());
+
+        assertThat(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).isFalse();
+    }
+
+    @Test
+    void OFFERED_상태여도_TTL이_지났으면_isDreamiOfferAcceptable은_false를_반환한다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        LocalDateTime offeredAt = LocalDateTime.now().minus(matchingService.offerTtl()).minusSeconds(1);
+        MatchOffer offer = new MatchOffer(
+                offerId, UUID.randomUUID(), dreamiId, MatchOfferStatus.OFFERED, offeredAt);
+        getOffersById().put(offerId, offer);
+
+        assertThat(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).isFalse();
+    }
+
+    @Test
+    void 존재하지_않는_제안이면_isDreamiOfferAcceptable은_false를_반환한다() {
+        assertThat(matchingService.isDreamiOfferAcceptable(UUID.randomUUID(), UUID.randomUUID())).isFalse();
+    }
+
+    @Test
     void 제안이_속한_주문의_부르미와_요청한_부르미가_같으면_isBoormiOfferOwner는_true를_반환한다() {
         UUID offerId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
@@ -1823,5 +2004,42 @@ class MatchingServiceTest {
                         matchingService,
                         "offerIdsByDreamiId"
                 );
+    }
+
+    /**
+     * 드리미 등록 시각을 명시적으로 전진시켜 FIFO 우선순위를 결정적으로 검증하기 위한 테스트 전용 Clock.
+     */
+    private static final class MutableClock extends Clock {
+
+        private Instant current;
+        private final ZoneId zone;
+
+        private MutableClock(Instant current, ZoneId zone) {
+            this.current = current;
+            this.zone = zone;
+        }
+
+        static MutableClock startingAt(Instant instant, ZoneId zone) {
+            return new MutableClock(instant, zone);
+        }
+
+        void advance(Duration duration) {
+            current = current.plus(duration);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return zone;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return new MutableClock(current, zone);
+        }
+
+        @Override
+        public Instant instant() {
+            return current;
+        }
     }
 }

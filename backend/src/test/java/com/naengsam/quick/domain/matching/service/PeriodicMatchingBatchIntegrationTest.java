@@ -12,6 +12,8 @@ import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
+import com.naengsam.quick.domain.matching.model.WaitingDreami;
+import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.policy.assignment.LegacyOrderFirstAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
@@ -24,9 +26,12 @@ import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties
 import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibilityPolicy;
+import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -54,6 +59,22 @@ class PeriodicMatchingBatchIntegrationTest {
     }
 
     private static MatchingPolicyProperties matchingPolicyProperties(int maxConcurrentOffers) {
+        return matchingPolicyProperties(maxConcurrentOffers, EligibilityPolicyType.LEGACY,
+                new MatchingPolicyProperties.Cooldown(
+                        Duration.ofMinutes(5), Duration.ofMinutes(10), Duration.ofMinutes(3)));
+    }
+
+    // OUTCOME_COOLDOWN 정책 하에서, 드리미 응답 timeout 쿨다운만 짧게 두고 나머지는 그대로 재사용한다.
+    private static MatchingPolicyProperties matchingPolicyPropertiesWithCooldown(
+            int maxConcurrentOffers, Duration dreamiExpirationCooldown) {
+        return matchingPolicyProperties(maxConcurrentOffers, EligibilityPolicyType.OUTCOME_COOLDOWN,
+                new MatchingPolicyProperties.Cooldown(
+                        Duration.ofMinutes(5), Duration.ofMinutes(10), dreamiExpirationCooldown));
+    }
+
+    private static MatchingPolicyProperties matchingPolicyProperties(
+            int maxConcurrentOffers, EligibilityPolicyType eligibilityPolicyType,
+            MatchingPolicyProperties.Cooldown cooldown) {
         return new MatchingPolicyProperties(
                 BATCH_INTERVAL,
                 maxConcurrentOffers,
@@ -61,11 +82,21 @@ class PeriodicMatchingBatchIntegrationTest {
                 5,
                 AssignmentPolicyType.LEGACY_ORDER_FIRST,
                 ScoringPolicyType.ORDER_WAIT,
-                EligibilityPolicyType.LEGACY,
-                new MatchingPolicyProperties.Cooldown(Duration.ofMinutes(5), Duration.ofMinutes(10),
-                        Duration.ofMinutes(3)),
+                eligibilityPolicyType,
+                cooldown,
                 new MatchingPolicyProperties.BalancedWeights(
                         1, 1, 1, 1000, Duration.ofMinutes(5), Duration.ofMinutes(5)));
+    }
+
+    private static MatchingEligibilityPolicy matchingEligibilityPolicy(MatchingPolicyProperties properties) {
+        return switch (properties.eligibilityPolicy()) {
+            case LEGACY -> new LegacyOfferPolicy();
+            case OUTCOME_COOLDOWN -> {
+                MatchingPolicyProperties.Cooldown cooldown = properties.cooldown();
+                yield new OutcomeCooldownOfferPolicy(
+                        cooldown.dreamiRejection(), cooldown.boormiRejection(), cooldown.dreamiExpiration());
+            }
+        };
     }
 
     private static Orders orderMock(UUID orderId) {
@@ -75,6 +106,10 @@ class PeriodicMatchingBatchIntegrationTest {
     }
 
     private MatchingService newRunningMatchingService(int maxConcurrentOffers) {
+        return newRunningMatchingService(matchingPolicyProperties(maxConcurrentOffers));
+    }
+
+    private MatchingService newRunningMatchingService(MatchingPolicyProperties properties) {
         matchingEngine = new MatchingEngine();
         matchingEngine.start();
 
@@ -86,21 +121,25 @@ class PeriodicMatchingBatchIntegrationTest {
         GeoDistanceCalculator geoDistanceCalculator = mock(GeoDistanceCalculator.class);
         when(geoDistanceCalculator.distanceMeters(any(), any())).thenReturn(500.0);
 
-        MatchingPolicyProperties properties = matchingPolicyProperties(maxConcurrentOffers);
+        MatchingEligibilityPolicy eligibilityPolicy = matchingEligibilityPolicy(properties);
         MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
         MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
-                new MatchingPlanValidator(new LegacyOfferPolicy()), mock(MatchingService.class),
+                new MatchingPlanValidator(eligibilityPolicy), mock(MatchingService.class),
                 notificationService, OFFER_TTL);
 
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
-                geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
+                geoDistanceCalculator, new MatchingAssignmentProblemFactory(eligibilityPolicy),
                 properties, clock);
+
+        BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
+        // 이 파일은 DB 경합을 다루지 않으므로, 부르미 timeout이 항상 DB 갱신에 성공한 것으로 둔다.
+        when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);
 
         MatchingService matchingService = new MatchingService(
                 matchingEngine, notificationService, deliveryService,
                 clock,
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
-                new SimpleMeterRegistry());
+                new SimpleMeterRegistry(), boormiOfferExpirationService);
 
         new PeriodicMatchingBatchScheduler(matchingEngine, properties, matchingService).start();
 
@@ -207,6 +246,57 @@ class PeriodicMatchingBatchIntegrationTest {
                         .anyMatch(offer -> offer.status() == MatchOfferStatus.OFFERED
                                 && !offer.dreamiId().equals(expiredDreamiId)))
                 .orElse(false), Duration.ofSeconds(2));
+    }
+
+    @Test
+    void 드리미_응답_timeout_쿨다운_중에는_같은_드리미가_배치에서_제외되고_쿨다운이_끝나면_새_오퍼가_생성된다() {
+        Duration dreamiExpirationCooldown = Duration.ofMillis(150);
+        MatchingService matchingService = newRunningMatchingService(
+                matchingPolicyPropertiesWithCooldown(1, dreamiExpirationCooldown));
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+
+        matchingService.registerDreami(dreamiId, location);
+        matchingService.startMatching(orderMock(orderId));
+
+        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId)
+                .map(group -> !group.offers().isEmpty())
+                .orElse(false), Duration.ofSeconds(2));
+
+        MatchOffer offer1 = matchingService.findOrderOfferGroup(orderId).orElseThrow().offers().getFirst();
+
+        // when (드리미 응답 timeout 발생 - 쿨다운 카운트가 시작된다)
+        matchingService.expireDreamiOffer(offer1.offerId());
+        awaitUntil(() -> offer1.status() == MatchOfferStatus.DREAMI_EXPIRED, Duration.ofSeconds(2));
+
+        // then (쿨다운이 끝나기 전에는 배치가 여러 번 흘러가도 같은 드리미가 재제안되지 않는다)
+        sleep(dreamiExpirationCooldown.dividedBy(2));
+        OrderOfferGroup groupDuringCooldown = matchingService.findOrderOfferGroup(orderId).orElseThrow();
+        assertThat(groupDuringCooldown.offers()).hasSize(1);
+        assertThat(groupDuringCooldown.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
+        // 만료된 오퍼는 이력으로 남지만, 신규 pending 오퍼 조회에는 잡히지 않는다.
+        assertThat(matchingService.findPendingOfferForDreami(dreamiId)).isEmpty();
+        assertThat(matchingService.waitingDreamis())
+                .filteredOn(dreami -> dreami.dreamiId().equals(dreamiId))
+                .extracting(WaitingDreami::status)
+                .containsExactly(WaitingDreamiStatus.MATCHING);
+
+        // when (쿨다운이 끝난 뒤에는 다음 배치에서 같은 드리미에게 새 오퍼가 생성된다)
+        awaitUntil(() -> matchingService.findOrderOfferGroup(orderId)
+                .map(group -> group.offers().size() == 2)
+                .orElse(false), Duration.ofSeconds(2));
+
+        // then
+        OrderOfferGroup group = matchingService.findOrderOfferGroup(orderId).orElseThrow();
+        MatchOffer offer2 = group.offers().getLast();
+
+        assertThat(offer1.status()).isEqualTo(MatchOfferStatus.DREAMI_EXPIRED);
+        assertThat(offer2.offerId()).isNotEqualTo(offer1.offerId());
+        assertThat(offer2.dreamiId()).isEqualTo(dreamiId);
+        assertThat(offer2.status()).isEqualTo(MatchOfferStatus.OFFERED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+        assertThat(matchingService.findPendingOfferForDreami(dreamiId)).contains(offer2);
     }
 
     private void sleep(Duration duration) {

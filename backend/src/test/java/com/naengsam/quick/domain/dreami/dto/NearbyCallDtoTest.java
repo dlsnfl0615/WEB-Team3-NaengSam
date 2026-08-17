@@ -60,7 +60,7 @@ class NearbyCallDtoTest {
         Orders order = Orders.create(orderId, UUID.randomUUID(), "서류봉투", ItemCd.DOCUMENT,
                 "봉투 A4 사이즈", 5_000L, 12, null, "문 앞에 놔주세요", null,
                 Addresses.builder().build(), null);
-        order.markPendingBoormiConfirmation(UUID.randomUUID());
+        order.markPendingBoormiConfirmation(UUID.randomUUID(), UUID.randomUUID());
 
         NearbyOrderDto nearby = NearbyOrderDto.from(new WaitingOrder(orderId, location), 500.0);
 

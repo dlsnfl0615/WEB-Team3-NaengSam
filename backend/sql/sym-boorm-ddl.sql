@@ -67,10 +67,12 @@ CREATE TABLE `ORDERS` (
                           `image_key`                   varchar(500)    NULL,
                           `route_path`                  text            NULL      COMMENT '카카오 추천 이동경로 좌표 JSON([{latitude, longitude}, ...])',
                           `delivery_request_dtm`        timestamp       NOT NULL  DEFAULT CURRENT_TIMESTAMP,
-                          `dreami_id`                   binary(16)      NULL
+                          `dreami_id`                   binary(16)      NULL,
+                          `pending_offer_id`             binary(16)      NULL      COMMENT 'PENDING_BOORMI_CONFIRMATION 동안 확정 대기 중인 오퍼 UUID. 드리미 수락 재요청의 멱등 판단에 offerId까지 함께 확인하기 위함'
 );
 -- 이미 배포된 DB에는 위 CREATE 대신 아래 ALTER 로 컬럼을 추가한다.
 -- ALTER TABLE `ORDERS` ADD COLUMN `route_path` text NULL COMMENT '카카오 추천 이동경로 좌표 JSON([{latitude, longitude}, ...])';
+-- ALTER TABLE `ORDERS` ADD COLUMN `pending_offer_id` binary(16) NULL COMMENT 'PENDING_BOORMI_CONFIRMATION 동안 확정 대기 중인 오퍼 UUID. 드리미 수락 재요청의 멱등 판단에 offerId까지 함께 확인하기 위함';
 
 CREATE TABLE `POINT_LEDGERS` (
                                  `point_ledgers_id`  binary(16)  NOT NULL,
