@@ -75,7 +75,8 @@
 
 ## 서비스 아키텍쳐
 
-![img_2.png](docs/img/arch.png)
+<img width="1504" height="1656" alt="image" src="https://github.com/user-attachments/assets/1c066699-0073-4cd7-8d71-dfd2b49a5c9a" />
+
 
 ### Infra · DevOps
 
