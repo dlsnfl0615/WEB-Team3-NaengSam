@@ -33,6 +33,16 @@
 
 ---
 
+## 목차
+
+- [👥 팀원](#-팀원)
+- [👋 어떤 서비스인가요](#-어떤-서비스인가요)
+- [🧭 핵심 흐름](#-핵심-흐름)
+- [서비스 아키텍쳐](#서비스-아키텍쳐)
+- [🧠 기술 결정, 🐛 트러블슈팅](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki)
+
+---
+
 ## 👥 팀원
 
 |                         [서석희](https://github.com/seoki180)                         |                          [이동혁](https://github.com/hyeok2044)                           |                           [임현성](https://github.com/hwhyeons)                           |                          [정현서](https://github.com/dlsnfl0615)                           |
