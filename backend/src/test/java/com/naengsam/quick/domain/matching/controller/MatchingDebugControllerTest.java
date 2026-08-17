@@ -208,6 +208,7 @@ class MatchingDebugControllerTest {
     @Test
     void 주문_취소시_경로변수의_orderId로_서비스에_위임한다() throws Exception {
         UUID orderId = UUID.randomUUID();
+        when(matchingService.cancelOrderByBoormi(orderId)).thenReturn(true);
 
         mockMvc.perform(post("/api/v1/debug/matching/orders/{orderId}/cancel", orderId))
                 .andExpect(status().isOk());
