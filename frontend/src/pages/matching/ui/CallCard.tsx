@@ -127,7 +127,7 @@ export function CallCard({
 
       <div className="flex items-start">
         {pickupDistance && (
-          <CallStat label="픽업 거리" value={pickupDistance} />
+          <CallStat label="픽업 거리" value={pickupDistance} className="mr-6" />
         )}
         <CallStat label="배송 거리" value={deliveryDistance} />
         <CallStat
