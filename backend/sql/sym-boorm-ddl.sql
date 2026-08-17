@@ -486,6 +486,12 @@ ALTER TABLE `SETTLEMENT_DETAILS` ADD CONSTRAINT `FK_DREAMI_TO_SETTLEMENT_DETAILS
 -- FK보다 먼저 생성해 MySQL이 이 인덱스를 재사용하도록 한다(중복 인덱스 방지).
 CREATE INDEX `IX_DELIVERY_ORDER_ID` ON `DELIVERY` (`order_id`);
 
+-- findStaleLocationDeliveries()가 5초마다 도는 DELIVERY 풀스캔을 없앤다(GPS 끊김 감지).
+-- delivery_cd를 선두에 두는 이유: 종료·취소된 배달도 last_location_dtm이 과거로 남아 있어
+-- 범위 조건만으로는 걸러지지 않는다. 상태값을 앞에 둬야 진행중 배달만 먼저 잘라낼 수 있다.
+-- 측정 결과는 index-test/delivery-stale-location-index-test/README.md 참고(접근 행 20,001 → 502).
+CREATE INDEX `IX_DELIVERY_STATUS_LAST_LOCATION` ON `DELIVERY` (`delivery_cd`, `last_location_dtm`);
+
 ALTER TABLE `DELIVERY` ADD CONSTRAINT `FK_ORDERS_TO_DELIVERY_1` FOREIGN KEY (`order_id`) REFERENCES `ORDERS` (`order_id`);
 
 ALTER TABLE `DELIVERY_ACCIDENT` ADD CONSTRAINT `FK_DELIVERY_TO_DELIVERY_ACCIDENT_1` FOREIGN KEY (`delivery_id`) REFERENCES `DELIVERY` (`delivery_id`);

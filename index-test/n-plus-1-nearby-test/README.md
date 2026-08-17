@@ -31,7 +31,7 @@ fixture는 `index-test` 전용 DB에서만 사용한다. `seed.sql` 재실행 �
 백엔드 루트에서 실행한다.
 
 ```bash
-docker compose -f index-test/docker-compose.yml up -d
+docker compose -f index-test/n-plus-1-nearby-test/docker-compose.yml up -d
 ```
 
 새로 생성한 빈 볼륨에 프로젝트 DDL을 한 번 적용한다.
@@ -43,7 +43,7 @@ docker exec -i symboorm-index-test-mysql mysql -uindex_test -pindex-test symboor
 fixture를 넣는다.
 
 ```bash
-docker exec -i symboorm-index-test-mysql mysql -uindex_test -pindex-test symboorm_index_test < index-test/seed.sql
+docker exec -i symboorm-index-test-mysql mysql -uindex_test -pindex-test symboorm_index_test < index-test/n-plus-1-nearby-test/seed.sql
 ```
 
 DDL은 재실행 가능한 마이그레이션이 아니므로 이미 스키마가 있는 DB에 반복 적용하지 않는다. Docker 볼륨 삭제는 적재 데이터를 모두 잃는 작업이므로 초기화가 정말 필요할 때만 별도로 수행한다.
@@ -54,7 +54,7 @@ DDL은 재실행 가능한 마이그레이션이 아니므로 이미 스키마�
 
 ```bash
 set -a
-source index-test/app.env.example
+source index-test/n-plus-1-nearby-test/app.env.example
 set +a
 ```
 
@@ -73,13 +73,13 @@ set +a
 먼저 동시 사용자 1명으로 순수 지연을 측정한다.
 
 ```bash
-k6 run --summary-export index-test/before-vu1.json -e VUS=1 -e DURATION=2m index-test/k6/nearby-calls.js
+k6 run --summary-export index-test/n-plus-1-nearby-test/before-vu1.json -e VUS=1 -e DURATION=2m index-test/n-plus-1-nearby-test/k6/nearby-calls.js
 ```
 
 그다음 동시 사용자 10명으로 커넥션 점유와 처리량 영향을 확인한다.
 
 ```bash
-k6 run --summary-export index-test/before-vu10.json -e VUS=10 -e DURATION=2m index-test/k6/nearby-calls.js
+k6 run --summary-export index-test/n-plus-1-nearby-test/before-vu10.json -e VUS=10 -e DURATION=2m index-test/n-plus-1-nearby-test/k6/nearby-calls.js
 ```
 
 기본 워밍업은 20회다. 필요한 경우 `-e WARMUP_ITERATIONS=50`처럼 변경할 수 있다. 응답 사이 간격이 필요한 경우에만 `-e THINK_TIME_SECONDS=1`을 사용하며, 개선 전후에는 반드시 같은 값을 사용한다.
@@ -89,7 +89,7 @@ k6 run --summary-export index-test/before-vu10.json -e VUS=10 -e DURATION=2m ind
 응답시간 테스트와 별도로 백엔드를 종료한 뒤, SQL 수 확인 설정을 추가해 다시 실행한다.
 
 ```bash
-SPRING_CONFIG_ADDITIONAL_LOCATION=optional:file:./index-test/application-query-count.properties ./gradlew bootRun
+SPRING_CONFIG_ADDITIONAL_LOCATION=optional:file:./index-test/n-plus-1-nearby-test/application-query-count.properties ./gradlew bootRun
 ```
 
 k6를 한 번 실행해 대상 주문을 등록했거나, 같은 JVM에 대상 주문이 이미 등록된 상태에서 `query-count.http`의 요청을 순서대로 실행한다. Hibernate 세션 통계와 SQL 로그에서 다음 값을 확인한다.
@@ -116,11 +116,11 @@ from ORDERS o1_0 where o1_0.order_id in (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 개선 코드를 반영한 뒤 백엔드만 재시작한다. MySQL 데이터는 그대로 사용하고 k6 명령도 동일하게 유지한다.
 
 ```bash
-k6 run --summary-export index-test/after-vu1.json -e VUS=1 -e DURATION=2m index-test/k6/nearby-calls.js
+k6 run --summary-export index-test/n-plus-1-nearby-test/after-vu1.json -e VUS=1 -e DURATION=2m index-test/n-plus-1-nearby-test/k6/nearby-calls.js
 ```
 
 ```bash
-k6 run --summary-export index-test/after-vu10.json -e VUS=10 -e DURATION=2m index-test/k6/nearby-calls.js
+k6 run --summary-export index-test/n-plus-1-nearby-test/after-vu10.json -e VUS=10 -e DURATION=2m index-test/n-plus-1-nearby-test/k6/nearby-calls.js
 ```
 
 각 조건을 최소 3회 반복하고 `nearby_calls_duration`의 `avg`, `med`, `p(95)`, `p(99)`와 전체 iteration 처리량을 비교한다. 로컬 MySQL은 네트워크 왕복 지연이 작으므로 지연 차이가 작게 나올 수 있지만, 요청당 SQL 수가 10회에서 1회로 줄었는지는 별도로 확정할 수 있다.

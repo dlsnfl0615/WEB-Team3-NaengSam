@@ -140,10 +140,13 @@ public class BoormiService {
     /**
      * 부르미가 접수한 주문을 취소한다. 매칭 성사 전(MATCHING, PENDING_BOORMI_CONFIRMATION) 상태에서만 취소할 수 있으며, 주문 상태를 CANCELLED 로 바꾸고 매칭 큐에서도
      * 제안을 회수한다.
+     * <p>
+     * 상태 검사부터 취소·환불까지가 주문 단위로 직렬화되도록 주문 행을 비관적 쓰기 락으로 읽는다. 락 없이 읽으면 동시 취소(더블클릭·재시도) 두 건이 같은
+     * MATCHING 스냅샷을 보고 함께 통과해 취소 이력이 두 줄 쌓인다.
      */
     @Transactional
     public void unsubscribeOrder(UUID boormiId, UUID orderId) {
-        Orders order = orderService.getOrder(orderId);
+        Orders order = orderService.getOrderForUpdate(orderId);
 
         if (!order.getBoormiId().equals(boormiId)) {
             throw new BusinessException(OrderErrorCode.NOT_ORDER_OWNER);
