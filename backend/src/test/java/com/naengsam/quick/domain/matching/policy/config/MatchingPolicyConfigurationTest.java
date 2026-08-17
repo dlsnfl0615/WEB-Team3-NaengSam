@@ -4,14 +4,22 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.naengsam.quick.domain.matching.policy.assignment.LegacyOrderFirstAssignmentPolicy;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
 import com.naengsam.quick.domain.matching.policy.assignment.ScoreBasedGreedyAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.planning.MatchingPlanningPolicy;
+import com.naengsam.quick.domain.matching.policy.planning.MatchingPlanningSnapshotFactory;
+import com.naengsam.quick.domain.matching.policy.planning.ObjectGraphMatchingPlanningPolicy;
+import com.naengsam.quick.domain.matching.policy.planning.PrimitiveIndexMatchingPlanningPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.notification.NotificationService;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -46,6 +54,8 @@ class MatchingPolicyConfigurationTest {
                     assertThat(context).hasSingleBean(MatchingPolicyProperties.class);
                     assertThat(context.getBean("matchingAssignmentPolicy"))
                             .isInstanceOf(LegacyOrderFirstAssignmentPolicy.class);
+                    assertThat(context.getBean(MatchingPlanningPolicy.class))
+                            .isInstanceOf(ObjectGraphMatchingPlanningPolicy.class);
                     assertThat(context.getBean("matchingScorePolicy")).isInstanceOf(OrderWaitScorePolicy.class);
                     assertThat(context.getBean("matchingEligibilityPolicy")).isInstanceOf(LegacyOfferPolicy.class);
                 });
@@ -59,6 +69,7 @@ class MatchingPolicyConfigurationTest {
                         "matching.dynamic-quota-max=5",
                         "matching.max-concurrent-offers=3",
                         "matching.offer-quota-mode=FIXED",
+                        "matching.planning-policy=PRIMITIVE_INDEX",
                         "matching.assignment-policy=SCORE_BASED_GREEDY",
                         "matching.scoring-policy=BALANCED",
                         "matching.eligibility-policy=OUTCOME_COOLDOWN",
@@ -77,6 +88,8 @@ class MatchingPolicyConfigurationTest {
                 .run(context -> {
                     assertThat(context.getBean("matchingAssignmentPolicy"))
                             .isInstanceOf(ScoreBasedGreedyAssignmentPolicy.class);
+                    assertThat(context.getBean(MatchingPlanningPolicy.class))
+                            .isInstanceOf(PrimitiveIndexMatchingPlanningPolicy.class);
                     assertThat(context.getBean("matchingScorePolicy")).isInstanceOf(BalancedScorePolicy.class);
                     assertThat(context.getBean("matchingEligibilityPolicy"))
                             .isInstanceOf(OutcomeCooldownOfferPolicy.class);
@@ -334,6 +347,26 @@ class MatchingPolicyConfigurationTest {
         @Bean
         OrderService orderService() {
             return mock(OrderService.class);
+        }
+
+        @Bean
+        MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler() {
+            return mock(MatchingAssignmentProblemAssembler.class);
+        }
+
+        @Bean
+        MatchingPlanningSnapshotFactory matchingPlanningSnapshotFactory() {
+            return mock(MatchingPlanningSnapshotFactory.class);
+        }
+
+        @Bean
+        GeoDistanceCalculator geoDistanceCalculator() {
+            return mock(GeoDistanceCalculator.class);
+        }
+
+        @Bean
+        MeterRegistry meterRegistry() {
+            return new SimpleMeterRegistry();
         }
     }
 }

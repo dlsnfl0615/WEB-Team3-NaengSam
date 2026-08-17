@@ -20,11 +20,12 @@ import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.model.WaitingOrder;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
-import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblem;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
-import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlan;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.policy.planning.MatchingPlanningPolicy;
+import com.naengsam.quick.domain.matching.policy.planning.MatchingPlanningResult;
+import com.naengsam.quick.domain.matching.policy.planning.ObjectGraphMatchingPlanningPolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -46,6 +47,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
@@ -55,7 +57,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @Autowired)
 public class MatchingService {
 
     /**
@@ -82,8 +84,7 @@ public class MatchingService {
     private final NotificationService notificationService;
     private final DeliveryService deliveryService;
     private final Clock clock;
-    private final MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler;
-    private final MatchingAssignmentPolicy matchingAssignmentPolicy;
+    private final MatchingPlanningPolicy matchingPlanningPolicy;
     private final MatchingPlanApplier matchingPlanApplier;
     private final MatchingPolicyProperties matchingPolicyProperties;
     private final GeoDistanceCalculator geoDistanceCalculator;
@@ -95,6 +96,37 @@ public class MatchingService {
     // 부르미 확정 액션이 큐에 쌓여 있는 동안 DB 주문이 다른 경로로 바뀌었는지 확인하는 검증 서비스. 위와 같은 이유로
     // MatchingService가 OrderRepository를 직접 다루지 않도록 분리했다.
     private final PendingOfferStateService pendingOfferStateService;
+
+    public MatchingService(
+            MatchingEngine matchingEngine,
+            NotificationService notificationService,
+            DeliveryService deliveryService,
+            Clock clock,
+            MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler,
+            MatchingAssignmentPolicy matchingAssignmentPolicy,
+            MatchingPlanApplier matchingPlanApplier,
+            MatchingPolicyProperties matchingPolicyProperties,
+            GeoDistanceCalculator geoDistanceCalculator,
+            MeterRegistry meterRegistry,
+            BoormiOfferExpirationService boormiOfferExpirationService,
+            OrderService orderService,
+            PendingOfferStateService pendingOfferStateService
+    ) {
+        this(
+                matchingEngine,
+                notificationService,
+                deliveryService,
+                clock,
+                new ObjectGraphMatchingPlanningPolicy(
+                        matchingAssignmentProblemAssembler, matchingAssignmentPolicy),
+                matchingPlanApplier,
+                matchingPolicyProperties,
+                geoDistanceCalculator,
+                meterRegistry,
+                boormiOfferExpirationService,
+                orderService,
+                pendingOfferStateService);
+    }
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -324,10 +356,9 @@ public class MatchingService {
     }
 
     void applyRunMatchingAssignmentCycle() {
-        MatchingAssignmentProblem problem = matchingAssignmentProblemAssembler.assemble(
+        MatchingPlanningResult result = matchingPlanningPolicy.createPlan(
                 orderOfferGroups(), reachableWaitingDreamis());
-        MatchingPlan plan = matchingAssignmentPolicy.createPlan(problem);
-        matchingPlanApplier.apply(problem, plan, LocalDateTime.now(clock),
+        matchingPlanApplier.apply(result.validationProblem(), result.plan(), LocalDateTime.now(clock),
                 orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
     }
 

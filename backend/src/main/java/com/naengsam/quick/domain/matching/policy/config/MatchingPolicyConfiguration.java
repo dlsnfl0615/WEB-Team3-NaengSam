@@ -2,6 +2,7 @@ package com.naengsam.quick.domain.matching.policy.config;
 
 import com.naengsam.quick.domain.matching.policy.assignment.LegacyOrderFirstAssignmentPolicy;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentPolicy;
+import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemAssembler;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingAssignmentProblemFactory;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanValidator;
@@ -9,14 +10,20 @@ import com.naengsam.quick.domain.matching.policy.assignment.ScoreBasedGreedyAssi
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibilityPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.planning.MatchingPlanningPolicy;
+import com.naengsam.quick.domain.matching.policy.planning.MatchingPlanningSnapshotFactory;
+import com.naengsam.quick.domain.matching.policy.planning.ObjectGraphMatchingPlanningPolicy;
+import com.naengsam.quick.domain.matching.policy.planning.PrimitiveIndexMatchingPlanningPolicy;
 import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import com.naengsam.quick.domain.matching.policy.scoring.MatchingScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
+import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.notification.NotificationService;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Duration;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -84,6 +91,29 @@ public class MatchingPolicyConfiguration {
     public MatchingAssignmentProblemFactory matchingAssignmentProblemFactory(
             MatchingEligibilityPolicy matchingEligibilityPolicy) {
         return new MatchingAssignmentProblemFactory(matchingEligibilityPolicy);
+    }
+
+    @Bean
+    public MatchingPlanningPolicy matchingPlanningPolicy(
+            MatchingAssignmentProblemAssembler matchingAssignmentProblemAssembler,
+            MatchingAssignmentPolicy matchingAssignmentPolicy,
+            MatchingPlanningSnapshotFactory matchingPlanningSnapshotFactory,
+            GeoDistanceCalculator geoDistanceCalculator,
+            MatchingEligibilityPolicy matchingEligibilityPolicy,
+            MatchingScorePolicy matchingScorePolicy,
+            MeterRegistry meterRegistry
+    ) {
+        return switch (properties.planningPolicy()) {
+            case OBJECT_GRAPH -> new ObjectGraphMatchingPlanningPolicy(
+                    matchingAssignmentProblemAssembler, matchingAssignmentPolicy);
+            case PRIMITIVE_INDEX -> new PrimitiveIndexMatchingPlanningPolicy(
+                    matchingPlanningSnapshotFactory,
+                    geoDistanceCalculator,
+                    matchingEligibilityPolicy,
+                    matchingScorePolicy,
+                    properties,
+                    meterRegistry);
+        };
     }
 
     @Bean
