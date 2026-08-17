@@ -63,4 +63,7 @@ public interface DeliveryRepository extends JpaRepository<Delivery, UUID> {
             + "AND d.lastLocationDtm IS NOT NULL AND d.lastLocationDtm < :threshold")
     List<Delivery> findStaleLocationDeliveries(@Param("statuses") Collection<DeliveryCd> statuses,
             @Param("threshold") LocalDateTime threshold);
+
+    // 관리자 페이지의 "진행 중인 배달" 목록 조회용(락 없음, 특정 사용자로 스코프되지 않은 전체 조회).
+    List<Delivery> findByDeliveryCdIn(Collection<DeliveryCd> deliveryCds);
 }
