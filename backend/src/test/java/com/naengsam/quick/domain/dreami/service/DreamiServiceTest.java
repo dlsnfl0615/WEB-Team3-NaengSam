@@ -9,9 +9,11 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.naengsam.quick.domain.boormi.entity.Boormi;
+import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.boormi.repository.BoormiRepository;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
 import com.naengsam.quick.domain.dreami.dto.DreamiDashboardDto;
@@ -32,6 +34,7 @@ import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.NearbyCallOrderDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.user.dto.ActiveContext;
@@ -257,46 +260,94 @@ class DreamiServiceTest {
 
     // ---------- findNearbyCalls ----------
 
+    private static NearbyOrderDto nearbyOrderAt(UUID orderId, double distanceMeters) {
+        return new NearbyOrderDto(orderId,
+                new GeoPoint(new BigDecimal("37.501"), new BigDecimal("127.001")), distanceMeters);
+    }
+
+    private static NearbyCallOrderDto nearbyCallOrder(UUID orderId) {
+        return new NearbyCallOrderDto(orderId, "서류봉투", ItemCd.DOCUMENT, OrderCd.MATCHING,
+                3500L, 15, "서울 성북구 동소문로 1", "농협 삼선교지점", "서울 종로구 대학로 136", "2층");
+    }
+
+    private static NearbyOrderRequest nearbyOrderRequest() {
+        return new NearbyOrderRequest(new BigDecimal("37.5"), new BigDecimal("127.0"), 1000.0, 10);
+    }
+
     @Test
     void 주변콜조회_정상이면_거리와_주문상세를_조합해_반환한다() {
-        NearbyOrderRequest request = new NearbyOrderRequest(
-                new BigDecimal("37.5"), new BigDecimal("127.0"), 1000.0, 10);
+        NearbyOrderRequest request = nearbyOrderRequest();
         UUID orderId = UUID.randomUUID();
         GeoPoint location = new GeoPoint(new BigDecimal("37.501"), new BigDecimal("127.001"));
         NearbyOrderDto nearbyOrder = new NearbyOrderDto(orderId, location, 120.5);
         given(nearbyOrderFinder.find(request)).willReturn(List.of(nearbyOrder));
 
-        UUID boormiId = UUID.randomUUID();
-        Orders order = Orders.create(orderId, boormiId, location, location);
-        ReflectionTestUtils.setField(order, "itemName", "서류봉투");
-        ReflectionTestUtils.setField(order, "deliveryAmount", 3500L);
-        ReflectionTestUtils.setField(order, "deliveryEta", 15);
-        given(orderRepository.findById(orderId)).willReturn(Optional.of(order));
+        given(orderRepository.findNearbyCallOrders(List.of(orderId)))
+                .willReturn(List.of(nearbyCallOrder(orderId)));
 
         List<NearbyCallDto> result = dreamiService.findNearbyCalls(request);
 
         assertThat(result).hasSize(1);
         NearbyCallDto dto = result.getFirst();
         assertThat(dto.orderId()).isEqualTo(orderId);
+        assertThat(dto.location()).isEqualTo(location);
         assertThat(dto.distanceMeters()).isEqualTo(120.5);
         assertThat(dto.itemName()).isEqualTo("서류봉투");
         assertThat(dto.expectedRevenue()).isEqualTo(3500L);
         assertThat(dto.expectedEtaMinutes()).isEqualTo(15);
+        assertThat(dto.originAddressLine2()).isEqualTo("농협 삼선교지점");
     }
 
     @Test
-    void 주변콜조회_주문을_찾을_수_없으면_ORDER_NOT_FOUND_예외() {
-        NearbyOrderRequest request = new NearbyOrderRequest(
-                new BigDecimal("37.5"), new BigDecimal("127.0"), 1000.0, 10);
-        UUID orderId = UUID.randomUUID();
-        NearbyOrderDto nearbyOrder = new NearbyOrderDto(orderId,
-                new GeoPoint(new BigDecimal("37.501"), new BigDecimal("127.001")), 120.5);
-        given(nearbyOrderFinder.find(request)).willReturn(List.of(nearbyOrder));
-        given(orderRepository.findById(orderId)).willReturn(Optional.empty());
+    void 주변콜조회_DB에_없는_주문은_목록에서_제외된다() {
+        NearbyOrderRequest request = nearbyOrderRequest();
+        UUID liveOrderId = UUID.randomUUID();
+        UUID staleOrderId = UUID.randomUUID();
+        given(nearbyOrderFinder.find(request)).willReturn(
+                List.of(nearbyOrderAt(staleOrderId, 50.0), nearbyOrderAt(liveOrderId, 120.5)));
 
-        Throwable thrown = catchThrowable(() -> dreamiService.findNearbyCalls(request));
+        // 매칭 엔진에는 남아 있지만 DB에는 없는 주문 — 조회 결과에서 빠진 채로 돌아온다.
+        given(orderRepository.findNearbyCallOrders(List.of(staleOrderId, liveOrderId)))
+                .willReturn(List.of(nearbyCallOrder(liveOrderId)));
 
-        assertThat(errorCodeOf(thrown)).isEqualTo(OrderErrorCode.ORDER_NOT_FOUND);
+        List<NearbyCallDto> result = dreamiService.findNearbyCalls(request);
+
+        assertThat(result).extracting(NearbyCallDto::orderId).containsExactly(liveOrderId);
+    }
+
+    @Test
+    void 주변콜조회_주문은_한_번에_조회하고_거리순_정렬을_유지한다() {
+        NearbyOrderRequest request = nearbyOrderRequest();
+        UUID nearestId = UUID.randomUUID();
+        UUID middleId = UUID.randomUUID();
+        UUID farthestId = UUID.randomUUID();
+        given(nearbyOrderFinder.find(request)).willReturn(List.of(
+                nearbyOrderAt(nearestId, 50.0),
+                nearbyOrderAt(middleId, 120.0),
+                nearbyOrderAt(farthestId, 300.0)));
+
+        // IN 조회 결과의 행 순서는 보장되지 않으므로 일부러 섞어서 돌려준다.
+        given(orderRepository.findNearbyCallOrders(List.of(nearestId, middleId, farthestId)))
+                .willReturn(List.of(nearbyCallOrder(farthestId), nearbyCallOrder(nearestId),
+                        nearbyCallOrder(middleId)));
+
+        List<NearbyCallDto> result = dreamiService.findNearbyCalls(request);
+
+        assertThat(result).extracting(NearbyCallDto::orderId)
+                .containsExactly(nearestId, middleId, farthestId);
+        verify(orderRepository, times(1)).findNearbyCallOrders(any());
+        verify(orderRepository, never()).findById(any());
+    }
+
+    @Test
+    void 주변콜조회_반경_내_주문이_없으면_빈_리스트를_반환하고_주문을_조회하지_않는다() {
+        NearbyOrderRequest request = nearbyOrderRequest();
+        given(nearbyOrderFinder.find(request)).willReturn(List.of());
+
+        List<NearbyCallDto> result = dreamiService.findNearbyCalls(request);
+
+        assertThat(result).isEmpty();
+        verify(orderRepository, never()).findNearbyCallOrders(any());
     }
 
     // ---------- goOnline ----------
