@@ -1,11 +1,14 @@
 package com.naengsam.quick.global.notification;
 
+import com.naengsam.quick.global.debug.InMemoryStateProbe;
+import com.naengsam.quick.global.debug.InMemoryStructureDto;
 import com.naengsam.quick.global.sse.SseEventType;
 import com.naengsam.quick.global.sse.SseService;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PreDestroy;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
@@ -25,7 +28,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class NotificationService {
+public class NotificationService implements InMemoryStateProbe {
 
     /**
      * 유계 병렬성. 가상 스레드는 블로킹 HTTP 중 unmount되므로 4개로도 충분하고, 오퍼가 몰려도 스레드가 폭발하지 않는다.
@@ -137,6 +140,20 @@ public class NotificationService {
 
     private void dropped(String reason) {
         meterRegistry.counter("notification.dropped", "channel", "web_push", "reason", reason).increment();
+    }
+
+    /**
+     * 웹푸시 전송 대기 큐의 현황. 이 큐는 {@code OUTBOUND_QUEUE_CAPACITY}로 유계라 무한히 자라지 않고 넘치면 버려지므로, 누수보다는 "큐가 차오르고 있다 = 외부 푸시 서비스가
+     * 느리거나 죽었다"를 읽는 지표다.
+     */
+    @Override
+    public List<InMemoryStructureDto> inMemoryStructures() {
+        return List.of(InMemoryStructureDto
+                .ofSize("outbound.queue", "웹푸시 전송 대기 태스크 (상한 " + OUTBOUND_QUEUE_CAPACITY + ")",
+                        outbound.getQueue().size())
+                .withBreakdown(Map.of(
+                        "실행 중인 스레드", (long) outbound.getActiveCount(),
+                        "완료 태스크", outbound.getCompletedTaskCount())));
     }
 
     @PreDestroy
