@@ -574,6 +574,170 @@
           "legendFormat": "대여율"
         }
       ]
+    },
+    {
+      "type": "row",
+      "title": "카카오 캐시",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 44 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "type": "stat",
+      "title": "캐시 히트율",
+      "description": "카카오 API 응답 캐시(#435)가 실제 호출을 막아준 비율. 분모에서 result=error 는 뺐다 — 조회 실패와 저장 실패를 같은 태그로 세기 때문에 분모에 넣으면 요청 수보다 커질 수 있다(레디스가 정상이면 0). 카운터는 첫 증가 전까지 시계열 자체가 없어 호출이 한 번도 없었으면 No data 가 뜬다.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 45 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "green", "value": 0.8 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": ["lastNotNull"],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum(rate(kakao_cache_total{application=~\"$application\", result=\"hit\"}[5m])) / sum(rate(kakao_cache_total{application=~\"$application\", result=~\"hit|miss\"}[5m]))",
+          "legendFormat": "hit rate"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "히트율 (api별)",
+      "description": "geocode(주소→좌표, TTL 7d)와 route(도보 길찾기, TTL 1h)는 TTL 이 달라 히트율도 다를 수밖에 없다. TTL 을 조정할 근거는 이 그래프에서 나온다.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 9, "x": 6, "y": 45 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "min"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (api) (rate(kakao_cache_total{application=~\"$application\", result=\"hit\"}[5m])) / sum by (api) (rate(kakao_cache_total{application=~\"$application\", result=~\"hit|miss\"}[5m]))",
+          "legendFormat": "{{api}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "카카오 실호출 / 절감 (api별)",
+      "description": "실호출(miss) = 캐시를 못 맞춰 실제로 카카오로 나간 호출 수. 절감(hit) = 캐시가 막아준 호출 수. #435 이전에는 두 선의 합이 통째로 카카오로 나갔다.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 9, "x": 15, "y": 45 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (api) (rate(kakao_cache_total{application=~\"$application\", result=\"miss\"}[5m]))",
+          "legendFormat": "{{api}} 실호출"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (api) (rate(kakao_cache_total{application=~\"$application\", result=\"hit\"}[5m]))",
+          "legendFormat": "{{api}} 절감"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "캐시 오류 (트립와이어)",
+      "description": "reason 으로 대응이 갈린다. oom = 64mb(maxmemory-policy=noeviction)가 찼다는 뜻이고, 같은 인스턴스를 쓰는 로그인 대기열(LoginQueue.enqueue)까지 막혀 로그인이 503 이 된다 — KAKAO_ROUTE_TTL 축소 → --maxmemory 128mb 순으로 대응하고 정책은 바꾸지 않는다(redis/README.md). connection = 레디스가 죽었거나 보안그룹에 막힌 것이라 TTL·maxmemory 를 건드려도 소용없다; 대기열도 같이 죽어 있다. timeout = 레디스 부하·네트워크. serialization = DTO 모양이 바뀐 배포 직후에만 잠깐 튀고 새 값으로 덮여 자동 복구되는 정상 현상이다. 레디스가 완전히 죽으면 요청 1건이 get·put 양쪽에서 실패하므로, 영향받은 요청 수는 op=get 만 봐야 한다. 캐시는 fail-open 이라 이 값이 올라도 주문 흐름은 카카오 직접 호출로 계속 동작한다.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 52 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "cps",
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "calcs": ["lastNotNull", "max"]
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "sum by (api, reason) (rate(kakao_cache_error_total{application=~\"$application\"}[5m]))",
+          "legendFormat": "{{api}} / {{reason}}"
+        }
+      ]
     }
   ]
 }
