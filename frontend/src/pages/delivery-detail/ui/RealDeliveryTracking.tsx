@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useBackOrHome } from "@/shared/lib/navigation/useBackOrHome";
 import {
   ArrivalBadge,
+  BottomSheet,
   Button,
   BlockingLoadErrorModal,
   Card,
@@ -26,6 +27,7 @@ import {
   useSseReconnectSync,
   formatArrivalTime,
   formatLastSeen,
+  distanceMeters,
   ETA_UNAVAILABLE_TITLE,
   type EtaUnavailablePayload,
   type SseHandlers,
@@ -52,6 +54,9 @@ interface RealDeliveryTrackingProps {
 
 /** "마지막 확인 N분 전" 라벨을 다시 계산하는 주기. 분 단위 표시라 초 단위로 돌릴 필요가 없다. */
 const LAST_SEEN_LABEL_REFRESH_MS = 15000;
+
+/** 배달 완료 안내 시트를 보여주는 시간(ms). 이 시간이 지나면 자동으로 다음 화면으로 넘어간다. */
+const COMPLETION_SHEET_MS = 2000;
 
 /**
  * `delivery_dreami_offline` payload. SSE 전용이라 orval이 생성하지 않아 직접 선언한다
@@ -103,6 +108,9 @@ export function RealDeliveryTracking({
   >(null);
   const [deliveryStartDtm, setDeliveryStartDtm] = useState<string | null>(null);
   const [deliveryEndDtm, setDeliveryEndDtm] = useState<string | null>(null);
+
+  // 완료 SSE를 받으면 바로 화면을 넘기지 않고, 이 안내를 1초만 보여준 뒤 자동으로 넘어간다.
+  const [showCompletionSheet, setShowCompletionSheet] = useState(false);
 
   // 전역 토스트 스택에 올려둔 연결·위치 안내의 id(치울 때 필요).
   const noticeToastId = useRef<string | null>(null);
@@ -283,9 +291,8 @@ export function RealDeliveryTracking({
       clearToasts();
       applyStatus(completedStatus);
       setDeliveryEndDtm(dto.deliveryEndDtm ?? null);
-      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
-        replace: true,
-      });
+      // 바로 넘기지 않고 완료 안내 시트를 띄운다 — 다음 화면 전환은 아래 effect가 맡는다.
+      setShowCompletionSheet(true);
     },
     delivery_cancelled: (data) => {
       const dto = forThisOrder(data);
@@ -327,6 +334,17 @@ export function RealDeliveryTracking({
   useSseReconnectSync(sseStatus, refreshDeliveryDetail, {
     enabled: detailReady,
   });
+
+  // 완료 안내 시트를 잠깐 보여준 뒤 자동으로 다음 화면으로 넘어간다(버튼·탭으로 넘기지 않는다).
+  useEffect(() => {
+    if (!showCompletionSheet) return;
+    const timer = window.setTimeout(() => {
+      navigate(`${ROUTES.deliveryComplete}?orderId=${orderId}`, {
+        replace: true,
+      });
+    }, COMPLETION_SHEET_MS);
+    return () => window.clearTimeout(timer);
+  }, [showCompletionSheet, navigate, orderId]);
 
   // 배너가 떠 있는 동안만 "마지막 확인 N분 전" 라벨의 기준 시각을 갱신한다(정상일 때는 타이머를 걸지 않는다).
   // 기준 시각의 최초값은 markDreamiOffline이 lastSeenAt과 함께 잡아 주므로 여기서 따로 세팅하지 않는다.
@@ -401,6 +419,55 @@ export function RealDeliveryTracking({
       ? { latitude: location.latitude, longitude: location.longitude }
       : undefined;
 
+  const isDelivering = status === DeliveryStatusResponseDtoStatus.DELIVERING;
+
+  // 걷는 위치 표시용 진행률(0~1). 실제 도로 경로가 아니라 드리미 현재 위치→목적지 직선거리 기준
+  // 근사치다. 각 구간(픽업지 이동/도착지 이동)에 처음 진입했을 때의 직선거리를 기준값(분모)으로 한
+  // 번만 고정해두고, 위치가 갱신될 때마다 남은 직선거리와 비교해 몇 %나 좁혀졌는지로 환산한다.
+  // 렌더 중 이전 값과 비교해 state를 조정하는 공식 패턴(리액트 문서의
+  // "Storing information from previous renders")을 쓴다 — effect 없이, 같은 렌더 안에서 처리된다.
+  const [pickupBaselineMeters, setPickupBaselineMeters] = useState<
+    number | null
+  >(null);
+  if (isPickup && driver && pickup && pickupBaselineMeters == null) {
+    setPickupBaselineMeters(distanceMeters(driver, pickup));
+  }
+  const [deliveryBaselineMeters, setDeliveryBaselineMeters] = useState<
+    number | null
+  >(null);
+  if (isDelivering && driver && dropoff && deliveryBaselineMeters == null) {
+    setDeliveryBaselineMeters(distanceMeters(driver, dropoff));
+  }
+
+  const rawPickupProgress =
+    isPickup && driver && pickup && pickupBaselineMeters
+      ? 1 - distanceMeters(driver, pickup) / pickupBaselineMeters
+      : 0;
+  const rawDeliveryProgress =
+    isDelivering && driver && dropoff && deliveryBaselineMeters
+      ? 1 - distanceMeters(driver, dropoff) / deliveryBaselineMeters
+      : 0;
+  const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
+
+  // 실제 도로는 직선이 아니라 드리미가 잠깐 멀어지는(신호 대기·우회) 구간에서 위 비율이 순간적으로
+  // 줄어들 수 있다 — 걷는 점이 뒤로 가는 것처럼 보이지 않도록 지금까지 본 값 중 최대치만 반영한다.
+  const [maxPickupProgress, setMaxPickupProgress] = useState(0);
+  const clampedPickupProgress = clamp01(rawPickupProgress);
+  if (clampedPickupProgress > maxPickupProgress) {
+    setMaxPickupProgress(clampedPickupProgress);
+  }
+  const [maxDeliveryProgress, setMaxDeliveryProgress] = useState(0);
+  const clampedDeliveryProgress = clamp01(rawDeliveryProgress);
+  if (clampedDeliveryProgress > maxDeliveryProgress) {
+    setMaxDeliveryProgress(clampedDeliveryProgress);
+  }
+
+  const segmentProgress = isPickup
+    ? maxPickupProgress
+    : isDelivering
+      ? maxDeliveryProgress
+      : 0;
+
   // 부르미가 배달 취소를 확정하면 백엔드에 취소를 요청하고 홈으로 돌아간다(드리미에게는 SSE로 통지됨).
   const confirmCancel = async () => {
     if (canceling || !detailReady) return;
@@ -444,14 +511,9 @@ export function RealDeliveryTracking({
       <TopBar title="실시간 배송" onBack={backOrHome} actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
-            {view.title}
-          </h1>
-          <Button size="sm" variant="outline" onClick={openPickupPhoto}>
-            픽업사진
-          </Button>
-        </div>
+        <h1 className="text-lg font-bold tracking-[-0.4px] text-navy-900">
+          {view.title}
+        </h1>
 
         <MapCard
           height={340}
@@ -488,6 +550,19 @@ export function RealDeliveryTracking({
               formatArrivalTime(deliveryStartDtm),
               formatArrivalTime(deliveryEndDtm),
             ]}
+            actions={[
+              null,
+              <button
+                key="pickup-photo"
+                type="button"
+                onClick={openPickupPhoto}
+                className="-my-1 shrink-0 py-1 text-xs font-bold text-teal-700"
+              >
+                픽업사진
+              </button>,
+              null,
+            ]}
+            segmentProgress={segmentProgress}
           />
         </Card>
       </main>
@@ -569,6 +644,24 @@ export function RealDeliveryTracking({
         }
         onClose={closePickupPhoto}
       />
+
+      <BottomSheet
+        open={showCompletionSheet}
+        label="배달 완료"
+        onClose={() => {}}
+      >
+        <div className="flex flex-col items-center gap-3 py-4 text-center">
+          <img
+            src="/delivery-complete.jpg"
+            alt=""
+            aria-hidden="true"
+            className="h-auto w-[220px] rounded-md"
+          />
+          <p className="text-md font-bold text-navy-900">
+            배달이 완료됐어요
+          </p>
+        </div>
+      </BottomSheet>
     </ScreenShell>
   );
 }
