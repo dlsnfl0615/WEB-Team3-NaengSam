@@ -497,13 +497,13 @@ class DreamiServiceTest {
     @Test
     void 활동내역조회_role_DREAMI로_orderService에_위임한다() {
         UUID dreamiId = UUID.randomUUID();
-        BoormiOrdersResponse expected = BoormiOrdersResponse.of(List.of());
-        given(orderService.getOrders(dreamiId, Role.DREAMI)).willReturn(expected);
+        BoormiOrdersResponse expected = BoormiOrdersResponse.of(List.of(), null, false);
+        given(orderService.getOrders(dreamiId, Role.DREAMI, null, null, null)).willReturn(expected);
 
-        BoormiOrdersResponse result = dreamiService.getMyOrders(dreamiId);
+        BoormiOrdersResponse result = dreamiService.getMyOrders(dreamiId, null, null, null);
 
         assertThat(result).isSameAs(expected);
-        then(orderService).should().getOrders(dreamiId, Role.DREAMI);
+        then(orderService).should().getOrders(dreamiId, Role.DREAMI, null, null, null);
     }
 
     // ---------- acceptOffer ----------

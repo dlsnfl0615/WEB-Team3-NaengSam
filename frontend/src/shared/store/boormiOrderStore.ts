@@ -1,28 +1,62 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { api, isApiError, type OrderRequest } from "@/shared/api";
-import { toBoormiOrder, type BoormiOrder } from "./boormiOrderAdapter";
+import {
+  FILTER_ORDER_CDS,
+  toBoormiOrder,
+  toFilterCounts,
+  type ActivityFilter,
+  type BoormiOrder,
+  type FilterCounts,
+} from "./boormiOrderAdapter";
+
+/** 홈·매칭 화면이 보는 "진행 중인 부름"은 몇 건이든 한 페이지 안에 다 들어오도록 넉넉히 받는다
+ * (부르미 동시 진행 주문은 MAX_ACTIVE_ORDERS로 이미 작게 캡되어 있다 — 서버 페이지 크기 상한과 동일). */
+const ONGOING_FETCH_SIZE = 50;
 
 interface BoormiOrderState {
+  /** 진행 중인 주문만(홈 "진행 중인 부름"용). 활동 내역 목록과는 별개 상태다. */
   orders: BoormiOrder[];
   loading: boolean;
   error: string | null;
-  /** 전체 조회(orders 교체). */
+  /** 진행 중인 주문 다시 조회(orders 교체). */
   load: () => Promise<void>;
   /** 부름 등록 → 생성된 orderId 반환. */
   createOrder: (req: OrderRequest) => Promise<string>;
   /** 부름 취소 → 로컬 목록에서 제거. */
   cancelOrder: (orderId: string) => Promise<void>;
+
+  // ---- 활동 내역 화면 전용(무한 스크롤 + 필터) ----
+  activityOrders: BoormiOrder[];
+  activityFilter: ActivityFilter;
+  activityCursor: string | null;
+  activityHasNext: boolean;
+  /** 첫 페이지(필터 전환 포함) 로딩. */
+  activityLoading: boolean;
+  /** 스크롤로 다음 페이지를 이어 받는 중. */
+  activityLoadingMore: boolean;
+  activityError: string | null;
+  /** 탭별(전체/진행중/완료/취소) 개수. 화면 진입 시 한 번만 받아온다. */
+  activityCounts: FilterCounts | null;
+  /** 필터 전환/재조회마다 증가하는 세대 번호. 응답이 왔을 때 이 값이 요청 시점과 다르면(그 사이 다른
+   * 필터로 전환됐다는 뜻) 응답을 버린다 — 느린 응답이 최신 상태를 덮어쓰는 레이스를 막는다. */
+  activityEpoch: number;
+  /** 필터 탭을 정하고 그 필터의 첫 페이지를 새로 받는다(기존 목록은 버린다). */
+  loadActivityFirstPage: (filter: ActivityFilter) => Promise<void>;
+  /** 현재 필터의 다음 페이지를 이어 받는다. 이미 없거나(hasNext=false) 로딩 중이면 아무것도 안 한다. */
+  loadActivityMore: () => Promise<void>;
+  /** 탭별 개수 갱신. */
+  loadActivityCounts: () => Promise<void>;
 }
 
 /**
- * 부르미 주문(콜) 전역 스토어. 홈("진행 중인 부름")·활동 화면이 함께 구독한다.
+ * 부르미 주문(콜) 전역 스토어.
  *
- * 활동 탭 필터(전체/진행중/완료/취소)가 클라이언트에서 orderCd를 그룹핑하는 방식이라, 백엔드도
- * 페이지네이션 없이 전체를 한 번에 내려준다(지금 규모에서는 이게 페이지네이션+서버 필터링보다
- * 단순하고 충분하다).
+ * `orders`/`load`는 홈("진행 중인 부름")·매칭 화면이 구독하는 "지금 진행 중인 주문"만을 위한 것이고,
+ * `activity*` 상태는 활동 내역 화면의 커서 기반 무한 스크롤 목록을 위한 것이다 — 서로 다른 화면의
+ * 서로 다른 필요(진행 중인 것 몇 건 vs 전 기간 이력 페이지네이션)라 상태를 분리해 뒀다.
  */
-export const useBoormiOrderStore = create<BoormiOrderState>((set) => ({
+export const useBoormiOrderStore = create<BoormiOrderState>((set, get) => ({
   orders: [],
   loading: false,
   error: null,
@@ -30,7 +64,10 @@ export const useBoormiOrderStore = create<BoormiOrderState>((set) => ({
   load: async () => {
     set({ loading: true, error: null });
     try {
-      const { result } = await api.getBoormiOrders();
+      const { result } = await api.getBoormiOrders({
+        status: FILTER_ORDER_CDS.진행중,
+        size: ONGOING_FETCH_SIZE,
+      });
       set({ orders: (result?.orders ?? []).map(toBoormiOrder), loading: false });
     } catch (e) {
       set({
@@ -48,6 +85,85 @@ export const useBoormiOrderStore = create<BoormiOrderState>((set) => ({
   cancelOrder: async (orderId) => {
     await api.unsubscribeOrder(orderId);
     set((s) => ({ orders: s.orders.filter((o) => o.id !== orderId) }));
+  },
+
+  activityOrders: [],
+  activityFilter: "전체",
+  activityCursor: null,
+  activityHasNext: false,
+  activityLoading: false,
+  activityLoadingMore: false,
+  activityError: null,
+  activityCounts: null,
+  activityEpoch: 0,
+
+  loadActivityFirstPage: async (filter) => {
+    const epoch = get().activityEpoch + 1;
+    // 새 필터 조회를 시작하는 순간, 이전 세대에서 이미 떠 있던 "더 보기" 요청도 함께 무효화한다.
+    set({
+      activityLoading: true,
+      activityLoadingMore: false,
+      activityError: null,
+      activityFilter: filter,
+      activityEpoch: epoch,
+    });
+    try {
+      const status = filter === "전체" ? undefined : FILTER_ORDER_CDS[filter];
+      const { result } = await api.getBoormiOrders({ status });
+      if (get().activityEpoch !== epoch) return; // 그 사이 다른 필터로 전환됨 — 이 응답은 버린다
+      set({
+        activityOrders: (result?.orders ?? []).map(toBoormiOrder),
+        activityCursor: result?.nextCursor ?? null,
+        activityHasNext: result?.hasNext ?? false,
+        activityLoading: false,
+      });
+    } catch (e) {
+      if (get().activityEpoch !== epoch) return;
+      set({
+        activityLoading: false,
+        activityError: isApiError(e) ? e.message : "활동 내역을 불러오지 못했어요.",
+      });
+    }
+  },
+
+  loadActivityMore: async () => {
+    const { activityHasNext, activityLoadingMore, activityLoading, activityCursor, activityFilter, activityEpoch } =
+      get();
+    if (!activityHasNext || activityLoadingMore || activityLoading) return;
+    const epoch = activityEpoch; // 지금 목록이 속한 세대 — 응답이 온 뒤 필터가 바뀌었으면 병합하지 않는다
+    set({ activityLoadingMore: true });
+    try {
+      const status = activityFilter === "전체" ? undefined : FILTER_ORDER_CDS[activityFilter];
+      const { result } = await api.getBoormiOrders({ status, cursor: activityCursor ?? undefined });
+      if (get().activityEpoch !== epoch) {
+        set({ activityLoadingMore: false });
+        return;
+      }
+      set((s) => ({
+        activityOrders: [...s.activityOrders, ...(result?.orders ?? []).map(toBoormiOrder)],
+        activityCursor: result?.nextCursor ?? null,
+        activityHasNext: result?.hasNext ?? false,
+        activityLoadingMore: false,
+      }));
+    } catch (e) {
+      if (get().activityEpoch !== epoch) {
+        set({ activityLoadingMore: false });
+        return;
+      }
+      set({
+        activityLoadingMore: false,
+        activityError: isApiError(e) ? e.message : "활동 내역을 불러오지 못했어요.",
+      });
+    }
+  },
+
+  loadActivityCounts: async () => {
+    try {
+      const { result } = await api.getBoormiOrderStatusCounts();
+      set({ activityCounts: toFilterCounts(result ?? []) });
+    } catch {
+      // 탭 개수는 보조 지표라 실패해도 목록 자체는 계속 보여준다.
+    }
   },
 }));
 

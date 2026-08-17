@@ -416,7 +416,15 @@ ALTER TABLE `RETURN_DELIVERY` ADD CONSTRAINT `FK_DELIVERY_TO_RETURN_DELIVERY_1` 
 
 ALTER TABLE `MONEY_WALLET` ADD CONSTRAINT `FK_WALLET_TO_MONEY_WALLET_1` FOREIGN KEY (`wallet_id`) REFERENCES `WALLET` (`wallet_id`);
 
+-- 활동 내역 목록(최신순 커서 페이지네이션)이 boormi_id로 좁힌 뒤 delivery_request_dtm/order_id 순서 그대로
+-- 읽도록 하는 커버링 인덱스. FK(`FK_BOORMI_TO_ORDERS_1`)보다 먼저 생성해 선두 컬럼 boormi_id 단일 인덱스를
+-- 재사용하게 한다(중복 인덱스 방지).
+CREATE INDEX `IX_ORDERS_BOORMI_LIST` ON `ORDERS` (`boormi_id`, `delivery_request_dtm` DESC, `order_id` DESC);
+
 ALTER TABLE `ORDERS` ADD CONSTRAINT `FK_BOORMI_TO_ORDERS_1` FOREIGN KEY (`boormi_id`) REFERENCES `BOORMI` (`boormi_id`);
+
+-- 위와 동일한 이유로 dreami_id 쪽 목록 조회(활동 내역)를 커버한다.
+CREATE INDEX `IX_ORDERS_DREAMI_LIST` ON `ORDERS` (`dreami_id`, `delivery_request_dtm` DESC, `order_id` DESC);
 
 ALTER TABLE `ORDERS` ADD CONSTRAINT `FK_DREAMI_TO_ORDERS_1` FOREIGN KEY (`dreami_id`) REFERENCES `DREAMI` (`dreami_id`);
 
