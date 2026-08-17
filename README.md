@@ -22,6 +22,8 @@
 
 [![ERD](https://img.shields.io/badge/ERD-ERDCloud-1E6FEB?style=for-the-badge)](https://www.erdcloud.com/d/yRGsks3sXTGLktNJF)
 [![Figma](https://img.shields.io/badge/Figma-F24E1E?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com/design/ERZUfKLiF6VynCX0FmrdhZ/%EC%89%BC-%EB%B6%80%EB%A6%84?node-id=165-1590&t=d5Wr8icAVuTwSpo6-1)
+[![Swagger](https://img.shields.io/badge/Swagger-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)](https://symboorm.duckdns.org/swagger-ui/index.html)
+
 
 ### 협업 · 문서
 
