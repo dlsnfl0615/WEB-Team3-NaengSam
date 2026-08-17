@@ -12,9 +12,7 @@ import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties
 import com.naengsam.quick.domain.matching.policy.scope.OfferScope;
 import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
-import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
-import jakarta.annotation.PostConstruct;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -49,13 +47,6 @@ public class MatchingAssignmentProblemAssembler {
     private final Clock clock;
     private final OfferScopeResolver offerScopeResolver;
     private final MeterRegistry meterRegistry;
-    private Counter pickupDistanceExceededCounter;
-
-    @PostConstruct
-    private void init() {
-        pickupDistanceExceededCounter =
-                meterRegistry.counter("matching.candidates.filtered", "reason", "pickup_distance_exceeded");
-    }
 
     private static Optional<PreviousOfferOutcome> toOutcome(MatchOfferStatus status) {
         return switch (status) {
@@ -104,7 +95,8 @@ public class MatchingAssignmentProblemAssembler {
                 double distanceMeters = geoDistanceCalculator.distanceMeters(group.location(), dreami.location());
 
                 if (distanceMeters > offerScope.maxPickupDistanceMeters()) {
-                    pickupDistanceExceededCounter.increment();
+                    meterRegistry.counter("matching.candidates.filtered", "reason", "pickup_distance_exceeded")
+                            .increment();
                     continue;
                 }
 
