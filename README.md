@@ -27,6 +27,7 @@
 [![Wiki](https://img.shields.io/badge/Wiki-GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki)
 [![Discussions](https://img.shields.io/badge/Discussions-GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/discussions)
 [![Ground Rule](https://img.shields.io/badge/Ground%20Rule-그라운드%20룰-2088FF?style=for-the-badge&logo=readthedocs&logoColor=white)](docs/ground_rule.md)
+[![Git 컨벤션](https://img.shields.io/badge/Git%20컨벤션-깃%20컨벤션-2088FF?style=for-the-badge&logo=git&logoColor=white)](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/%EA%B9%83-%EC%BB%A8%EB%B2%A4%EC%85%98)
 
 
 </div>
