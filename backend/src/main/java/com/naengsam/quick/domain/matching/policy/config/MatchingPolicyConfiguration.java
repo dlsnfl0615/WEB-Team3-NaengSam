@@ -14,6 +14,7 @@ import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import com.naengsam.quick.domain.matching.policy.scoring.MatchingScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Duration;
 import lombok.RequiredArgsConstructor;
@@ -86,8 +87,9 @@ public class MatchingPolicyConfiguration {
     public MatchingPlanApplier matchingPlanApplier(
             MatchingPlanValidator matchingPlanValidator,
             @Lazy MatchingService matchingService,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            OrderService orderService) {
         return new MatchingPlanApplier(
-                matchingPlanValidator, matchingService, notificationService, OFFER_TTL);
+                matchingPlanValidator, matchingService, notificationService, OFFER_TTL, orderService);
     }
 }

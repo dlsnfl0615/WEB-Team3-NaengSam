@@ -7,6 +7,9 @@ import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.entity.OrderCd;
+import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -31,17 +34,20 @@ public class MatchingPlanApplier {
     private final MatchingService matchingService;
     private final NotificationService notificationService;
     private final Duration offerTtl;
+    private final OrderService orderService;
 
     public MatchingPlanApplier(
             MatchingPlanValidator planValidator,
             MatchingService matchingService,
             NotificationService notificationService,
-            Duration offerTtl
+            Duration offerTtl,
+            OrderService orderService
     ) {
         this.planValidator = planValidator;
         this.matchingService = matchingService;
         this.notificationService = notificationService;
         this.offerTtl = offerTtl;
+        this.orderService = orderService;
     }
 
     public void apply(
@@ -58,9 +64,27 @@ public class MatchingPlanApplier {
         Map<UUID, List<MatchingProposal>> proposalsByOrderId = plan.proposals().stream()
                 .collect(Collectors.groupingBy(MatchingProposal::orderId));
 
-        for (Map.Entry<UUID, List<MatchingProposal>> entry : proposalsByOrderId.entrySet()) {
-            applyToOrder(entry.getKey(), entry.getValue(), appliedAt,
-                    orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
+        // 그룹이 없거나 이미 살아있는 오퍼가 있는 주문은 애초에 이번 라운드에서 오퍼를 내보내지 않으므로, DB 조회
+        // 대상에서도 미리 제외한다. 남은 후보만 findOrders로 한 번에 조회해, 배치 사이클마다 주문 수만큼
+        // 쿼리가 나가는 N+1을 피한다.
+        List<UUID> candidateOrderIds = proposalsByOrderId.keySet().stream()
+                .filter(orderId -> {
+                    OrderOfferGroup group = orderOfferGroupsByOrderId.get(orderId);
+                    return group != null && !hasLiveOffer(group);
+                })
+                .toList();
+
+        // 오퍼를 실제로 내보내기 직전, DB 주문이 그 사이 취소/진행 등으로 바뀌지 않았는지 마지막으로 확인한다.
+        // 스냅샷 조립~적용 사이 다른 트랜잭션이 커밋됐을 수 있어, 여기서 걸러야 이미 종료된 주문에 오퍼가 나가지 않는다.
+        Map<UUID, Orders> latestOrdersById = orderService.findOrders(candidateOrderIds);
+
+        for (UUID orderId : candidateOrderIds) {
+            Orders latestOrder = latestOrdersById.get(orderId);
+            if (latestOrder == null || latestOrder.getOrderCd() != OrderCd.MATCHING) {
+                continue;
+            }
+            applyToOrder(orderId, proposalsByOrderId.get(orderId), appliedAt, orderOfferGroupsByOrderId.get(orderId),
+                    dreamiMap, offersById, offerIdsByDreamiId);
         }
     }
 
@@ -68,16 +92,11 @@ public class MatchingPlanApplier {
             UUID orderId,
             List<MatchingProposal> proposals,
             LocalDateTime appliedAt,
-            Map<UUID, OrderOfferGroup> orderOfferGroupsByOrderId,
+            OrderOfferGroup group,
             Map<UUID, WaitingDreami> dreamiMap,
             Map<UUID, MatchOffer> offersById,
             Map<UUID, Set<UUID>> offerIdsByDreamiId
     ) {
-        OrderOfferGroup group = orderOfferGroupsByOrderId.get(orderId);
-        if (group == null || hasLiveOffer(group)) {
-            return;
-        }
-
         List<MatchOffer> newOffers = new ArrayList<>();
         for (MatchingProposal proposal : proposals) {
             WaitingDreami dreami = dreamiMap.get(proposal.dreamiId());

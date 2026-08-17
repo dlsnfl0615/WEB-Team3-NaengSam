@@ -10,6 +10,7 @@ import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOffe
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
@@ -253,6 +254,11 @@ class MatchingPolicyConfigurationTest {
         @Bean
         NotificationService notificationService() {
             return mock(NotificationService.class);
+        }
+
+        @Bean
+        OrderService orderService() {
+            return mock(OrderService.class);
         }
     }
 }

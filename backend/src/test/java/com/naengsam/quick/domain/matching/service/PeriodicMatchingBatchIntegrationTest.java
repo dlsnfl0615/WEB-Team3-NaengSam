@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.matching.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -30,12 +31,19 @@ import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibility
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
+import com.naengsam.quick.domain.order.service.OrderService;
+import com.naengsam.quick.domain.order.service.PendingOfferStateService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import org.junit.jupiter.api.AfterEach;
@@ -52,6 +60,8 @@ class PeriodicMatchingBatchIntegrationTest {
     private static final Duration BATCH_INTERVAL = Duration.ofMillis(30);
 
     private MatchingEngine matchingEngine;
+    private OrderService orderService;
+    private PendingOfferStateService pendingOfferStateService;
 
     @AfterEach
     void tearDown() {
@@ -99,9 +109,11 @@ class PeriodicMatchingBatchIntegrationTest {
         };
     }
 
-    private static Orders orderMock(UUID orderId) {
+    private Orders orderMock(UUID orderId) {
         Orders order = mock(Orders.class);
         when(order.getOrderId()).thenReturn(orderId);
+        lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
         return order;
     }
 
@@ -123,9 +135,22 @@ class PeriodicMatchingBatchIntegrationTest {
 
         MatchingEligibilityPolicy eligibilityPolicy = matchingEligibilityPolicy(properties);
         MatchingAssignmentPolicy assignmentPolicy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+        orderService = mock(OrderService.class);
+        pendingOfferStateService = mock(PendingOfferStateService.class);
+        lenient().when(pendingOfferStateService.isCurrent(any(), any())).thenReturn(true);
+        // 배치 오퍼 생성 직전 가드가 findOrders(orderId 목록)를 한 번에 호출하므로, orderMock()이 개별 orderId에
+        // 등록해 둔 findOrder 스텁으로 위임한다.
+        lenient().when(orderService.findOrders(any())).thenAnswer(invocation -> {
+            Collection<UUID> orderIds = invocation.getArgument(0);
+            Map<UUID, Orders> result = new HashMap<>();
+            for (UUID id : orderIds) {
+                orderService.findOrder(id).ifPresent(order -> result.put(id, order));
+            }
+            return result;
+        });
         MatchingPlanApplier matchingPlanApplier = new MatchingPlanApplier(
                 new MatchingPlanValidator(eligibilityPolicy), mock(MatchingService.class),
-                notificationService, OFFER_TTL);
+                notificationService, OFFER_TTL, orderService);
 
         MatchingAssignmentProblemAssembler assembler = new MatchingAssignmentProblemAssembler(
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(eligibilityPolicy),
@@ -139,7 +164,7 @@ class PeriodicMatchingBatchIntegrationTest {
                 matchingEngine, notificationService, deliveryService,
                 clock,
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
-                new SimpleMeterRegistry(), boormiOfferExpirationService);
+                new SimpleMeterRegistry(), boormiOfferExpirationService, orderService, pendingOfferStateService);
 
         new PeriodicMatchingBatchScheduler(matchingEngine, properties, matchingService).start();
 

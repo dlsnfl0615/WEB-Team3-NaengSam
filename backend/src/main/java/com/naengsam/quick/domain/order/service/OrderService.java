@@ -13,8 +13,12 @@ import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.order.repository.CancelRepository;
 import com.naengsam.quick.domain.order.repository.OrderRepository;
 import com.naengsam.quick.global.exception.BusinessException;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
@@ -117,6 +121,24 @@ public class OrderService {
     public Orders getOrder(UUID orderId) {
         return orderRepository.findById(orderId)
                 .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
+    }
+
+    /**
+     * 주문을 조회한다. 없으면 빈 Optional을 반환한다(호출자가 "주문 없음"을 예외가 아닌 정상 분기로 다뤄야 할 때 사용).
+     */
+    @Transactional(readOnly = true)
+    public Optional<Orders> findOrder(UUID orderId) {
+        return orderRepository.findById(orderId);
+    }
+
+    /**
+     * 여러 주문을 한 번에 조회한다(orderId 하나당 쿼리를 날리는 N+1을 피하기 위함). 존재하지 않는 orderId는 결과
+     * 맵에서 그냥 빠진다.
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, Orders> findOrders(Collection<UUID> orderIds) {
+        return orderRepository.findAllById(orderIds).stream()
+                .collect(Collectors.toMap(Orders::getOrderId, order -> order));
     }
 
     /**

@@ -27,8 +27,11 @@ import com.naengsam.quick.domain.matching.policy.assignment.MatchingPlanApplier;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
+import com.naengsam.quick.domain.order.service.OrderService;
+import com.naengsam.quick.domain.order.service.PendingOfferStateService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
@@ -88,6 +91,10 @@ public class MatchingService {
     // 부르미 응답 timeout을 DB 주문에도 반영하는 트랜잭션 서비스. MatchingService가 OrderRepository를
     // 직접 다루지 않도록 분리했다(도메인 간 독립성 유지) — 자세한 이유는 이 서비스의 Javadoc 참고.
     private final BoormiOfferExpirationService boormiOfferExpirationService;
+    private final OrderService orderService;
+    // 부르미 확정 액션이 큐에 쌓여 있는 동안 DB 주문이 다른 경로로 바뀌었는지 확인하는 검증 서비스. 위와 같은 이유로
+    // MatchingService가 OrderRepository를 직접 다루지 않도록 분리했다.
+    private final PendingOfferStateService pendingOfferStateService;
 
     public List<WaitingDreami> waitingDreamis() {
         return List.copyOf(dreamiMap.values());
@@ -208,21 +215,15 @@ public class MatchingService {
     }
 
     /**
-     * 부르미가 매칭 진행 중인 주문을 직접 취소한다. 호출 스레드에서 곧바로 확인 가능한 취소 가능 여부(진행 중인 방이 있는지)만 빠르게 걸러내며, 취소할 방이 없거나 이미 종료된 방이면 큐에 넣지 않고
-     * false를 반환한다. 방이 존재했다면 실패 사유를 부르미에게 SSE로 알린다. 실제 취소는 엔진 스레드에서 순차 처리된다.
+     * 부르미가 매칭 진행 중인 주문을 직접 취소한다. 호출 스레드에서는 방의 존재·활성 상태를 미리 판단하지 않고 항상 취소
+     * 액션을 큐에 제출한다 — 큐에 쌓여 있는 동안 다른 액션이 먼저 방을 종료시켰을 수 있어, 사전 검사 시점과 실제 실행
+     * 시점의 상태가 다를 수 있기 때문이다. 실제 취소 가능 여부(방 존재·활성 상태)는 엔진 스레드의
+     * {@link #applyCancelOrderByBoormi}에서 판단하며, 방이 없거나 이미 종료된 방이면 멱등하게 아무 일도 하지 않는다.
      *
      * @param orderId 취소할 주문 UUID
-     * @return 주문 취소 액션이 큐에 제출되었으면 true, 취소 가능한 진행 중인 방이 없거나 큐 제출에 실패했을 경우 false
+     * @return 취소 액션이 큐에 제출되었으면 true, 큐 제출 자체에 실패했을 경우 false
      */
     public boolean cancelOrderByBoormi(UUID orderId) {
-        OrderOfferGroup group = orderOfferGroupsByOrderId.get(orderId);
-        if (group == null || !group.isActive()) {
-            if (group != null) {
-                notificationService.notify(group.boormiId(), MatchingEventType.OFFER_ERROR,
-                        new NotificationErrorPayload(null, "이미 종료된 주문입니다."));
-            }
-            return false;
-        }
         return matchingEngine.submit(new CancelOrderByBoormi(this, orderId));
     }
 
@@ -331,18 +332,28 @@ public class MatchingService {
     }
 
     void applyStartMatching(Orders order) {
-        log.debug("매칭 시작 액션 실행: orderId={}", order.getOrderId());
+        UUID orderId = order.getOrderId();
+        log.debug("매칭 시작 액션 실행: orderId={}", orderId);
 
         // 큐에 쌓여 있는 동안 다른 액션이 먼저 방을 만들었을 수 있으므로 엔진 스레드에서 다시 확인한다.
-        if (isActiveGroupExists(order.getOrderId())) {
-            log.debug("이미 진행 중인 방이 있어 매칭 시작을 건너뜀: orderId={}", order.getOrderId());
+        if (isActiveGroupExists(orderId)) {
+            log.debug("이미 진행 중인 방이 있어 매칭 시작을 건너뜀: orderId={}", orderId);
             return;
         }
 
-        GeoPoint boormiLocation = new GeoPoint(order.getOriginLatitude(), order.getOriginLongitude());
-        OrderOfferGroup group = new OrderOfferGroup(order.getOrderId(), order.getBoormiId(), boormiLocation,
-                OrderSummaryDto.from(order), new ArrayList<>(), LocalDateTime.now(clock));
-        orderOfferGroupsByOrderId.put(order.getOrderId(), group);
+        // 큐에 쌓여 있는 동안 취소 등으로 주문 상태가 바뀌었을 수 있으므로, 액션이 들고 온 order(제출 시점 스냅샷)를
+        // 그대로 믿지 않고 orderId로 최신 DB 엔티티를 다시 조회한다. 취소 이벤트가 유실돼도 여기서 최종적으로 막힌다.
+        Optional<Orders> latestOrder = orderService.findOrder(orderId);
+        if (latestOrder.isEmpty() || latestOrder.get().getOrderCd() != OrderCd.MATCHING) {
+            log.debug("주문이 없거나 매칭 시작 가능한 상태(MATCHING)가 아니라 건너뜀: orderId={}", orderId);
+            return;
+        }
+
+        Orders latest = latestOrder.get();
+        GeoPoint boormiLocation = new GeoPoint(latest.getOriginLatitude(), latest.getOriginLongitude());
+        OrderOfferGroup group = new OrderOfferGroup(latest.getOrderId(), latest.getBoormiId(), boormiLocation,
+                OrderSummaryDto.from(latest), new ArrayList<>(), LocalDateTime.now(clock));
+        orderOfferGroupsByOrderId.put(latest.getOrderId(), group);
     }
 
     void applyCancelOrderByBoormi(UUID orderId) {
@@ -438,6 +449,16 @@ public class MatchingService {
 
         findOffer(offerId).ifPresentOrElse(
                 matchOffer -> {
+                    // 큐에 쌓여 있는 동안 DB 주문이 이 오퍼/드리미와 더 이상 일치하지 않게 바뀌었을 수 있으므로
+                    // (예: 타임아웃이 먼저 처리돼 이미 MATCHING으로 되돌아간 뒤 뒤늦게 실행되는 경우), 최신 DB
+                    // 상태를 마지막으로 확인한다. offerId 자체는 BoormiService.confirmDreami의 잠금 트랜잭션에서
+                    // 이미 검증됐고 커밋 시 pendingOfferId가 비워지므로, 여기서는 IN_PROGRESS 전이와 dreamiId만 확인한다.
+                    if (!pendingOfferStateService.isCurrent(matchOffer.orderId(), matchOffer.dreamiId())) {
+                        log.debug("DB 주문 상태가 이 오퍼와 더 이상 일치하지 않아 부르미 수락을 무시함: offerId={}, orderId={}",
+                                offerId, matchOffer.orderId());
+                        return;
+                    }
+
                     matchOffer.confirmByBoormi(LocalDateTime.now(clock)); // 부르미까지 수락 완료
                     findOrderOfferGroup(matchOffer.orderId())
                             .ifPresentOrElse(
