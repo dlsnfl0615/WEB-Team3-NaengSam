@@ -1,0 +1,49 @@
+### 사용 전 조건
+### 1. seed.sql 적용
+### 2. 백엔드 재시작
+### 3. k6 스크립트의 setup 또는 디버그 API로 대상 주문 10건 등록
+### 4. application-query-count.properties를 추가 로드한 백엔드 사용
+
+@baseUrl = http://localhost:8080
+
+### 로그인 - IntelliJ HTTP Client가 이후 요청에 JSESSIONID를 자동으로 전달한다.
+POST {{baseUrl}}/api/v1/user/login
+Content-Type: application/json
+
+{
+  "email": "nearby-n-plus-one@index.test",
+  "password": "index-test"
+}
+
+### 주변 주문 1건 - 개선 전 1 statement, 개선 후 1 statement 예상
+POST {{baseUrl}}/api/v1/dreami/calls/nearby
+Content-Type: application/json
+
+{
+  "lat": 37.4979,
+  "lng": 127.0276,
+  "radius": 5000,
+  "count": 1
+}
+
+### 주변 주문 5건 - 개선 전 5 statements, 개선 후 1 statement 예상
+POST {{baseUrl}}/api/v1/dreami/calls/nearby
+Content-Type: application/json
+
+{
+  "lat": 37.4979,
+  "lng": 127.0276,
+  "radius": 5000,
+  "count": 5
+}
+
+### 주변 주문 10건 - 개선 전 10 statements, 개선 후 1 statement 예상
+POST {{baseUrl}}/api/v1/dreami/calls/nearby
+Content-Type: application/json
+
+{
+  "lat": 37.4979,
+  "lng": 127.0276,
+  "radius": 5000,
+  "count": 10
+}

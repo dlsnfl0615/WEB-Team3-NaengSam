@@ -1,5 +1,6 @@
 package com.naengsam.quick.global.config;
 
+import com.naengsam.quick.global.session.AdminUserArgumentResolver;
 import com.naengsam.quick.global.session.LoginCheckInterceptor;
 import com.naengsam.quick.global.session.LoginUserArgumentResolver;
 import java.util.List;
@@ -21,6 +22,7 @@ public class WebConfig implements WebMvcConfigurer {
 
     private final LoginCheckInterceptor loginCheckInterceptor;
     private final LoginUserArgumentResolver loginUserArgumentResolver;
+    private final AdminUserArgumentResolver adminUserArgumentResolver;
 
     /** 콤마 구분 허용 오리진 목록. 운영은 {@code CORS_ALLOWED_ORIGINS} 환경변수로 주입. */
     @Value("${cors.allowed-origins}")
@@ -46,5 +48,6 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
         resolvers.add(loginUserArgumentResolver);
+        resolvers.add(adminUserArgumentResolver);
     }
 }

@@ -3,12 +3,15 @@ package com.naengsam.quick.domain.order.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.Cancel;
 import com.naengsam.quick.domain.order.entity.CancelerCd;
 import com.naengsam.quick.domain.order.entity.OrderCd;
@@ -23,12 +26,14 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
@@ -36,6 +41,8 @@ import org.springframework.test.util.ReflectionTestUtils;
  */
 @ExtendWith(MockitoExtension.class)
 class OrderServiceTest {
+
+    private static final List<OrderCd> ALL_ORDER_CDS = List.of(OrderCd.values());
 
     @Mock
     private OrderRepository orderRepository;
@@ -62,26 +69,62 @@ class OrderServiceTest {
     }
 
     @Test
-    void 주문목록조회_role이_BOORMI이면_boormi_id_기준으로_전체를_조회한다() {
+    void 주문목록조회_role이_BOORMI이면_boormi_id_기준으로_커서_첫페이지를_조회한다() {
         UUID boormiId = UUID.randomUUID();
-        Orders first = orderAt(boormiId, LocalDateTime.of(2026, 8, 3, 12, 0));
-        Orders second = orderAt(boormiId, LocalDateTime.of(2026, 8, 3, 11, 0));
-        given(orderRepository.findAllByRole(boormiId, "BOORMI")).willReturn(List.of(first, second));
+        OrderSummaryDto first = OrderSummaryDto.from(orderAt(boormiId, LocalDateTime.of(2026, 8, 3, 12, 0)));
+        OrderSummaryDto second = OrderSummaryDto.from(orderAt(boormiId, LocalDateTime.of(2026, 8, 3, 11, 0)));
+        given(orderRepository.findPageByBoormiId(eq(boormiId), eq(ALL_ORDER_CDS), isNull(), isNull(), any(Pageable.class)))
+                .willReturn(List.of(first, second));
 
-        BoormiOrdersResponse response = orderService.getOrders(boormiId, Role.BOORMI);
+        BoormiOrdersResponse response = orderService.getOrders(boormiId, Role.BOORMI, null, null, null);
 
-        assertThat(response.orders()).hasSize(2);
-        then(orderRepository).should().findAllByRole(boormiId, "BOORMI");
+        assertThat(response.orders()).containsExactly(first, second);
+        assertThat(response.hasNext()).isFalse();
+        assertThat(response.nextCursor()).isNull();
+        then(orderRepository).should()
+                .findPageByBoormiId(eq(boormiId), eq(ALL_ORDER_CDS), isNull(), isNull(), any(Pageable.class));
     }
 
     @Test
-    void 주문목록조회_role이_DREAMI이면_dreami_id_기준으로_전체를_조회한다() {
+    void 주문목록조회_role이_DREAMI이면_dreami_id_기준으로_커서_첫페이지를_조회한다() {
         UUID dreamiId = UUID.randomUUID();
-        given(orderRepository.findAllByRole(dreamiId, "DREAMI")).willReturn(List.of());
+        given(orderRepository.findPageByDreamiId(eq(dreamiId), eq(ALL_ORDER_CDS), isNull(), isNull(), any(Pageable.class)))
+                .willReturn(List.of());
 
-        orderService.getOrders(dreamiId, Role.DREAMI);
+        orderService.getOrders(dreamiId, Role.DREAMI, null, null, null);
 
-        then(orderRepository).should().findAllByRole(dreamiId, "DREAMI");
+        then(orderRepository).should()
+                .findPageByDreamiId(eq(dreamiId), eq(ALL_ORDER_CDS), isNull(), isNull(), any(Pageable.class));
+    }
+
+    @Test
+    void 주문목록조회_상태필터를_지정하면_그대로_넘긴다() {
+        UUID boormiId = UUID.randomUUID();
+        List<OrderCd> ongoing = List.of(OrderCd.MATCHING, OrderCd.PENDING_BOORMI_CONFIRMATION,
+                OrderCd.IN_PROGRESS, OrderCd.WAITING_CONFIRMATION);
+        given(orderRepository.findPageByBoormiId(eq(boormiId), eq(ongoing), isNull(), isNull(), any(Pageable.class)))
+                .willReturn(List.of());
+
+        orderService.getOrders(boormiId, Role.BOORMI, ongoing, null, null);
+
+        then(orderRepository).should()
+                .findPageByBoormiId(eq(boormiId), eq(ongoing), isNull(), isNull(), any(Pageable.class));
+    }
+
+    @Test
+    void 주문목록조회_결과가_페이지크기보다_많으면_초과분을_잘라내고_hasNext를_true로_반환한다() {
+        UUID boormiId = UUID.randomUUID();
+        List<OrderSummaryDto> pagePlusOne = IntStream.rangeClosed(1, 21)
+                .mapToObj(i -> OrderSummaryDto.from(orderAt(boormiId, LocalDateTime.of(2026, 8, 3, 12, 0).minusMinutes(i))))
+                .toList();
+        given(orderRepository.findPageByBoormiId(eq(boormiId), eq(ALL_ORDER_CDS), isNull(), isNull(), any(Pageable.class)))
+                .willReturn(pagePlusOne);
+
+        BoormiOrdersResponse response = orderService.getOrders(boormiId, Role.BOORMI, null, null, null);
+
+        assertThat(response.orders()).hasSize(20);
+        assertThat(response.hasNext()).isTrue();
+        assertThat(response.nextCursor()).isNotBlank();
     }
 
     @Test

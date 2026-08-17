@@ -1,9 +1,11 @@
 import type { Coords } from "./DeliveryRouteMap";
+import { distanceMeters } from "@/shared/lib/geo/distance";
+
+export { distanceMeters };
 
 /** 이 거리 이내의 좌표 변화는 정지 중 GPS 흔들림으로 본다. */
 export const DRIVER_JITTER_RADIUS_M = 8;
 
-const EARTH_RADIUS_M = 6_371_000;
 const MIN_ANIMATION_DURATION_MS = 250;
 const MAX_ANIMATION_DURATION_MS = 5_000;
 const PREVIOUS_SPEED_WEIGHT = 0.6;
@@ -24,30 +26,6 @@ export interface DriverMotionPlan {
 export interface PixelPoint {
   x: number;
   y: number;
-}
-
-function toRadians(degrees: number) {
-  return (degrees * Math.PI) / 180;
-}
-
-/** 가까운 두 위·경도 사이의 지표면 거리를 미터로 계산한다. */
-export function distanceMeters(from: Coords, to: Coords) {
-  const latitudeDelta = toRadians(to.latitude - from.latitude);
-  const longitudeDelta = toRadians(to.longitude - from.longitude);
-  const fromLatitude = toRadians(from.latitude);
-  const toLatitude = toRadians(to.latitude);
-
-  const haversine =
-    Math.sin(latitudeDelta / 2) ** 2 +
-    Math.cos(fromLatitude) *
-      Math.cos(toLatitude) *
-      Math.sin(longitudeDelta / 2) ** 2;
-
-  return (
-    2 *
-    EARTH_RADIUS_M *
-    Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine))
-  );
 }
 
 /** 두 픽셀 좌표 사이를 0~1 진행률로 선형 보간한다. */

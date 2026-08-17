@@ -4,10 +4,11 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { OrderStatusCountDto } from './orderStatusCountDto';
 
-export type Get200 = {
+export type GetBoormiOrderStatusCounts200 = {
   isSuccess?: boolean;
   code?: string;
   message?: string;
-  result?: string;
+  result?: OrderStatusCountDto[];
 };

@@ -26,7 +26,8 @@ public enum OrderErrorCode implements BaseErrorCode {
     CANNOT_CANCEL(HttpStatus.CONFLICT, "ORDER_017", "취소할 수 없는 상태예요."),
     CANNOT_REVIEW(HttpStatus.CONFLICT, "ORDER_018", "완료된 요청만 리뷰할 수 있어요."),
     ALREADY_REVIEWED(HttpStatus.CONFLICT, "ORDER_019", "이미 리뷰를 남겼어요."),
-    REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_020", "리뷰를 찾을 수 없습니다.");
+    REVIEW_NOT_FOUND(HttpStatus.NOT_FOUND, "ORDER_020", "리뷰를 찾을 수 없습니다."),
+    INVALID_CURSOR(HttpStatus.BAD_REQUEST, "ORDER_021", "목록을 다시 불러와 주세요.");
 
     private final HttpStatus status;
     private final String code;

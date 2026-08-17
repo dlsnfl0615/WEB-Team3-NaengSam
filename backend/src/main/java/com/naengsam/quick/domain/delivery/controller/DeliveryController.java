@@ -1,5 +1,6 @@
 package com.naengsam.quick.domain.delivery.controller;
 
+import com.naengsam.quick.domain.delivery.dto.ActiveDeliveryDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryContactDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
@@ -14,11 +15,13 @@ import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.domain.user.exception.UserErrorCode;
+import com.naengsam.quick.global.session.AdminUser;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -141,15 +144,21 @@ public class DeliveryController {
         return deliveryService.cancelByBoormi(orderId, boormiId);
     }
 
-    // TODO: 관리자 권한(role) 검증 필요. 현재 코드베이스에 admin role 개념이 없어 요청자 신원을 검증하지 못한다.
-    //       role 시스템 도입 후 @LoginUser + 관리자 역할 확인을 추가해야 한다(그 전까지는 노출 주의).
     @Operation(summary = "관리자의 픽업 취소", description = "픽업 과정에서 관리자가 취소한다.")
     @PostMapping("/orders/{orderId}/cancel/admin")
     @ApiErrorCodes(enumClass = DeliveryErrorCode.class,
             codes = {"CANCELLATION_RESTRICTED_DURING_DELIVERY", "DELIVERY_NOT_FOUND",
                     "DELIVERY_ALREADY_CANCELLED", "DELIVERY_ALREADY_COMPLETED"})
-    public DeliveryStatusResponseDto cancelByAdmin(@PathVariable UUID orderId) {
+    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED", "FORBIDDEN_ROLE"})
+    public DeliveryStatusResponseDto cancelByAdmin(@PathVariable UUID orderId, @AdminUser UUID adminId) {
         return deliveryService.cancelByAdmin(orderId);
+    }
+
+    @Operation(summary = "진행 중인 배달 목록 조회", description = "관리자 페이지용. 픽업/배달중 상태의 배달을 전부 반환한다.")
+    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED", "FORBIDDEN_ROLE"})
+    @GetMapping("/admin/deliveries")
+    public List<ActiveDeliveryDto> listActiveDeliveries(@AdminUser UUID adminId) {
+        return deliveryService.listActiveDeliveries();
     }
 
     @Operation(summary = "드리미 배달 완료",
