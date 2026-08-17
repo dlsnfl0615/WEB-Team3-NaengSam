@@ -1,7 +1,10 @@
 package com.naengsam.quick.global.sse;
 
+import com.naengsam.quick.global.debug.InMemoryStateProbe;
+import com.naengsam.quick.global.debug.InMemoryStructureDto;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -24,7 +27,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
  */
 @Slf4j
 @Component
-public class SseEmitterRegistry {
+public class SseEmitterRegistry implements InMemoryStateProbe {
 
     private final Map<UUID, Map<String, SseEmitter>> emitters = new ConcurrentHashMap<>();
 
@@ -153,6 +156,20 @@ public class SseEmitterRegistry {
             remove(userId, connectionId, emitter, "heartbeat_failed");
             emitter.completeWithError(e);
         }
+    }
+
+    /**
+     * 연결 맵의 현황. 크기는 접속 중인 사용자 수이고, 실제 열려 있는 연결 수는 내부 맵을 합쳐야 나오므로 함께 보고한다. 빈 사용자 엔트리는 남기지 않도록 설계돼 있으니 총 연결 수가 0인데
+     * 사용자 수가 0이 아니면 정리 경로에 구멍이 생긴 것이다.
+     */
+    @Override
+    public List<InMemoryStructureDto> inMemoryStructures() {
+        long totalConnections = emitters.values().stream()
+                .mapToLong(Map::size)
+                .sum();
+
+        return List.of(InMemoryStructureDto.ofMap("emitters", "userId → connectionId → SSE emitter", emitters)
+                .withBreakdown(Map.of("총 연결 수", totalConnections)));
     }
 
     private void remove(UUID userId, String connectionId, SseEmitter emitter, String reason) {
