@@ -1,41 +1,113 @@
 import { useEffect, useState } from "react";
 import { create } from "zustand";
 import { api, isApiError } from "@/shared/api";
-import { toBoormiOrder, type BoormiOrder } from "./boormiOrderAdapter";
+import {
+  FILTER_ORDER_CDS,
+  toBoormiOrder,
+  toFilterCounts,
+  type ActivityFilter,
+  type BoormiOrder,
+  type FilterCounts,
+} from "./boormiOrderAdapter";
 
 interface DreamiOrderState {
   deliveries: BoormiOrder[];
+  filter: ActivityFilter;
+  cursor: string | null;
+  hasNext: boolean;
+  /** 첫 페이지(필터 전환 포함) 로딩. */
   loading: boolean;
+  /** 스크롤로 다음 페이지를 이어 받는 중. */
+  loadingMore: boolean;
   error: string | null;
-  /** 전체 조회(deliveries 교체). */
-  load: () => Promise<void>;
+  /** 탭별(전체/진행중/완료/취소) 개수. 화면 진입 시 한 번만 받아온다. */
+  counts: FilterCounts | null;
+  /** 필터 전환/재조회마다 증가하는 세대 번호. 응답이 왔을 때 이 값이 요청 시점과 다르면(그 사이 다른
+   * 필터로 전환됐다는 뜻) 응답을 버린다 — 느린 응답이 최신 상태를 덮어쓰는 레이스를 막는다. */
+  epoch: number;
+  /** 필터 탭을 정하고 그 필터의 첫 페이지를 새로 받는다(기존 목록은 버린다). */
+  load: (filter: ActivityFilter) => Promise<void>;
+  /** 현재 필터의 다음 페이지를 이어 받는다. 이미 없거나(hasNext=false) 로딩 중이면 아무것도 안 한다. */
+  loadMore: () => Promise<void>;
+  /** 탭별 개수 갱신. */
+  loadCounts: () => Promise<void>;
 }
 
 /**
- * 드리미 활동 내역 전역 스토어.
- *
- * 활동 탭 필터(전체/진행중/완료/취소)가 클라이언트에서 orderCd를 그룹핑하는 방식이라, 백엔드도
- * 페이지네이션 없이 전체를 한 번에 내려준다(지금 규모에서는 이게 페이지네이션+서버 필터링보다
- * 단순하고 충분하다).
+ * 드리미 활동 내역 전역 스토어. 커서 기반 무한 스크롤 목록 + 필터 탭 상태를 담는다.
+ * 필터 탭 하나(예: "진행중")가 여러 orderCd를 묶은 경우 {@link FILTER_ORDER_CDS}로 구체적인
+ * 상태 목록을 만들어 서버에 넘긴다.
  */
-export const useDreamiOrderStore = create<DreamiOrderState>((set) => ({
+export const useDreamiOrderStore = create<DreamiOrderState>((set, get) => ({
   deliveries: [],
+  filter: "전체",
+  cursor: null,
+  hasNext: false,
   loading: false,
+  loadingMore: false,
   error: null,
+  counts: null,
+  epoch: 0,
 
-  load: async () => {
-    set({ loading: true, error: null });
+  load: async (filter) => {
+    const epoch = get().epoch + 1;
+    // 새 필터 조회를 시작하는 순간, 이전 세대에서 이미 떠 있던 "더 보기" 요청도 함께 무효화한다.
+    set({ loading: true, loadingMore: false, error: null, filter, epoch });
     try {
-      const { result } = await api.getDreamiOrders();
+      const status = filter === "전체" ? undefined : FILTER_ORDER_CDS[filter];
+      const { result } = await api.getDreamiOrders({ status });
+      if (get().epoch !== epoch) return; // 그 사이 다른 필터로 전환됨 — 이 응답은 버린다
       set({
         deliveries: (result?.orders ?? []).map(toBoormiOrder),
+        cursor: result?.nextCursor ?? null,
+        hasNext: result?.hasNext ?? false,
         loading: false,
       });
     } catch (e) {
+      if (get().epoch !== epoch) return;
       set({
         loading: false,
         error: isApiError(e) ? e.message : "활동 내역을 불러오지 못했어요.",
       });
+    }
+  },
+
+  loadMore: async () => {
+    const { hasNext, loadingMore, loading, cursor, filter, epoch: currentEpoch } = get();
+    if (!hasNext || loadingMore || loading) return;
+    const epoch = currentEpoch; // 지금 목록이 속한 세대 — 응답이 온 뒤 필터가 바뀌었으면 병합하지 않는다
+    set({ loadingMore: true });
+    try {
+      const status = filter === "전체" ? undefined : FILTER_ORDER_CDS[filter];
+      const { result } = await api.getDreamiOrders({ status, cursor: cursor ?? undefined });
+      if (get().epoch !== epoch) {
+        set({ loadingMore: false });
+        return;
+      }
+      set((s) => ({
+        deliveries: [...s.deliveries, ...(result?.orders ?? []).map(toBoormiOrder)],
+        cursor: result?.nextCursor ?? null,
+        hasNext: result?.hasNext ?? false,
+        loadingMore: false,
+      }));
+    } catch (e) {
+      if (get().epoch !== epoch) {
+        set({ loadingMore: false });
+        return;
+      }
+      set({
+        loadingMore: false,
+        error: isApiError(e) ? e.message : "활동 내역을 불러오지 못했어요.",
+      });
+    }
+  },
+
+  loadCounts: async () => {
+    try {
+      const { result } = await api.getDreamiOrderStatusCounts();
+      set({ counts: toFilterCounts(result ?? []) });
+    } catch {
+      // 탭 개수는 보조 지표라 실패해도 목록 자체는 계속 보여준다.
     }
   },
 }));

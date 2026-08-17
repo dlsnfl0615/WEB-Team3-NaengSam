@@ -178,8 +178,7 @@ export function MatchingScreen() {
 
     const startPolling = async () => {
       try {
-        const { result } = await api.getBoormiOrders();
-        const order = result?.orders?.find((candidate) => candidate.orderId === orderId);
+        const { result: order } = await api.getBoormiOrder(orderId);
         if (
           order?.originLatitude == null ||
           order.originLongitude == null

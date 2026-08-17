@@ -1,13 +1,17 @@
 package com.naengsam.quick.domain.order.repository;
 
 import com.naengsam.quick.domain.order.dto.CompletedSavingAggregate;
+import com.naengsam.quick.domain.order.dto.OrderStatusCountDto;
+import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
 import jakarta.persistence.LockModeType;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
@@ -77,14 +81,66 @@ public interface OrderRepository extends JpaRepository<Orders, UUID> {
     long countActiveOrders(@Param("userId") UUID userId);
 
     /**
-     * 주문 목록 전체. role이 BOORMI면 boormi_id, DREAMI면 dreami_id로 필터링한다. 최신순(delivery_request_dtm DESC, 동일 시각은
-     * order_id DESC) 정렬.
+     * 활동 내역 목록의 커서 기반 페이지 조회(부르미). {@code orderCds}는 화면 필터 탭 하나가 여러 상태를 묶은 경우
+     * (예: "진행중" = MATCHING/PENDING_BOORMI_CONFIRMATION/IN_PROGRESS/WAITING_CONFIRMATION)까지 커버해야 해서
+     * 컬렉션으로 받는다 — "전체" 탭은 서비스 계층에서 {@code OrderCd.values()} 전체를 채워 넘긴다(항상 비어있지 않은
+     * 컬렉션이 오므로 IN 바인딩에 null 걱정이 없다). {@code cursorDtm}이 null이면 첫 페이지(맨 최신부터), 아니면
+     * 그보다 이전 것들만 — 최신순(delivery_request_dtm DESC, 동일 시각은 order_id DESC) 정렬을 그대로 이어간다.
+     * {@code Orders} 엔티티 전체가 아니라 목록 화면에 필요한 컬럼만 {@code OrderSummaryDto}로 바로 투영해, route_path
+     * 같은 대형 컬럼을 굳이 읽어 엔티티로 매핑하는 낭비를 없앤다.
      */
-    @Query(value = """
-            SELECT * FROM ORDERS o
-            WHERE (:role = 'BOORMI' AND o.boormi_id = :userId)
-               OR (:role = 'DREAMI' AND o.dreami_id = :userId)
-            ORDER BY o.delivery_request_dtm DESC, o.order_id DESC
-            """, nativeQuery = true)
-    List<Orders> findAllByRole(@Param("userId") UUID userId, @Param("role") String role);
+    @Query("""
+            SELECT new com.naengsam.quick.domain.order.dto.OrderSummaryDto(
+                o.orderId, o.itemName, o.itemCd, o.orderCd, o.deliveryAmount, o.deliveryEta,
+                o.deliveryDistance, o.originLatitude, o.originLongitude, o.originAlias, o.originAddressLine1,
+                o.destinationLatitude, o.destinationLongitude, o.destinationAlias, o.destinationAddressLine1,
+                o.imageKey, o.deliveryRequest, o.deliveryRequestDtm)
+            FROM Orders o
+            WHERE o.boormiId = :userId
+              AND o.orderCd IN :orderCds
+              AND (:cursorDtm IS NULL
+                   OR o.deliveryRequestDtm < :cursorDtm
+                   OR (o.deliveryRequestDtm = :cursorDtm AND o.orderId < :cursorId))
+            ORDER BY o.deliveryRequestDtm DESC, o.orderId DESC
+            """)
+    List<OrderSummaryDto> findPageByBoormiId(@Param("userId") UUID userId, @Param("orderCds") Collection<OrderCd> orderCds,
+            @Param("cursorDtm") LocalDateTime cursorDtm, @Param("cursorId") UUID cursorId, Pageable pageable);
+
+    /**
+     * 활동 내역 목록의 커서 기반 페이지 조회(드리미). 나머지는 {@link #findPageByBoormiId}와 동일.
+     */
+    @Query("""
+            SELECT new com.naengsam.quick.domain.order.dto.OrderSummaryDto(
+                o.orderId, o.itemName, o.itemCd, o.orderCd, o.deliveryAmount, o.deliveryEta,
+                o.deliveryDistance, o.originLatitude, o.originLongitude, o.originAlias, o.originAddressLine1,
+                o.destinationLatitude, o.destinationLongitude, o.destinationAlias, o.destinationAddressLine1,
+                o.imageKey, o.deliveryRequest, o.deliveryRequestDtm)
+            FROM Orders o
+            WHERE o.dreamiId = :userId
+              AND o.orderCd IN :orderCds
+              AND (:cursorDtm IS NULL
+                   OR o.deliveryRequestDtm < :cursorDtm
+                   OR (o.deliveryRequestDtm = :cursorDtm AND o.orderId < :cursorId))
+            ORDER BY o.deliveryRequestDtm DESC, o.orderId DESC
+            """)
+    List<OrderSummaryDto> findPageByDreamiId(@Param("userId") UUID userId, @Param("orderCds") Collection<OrderCd> orderCds,
+            @Param("cursorDtm") LocalDateTime cursorDtm, @Param("cursorId") UUID cursorId, Pageable pageable);
+
+    /**
+     * 활동 내역 화면의 상태별(전체/진행중/완료/취소) 탭 개수. 목록 페이지네이션과 별개로 화면 진입 시 한 번만 호출한다.
+     */
+    @Query("""
+            SELECT new com.naengsam.quick.domain.order.dto.OrderStatusCountDto(o.orderCd, COUNT(o))
+            FROM Orders o WHERE o.boormiId = :userId GROUP BY o.orderCd
+            """)
+    List<OrderStatusCountDto> countGroupedByOrderCdForBoormi(@Param("userId") UUID userId);
+
+    /**
+     * {@link #countGroupedByOrderCdForBoormi}와 동일하되 드리미 기준.
+     */
+    @Query("""
+            SELECT new com.naengsam.quick.domain.order.dto.OrderStatusCountDto(o.orderCd, COUNT(o))
+            FROM Orders o WHERE o.dreamiId = :userId GROUP BY o.orderCd
+            """)
+    List<OrderStatusCountDto> countGroupedByOrderCdForDreami(@Param("userId") UUID userId);
 }

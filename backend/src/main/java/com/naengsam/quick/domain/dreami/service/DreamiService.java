@@ -25,6 +25,7 @@ import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderCountDto;
+import com.naengsam.quick.domain.order.dto.OrderStatusCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -269,11 +270,19 @@ public class DreamiService {
     }
 
     /**
-     * 드리미가 수행한(수행 중인) 배달 전체를 최신순으로 조회한다.
+     * 드리미가 수행한(수행 중인) 배달을 최신순으로 커서 페이지네이션 조회한다. {@code statusFilter}가 null이면 전체 탭이다.
      */
     @Transactional(readOnly = true)
-    public BoormiOrdersResponse getMyOrders(UUID dreamiId) {
-        return orderService.getOrders(dreamiId, Role.DREAMI);
+    public BoormiOrdersResponse getMyOrders(UUID dreamiId, List<OrderCd> statusFilter, String cursor, Integer size) {
+        return orderService.getOrders(dreamiId, Role.DREAMI, statusFilter, cursor, size);
+    }
+
+    /**
+     * 활동 내역 화면의 상태별(전체/진행중/완료/취소) 탭 개수.
+     */
+    @Transactional(readOnly = true)
+    public List<OrderStatusCountDto> getMyDeliveryStatusCounts(UUID dreamiId) {
+        return orderService.getStatusCounts(dreamiId, Role.DREAMI);
     }
 
     /**

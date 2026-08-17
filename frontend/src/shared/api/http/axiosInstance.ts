@@ -16,11 +16,15 @@ export const SESSION_PROBE_HEADER = 'X-Session-Probe'
  * - `baseURL`: 개발은 빈값(동일 출처 + Vite 프록시), 운영은 `VITE_API_BASE_URL` 오리진.
  *   생성 클라이언트의 요청 경로에 이미 `/api/v1`이 포함되므로 여기에는 오리진만 둔다.
  * - `withCredentials`: 세션 쿠키(JSESSIONID) 자동 송수신에 필수.
+ * - `paramsSerializer`: 배열 쿼리 파라미터를 axios 기본값인 `status[]=A&status[]=B` 대신
+ *   `status=A&status=B`(같은 키 반복)로 직렬화한다. Spring `@RequestParam List<T>`는 후자만 바인딩하고
+ *   `[]` 표기는 그냥 무시하므로, 기본값 그대로 두면 배열 필터가 항상 빈 값으로 전달된다.
  */
 export const axiosInstance = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL ?? '',
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
+  paramsSerializer: { indexes: null },
 })
 
 // 실패 응답을 공통 ApiError로 정규화한다. 세션 만료면 앱에 알려 재로그인을 유도한다.
