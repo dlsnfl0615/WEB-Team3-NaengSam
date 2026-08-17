@@ -1,8 +1,12 @@
 package com.naengsam.quick.domain.user.service;
 
+import com.naengsam.quick.global.debug.InMemoryStateProbe;
+import com.naengsam.quick.global.debug.InMemoryStructureDto;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 
@@ -10,7 +14,7 @@ import org.springframework.stereotype.Component;
  * 인증번호 인메모리 저장소. 단일 인스턴스 전제(현재 세션 방식과 동일 철학)로, 만료는 접근 시 lazy 로 판단한다. 재시작 시 초기화되며 수평 확장에는 적합하지 않다(알려진 한계).
  */
 @Component
-public class VerificationCodeStore {
+public class VerificationCodeStore implements InMemoryStateProbe {
 
     public enum VerifyResult {
         OK, MISMATCH, EXPIRED, TOO_MANY_ATTEMPTS, ALREADY_VERIFIED
@@ -104,5 +108,28 @@ public class VerificationCodeStore {
      */
     public void consumeVerified(String phone) {
         verified.remove(phone);
+    }
+
+    /**
+     * 두 맵의 현황. 만료는 해당 번호로 다시 접근할 때만 lazy 하게 판정하므로, 발급만 받고 검증하지 않은 번호와 인증만 하고 가입을 마치지 않은 번호는 TTL이 지나도 남는다. 그래서 크기와 함께
+     * "만료됐는데 잔류" 개수를 보고한다 — 이 값이 계속 커지면 주기적 스윕이 필요하다는 신호다.
+     *
+     * <p>두 맵의 키는 휴대폰번호이고 {@code codes}의 값은 인증번호이므로, 샘플은 어느 쪽도 내보내지 않는다.
+     */
+    @Override
+    public List<InMemoryStructureDto> inMemoryStructures() {
+        LocalDateTime now = LocalDateTime.now();
+        long expiredCodes = codes.values().stream()
+                .filter(entry -> now.isAfter(entry.expiresAt()))
+                .count();
+        long expiredVerified = verified.values().stream()
+                .filter(now::isAfter)
+                .count();
+
+        return List.of(
+                InMemoryStructureDto.ofSize("codes", "휴대폰번호 → 발급된 인증번호·만료·시도횟수", codes.size())
+                        .withBreakdown(Map.of("만료됐는데 잔류", expiredCodes)),
+                InMemoryStructureDto.ofSize("verified", "휴대폰번호 → 인증완료 만료시각", verified.size())
+                        .withBreakdown(Map.of("만료됐는데 잔류", expiredVerified)));
     }
 }

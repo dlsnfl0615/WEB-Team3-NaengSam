@@ -46,6 +46,8 @@ import com.naengsam.quick.domain.dreami.service.DreamiActivationChecker;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.code.BaseErrorCode;
 import com.naengsam.quick.global.code.GeneralErrorCode;
+import com.naengsam.quick.global.debug.InMemoryStateProbe;
+import com.naengsam.quick.global.debug.InMemoryStructureDto;
 import com.naengsam.quick.global.exception.BusinessException;
 import com.naengsam.quick.global.notification.NotificationService;
 import lombok.RequiredArgsConstructor;
@@ -89,7 +91,7 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class DeliveryService {
+public class DeliveryService implements InMemoryStateProbe {
 
     private static final int LOCATION_SCALE = 8;
 
@@ -789,4 +791,15 @@ public class DeliveryService {
         notificationService.notify(event.userId(), event.eventType(), event.payload(), event.pushSubject());
     }
 
+    /**
+     * 쿨다운 판정용 맵 2종의 현황. 둘 다 해당 경로가 호출될 때 30초 지난 엔트리를 함께 쓸어내는 방식이라, 핑이나 경로 계산이 한동안 없으면 마지막 엔트리가 남아 있는 것이 정상이다. 크기가 활성
+     * 배달 수를 크게 넘어서면 스윕이 도달하지 못하는 경로가 생겼다는 뜻이다.
+     */
+    @Override
+    public List<InMemoryStructureDto> inMemoryStructures() {
+        return List.of(
+                InMemoryStructureDto.ofMap("lastPingAt", "orderId → 마지막 부르미 핑 시각", lastPingAt),
+                InMemoryStructureDto.ofMap("lastRouteFailureAt", "orderId → 마지막 경로·ETA 계산 실패 시각",
+                        lastRouteFailureAt));
+    }
 }
