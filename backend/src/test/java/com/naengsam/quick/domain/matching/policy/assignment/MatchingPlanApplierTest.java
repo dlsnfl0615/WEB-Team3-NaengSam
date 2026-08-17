@@ -223,6 +223,33 @@ class MatchingPlanApplierTest {
         verifyNoInteractions(matchingService, notificationService);
     }
 
+    @Test
+    void 이전에_DREAMI_EXPIRED로_종료된_같은_주문_드리미_조합에_재제안하면_새_UUID의_오퍼가_생성된다() {
+        // 쿨다운이 끝나 같은 (orderId, dreamiId) 조합이 다시 적격 판정을 받았을 때, MatchingPlanApplier가 만드는 새 오퍼는
+        // 이전 만료 오퍼와 다른 offerId를 가져야 한다 — 재사용/덮어쓰기가 아니라 항상 새 UUID로 생성됨을 확인한다.
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchOffer expiredOffer = new MatchOffer(
+                UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.DREAMI_EXPIRED, EVALUATED_AT.minusMinutes(10));
+        OrderOfferGroup group = new OrderOfferGroup(
+                orderId, UUID.randomUUID(), LOCATION, mock(OrderSummaryDto.class),
+                new ArrayList<>(List.of(expiredOffer)), EVALUATED_AT.minusMinutes(20));
+        orderOfferGroupsByOrderId.put(orderId, group);
+        registerDreami(dreamiId);
+        MatchingAssignmentProblem problem = problem(
+                List.of(orderInput(orderId, 3)), List.of(dreamiId), List.of(orderId), List.of(dreamiId));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId)));
+
+        applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
+
+        assertThat(group.offers()).hasSize(2);
+        MatchOffer newOffer = group.offers().getLast();
+        assertThat(newOffer.offerId()).isNotEqualTo(expiredOffer.offerId());
+        assertThat(newOffer.dreamiId()).isEqualTo(dreamiId);
+        assertThat(newOffer.status()).isEqualTo(MatchOfferStatus.OFFERED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
+    }
+
     private OrderOfferGroup registerGroup(UUID orderId) {
         OrderOfferGroup group = new OrderOfferGroup(
                 orderId, UUID.randomUUID(), LOCATION, mock(OrderSummaryDto.class), List.of(),

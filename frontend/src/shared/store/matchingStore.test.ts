@@ -12,6 +12,10 @@ vi.mock("@/shared/api", () => ({
     getCurrentStatus: vi.fn(),
     getProfile: vi.fn(),
     acceptOffer: vi.fn(),
+    rejectOffer: vi.fn(),
+    confirmDreami: vi.fn(),
+    rejectDreami: vi.fn(),
+    goOffline: vi.fn(),
   },
   isApiError: () => false,
 }));
@@ -19,6 +23,21 @@ vi.mock("@/shared/api", () => ({
 const getCurrentStatus = vi.mocked(api.getCurrentStatus);
 const getProfile = vi.mocked(api.getProfile);
 const acceptOffer = vi.mocked(api.acceptOffer);
+const rejectOfferApi = vi.mocked(api.rejectOffer);
+const confirmDreamiApi = vi.mocked(api.confirmDreami);
+const rejectDreamiApi = vi.mocked(api.rejectDreami);
+const goOfflineApi = vi.mocked(api.goOffline);
+
+/** 응답 순서를 테스트 코드에서 직접 통제하기 위한 deferred promise. */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 /** 필수 필드만 채운 pendingOffer(테스트에서 쓰지 않는 값은 전부 null). */
 function offer(overrides: Partial<PendingOffer> = {}): PendingOffer {
@@ -49,7 +68,15 @@ beforeEach(() => {
   getCurrentStatus.mockReset();
   getProfile.mockReset();
   acceptOffer.mockReset();
+  rejectOfferApi.mockReset();
+  confirmDreamiApi.mockReset();
+  rejectDreamiApi.mockReset();
+  goOfflineApi.mockReset();
   acceptOffer.mockResolvedValue(undefined as never);
+  rejectOfferApi.mockResolvedValue(undefined as never);
+  confirmDreamiApi.mockResolvedValue(undefined as never);
+  rejectDreamiApi.mockResolvedValue(undefined as never);
+  goOfflineApi.mockResolvedValue(undefined as never);
   getProfile.mockResolvedValue({ result: {} } as never);
   getCurrentStatus.mockResolvedValue(snapshot({}) as never);
   useMatchingStore.setState({
@@ -385,5 +412,286 @@ describe("matchingStore 부르미 응답 대기", () => {
     useMatchingStore.getState().clearOffers();
 
     expect(useMatchingStore.getState().awaitingBoormi).toBeNull();
+  });
+});
+
+/**
+ * accept/reject API 응답을 기다리는 사이 SSE로 새 offer가 도착해 pendingOffer가 교체되는 경쟁 조건.
+ * 요청 시작 시점의 offerId를 캡처해두고, 응답 이후에는 그 값으로만 "지금도 같은 offer인지"를 판단해야
+ * 방금 응답이 온 옛 offer가 이미 화면에 있는 새 offer를 지워버리는 사고를 막을 수 있다.
+ */
+describe("matchingStore accept/reject 경쟁 조건", () => {
+  it("offer-1 accept 진행 중 offer-2가 도착하면, offer-1이 뒤늦게 성공해도 offer-2를 유지하고 offer-1 대기 상태는 만들지 않는다", async () => {
+    const { promise, resolve } = deferred<void>();
+    acceptOffer.mockReturnValue(promise as never);
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-1", orderId: "order-1" }) });
+
+    const acceptPromise = useMatchingStore.getState().acceptOffer();
+    // offer-1 accept 응답이 오기 전에 offer-2 SSE가 먼저 도착한다.
+    useMatchingStore
+      .getState()
+      .receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    resolve();
+    await acceptPromise;
+
+    const { pendingOffer, awaitingBoormi, submitting } = useMatchingStore.getState();
+    expect(pendingOffer?.offerId).toBe("offer-2");
+    expect(awaitingBoormi).toBeNull();
+    expect(submitting).toBe(false);
+  });
+
+  it("offer-1 reject 진행 중 offer-2가 도착하면, offer-1 거절이 뒤늦게 성공해도 offer-2를 유지한다", async () => {
+    const { promise, resolve } = deferred<void>();
+    rejectOfferApi.mockReturnValue(promise as never);
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-1", orderId: "order-1" }) });
+
+    const rejectPromise = useMatchingStore.getState().rejectOffer();
+    useMatchingStore
+      .getState()
+      .receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    resolve();
+    await rejectPromise;
+
+    const { pendingOffer, submitting } = useMatchingStore.getState();
+    expect(pendingOffer?.offerId).toBe("offer-2");
+    expect(submitting).toBe(false);
+  });
+
+  it("offer-1 accept가 뒤늦게 실패해도 그 사이 도착한 offer-2를 지우지 않는다", async () => {
+    const { promise, reject } = deferred<void>();
+    acceptOffer.mockReturnValue(promise as never);
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-1", orderId: "order-1" }) });
+
+    const acceptPromise = useMatchingStore.getState().acceptOffer();
+    useMatchingStore
+      .getState()
+      .receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    reject(new Error("이미 만료된 제안이에요."));
+    await acceptPromise;
+
+    const { pendingOffer, awaitingBoormi, submitting } = useMatchingStore.getState();
+    expect(pendingOffer?.offerId).toBe("offer-2");
+    expect(awaitingBoormi).toBeNull();
+    expect(submitting).toBe(false);
+  });
+
+  it("이미 교체된 이전 offer의 offer_error는 새 pending offer를 지우거나 오류로 표시하지 않는다", () => {
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    useMatchingStore
+      .getState()
+      .receiveOfferError({ offerId: "offer-1", message: "이미 종료된 제안입니다." });
+
+    const { pendingOffer, message } = useMatchingStore.getState();
+    expect(pendingOffer?.offerId).toBe("offer-2");
+    expect(message).toBeNull();
+  });
+
+  it("현재 pendingOffer와 offerId가 일치하는 offer_error만 지우고 안내를 띄운다", () => {
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-1" }) });
+
+    useMatchingStore
+      .getState()
+      .receiveOfferError({ offerId: "offer-1", message: "이미 종료된 제안입니다." });
+
+    const { pendingOffer, message } = useMatchingStore.getState();
+    expect(pendingOffer).toBeNull();
+    expect(message).toBe("이미 종료된 제안입니다.");
+  });
+
+  it("현재 awaitingBoormi와 offerId가 일치하는 offer_error는 대기 상태만 지우고 다른 pendingOffer는 건드리지 않는다", () => {
+    useMatchingStore.setState({
+      pendingOffer: offer({ offerId: "offer-2", orderId: "order-2" }),
+      awaitingBoormi: {
+        offerId: "offer-1",
+        orderId: "order-1",
+        itemName: null,
+        acceptedAt: "2026-08-13T10:00:00",
+        expiresAt: "2026-08-13T10:00:30",
+      },
+    });
+
+    useMatchingStore.getState().receiveOfferError({ offerId: "offer-1", message: "만료됐어요." });
+
+    const { pendingOffer, awaitingBoormi } = useMatchingStore.getState();
+    expect(awaitingBoormi).toBeNull();
+    expect(pendingOffer?.offerId).toBe("offer-2");
+  });
+
+  it("accept/reject의 성공·실패 모든 경로에서 submitting은 항상 false로 복구된다", async () => {
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-a" }) });
+    await useMatchingStore.getState().acceptOffer();
+    expect(useMatchingStore.getState().submitting).toBe(false);
+
+    acceptOffer.mockRejectedValueOnce(new Error("실패"));
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-b" }) });
+    await useMatchingStore.getState().acceptOffer();
+    expect(useMatchingStore.getState().submitting).toBe(false);
+
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-c" }) });
+    await useMatchingStore.getState().rejectOffer();
+    expect(useMatchingStore.getState().submitting).toBe(false);
+
+    rejectOfferApi.mockRejectedValueOnce(new Error("실패"));
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-d" }) });
+    await useMatchingStore.getState().rejectOffer();
+    expect(useMatchingStore.getState().submitting).toBe(false);
+  });
+});
+
+/**
+ * syncCurrentMatching의 HTTP 응답과 SSE 이벤트 사이의 순서 역전 방어. 요청이 나가 있는 사이 SSE로
+ * offer 상태가 바뀌면, 뒤늦게 도착한(이미 낡은) HTTP snapshot이 그 최신 상태를 덮어쓰면 안 된다.
+ */
+describe("matchingStore snapshot·SSE 순서 역전 방어", () => {
+  it("snapshot 요청 중 offer-2 SSE가 오면, offer-1 snapshot이 뒤늦게 응답해도 offer-2를 유지한다", async () => {
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+
+    const syncPromise = useMatchingStore.getState().syncCurrentMatching();
+    // 요청이 나가 있는 사이 offer-2가 SSE로 도착해 pendingOffer가 교체된다.
+    useMatchingStore.getState().receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    resolve(pendingSnapshot("offer-1") as never);
+    await syncPromise;
+
+    expect(useMatchingStore.getState().pendingOffer?.offerId).toBe("offer-2");
+  });
+
+  it("snapshot 요청 중 offer-2 SSE가 오면, null snapshot이 뒤늦게 응답해도 offer-2를 지우지 않는다", async () => {
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+
+    const syncPromise = useMatchingStore.getState().syncCurrentMatching();
+    useMatchingStore.getState().receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    resolve(snapshot({}) as never); // 요청 시점 기준 pendingOffer가 없었다는 낡은 snapshot
+    await syncPromise;
+
+    expect(useMatchingStore.getState().pendingOffer?.offerId).toBe("offer-2");
+  });
+
+  it("요청 중 SSE 변경이 없으면 snapshot이 정상 적용된다", async () => {
+    getCurrentStatus.mockResolvedValue(pendingSnapshot("offer-1") as never);
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    expect(useMatchingStore.getState().pendingOffer?.offerId).toBe("offer-1");
+  });
+
+  it("SSE 변경 없이 되찾은 최신 snapshot의 새 offer는 정상적으로 복구된다", async () => {
+    // 진입 직후처럼 로컬 상태가 비어 있다가, 폴링으로 서버가 들고 있던 offer를 처음 되찾는 경우.
+    expect(useMatchingStore.getState().pendingOffer).toBeNull();
+    getCurrentStatus.mockResolvedValue(pendingSnapshot("offer-복구") as never);
+
+    await useMatchingStore.getState().syncCurrentMatching();
+
+    expect(useMatchingStore.getState().pendingOffer?.offerId).toBe("offer-복구");
+  });
+
+  it("부르미 incomingDreami도 동일하게 보호된다 - 낡은 snapshot이 새 dreami_info를 지우지 않는다", async () => {
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+
+    const syncPromise = useMatchingStore.getState().syncCurrentMatching();
+    // 요청이 나가 있는 사이 dreami_info SSE로 offer-2에 대한 확인 대기가 새로 생긴다.
+    useMatchingStore.getState().receiveDreamiInfo({
+      offerId: "offer-2",
+      orderId: "order-2",
+      dreamiId: "dreami-2",
+    });
+
+    resolve(snapshot({})); // 요청 시점 기준 incomingDreami가 없었다는 낡은 snapshot
+    await syncPromise;
+
+    expect(useMatchingStore.getState().incomingDreami?.offerId).toBe("offer-2");
+  });
+
+  it("온라인 상태 동기화는 offer revision과 무관하게 적용된다", async () => {
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+    useMatchingStore.setState({ online: false });
+
+    const syncPromise = useMatchingStore.getState().syncCurrentMatching();
+    // offer revision을 바꾸는 SSE가 요청 중간에 도착해도(pendingOffer 교체) 온라인 여부는 그대로 반영돼야 한다.
+    useMatchingStore.getState().receiveOfferPopup({ ...offer({ offerId: "offer-2", orderId: "order-2" }) });
+
+    resolve(snapshot({ dreamiOnline: true }) as never);
+    await syncPromise;
+
+    const { online, pendingOffer } = useMatchingStore.getState();
+    expect(online).toBe(true);
+    expect(pendingOffer?.offerId).toBe("offer-2");
+  });
+
+  it("in-flight 동기화 요청 중복 방지는 그대로 유지된다", async () => {
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+
+    const first = useMatchingStore.getState().syncCurrentMatching();
+    const second = useMatchingStore.getState().syncCurrentMatching();
+
+    expect(getCurrentStatus).toHaveBeenCalledTimes(1);
+
+    resolve(snapshot({}) as never);
+    await Promise.all([first, second]);
+  });
+
+  it("확정 처리 중 도착한 낡은 snapshot이 지워진 incomingDreami를 되살리지 않는다", async () => {
+    useMatchingStore.setState({
+      incomingDreami: { offerId: "offer-1", orderId: "order-1", dreamiId: "d" },
+    });
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+
+    // syncCurrentMatching 요청이 나가 있는 사이 확정이 완료되어 incomingDreami가 로컬에서 지워진다.
+    const syncPromise = useMatchingStore.getState().syncCurrentMatching();
+    await useMatchingStore.getState().confirmDreami();
+
+    resolve(
+      snapshot({
+        incomingDreami: { offerId: "offer-1", orderId: "order-1", dreamiId: "d" },
+      }) as never,
+    );
+    await syncPromise;
+
+    expect(useMatchingStore.getState().incomingDreami).toBeNull();
+  });
+
+  it("거절 처리 중 도착한 낡은 snapshot이 지워진 incomingDreami를 되살리지 않는다", async () => {
+    useMatchingStore.setState({
+      incomingDreami: { offerId: "offer-1", orderId: "order-1", dreamiId: "d" },
+    });
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+
+    const syncPromise = useMatchingStore.getState().syncCurrentMatching();
+    await useMatchingStore.getState().rejectDreami();
+
+    resolve(
+      snapshot({
+        incomingDreami: { offerId: "offer-1", orderId: "order-1", dreamiId: "d" },
+      }) as never,
+    );
+    await syncPromise;
+
+    expect(useMatchingStore.getState().incomingDreami).toBeNull();
+  });
+
+  it("오프라인 전환 중 도착한 낡은 snapshot이 지워진 pendingOffer를 되살리지 않는다", async () => {
+    useMatchingStore.setState({ pendingOffer: offer({ offerId: "offer-1", orderId: "order-1" }) });
+    const { promise, resolve } = deferred<{ result: CurrentMatchingStatusDto }>();
+    getCurrentStatus.mockReturnValue(promise as never);
+
+    const syncPromise = useMatchingStore.getState().syncCurrentMatching();
+    await useMatchingStore.getState().goOffline();
+
+    resolve(pendingSnapshot("offer-1") as never);
+    await syncPromise;
+
+    expect(useMatchingStore.getState().pendingOffer).toBeNull();
   });
 });

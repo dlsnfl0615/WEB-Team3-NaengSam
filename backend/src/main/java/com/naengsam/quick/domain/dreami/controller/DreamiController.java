@@ -69,7 +69,7 @@ public class DreamiController {
     @Operation(summary = "드리미가 제안 수락", description = "로그인한 드리미에게 온 제안을 수락한다.")
     @PostMapping("/offers/{offerId}/accept")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
+    @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER", "OFFER_EXPIRED"})
     @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
     public void acceptOffer(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
         dreamiService.acceptOffer(offerId, dreamiId);

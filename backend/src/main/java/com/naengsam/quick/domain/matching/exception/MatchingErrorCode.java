@@ -18,7 +18,8 @@ public enum MatchingErrorCode implements BaseErrorCode {
     MATCHING_NOT_FOUND(HttpStatus.NOT_FOUND, "MATCH_005", "매칭 정보를 찾을 수 없습니다."),
     BOORMI_CONFIRMATION_TIMEOUT(HttpStatus.CONFLICT, "MATCH_006", "확정 시간이 지나 매칭이 취소되었어요."),
     TOO_MANY_ATTEMPTS(HttpStatus.TOO_MANY_REQUESTS, "MATCH_007", "잠시 후 다시 시도해 주세요."),
-    NOT_OFFER_OWNER(HttpStatus.FORBIDDEN, "MATCH_008", "본인에게 온 제안만 처리할 수 있습니다.");
+    NOT_OFFER_OWNER(HttpStatus.FORBIDDEN, "MATCH_008", "본인에게 온 제안만 처리할 수 있습니다."),
+    OFFER_EXPIRED(HttpStatus.CONFLICT, "MATCH_009", "이미 만료된 제안이에요.");
 
     private final HttpStatus status;
     private final String code;

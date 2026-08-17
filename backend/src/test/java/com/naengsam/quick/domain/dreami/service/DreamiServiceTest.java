@@ -526,6 +526,7 @@ class DreamiServiceTest {
         UUID offerId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).willReturn(true);
         given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.empty());
 
         Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(offerId, dreamiId));
@@ -542,6 +543,7 @@ class DreamiServiceTest {
         GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
         Orders order = Orders.create(orderId, UUID.randomUUID(), point, point); // 기본 상태 MATCHING
         given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).willReturn(true);
         given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.of(orderId));
         given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
 
@@ -549,8 +551,23 @@ class DreamiServiceTest {
 
         assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
         assertThat(order.getDreamiId()).isEqualTo(dreamiId); // 수락한 드리미로 임시 배정
+        assertThat(order.getPendingOfferId()).isEqualTo(offerId); // 확정 대기 offer로 기록
         verify(matchingService, never()).acceptByDreami(any()); // 커밋 전에는 엔진에 직접 제출하지 않는다
         verify(eventPublisher).publishEvent(new DreamiAcceptedEvent(offerId));
+    }
+
+    @Test
+    void 제안수락_이미_DREAMI_EXPIRED로_만료된_제안이면_OFFER_EXPIRED_예외이고_DB를_건드리지_않는다() {
+        UUID offerId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).willReturn(false);
+
+        Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(offerId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(MatchingErrorCode.OFFER_EXPIRED);
+        verify(orderRepository, never()).findByOrderId(any());
+        verify(eventPublisher, never()).publishEvent(any(DreamiAcceptedEvent.class));
     }
 
     @Test
@@ -564,6 +581,7 @@ class DreamiServiceTest {
         ReflectionTestUtils.setField(order, "orderCd", OrderCd.PENDING_BOORMI_CONFIRMATION);
         ReflectionTestUtils.setField(order, "dreamiId", otherDreamiId);
         given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).willReturn(true);
         given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.of(orderId));
         given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
 
@@ -584,7 +602,9 @@ class DreamiServiceTest {
         Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
         ReflectionTestUtils.setField(order, "orderCd", OrderCd.PENDING_BOORMI_CONFIRMATION);
         ReflectionTestUtils.setField(order, "dreamiId", dreamiId);
+        ReflectionTestUtils.setField(order, "pendingOfferId", offerId);
         given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).willReturn(true);
         given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.of(orderId));
         given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
 
@@ -596,6 +616,32 @@ class DreamiServiceTest {
     }
 
     @Test
+    void 제안수락_같은_드리미여도_지금의_확정_대기_offer가_아니면_ALREADY_ACCEPTED_BY_OTHER_예외() {
+        // 그 사이 재매칭으로 같은 드리미에게 새 오퍼(offer-2)가 발급돼 확정 대기 중인데, 오래된 offer-1로
+        // 뒤늦게 들어온 수락 요청 — dreamiId만 보면 "본인 재시도"로 오판할 수 있어 pendingOfferId까지 확인해야 한다.
+        UUID staleOfferId = UUID.randomUUID();
+        UUID currentOfferId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        GeoPoint point = new GeoPoint(new BigDecimal("37.5"), new BigDecimal("127.0"));
+        Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
+        ReflectionTestUtils.setField(order, "orderCd", OrderCd.PENDING_BOORMI_CONFIRMATION);
+        ReflectionTestUtils.setField(order, "dreamiId", dreamiId);
+        ReflectionTestUtils.setField(order, "pendingOfferId", currentOfferId);
+        given(matchingService.isDreamiOfferOwner(staleOfferId, dreamiId)).willReturn(true);
+        given(matchingService.isDreamiOfferAcceptable(staleOfferId, dreamiId)).willReturn(true);
+        given(matchingService.findOrderIdByOfferId(staleOfferId)).willReturn(Optional.of(orderId));
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
+
+        Throwable thrown = catchThrowable(() -> dreamiService.acceptOffer(staleOfferId, dreamiId));
+
+        assertThat(errorCodeOf(thrown)).isEqualTo(MatchingErrorCode.ALREADY_ACCEPTED_BY_OTHER);
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION); // 건드리지 않음
+        assertThat(order.getPendingOfferId()).isEqualTo(currentOfferId); // 건드리지 않음
+        verify(eventPublisher, never()).publishEvent(any(DreamiAcceptedEvent.class));
+    }
+
+    @Test
     void 제안수락_주문이_PENDING_BOORMI_CONFIRMATION도_아니고_MATCHING도_아니면_NOT_ACCEPTABLE_STATUS_예외() {
         UUID offerId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
@@ -604,6 +650,7 @@ class DreamiServiceTest {
         Orders order = Orders.create(orderId, UUID.randomUUID(), point, point);
         ReflectionTestUtils.setField(order, "orderCd", OrderCd.CANCELLED);
         given(matchingService.isDreamiOfferOwner(offerId, dreamiId)).willReturn(true);
+        given(matchingService.isDreamiOfferAcceptable(offerId, dreamiId)).willReturn(true);
         given(matchingService.findOrderIdByOfferId(offerId)).willReturn(Optional.of(orderId));
         given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
 

@@ -28,6 +28,7 @@ import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.engine.MatchingEngine;
 import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
@@ -95,11 +96,14 @@ class MatchingServiceConcurrencyTest {
                 geoDistanceCalculator, new MatchingAssignmentProblemFactory(new LegacyOfferPolicy()),
                 properties, Clock.systemDefaultZone());
 
+        BoormiOfferExpirationService boormiOfferExpirationService = mock(BoormiOfferExpirationService.class);
+        when(boormiOfferExpirationService.expire(any(), any())).thenReturn(true);
+
         matchingService = new MatchingService(matchingEngine, notificationService,
                 mock(DeliveryService.class),
                 Clock.systemDefaultZone(),
                 assembler, assignmentPolicy, matchingPlanApplier, properties, geoDistanceCalculator,
-                new SimpleMeterRegistry());
+                new SimpleMeterRegistry(), boormiOfferExpirationService);
         requestThreads = Executors.newFixedThreadPool(16);
     }
 
