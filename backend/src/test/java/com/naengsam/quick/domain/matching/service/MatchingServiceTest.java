@@ -54,6 +54,7 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.order.service.PendingOfferStateService;
+import com.naengsam.quick.global.debug.InMemoryStructureDto;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
@@ -62,6 +63,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -2376,6 +2378,79 @@ class MatchingServiceTest {
                         LocalDateTime.now()));
 
         assertThat(matchingService.findIncomingDreamiOffer(UUID.randomUUID())).isEmpty();
+    }
+
+    @Test
+    void 매칭이_진행되면_인메모리_현황이_네개_맵의_크기와_상태별_집계를_보고한다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+        lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
+
+        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+
+        // when
+        matchingService.applyStartMatching(order);
+        matchingService.applyRunMatchingAssignmentCycle();
+
+        // then
+        int offerCount = getOffersById().size();
+        assertThat(structureOf("offersById").size()).isEqualTo(offerCount);
+        assertThat(structureOf("offersById").breakdown())
+                .containsEntry(MatchOfferStatus.OFFERED.name(), (long) offerCount);
+        assertThat(structureOf("dreamiMap").size()).isEqualTo(2);
+        assertThat(structureOf("orderOfferGroupsByOrderId").size()).isEqualTo(1);
+        assertThat(structureOf("orderOfferGroupsByOrderId").breakdown())
+                .containsEntry(OrderOfferGroupStatus.OPEN.name(), 1L)
+                .containsEntry("offers 합계", (long) offerCount);
+        assertThat(structureOf("offerIdsByDreamiId").breakdown())
+                .containsEntry("내부 원소 합계", (long) offerCount);
+    }
+
+    @Test
+    void 부르미가_취소한_주문의_방과_오퍼는_인메모리_현황에_그대로_남는다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        GeoPoint location = mock(GeoPoint.class);
+        Orders order = mock(Orders.class);
+        when(order.getOrderId()).thenReturn(orderId);
+        lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
+
+        matchingService.applyRegisterDreami(UUID.randomUUID(), location);
+        matchingService.applyStartMatching(order);
+        matchingService.applyRunMatchingAssignmentCycle();
+        int offerCountBeforeCancel = structureOf("offersById").size();
+
+        // when
+        matchingService.applyCancelOrderByBoormi(orderId);
+
+        // then (취소는 상태만 CANCELLED로 바꾸고 맵에서 빼지 않는다 — 이 화면이 드러내려는 잔류 그 자체다)
+        assertThat(offerCountBeforeCancel).isPositive();
+        assertThat(structureOf("offersById").size()).isEqualTo(offerCountBeforeCancel);
+        assertThat(structureOf("orderOfferGroupsByOrderId").size()).isEqualTo(1);
+        assertThat(structureOf("orderOfferGroupsByOrderId").breakdown())
+                .containsEntry(OrderOfferGroupStatus.CANCELLED.name(), 1L);
+    }
+
+    @Test
+    void 인메모리_현황의_상태별_집계는_해당_상태가_없어도_0으로_보고한다() {
+        assertThat(structureOf("offersById").breakdown())
+                .containsOnlyKeys(Arrays.stream(MatchOfferStatus.values()).map(Enum::name).toArray(String[]::new))
+                .containsValue(0L);
+        assertThat(structureOf("dreamiMap").breakdown())
+                .containsEntry(WaitingDreamiStatus.MATCHING.name(), 0L);
+    }
+
+    private InMemoryStructureDto structureOf(String name) {
+        return matchingService.inMemoryStructures().stream()
+                .filter(structure -> structure.name().equals(name))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("보고되지 않은 자료구조입니다: " + name));
     }
 
     @SuppressWarnings("unchecked")
