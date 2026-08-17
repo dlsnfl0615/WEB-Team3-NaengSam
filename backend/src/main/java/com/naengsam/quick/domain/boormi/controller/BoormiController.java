@@ -6,7 +6,9 @@ import com.naengsam.quick.domain.boormi.service.BoormiService;
 import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderCountDto;
+import com.naengsam.quick.domain.order.dto.OrderStatusCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.global.code.GeneralErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
@@ -19,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.UUID;
 
 @Slf4j
@@ -55,11 +58,19 @@ public class BoormiController {
         return boormiService.subscribeOrder(orderRequest, boormiId);
     }
 
-    @Operation(summary = "내 주문 목록 조회", description = "로그인한 부르미가 신청한 주문 전체를 최신순으로 조회한다.")
+    @Operation(summary = "내 주문 목록 조회",
+            description = "로그인한 부르미가 신청한 주문을 최신순으로 페이지네이션 조회한다. status를 생략하면 상태 무관 전체, "
+                    + "지정하면 그 상태들만 반환한다(필터 탭 하나가 여러 상태를 묶는 경우 여러 값을 함께 넘기면 된다. 예: "
+                    + "status=MATCHING&status=PENDING_BOORMI_CONFIRMATION). cursor는 이전 응답의 nextCursor를 그대로 "
+                    + "넘기면 되고, 첫 페이지는 생략한다.")
     @GetMapping("/calls")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    public BoormiOrdersResponse getBoormiOrders(@LoginUser UUID boormiId) {
-        return boormiService.getMyOrders(boormiId);
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"INVALID_CURSOR"})
+    public BoormiOrdersResponse getBoormiOrders(@LoginUser UUID boormiId,
+            @RequestParam(required = false) List<OrderCd> status,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) Integer size) {
+        return boormiService.getMyOrders(boormiId, status, cursor, size);
     }
 
     @Operation(summary = "내 주문 단건 조회",
@@ -76,6 +87,14 @@ public class BoormiController {
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     public OrderCountDto getBoormiOrderCount(@LoginUser UUID boormiId) {
         return boormiService.getMyOrderCount(boormiId);
+    }
+
+    @Operation(summary = "내 주문 상태별 건수 조회",
+            description = "활동 내역 화면의 탭(전체/진행중/완료/취소)별 개수 표시용. 목록 페이지네이션과 별개로 화면 진입 시 한 번만 호출하면 된다.")
+    @GetMapping("/calls/status-counts")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    public List<OrderStatusCountDto> getBoormiOrderStatusCounts(@LoginUser UUID boormiId) {
+        return boormiService.getMyOrderStatusCounts(boormiId);
     }
 
     @Operation(summary = "주문 취소", description = "매칭 성사 전 상태의 주문을 취소하고 매칭 큐에서 제안을 회수한다.")

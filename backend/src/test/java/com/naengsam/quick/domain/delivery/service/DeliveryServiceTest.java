@@ -4,6 +4,7 @@ import tools.jackson.databind.ObjectMapper;
 import com.naengsam.quick.domain.address.dto.KakaoDirectionsResponseDto;
 import com.naengsam.quick.domain.address.exception.AddressErrorCode;
 import com.naengsam.quick.domain.address.service.DirectionsService;
+import com.naengsam.quick.domain.delivery.dto.ActiveDeliveryDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryCompletionDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryContactDto;
 import com.naengsam.quick.domain.delivery.dto.DeliveryDetailResponseDto;
@@ -61,6 +62,7 @@ import static com.naengsam.quick.domain.delivery.entity.DeliveryCd.*;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
@@ -1513,5 +1515,20 @@ class DeliveryServiceTest {
         catchThrowable(() -> deliveryService.finishDelivery(orderId, UUID.randomUUID(), PHOTO_KEY));
 
         verify(deliveryCertificationRepository, never()).save(any());
+    }
+
+    @Test
+    void 진행중배달목록_픽업중과_배달중_상태만_반환한다() {
+        Delivery pickupNormal = Delivery.create(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        Delivery delivering = Delivery.create(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+        ReflectionTestUtils.setField(delivering, "deliveryCd", DELIVERING);
+        given(deliveryRepository.findByDeliveryCdIn(anyCollection()))
+                .willReturn(List.of(pickupNormal, delivering));
+
+        List<ActiveDeliveryDto> result = deliveryService.listActiveDeliveries();
+
+        assertThat(result).hasSize(2)
+                .extracting(ActiveDeliveryDto::orderId)
+                .containsExactlyInAnyOrder(pickupNormal.getOrderId(), delivering.getOrderId());
     }
 }

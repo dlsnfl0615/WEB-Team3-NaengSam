@@ -10,6 +10,7 @@ public record UserDto(
         String email,
         String name,
         boolean isDreami,
+        boolean isAdmin,
         BigDecimal boormiAvgScore,
         BigDecimal dreamiAvgScore,
         ActiveRole activeRole,
@@ -22,7 +23,7 @@ public record UserDto(
 
     public static UserDto from(Boormi boormi, boolean isDreami, BigDecimal dreamiAvgScore,
             ActiveContext activeContext) {
-        return new UserDto(boormi.getBoormiId(), boormi.getEmail(), boormi.getName(), isDreami,
+        return new UserDto(boormi.getBoormiId(), boormi.getEmail(), boormi.getName(), isDreami, boormi.isAdmin(),
                 boormi.getBoormiAvgScore(), dreamiAvgScore,
                 activeContext.role(), activeContext.orderId(), activeContext.orderCd());
     }

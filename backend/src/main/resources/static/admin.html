@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>관리자 페이지</title>
+    <style>
+        :root {
+            --bg: #0f1115;
+            --panel: #181b22;
+            --border: #2a2f3a;
+            --text: #e6e8ec;
+            --muted: #9aa3b2;
+            --accent: #4f8cff;
+            --green: #34d399;
+            --red: #f87171;
+            --yellow: #fbbf24;
+        }
+        * { box-sizing: border-box; }
+        body {
+            margin: 0;
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans KR", sans-serif;
+            line-height: 1.5;
+        }
+        header {
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            padding: 16px 24px;
+            border-bottom: 1px solid var(--border);
+            background: rgba(15, 17, 21, 0.94);
+            backdrop-filter: blur(8px);
+            flex-wrap: wrap;
+        }
+        h1 { margin: 0; font-size: 18px; }
+        h2 {
+            margin: 0 0 12px;
+            color: var(--muted);
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+        main { padding: 20px 24px 40px; }
+        .panel {
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--panel);
+        }
+        .panel-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .panel-header h2 { margin: 0; }
+        .muted { color: var(--muted); font-size: 12px; }
+        .mono { font-family: "SF Mono", Menlo, Consolas, monospace; }
+        .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .empty { padding: 40px 4px; text-align: center; color: var(--muted); }
+        .error-box {
+            display: none;
+            margin-bottom: 16px;
+            padding: 10px 12px;
+            border: 1px solid rgba(248, 113, 113, 0.45);
+            border-radius: 8px;
+            background: rgba(248, 113, 113, 0.08);
+            color: var(--red);
+            font-size: 12px;
+        }
+        .status-pill, .tag {
+            display: inline-flex;
+            align-items: center;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+        .status-pill { padding: 4px 10px; font-size: 12px; }
+        .status-pill.on { border-color: var(--green); color: var(--green); }
+        .status-pill.error { border-color: var(--red); color: var(--red); }
+        .tag { padding: 2px 7px; font-size: 11px; }
+        .tag.info { border-color: var(--green); color: var(--green); }
+        .tag.warning { border-color: var(--yellow); color: var(--yellow); }
+        .tag.danger { border-color: var(--red); color: var(--red); }
+        input {
+            min-width: 0;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            outline: none;
+            background: #0f1115;
+            color: var(--text);
+            font: 12px "SF Mono", Menlo, Consolas, monospace;
+        }
+        input:focus { border-color: var(--accent); }
+        button {
+            padding: 8px 12px;
+            border: 0;
+            border-radius: 6px;
+            background: var(--accent);
+            color: white;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        button:hover { filter: brightness(1.1); }
+        button:disabled { cursor: not-allowed; opacity: 0.5; }
+        button.secondary { background: #2a2f3a; color: var(--text); }
+        button.danger { background: var(--red); color: #1a0d0d; }
+        button.small { padding: 4px 8px; font-size: 11px; }
+        table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        th, td { padding: 7px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+        th { color: var(--muted); font-weight: 500; }
+        tr:last-child td { border-bottom: 0; }
+        .cards { display: grid; gap: 10px; }
+        .group-card, .dreami-card {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #12151b;
+        }
+        .group-card { padding: 12px; }
+        .group-title, .dreami-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .group-meta { display: flex; gap: 14px; margin: 7px 0 10px; color: var(--muted); font-size: 12px; }
+        .dreami-card { padding: 10px 12px; }
+        .dreami-location { margin-top: 3px; color: var(--muted); font-size: 11px; }
+
+        /* 로그인 게이트 */
+        #loginGate {
+            max-width: 360px;
+            margin: 80px auto;
+        }
+        #loginGate label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+        #loginGate input { width: 100%; }
+        #loginGate button { width: 100%; margin-top: 16px; }
+        #forbiddenBox { display: none; }
+
+        /* 탭 */
+        .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+        .tab-btn {
+            background: transparent;
+            color: var(--muted);
+            border-radius: 8px 8px 0 0;
+            padding: 10px 16px;
+            font-weight: 600;
+        }
+        .tab-btn.active { background: var(--panel); color: var(--text); }
+        .tab-panel { display: none; }
+        .tab-panel.active { display: block; }
+        .stack { display: flex; flex-direction: column; gap: 16px; }
+        .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+        .count { font-size: 28px; font-weight: 700; }
+        .count-label { color: var(--muted); font-size: 12px; }
+        .photos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+        figure { margin: 0; }
+        figcaption { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+        .photo-frame {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            background: #0b0d11;
+            overflow: hidden;
+            aspect-ratio: 4 / 3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .photo-frame img { width: 100%; height: 100%; object-fit: contain; }
+        .review-actions { display: flex; gap: 8px; align-items: center; }
+        .review-actions input { flex: 1; }
+        button.approve { background: var(--green); color: #0f1115; }
+        button.reject { background: var(--red); color: #0f1115; }
+        @media (max-width: 900px) { main { padding: 16px; } }
+    </style>
+</head>
+<body>
+
+<!-- ===== 로그인 게이트 ===== -->
+<div id="loginGate">
+    <h1>관리자 로그인</h1>
+    <div id="loginError" class="error-box"></div>
+    <label>이메일</label>
+    <input id="loginEmail" type="email" placeholder="admin@example.com" autocomplete="off"/>
+    <label>비밀번호</label>
+    <input id="loginPassword" type="password" autocomplete="off"/>
+    <button type="button" onclick="login()">로그인</button>
+    <div id="forbiddenBox" class="error-box" style="margin-top:16px">
+        로그인에 실패했습니다.
+    </div>
+</div>
+
+<!-- ===== 관리자 앱 ===== -->
+<div id="app" style="display:none">
+    <header>
+        <h1>🛠 관리자 페이지</h1>
+        <div>
+            <span id="adminName" class="muted"></span>
+            <button class="secondary" type="button" onclick="logout()">로그아웃</button>
+        </div>
+    </header>
+    <main>
+        <div class="tabs">
+            <button class="tab-btn" data-tab="matching" onclick="activateTab('matching')">매칭 현황판</button>
+            <button class="tab-btn" data-tab="dreami" onclick="activateTab('dreami')">드리미 인증 검수</button>
+            <button class="tab-btn" data-tab="cancel" onclick="activateTab('cancel')">매칭·배달 취소 관리</button>
+        </div>
+
+        <!-- ===== 탭 1. 매칭 현황판 ===== -->
+        <section id="tab-matching" class="tab-panel">
+            <div id="matchingErrorBox" class="error-box"></div>
+            <section class="summary">
+                <div class="panel">
+                    <div id="dreamiCount" class="count">-</div>
+                    <div class="count-label">대기 드리미</div>
+                </div>
+                <div class="panel">
+                    <div id="orderCount" class="count">-</div>
+                    <div class="count-label">열린 주문</div>
+                </div>
+                <div class="panel">
+                    <div id="groupCount" class="count">-</div>
+                    <div class="count-label">조회된 오퍼 그룹</div>
+                </div>
+            </section>
+            <div style="display:flex; justify-content:flex-end; margin-bottom:12px; gap:8px; align-items:center">
+                <span id="matchingUpdatedAt" class="muted">조회 대기 중</span>
+                <button type="button" onclick="refreshMatchingDashboard(true)">지금 갱신</button>
+            </div>
+            <div class="stack">
+                <section class="panel">
+                    <div class="panel-header"><h2>매칭 그룹</h2><span class="muted">열린 주문 기준</span></div>
+                    <div id="groups" class="cards"><div class="empty">조회 중…</div></div>
+                </section>
+                <section class="panel">
+                    <div class="panel-header"><h2>드리미 상태</h2><span class="muted">대기열 전체</span></div>
+                    <div id="dreamis" class="cards"><div class="empty">조회 중…</div></div>
+                </section>
+            </div>
+        </section>
+
+        <!-- ===== 탭 2. 드리미 인증 검수 ===== -->
+        <section id="tab-dreami" class="tab-panel">
+            <div id="dreamiErrorBox" class="error-box"></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px">
+                <span id="dreamiUpdatedAt" class="muted">조회 대기 중</span>
+                <button class="secondary" type="button" onclick="loadPendingReviews()">새로고침</button>
+            </div>
+            <div id="reviewCards" class="cards"><div class="empty">조회 중…</div></div>
+        </section>
+
+        <!-- ===== 탭 3. 매칭·배달 취소 관리 ===== -->
+        <section id="tab-cancel" class="tab-panel">
+            <div id="cancelErrorBox" class="error-box"></div>
+            <div class="stack">
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>매칭 대기 중인 주문</h2>
+                        <button class="secondary small" type="button" onclick="loadWaitingOrders()">새로고침</button>
+                    </div>
+                    <div id="waitingOrdersTable"><div class="empty">조회 중…</div></div>
+                </section>
+                <section class="panel">
+                    <div class="panel-header">
+                        <h2>진행 중인 배달</h2>
+                        <button class="secondary small" type="button" onclick="loadActiveDeliveries()">새로고침</button>
+                    </div>
+                    <div id="activeDeliveriesTable"><div class="empty">조회 중…</div></div>
+                </section>
+            </div>
+        </section>
+    </main>
+</div>
+
+<script>
+    // ===== 공통 유틸 =====
+    function escapeHtml(value) {
+        return String(value ?? "").replace(/[&<>"']/g, character => ({
+            "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        })[character]);
+    }
+    function shortId(value) {
+        if (!value) return "-";
+        return value.length > 16 ? `${value.slice(0, 8)}…${value.slice(-4)}` : value;
+    }
+    function formatTime(value) {
+        if (!value) return "-";
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleTimeString("ko-KR");
+    }
+    async function apiFetch(path, options = {}) {
+        const response = await fetch(path, {
+            credentials: "same-origin",
+            headers: options.body ? { "Content-Type": "application/json" } : undefined,
+            ...options,
+        });
+        let body = null;
+        try { body = await response.json(); } catch (ignored) {}
+        if (!response.ok) {
+            throw new Error(body?.message ?? `${response.status} ${response.statusText}`);
+        }
+        return body?.result;
+    }
+    function showBoxError(boxId, message) {
+        const box = document.getElementById(boxId);
+        box.textContent = message ?? "";
+        box.style.display = message ? "block" : "none";
+    }
+
+    // ===== 로그인 게이트 =====
+    async function checkSession() {
+        try {
+            const me = await apiFetch("/api/v1/user/me");
+            if (!me.isAdmin) {
+                document.getElementById("loginGate").style.display = "block";
+                document.getElementById("app").style.display = "none";
+                document.getElementById("forbiddenBox").style.display = "block";
+                return;
+            }
+            document.getElementById("loginGate").style.display = "none";
+            document.getElementById("app").style.display = "block";
+            document.getElementById("adminName").textContent = `${me.name} (관리자)`;
+            activateTab("matching");
+        } catch (error) {
+            document.getElementById("loginGate").style.display = "block";
+            document.getElementById("app").style.display = "none";
+        }
+    }
+    async function login() {
+        document.getElementById("forbiddenBox").style.display = "none";
+        try {
+            await apiFetch("/api/v1/user/login", {
+                method: "POST",
+                body: JSON.stringify({
+                    email: document.getElementById("loginEmail").value,
+                    password: document.getElementById("loginPassword").value,
+                }),
+            });
+            showBoxError("loginError", "");
+            await checkSession();
+        } catch (error) {
+            showBoxError("loginError", `로그인 실패: ${error.message}`);
+        }
+    }
+    async function logout() {
+        try { await apiFetch("/api/v1/user/logout", { method: "POST" }); } catch (ignored) {}
+        stopMatchingPolling();
+        document.getElementById("app").style.display = "none";
+        document.getElementById("loginGate").style.display = "block";
+    }
+
+    // ===== 탭 전환 =====
+    const TAB_LOADERS = {
+        matching: () => { startMatchingPolling(); void refreshMatchingDashboard(true); },
+        dreami: () => void loadPendingReviews(),
+        cancel: () => { void loadWaitingOrders(); void loadActiveDeliveries(); },
+    };
+    function activateTab(tab) {
+        document.querySelectorAll(".tab-btn").forEach(button =>
+            button.classList.toggle("active", button.dataset.tab === tab));
+        document.querySelectorAll(".tab-panel").forEach(panel =>
+            panel.classList.toggle("active", panel.id === `tab-${tab}`));
+        if (tab !== "matching") stopMatchingPolling();
+        TAB_LOADERS[tab]();
+    }
+
+    // ===== 탭 1. 매칭 현황판 =====
+    const MATCHING_API = "/api/v1/debug/matching";
+    let matchingPollTimer = null;
+    let matchingRefreshing = false;
+
+    function statusClass(status) {
+        if (status === "MATCHED") return "info";
+        if (status?.includes("REJECTED") || status?.includes("EXPIRED")) return "danger";
+        if (status === "WAITING" || status === "CANCELLED" || status === "WITHDRAWN" || status === "MATCHING") return "";
+        return "warning";
+    }
+    function statusTag(status) {
+        const value = status ?? "UNKNOWN";
+        return `<span class="tag ${statusClass(value)}">${escapeHtml(value)}</span>`;
+    }
+    function formatLocation(location) {
+        if (location?.latitude == null || location?.longitude == null) return "위치 없음";
+        return `${Number(location.latitude).toFixed(5)}, ${Number(location.longitude).toFixed(5)}`;
+    }
+    function offerTable(offers = []) {
+        if (!offers.length) return '<div class="empty">생성된 오퍼가 없습니다.</div>';
+        const rows = offers.map(offer => `
+            <tr>
+                <td class="mono" title="${escapeHtml(offer.offerId)}">${escapeHtml(shortId(offer.offerId))}</td>
+                <td class="mono" title="${escapeHtml(offer.dreamiId)}">${escapeHtml(shortId(offer.dreamiId))}</td>
+                <td>${statusTag(offer.status)}</td>
+            </tr>
+        `).join("");
+        return `<table><thead><tr><th>offerId</th><th>dreamiId</th><th>상태</th></tr></thead><tbody>${rows}</tbody></table>`;
+    }
+    function groupCard(group) {
+        return `
+            <article class="group-card">
+                <div class="group-title">
+                    <span class="mono ellipsis" title="${escapeHtml(group.orderId)}">${escapeHtml(group.orderId ?? "orderId 없음")}</span>
+                    ${statusTag(group.status)}
+                </div>
+                <div class="group-meta">
+                    <span>오퍼 ${group.offers?.length ?? 0}개</span>
+                    <span>재매칭 ${group.rematchRequired ? "필요" : "불필요"}</span>
+                </div>
+                ${offerTable(group.offers)}
+            </article>
+        `;
+    }
+    function renderGroups(groups) {
+        document.getElementById("groups").innerHTML = groups.length
+            ? groups.map(groupCard).join("")
+            : '<div class="empty">현재 열린 매칭 그룹이 없습니다.</div>';
+    }
+    function renderDreamis(dreamis) {
+        document.getElementById("dreamis").innerHTML = dreamis.length
+            ? dreamis.map(dreami => `
+                <article class="dreami-card">
+                    <div style="min-width:0">
+                        <div class="mono ellipsis" title="${escapeHtml(dreami.dreamiId)}">${escapeHtml(dreami.dreamiId ?? "dreamiId 없음")}</div>
+                        <div class="dreami-location">${escapeHtml(formatLocation(dreami.location))} · ${escapeHtml(formatTime(dreami.updatedAt))}</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px; flex-shrink:0">
+                        ${statusTag(dreami.status)}
+                        <button class="secondary small" type="button" onclick="removeDreami('${dreami.dreamiId}')">회수</button>
+                    </div>
+                </article>
+            `).join("")
+            : '<div class="empty">등록된 대기 드리미가 없습니다.</div>';
+    }
+    async function removeDreami(dreamiId) {
+        if (!window.confirm(`드리미 ${shortId(dreamiId)}를 회수할까요?`)) return;
+        try {
+            await apiFetch(`${MATCHING_API}/dreamis/${encodeURIComponent(dreamiId)}`, { method: "DELETE" });
+            await refreshMatchingDashboard(true);
+        } catch (error) {
+            showBoxError("matchingErrorBox", `드리미 회수 실패: ${error.message}`);
+        }
+    }
+    async function fetchGroup(orderId) {
+        return apiFetch(`${MATCHING_API}/orders/${encodeURIComponent(orderId)}/group`);
+    }
+    async function refreshMatchingDashboard(manual = false) {
+        if (matchingRefreshing) return;
+        matchingRefreshing = true;
+        try {
+            const [dreamis, orders] = await Promise.all([
+                apiFetch(`${MATCHING_API}/dreamis`),
+                apiFetch(`${MATCHING_API}/orders/waiting`),
+            ]);
+            const groupResults = await Promise.allSettled(
+                (orders ?? []).filter(order => order.orderId).map(order => fetchGroup(order.orderId)));
+            const groups = groupResults
+                .filter(result => result.status === "fulfilled" && result.value)
+                .map(result => result.value);
+
+            document.getElementById("dreamiCount").textContent = String(dreamis?.length ?? 0);
+            document.getElementById("orderCount").textContent = String(orders?.length ?? 0);
+            document.getElementById("groupCount").textContent = String(groups.length);
+            renderDreamis(dreamis ?? []);
+            renderGroups(groups);
+            document.getElementById("matchingUpdatedAt").textContent =
+                `${new Date().toLocaleTimeString("ko-KR")} 기준 · 2초 간격`;
+            showBoxError("matchingErrorBox", "");
+        } catch (error) {
+            showBoxError("matchingErrorBox", `매칭 상태를 불러오지 못했습니다: ${error.message}`);
+        } finally {
+            matchingRefreshing = false;
+        }
+    }
+    function startMatchingPolling() {
+        if (matchingPollTimer) return;
+        matchingPollTimer = window.setInterval(() => void refreshMatchingDashboard(), 2000);
+    }
+    function stopMatchingPolling() {
+        if (matchingPollTimer) window.clearInterval(matchingPollTimer);
+        matchingPollTimer = null;
+    }
+
+    // ===== 탭 2. 드리미 인증 검수 =====
+    const DREAMI_REVIEW_API = "/api/v1/debug/dreami-review";
+    const DEFAULT_REJECT_REASON = "관리자 검수 결과 반려";
+
+    function photoFigure(label, url) {
+        return `
+            <figure>
+                <figcaption>${escapeHtml(label)}</figcaption>
+                <div class="photo-frame">
+                    ${url ? `<img src="${escapeHtml(url)}" alt="${escapeHtml(label)}" loading="lazy"/>`
+                          : '<span class="muted">사진 없음</span>'}
+                </div>
+            </figure>
+        `;
+    }
+    function reviewCard(review) {
+        return `
+            <article class="group-card" id="review-${review.dreamiId}" style="padding:16px">
+                <div class="group-title" style="margin-bottom:12px">
+                    <span class="mono">${escapeHtml(review.dreamiId)}</span>
+                    <span class="muted">신청일 ${escapeHtml(review.requestDtm ?? "-")}</span>
+                </div>
+                <div class="photos">
+                    ${photoFigure("신분증", review.idCardImageUrl)}
+                    ${photoFigure("범죄경력회보서", review.criminalRecordImageUrl)}
+                </div>
+                <div class="review-actions">
+                    <input type="text" id="reason-${review.dreamiId}" placeholder="반려 사유 (비우면 기본 문구)"/>
+                    <button class="approve" type="button" onclick="approveReview('${review.dreamiId}')">승인</button>
+                    <button class="reject" type="button" onclick="rejectReview('${review.dreamiId}')">반려</button>
+                </div>
+            </article>
+        `;
+    }
+    async function loadPendingReviews() {
+        try {
+            const reviews = await apiFetch(`${DREAMI_REVIEW_API}/pending`);
+            document.getElementById("reviewCards").innerHTML = (reviews ?? []).length
+                ? reviews.map(reviewCard).join("")
+                : '<div class="empty">검수 대기 중인 신청이 없습니다.</div>';
+            document.getElementById("dreamiUpdatedAt").textContent = `${new Date().toLocaleTimeString("ko-KR")} 기준`;
+            showBoxError("dreamiErrorBox", "");
+        } catch (error) {
+            document.getElementById("reviewCards").innerHTML = "";
+            showBoxError("dreamiErrorBox", `목록을 불러오지 못했습니다: ${error.message}`);
+        }
+    }
+    function setReviewCardBusy(dreamiId, busy) {
+        document.getElementById(`review-${dreamiId}`)
+            ?.querySelectorAll("button").forEach(button => { button.disabled = busy; });
+    }
+    async function approveReview(dreamiId) {
+        setReviewCardBusy(dreamiId, true);
+        try {
+            await apiFetch(`${DREAMI_REVIEW_API}/${dreamiId}/approve`, { method: "POST" });
+            await loadPendingReviews();
+        } catch (error) {
+            showBoxError("dreamiErrorBox", `승인 처리에 실패했습니다: ${error.message}`);
+            setReviewCardBusy(dreamiId, false);
+        }
+    }
+    async function rejectReview(dreamiId) {
+        const reason = document.getElementById(`reason-${dreamiId}`)?.value.trim() || DEFAULT_REJECT_REASON;
+        setReviewCardBusy(dreamiId, true);
+        try {
+            await apiFetch(`${DREAMI_REVIEW_API}/${dreamiId}/reject`, {
+                method: "POST",
+                body: JSON.stringify({ reason }),
+            });
+            await loadPendingReviews();
+        } catch (error) {
+            showBoxError("dreamiErrorBox", `반려 처리에 실패했습니다: ${error.message}`);
+            setReviewCardBusy(dreamiId, false);
+        }
+    }
+
+    // ===== 탭 3. 매칭·배달 취소 관리 (신규) =====
+    async function loadWaitingOrders() {
+        const container = document.getElementById("waitingOrdersTable");
+        try {
+            const orders = await apiFetch(`${MATCHING_API}/orders/waiting`);
+            if (!orders?.length) {
+                container.innerHTML = '<div class="empty">매칭 대기 중인 주문이 없습니다.</div>';
+                return;
+            }
+            const rows = orders.map(order => `
+                <tr>
+                    <td class="mono" title="${escapeHtml(order.orderId)}">${escapeHtml(shortId(order.orderId))}</td>
+                    <td>${escapeHtml(formatLocation(order.location))}</td>
+                    <td><button class="danger small" type="button" onclick="cancelWaitingOrder('${order.orderId}')">취소</button></td>
+                </tr>
+            `).join("");
+            container.innerHTML =
+                `<table><thead><tr><th>orderId</th><th>위치</th><th>액션</th></tr></thead><tbody>${rows}</tbody></table>`;
+            showBoxError("cancelErrorBox", "");
+        } catch (error) {
+            container.innerHTML = "";
+            showBoxError("cancelErrorBox", `매칭 대기 주문을 불러오지 못했습니다: ${error.message}`);
+        }
+    }
+    async function cancelWaitingOrder(orderId) {
+        if (!window.confirm(`주문 ${shortId(orderId)}의 매칭을 취소할까요?`)) return;
+        try {
+            await apiFetch(`${MATCHING_API}/orders/${encodeURIComponent(orderId)}/cancel`, { method: "POST" });
+            await loadWaitingOrders();
+        } catch (error) {
+            showBoxError("cancelErrorBox", `매칭 취소 실패: ${error.message}`);
+        }
+    }
+    async function loadActiveDeliveries() {
+        const container = document.getElementById("activeDeliveriesTable");
+        try {
+            const deliveries = await apiFetch("/api/v1/delivery/admin/deliveries");
+            if (!deliveries?.length) {
+                container.innerHTML = '<div class="empty">진행 중인 배달이 없습니다.</div>';
+                return;
+            }
+            const rows = deliveries.map(delivery => `
+                <tr>
+                    <td class="mono" title="${escapeHtml(delivery.orderId)}">${escapeHtml(shortId(delivery.orderId))}</td>
+                    <td class="mono" title="${escapeHtml(delivery.dreamiId)}">${escapeHtml(shortId(delivery.dreamiId))}</td>
+                    <td class="mono" title="${escapeHtml(delivery.boormiId)}">${escapeHtml(shortId(delivery.boormiId))}</td>
+                    <td>${statusTag(delivery.status)}</td>
+                    <td>${escapeHtml(formatLocation(delivery.currentLocation))}</td>
+                    <td>${escapeHtml(formatTime(delivery.lastLocationDtm))}</td>
+                    <td><button class="danger small" type="button" onclick="cancelActiveDelivery('${delivery.orderId}')">취소</button></td>
+                </tr>
+            `).join("");
+            container.innerHTML = `
+                <table>
+                    <thead><tr><th>orderId</th><th>dreamiId</th><th>boormiId</th><th>상태</th><th>현재 위치</th><th>최근 위치 갱신</th><th>액션</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `;
+            showBoxError("cancelErrorBox", "");
+        } catch (error) {
+            container.innerHTML = "";
+            showBoxError("cancelErrorBox", `진행 중인 배달을 불러오지 못했습니다: ${error.message}`);
+        }
+    }
+    async function cancelActiveDelivery(orderId) {
+        if (!window.confirm(`배달(주문 ${shortId(orderId)})을 관리자 권한으로 취소할까요?`)) return;
+        try {
+            await apiFetch(`/api/v1/delivery/orders/${encodeURIComponent(orderId)}/cancel/admin`, { method: "POST" });
+            await loadActiveDeliveries();
+        } catch (error) {
+            showBoxError("cancelErrorBox", `배달 취소 실패: ${error.message}`);
+        }
+    }
+
+    void checkSession();
+</script>
+</body>
+</html>

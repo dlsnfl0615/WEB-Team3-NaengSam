@@ -194,5 +194,5 @@ from ORDERS o1_0 where o1_0.order_id in (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 
 ## 참고
 
-- 재현·측정 절차: `backend/index-test/README.md`
-- 측정 원본: `backend/index-test/{before,after}-vu{1,10}.json`
+- 재현·측정 절차: `index-test/n-plus-1-nearby-test/README.md`
+- 측정 원본: `index-test/n-plus-1-nearby-test/{before,after}-vu{1,10}.json`

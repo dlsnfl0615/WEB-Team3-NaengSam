@@ -2,11 +2,49 @@ import type { IconName } from "@/shared/ui";
 import {
   OrderSummaryDtoItemCd,
   OrderSummaryDtoOrderCd,
+  type OrderStatusCountDto,
   type OrderSummaryDto,
 } from "@/shared/api";
 
 /** 활동 내역 필터 칩 분류(부르미·드리미 공용). */
 export type OrderFilter = "진행중" | "완료" | "취소";
+
+/** 활동 내역 화면의 필터 탭(전체 포함). */
+export type ActivityFilter = "전체" | OrderFilter;
+
+/** 필터 칩 하나가 실제로는 여러 orderCd를 묶은 것이라, 서버에 status로 넘길 목록. */
+export const FILTER_ORDER_CDS: Record<OrderFilter, OrderSummaryDtoOrderCd[]> = {
+  진행중: [
+    OrderSummaryDtoOrderCd.MATCHING,
+    OrderSummaryDtoOrderCd.PENDING_BOORMI_CONFIRMATION,
+    OrderSummaryDtoOrderCd.IN_PROGRESS,
+    OrderSummaryDtoOrderCd.WAITING_CONFIRMATION,
+  ],
+  완료: [OrderSummaryDtoOrderCd.COMPLETED],
+  취소: [OrderSummaryDtoOrderCd.CANCELLED, OrderSummaryDtoOrderCd.CLAIM_REVIEW],
+};
+
+/** 활동 내역 화면의 탭별 개수(전체 포함). */
+export interface FilterCounts {
+  전체: number;
+  진행중: number;
+  완료: number;
+  취소: number;
+}
+
+/** 상태별 개수(원본 orderCd 단위)를 필터 탭 그룹으로 합산한다. */
+export function toFilterCounts(counts: OrderStatusCountDto[]): FilterCounts {
+  const countOf = (cd: OrderSummaryDtoOrderCd) =>
+    counts.find((c) => c.orderCd === cd)?.count ?? 0;
+  const sumOf = (cds: OrderSummaryDtoOrderCd[]) =>
+    cds.reduce((sum, cd) => sum + countOf(cd), 0);
+
+  const ongoing = sumOf(FILTER_ORDER_CDS.진행중);
+  const completed = sumOf(FILTER_ORDER_CDS.완료);
+  const cancelled = sumOf(FILTER_ORDER_CDS.취소);
+
+  return { 전체: ongoing + completed + cancelled, 진행중: ongoing, 완료: completed, 취소: cancelled };
+}
 
 /** 부르미 주문 화면 모델(OrderSummaryDto에서 파생). */
 export interface BoormiOrder {

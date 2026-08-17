@@ -123,23 +123,48 @@ docker compose logs prometheus   # 스크레이프 에러가 없어야 한다
 
 SSE 는 `SseEmitter` 기반 async 요청이라 `http_server_requests_seconds` 에는 **연결이 끊길 때 한 번만** 기록됩니다. 연결 유지 중의 상태는 안 보이므로 `SseEmitterRegistry` 에서 직접 계측합니다.
 
-| Prometheus 이름                | 타입    | 라벨                                                               | 의미                                                                              |
-| ------------------------------ | ------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| `sse_connections_active`       | Gauge   | —                                                                  | 현재 유지 중인 연결 수                                                            |
-| `sse_connections_opened_total` | Counter | —                                                                  | 누적 연결 수립 수                                                                 |
-| `sse_connections_closed_total` | Counter | `reason` = `completion`/`timeout`/`error`/`send_failed` | 누적 연결 종료 수 |
-| `sse_events_sent_total`        | Counter | `event` (SSE 이벤트 이름)                                          | 전송 성공한 이벤트 수                                                             |
-| `sse_events_dropped_total`     | Counter | `reason` = `not_connected`/`send_failed`                           | 전송하지 못한 이벤트 수                                                           |
+| Prometheus 이름                | 타입    | 라벨                                                    | 의미                    |
+| ------------------------------ | ------- | ------------------------------------------------------- | ----------------------- |
+| `sse_connections_active`       | Gauge   | —                                                       | 현재 유지 중인 연결 수  |
+| `sse_connections_opened_total` | Counter | —                                                       | 누적 연결 수립 수       |
+| `sse_connections_closed_total` | Counter | `reason` = `completion`/`timeout`/`error`/`send_failed` | 누적 연결 종료 수       |
+| `sse_events_sent_total`        | Counter | `event` (SSE 이벤트 이름)                               | 전송 성공한 이벤트 수   |
+| `sse_events_dropped_total`     | Counter | `reason` = `not_connected`/`send_failed`                | 전송하지 못한 이벤트 수 |
 
 **주의 — `sse_connections_active` 는 실제보다 크게 나올 수 있습니다.** 서버는 클라이언트가 조용히 끊은 것을 다음 전송을 시도할 때에야 알아챕니다. heartbeat 이 없으므로, 이벤트가 없는 사용자의 죽은 연결은 타임아웃(1시간)까지 active 로 남습니다. `sse_connections_closed_total{reason="send_failed"}` 가 꾸준히 오르면 죽은 연결이 쌓이고 있다는 신호입니다.
 
+## 카카오 캐시 메트릭
+
+카카오 지오코딩·도보 길찾기 응답을 Redis 에 캐싱합니다 (#435). 캐시가 실제로 먹고 있는지, 카카오로 나가는 호출이 얼마나 줄었는지를 이 카운터 하나로 봅니다.
+
+| Prometheus 이름                          | 타입    | 라벨                                                                                | 의미                         |
+| ---------------------------------------- | ------- | ----------------------------------------------------------------------------------- | ---------------------------- |
+| `kakao_cache_total{api,result}`          | Counter | `api` = `geocode`/`route`, `result` = `hit`/`miss`                                  | 캐시 조회 결과별 누적 건수   |
+| `kakao_cache_error_total{api,op,reason}` | Counter | `op` = `get`/`put`, `reason` = `connection`/`timeout`/`oom`/`serialization`/`other` | 캐시 실패의 원인별 누적 건수 |
+
+- `result="miss"` 의 증가량이 **실제로 카카오로 나간 호출 수**입니다. `hit` 은 캐시가 막아준 호출 수(절감분)입니다.
+- 오류가 `kakao_cache_total` 이 아니라 **별도 메트릭**인 이유는 프로메테우스가 같은 메트릭 이름에 라벨 키가 달라지는 것을 허용하지 않기 때문입니다. 덕분에 히트율 분모에서 오류를 빼는 처리도 필요 없습니다.
+- **카운터는 첫 증가 전까지 시계열 자체가 없습니다.** 호출이 한 번도 없었으면 패널이 `No data` 로 보이는 것이 정상입니다. `kakao.enabled=false` 로 띄우면 캐시 빈이 아예 등록되지 않아 역시 메트릭이 없습니다 — 고장과 구분하려면 기동 로그(`좌표 변환 캐시 = Redis (TTL ...)`)를 보세요.
+- 캐시는 fail-open 이라 오류가 나도 카카오 직접 호출로 흘러가 기능은 정상 동작합니다. 다만 **`reason` 에 따라 대응이 완전히 갈립니다.**
+
+| `reason`        | 무슨 일                                   | 대응                                                                     |
+| --------------- | ----------------------------------------- | ------------------------------------------------------------------------ |
+| `oom`           | 64MB `noeviction` 이 참. 쓰기가 전부 실패 | `KAKAO_ROUTE_TTL` 축소 → `--maxmemory` 128mb. **정책은 바꾸지 않습니다** |
+| `connection`    | 레디스가 죽었거나 보안그룹에 막힘         | 레디스 인스턴스 확인. TTL·maxmemory 를 건드려도 소용없습니다             |
+| `timeout`       | 커맨드 타임아웃                           | 레디스 부하·네트워크 확인                                                |
+| `serialization` | DTO 모양이 바뀌어 저장된 값이 깨짐        | 없음. 배포 직후 잠깐 튀고 새 값으로 덮여 자동 복구됩니다                 |
+| `other`         | 위에 없는 실패                            | 로그(`카카오 응답 캐시 ... 실패`)의 스택트레이스를 봅니다                |
+
+- **`reason="oom"` 은 Redis 메모리 조기경보입니다.** 로그인 대기열과 같은 64MB `noeviction` 인스턴스를 쓰기 때문에, 메모리가 차면 이 캐시뿐 아니라 `LoginQueue.enqueue` 까지 실패해 로그인이 503 이 됩니다. redis_exporter 가 없어 Redis 메모리를 직접 볼 수 없으므로 이 카운터가 유일한 신호입니다. 자세한 대응은 `redis/README.md` 를 보세요.
+- 레디스가 완전히 죽으면 요청 1건이 `get`·`put` 양쪽에서 실패합니다. **영향받은 요청 수는 `op="get"` 만 세야** 합니다.
+
 ## 대시보드
 
-| 대시보드                              | 등록 방식                                                               | 이유                                                                                                                         |
-| ------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| **SymBoorm — HTTP & SSE**             | `grafana/provisioning/dashboards/symboorm-http-sse.json` 으로 자동 등록 | `sse_*` 는 우리가 만든 커스텀 메트릭이라 어떤 커뮤니티 대시보드에도 없습니다. ID 로 재생산이 불가능하므로 JSON 을 커밋합니다 |
-| Spring Boot 3.x Statistics (ID 19004) | UI 에서 import                                                          | ID 만 있으면 누구나 동일하게 재생산됩니다. 수천 줄 자동생성 JSON 을 커밋해도 리뷰가 불가능합니다                             |
-| JVM (Micrometer) (ID 4701)            | UI 에서 import                                                          | 위와 같음                                                                                                                    |
+| 대시보드                              | 등록 방식                                                               | 이유                                                                                                                                           |
+| ------------------------------------- | ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| **SymBoorm — HTTP & SSE**             | `grafana/provisioning/dashboards/symboorm-http-sse.json` 으로 자동 등록 | `sse_*` · `kakao_cache_*` 는 우리가 만든 커스텀 메트릭이라 어떤 커뮤니티 대시보드에도 없습니다. ID 로 재생산이 불가능하므로 JSON 을 커밋합니다 |
+| Spring Boot 3.x Statistics (ID 19004) | UI 에서 import                                                          | ID 만 있으면 누구나 동일하게 재생산됩니다. 수천 줄 자동생성 JSON 을 커밋해도 리뷰가 불가능합니다                                               |
+| JVM (Micrometer) (ID 4701)            | UI 에서 import                                                          | 위와 같음                                                                                                                                      |
 
 프로비저닝 대시보드는 `allowUiUpdates: false` 입니다. UI 에서 고쳐도 재기동하면 되돌아가므로, 바꾸려면 **JSON 파일을 고쳐 커밋**하세요(UI 에서 편집 → Export → JSON 붙여넣기).
 
@@ -171,6 +196,19 @@ sse_connections_active
 sum by (event) (rate(sse_events_sent_total[1m]))
 sum by (reason) (rate(sse_connections_closed_total[5m]))
 rate(sse_events_dropped_total[5m])
+
+# 카카오 캐시 히트율 (api별)
+sum by (api) (rate(kakao_cache_total{result="hit"}[5m]))
+  / sum by (api) (rate(kakao_cache_total{result=~"hit|miss"}[5m]))
+
+# 실제로 카카오로 나간 호출 rate
+sum by (api) (rate(kakao_cache_total{result="miss"}[5m]))
+
+# 원인별 캐시 오류
+sum by (reason) (rate(kakao_cache_error_total[5m]))
+
+# 트립와이어 — 울리면 로그인 대기열(LoginQueue.enqueue)도 같이 막혀 있다
+rate(kakao_cache_error_total{reason="oom"}[5m]) > 0
 ```
 
 ## 보관 기간
