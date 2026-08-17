@@ -19,7 +19,7 @@ public record MatchingCandidate(
         int orderCandidateCount,
         int dreamiCandidateCount,
         Optional<PreviousOfferInteraction> previousInteraction
-) {
+) implements MatchingCandidateView {
     public MatchingCandidate {
         if (orderId == null) {
             throw new IllegalArgumentException("orderId는 null일 수 없습니다.");

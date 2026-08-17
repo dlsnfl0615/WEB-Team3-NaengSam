@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.matching.policy.scoring;
 
-import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.model.MatchingCandidateView;
 
 /**
  * 매칭 후보의 우선순위를 점수로 환산하는 정책.
@@ -8,5 +8,5 @@ import com.naengsam.quick.domain.matching.model.MatchingCandidate;
  * 반환값은 음수를 허용한다.
  */
 public interface MatchingScorePolicy {
-    long score(MatchingCandidate candidate);
+    long score(MatchingCandidateView candidate);
 }

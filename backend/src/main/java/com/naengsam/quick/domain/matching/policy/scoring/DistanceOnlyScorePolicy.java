@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.matching.policy.scoring;
 
-import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.model.MatchingCandidateView;
 
 /**
  * 거리만으로 점수를 매기는 정책. score = distanceMeters.
@@ -8,7 +8,7 @@ import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 public class DistanceOnlyScorePolicy implements MatchingScorePolicy {
 
     @Override
-    public long score(MatchingCandidate candidate) {
+    public long score(MatchingCandidateView candidate) {
         return Math.round(candidate.distanceMeters());
     }
 }

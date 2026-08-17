@@ -1,29 +1,21 @@
 package com.naengsam.quick.domain.matching.policy.assignment;
 
-import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
-import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
-import com.naengsam.quick.domain.matching.model.PreviousOfferInteraction;
-import com.naengsam.quick.domain.matching.model.PreviousOfferOutcome;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
-import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.policy.planning.MatchingPlanningSnapshot;
+import com.naengsam.quick.domain.matching.policy.planning.MatchingPlanningSnapshotFactory;
 import com.naengsam.quick.domain.matching.policy.scope.OfferScope;
 import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
-import java.time.Duration;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.UUID;
-import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 /**
@@ -37,62 +29,43 @@ import org.springframework.stereotype.Service;
  * 하나도 없는 채로 문제에 남고, 배정 정책은 그 주문에 대해 자연히 빈 제안만 만든다.
  */
 @Service
-@RequiredArgsConstructor
+@RequiredArgsConstructor(onConstructor_ = @Autowired)
 public class MatchingAssignmentProblemAssembler {
 
-    private static final int MIN_OFFER_COUNT = 1;
     private final GeoDistanceCalculator geoDistanceCalculator;
     private final MatchingAssignmentProblemFactory matchingAssignmentProblemFactory;
-    private final MatchingPolicyProperties matchingPolicyProperties;
-    private final Clock clock;
-    private final OfferScopeResolver offerScopeResolver;
+    private final MatchingPlanningSnapshotFactory snapshotFactory;
     private final MeterRegistry meterRegistry;
 
-    private static Optional<PreviousOfferOutcome> toOutcome(MatchOfferStatus status) {
-        return switch (status) {
-            case DREAMI_REJECTED -> Optional.of(PreviousOfferOutcome.DREAMI_REJECTED);
-            case BOORMI_REJECTED -> Optional.of(PreviousOfferOutcome.BOORMI_REJECTED);
-            case DREAMI_EXPIRED -> Optional.of(PreviousOfferOutcome.DREAMI_EXPIRED);
-            case BOORMI_EXPIRED -> Optional.of(PreviousOfferOutcome.BOORMI_EXPIRED);
-            case WITHDRAWN -> Optional.of(PreviousOfferOutcome.WITHDRAWN);
-            case OFFERED, PENDING_BOORMI_CONFIRMATION, MATCHED -> Optional.empty();
-        };
+    public MatchingAssignmentProblemAssembler(
+            GeoDistanceCalculator geoDistanceCalculator,
+            MatchingAssignmentProblemFactory matchingAssignmentProblemFactory,
+            MatchingPolicyProperties matchingPolicyProperties,
+            Clock clock,
+            OfferScopeResolver offerScopeResolver,
+            MeterRegistry meterRegistry
+    ) {
+        this(
+                geoDistanceCalculator,
+                matchingAssignmentProblemFactory,
+                new MatchingPlanningSnapshotFactory(matchingPolicyProperties, clock, offerScopeResolver),
+                meterRegistry);
     }
 
     public MatchingAssignmentProblem assemble(
             List<OrderOfferGroup> orderOfferGroups,
             List<WaitingDreami> waitingDreamis
     ) {
-        LocalDateTime evaluatedAt = LocalDateTime.now(clock);
-
-        List<OrderOfferGroup> waitingGroups = orderOfferGroups.stream()
-                .filter(group -> group.status() == OrderOfferGroupStatus.WAITING)
-                .toList();
-        List<WaitingDreami> matchingDreamis = waitingDreamis.stream()
-                .filter(dreami -> dreami.status() == WaitingDreamiStatus.MATCHING)
-                .toList();
-
-        int maxConcurrentOffers = resolveMaxConcurrentOffers(waitingGroups.size(), matchingDreamis.size());
-        List<MatchingOrderInput> orders = waitingGroups.stream()
-                .map(group -> MatchingOrderInput.from(group, evaluatedAt, maxConcurrentOffers))
-                .toList();
-        List<MatchingDreamiInput> dreamis = matchingDreamis.stream()
-                .map(dreami -> new MatchingDreamiInput(
-                        dreami.dreamiId(), dreami.location(), Duration.between(dreami.updatedAt(), evaluatedAt)))
-                .toList();
-
-        Map<UUID, Duration> orderWaitingTimes = orders.stream()
-                .collect(Collectors.toMap(MatchingOrderInput::orderId, MatchingOrderInput::waitingTime));
-        Map<UUID, Duration> dreamiWaitingTimes = dreamis.stream()
-                .collect(Collectors.toMap(MatchingDreamiInput::dreamiId, MatchingDreamiInput::waitingTime));
+        MatchingPlanningSnapshot snapshot = snapshotFactory.create(orderOfferGroups, waitingDreamis);
 
         List<MatchingCandidate> rawCandidates = new ArrayList<>();
-        for (OrderOfferGroup group : waitingGroups) {
-            Duration orderWaitingTime = orderWaitingTimes.get(group.orderId());
-            OfferScope offerScope = offerScopeResolver.resolve(orderWaitingTime);
+        for (int orderIndex = 0; orderIndex < snapshot.orders().size(); orderIndex++) {
+            MatchingOrderInput order = snapshot.orders().get(orderIndex);
+            OfferScope offerScope = snapshot.offerScopes().get(orderIndex);
 
-            for (WaitingDreami dreami : matchingDreamis) {
-                double distanceMeters = geoDistanceCalculator.distanceMeters(group.location(), dreami.location());
+            for (int dreamiIndex = 0; dreamiIndex < snapshot.dreamis().size(); dreamiIndex++) {
+                MatchingDreamiInput dreami = snapshot.dreamis().get(dreamiIndex);
+                double distanceMeters = geoDistanceCalculator.distanceMeters(order.location(), dreami.location());
 
                 if (distanceMeters > offerScope.maxPickupDistanceMeters()) {
                     meterRegistry.counter("matching.candidates.filtered", "reason", "pickup_distance_exceeded")
@@ -101,49 +74,19 @@ public class MatchingAssignmentProblemAssembler {
                 }
 
                 rawCandidates.add(new MatchingCandidate(
-                        group.orderId(),
+                        order.orderId(),
                         dreami.dreamiId(),
                         distanceMeters,
-                        orderWaitingTime,
-                        dreamiWaitingTimes.get(dreami.dreamiId()),
+                        order.waitingTime(),
+                        dreami.waitingTime(),
                         0,
                         0,
-                        findPreviousInteraction(group, dreami.dreamiId())));
+                        Optional.ofNullable(snapshot.previousInteractionsByOrder().get(orderIndex)
+                                .get(dreami.dreamiId()))));
             }
         }
 
-        return matchingAssignmentProblemFactory.create(evaluatedAt, orders, dreamis, rawCandidates);
-    }
-
-    private Optional<PreviousOfferInteraction> findPreviousInteraction(OrderOfferGroup group, UUID dreamiId) {
-        return group.offers().stream()
-                .filter(offer -> offer.dreamiId().equals(dreamiId))
-                .flatMap(offer -> toOutcome(offer.status())
-                        .map(outcome -> new PreviousOfferInteraction(outcome, offer.statusUpdatedAt()))
-                        .stream())
-                .max(Comparator.comparing(PreviousOfferInteraction::occurredAt));
-    }
-
-    /**
-     * 이번 배치의 모든 주문에 동일하게 적용할 maxConcurrentOffers를 정책에 따라 계산한다. FIXED는 설정값을 그대로 쓰고, DYNAMIC은 배치 시점의 드리미/주문 비율로 다시 계산한다.
-     */
-    private int resolveMaxConcurrentOffers(int orderCount, int dreamiCount) {
-        return switch (matchingPolicyProperties.offerQuotaMode()) {
-            case FIXED -> matchingPolicyProperties.maxConcurrentOffers();
-            case DYNAMIC -> calculateDynamicQuota(orderCount, dreamiCount);
-        };
-    }
-
-    /**
-     * 대기 드리미를 대기 주문 수만큼 나눠, 주문 하나가 받을 수 있는 오퍼 수를 올림 계산한다. 주문이 없으면(0으로 나누기 방지) 1을 반환하고, 결과는 선착순 경쟁이 과열되지 않도록
-     * [1, {@code matching.dynamic-quota-max}] 범위로 자른다.
-     */
-    private int calculateDynamicQuota(int orderCount, int dreamiCount) {
-        if (orderCount == 0) {
-            return MIN_OFFER_COUNT;
-        }
-
-        int quota = Math.ceilDiv(dreamiCount, orderCount);
-        return Math.clamp(quota, MIN_OFFER_COUNT, matchingPolicyProperties.dynamicQuotaMax());
+        return matchingAssignmentProblemFactory.create(
+                snapshot.evaluatedAt(), snapshot.orders(), snapshot.dreamis(), rawCandidates);
     }
 }

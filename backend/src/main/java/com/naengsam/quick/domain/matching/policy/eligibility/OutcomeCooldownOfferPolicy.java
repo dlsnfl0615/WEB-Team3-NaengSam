@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.matching.policy.eligibility;
 
-import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.model.MatchingCandidateView;
 import com.naengsam.quick.domain.matching.model.PreviousOfferInteraction;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -29,7 +29,7 @@ public class OutcomeCooldownOfferPolicy implements MatchingEligibilityPolicy {
 
     @Override
     public boolean isEligible(
-            MatchingCandidate candidate,
+            MatchingCandidateView candidate,
             LocalDateTime evaluatedAt
     ) {
         if (candidate.previousInteraction().isEmpty()) {

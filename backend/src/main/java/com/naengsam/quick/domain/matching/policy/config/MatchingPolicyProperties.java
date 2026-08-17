@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.matching.policy.config;
 import jakarta.validation.constraints.Min;
 import java.time.Duration;
 import java.util.List;
+import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
@@ -14,6 +15,7 @@ import org.springframework.validation.annotation.Validated;
  *   예약하는 주기, 주문 하나가 동시에 가질 수 있는 오퍼 수(offerQuotaMode=FIXED일 때 사용)</li>
  *   <li>offerQuotaMode : maxConcurrentOffers를 고정값으로 쓸지(FIXED), 배치마다 드리미/주문 비율로 다시 계산할지(DYNAMIC)</li>
  *   <li>dynamicQuotaMax : offerQuotaMode=DYNAMIC일 때 배치마다 계산되는 오퍼 수의 상한(하한은 항상 1)</li>
+ *   <li>planningPolicy : 객체 후보 그래프 또는 primitive 평면 인덱스 구현 선택</li>
  *   <li>assignmentPolicy/scoringPolicy/eligibilityPolicy : 배정/점수/적격성 정책 선택</li>
  *   <li>cooldown : eligibilityPolicy=OUTCOME_COOLDOWN 일 때만 사용되는 결과별 쿨다운</li>
  *   <li>balancedWeights : scoringPolicy=BALANCED 일 때만 사용되는 가중치·기준값</li>
@@ -27,6 +29,7 @@ public record MatchingPolicyProperties(
         int maxConcurrentOffers,
         OfferQuotaMode offerQuotaMode,
         @Min(1) int dynamicQuotaMax,
+        @DefaultValue("OBJECT_GRAPH") PlanningPolicyType planningPolicy,
         AssignmentPolicyType assignmentPolicy,
         ScoringPolicyType scoringPolicy,
         EligibilityPolicyType eligibilityPolicy,
@@ -34,7 +37,6 @@ public record MatchingPolicyProperties(
         BalancedWeights balancedWeights,
         List<OfferScopeThreshold> offerScopes
 ) {
-
     public record Cooldown(
             Duration dreamiRejection,
             Duration boormiRejection,

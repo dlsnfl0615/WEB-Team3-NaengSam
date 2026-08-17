@@ -17,7 +17,7 @@ import java.util.stream.Collectors;
 /**
  * 주문 간 우선순위까지 scorePolicy가 직접 결정하도록, 모든 주문-드리미 후보 쌍을 하나의 전역 순서로 정렬한 뒤
  * 앞에서부터 순서대로 배정하는 탐욕(greedy) 배정 정책.
- * <p>정렬 기준은 (1) {@link MatchingScorePolicy#score(MatchingCandidate)} 오름차순, (2) 동점이면
+ * <p>정렬 기준은 (1) {@link MatchingScorePolicy} 점수 오름차순, (2) 동점이면
  * orderWaitingTime 내림차순(더 오래 기다린 주문 우선), (3) 그래도 동점이면 dreamiWaitingTime 내림차순(더 오래
  * 기다린 드리미 우선), (4) 그래도 동점이면 orderId 오름차순, (5) 그래도 동점이면 dreamiId 오름차순으로 완전히
  * 결정된다.
@@ -49,7 +49,7 @@ public class ScoreBasedGreedyAssignmentPolicy implements MatchingAssignmentPolic
                 .collect(Collectors.toMap(MatchingOrderInput::orderId, MatchingOrderInput::maxConcurrentOffers));
 
         Comparator<MatchingCandidate> comparator = Comparator
-                .comparingLong(scorePolicy::score)
+                .<MatchingCandidate>comparingLong(scorePolicy::score)
                 .thenComparing(Comparator.comparing(MatchingCandidate::orderWaitingTime).reversed())
                 .thenComparing(Comparator.comparing(MatchingCandidate::dreamiWaitingTime).reversed())
                 .thenComparing(MatchingCandidate::orderId)

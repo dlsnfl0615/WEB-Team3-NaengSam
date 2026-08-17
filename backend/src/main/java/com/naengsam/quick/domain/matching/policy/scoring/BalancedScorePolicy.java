@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.matching.policy.scoring;
 
-import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.model.MatchingCandidateView;
 import java.time.Duration;
 
 /**
@@ -38,7 +38,7 @@ public class BalancedScorePolicy implements MatchingScorePolicy {
     }
 
     @Override
-    public long score(MatchingCandidate candidate) {
+    public long score(MatchingCandidateView candidate) {
         double distanceRatio = ratio(candidate.distanceMeters(), maxMatchingDistance);
         double orderWaitRatio = ratio(candidate.orderWaitingTime().toMillis(), targetOrderWait.toMillis());
         double dreamiWaitRatio = ratio(candidate.dreamiWaitingTime().toMillis(), targetDreamiWait.toMillis());

@@ -22,6 +22,7 @@ import com.naengsam.quick.domain.matching.policy.config.AssignmentPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.EligibilityPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
+import com.naengsam.quick.domain.matching.policy.config.PlanningPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibilityPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
@@ -80,6 +81,7 @@ class MatchingCooldownReevaluationIntegrationTest {
                 maxConcurrentOffers,
                 OfferQuotaMode.FIXED,
                 5,
+                PlanningPolicyType.OBJECT_GRAPH,
                 AssignmentPolicyType.SCORE_BASED_GREEDY,
                 ScoringPolicyType.ORDER_WAIT,
                 EligibilityPolicyType.OUTCOME_COOLDOWN,

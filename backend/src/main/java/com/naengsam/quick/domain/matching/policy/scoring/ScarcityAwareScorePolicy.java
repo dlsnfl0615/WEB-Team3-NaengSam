@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.matching.policy.scoring;
 
-import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.model.MatchingCandidateView;
 
 /**
  * 기본 거리·대기 점수에 희소성을 더해 우선순위를 조정하는 정책.
@@ -26,7 +26,7 @@ public class ScarcityAwareScorePolicy implements MatchingScorePolicy {
     }
 
     @Override
-    public long score(MatchingCandidate candidate) {
+    public long score(MatchingCandidateView candidate) {
         long baseScore = baseScorePolicy.score(candidate);
         long orderScarcity = SCALE / (candidate.orderCandidateCount() + 1);
         long dreamiScarcity = SCALE / (candidate.dreamiCandidateCount() + 1);

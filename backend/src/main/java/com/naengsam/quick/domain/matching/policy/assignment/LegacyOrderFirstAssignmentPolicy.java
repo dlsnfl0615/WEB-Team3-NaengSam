@@ -48,7 +48,7 @@ public class LegacyOrderFirstAssignmentPolicy implements MatchingAssignmentPolic
                 .collect(Collectors.groupingBy(MatchingCandidate::orderId));
 
         Comparator<MatchingCandidate> comparator = Comparator
-                .comparingLong(scorePolicy::score)
+                .<MatchingCandidate>comparingLong(scorePolicy::score)
                 .thenComparing(Comparator.comparing(MatchingCandidate::dreamiWaitingTime).reversed())
                 .thenComparing(MatchingCandidate::dreamiId);
 

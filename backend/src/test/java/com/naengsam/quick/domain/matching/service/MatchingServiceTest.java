@@ -42,6 +42,7 @@ import com.naengsam.quick.domain.matching.policy.config.AssignmentPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.EligibilityPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.matching.policy.config.OfferQuotaMode;
+import com.naengsam.quick.domain.matching.policy.config.PlanningPolicyType;
 import com.naengsam.quick.domain.matching.policy.config.ScoringPolicyType;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
@@ -108,6 +109,7 @@ class MatchingServiceTest {
                 3,
                 OfferQuotaMode.FIXED,
                 5,
+                PlanningPolicyType.OBJECT_GRAPH,
                 AssignmentPolicyType.LEGACY_ORDER_FIRST,
                 ScoringPolicyType.ORDER_WAIT,
                 EligibilityPolicyType.LEGACY,

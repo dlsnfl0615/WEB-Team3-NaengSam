@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.matching.policy.eligibility;
 
-import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.model.MatchingCandidateView;
 import java.time.LocalDateTime;
 
 /**
@@ -16,7 +16,7 @@ import java.time.LocalDateTime;
 public interface MatchingEligibilityPolicy {
 
     boolean isEligible(
-            MatchingCandidate candidate,
+            MatchingCandidateView candidate,
             LocalDateTime evaluatedAt
     );
 }

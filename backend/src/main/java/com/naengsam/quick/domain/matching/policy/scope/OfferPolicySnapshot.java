@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.matching.policy.scope;
 
-import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.model.MatchingCandidateView;
 import java.time.Duration;
 import java.time.LocalDateTime;
 
@@ -51,7 +51,7 @@ public record OfferPolicySnapshot(
      * 배정 정책이 후보를 제안으로 확정하는 순간, 그 후보에 적용 중인 offer scope를 그대로 스냅샷으로 남긴다.
      */
     public static OfferPolicySnapshot capture(
-            OfferScopeResolver offerScopeResolver, MatchingCandidate candidate, LocalDateTime evaluatedAt) {
+            OfferScopeResolver offerScopeResolver, MatchingCandidateView candidate, LocalDateTime evaluatedAt) {
         Duration orderWaitingTime = candidate.orderWaitingTime();
         OfferScope offerScope = offerScopeResolver.resolve(orderWaitingTime);
         Duration scopeKey = offerScopeResolver.resolveScopeKey(orderWaitingTime);

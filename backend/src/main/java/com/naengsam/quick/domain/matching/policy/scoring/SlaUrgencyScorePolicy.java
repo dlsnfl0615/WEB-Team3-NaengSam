@@ -1,6 +1,6 @@
 package com.naengsam.quick.domain.matching.policy.scoring;
 
-import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.model.MatchingCandidateView;
 import java.time.Duration;
 
 /**
@@ -32,7 +32,7 @@ public class SlaUrgencyScorePolicy implements MatchingScorePolicy {
     }
 
     @Override
-    public long score(MatchingCandidate candidate) {
+    public long score(MatchingCandidateView candidate) {
         long normalizedDistance = normalize(Math.round(candidate.distanceMeters()), maxMatchingDistance);
         long normalizedOrderWait = normalize(candidate.orderWaitingTime().toMillis(), slaThreshold.toMillis());
 
