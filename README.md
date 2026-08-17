@@ -67,8 +67,8 @@
 ## 🧭 핵심 흐름
 
 ```text
-부르미 퀵 등록  →  주변 드리미 매칭  →  픽업 인증  →  실시간 추적  →  전달 인증  →  에스크로 정산 · 평점
-                          └─ N분 내 미매칭 시 제휴 퀵으로 자동 폴백 ─┘
+부르미 퀵 등록  →  주변 드리미 매칭  →  픽업 인증  →  전달 인증  →  정산 · 평점
+                     └──────── 실시간 추적 ────────┘
 ```
 
 ---
@@ -76,6 +76,9 @@
 ## 서비스 아키텍쳐
 
 <img width="1504" height="1656" alt="image" src="https://github.com/user-attachments/assets/1c066699-0073-4cd7-8d71-dfd2b49a5c9a" />
+
+<img width="4650" height="2342" alt="image" src="https://github.com/user-attachments/assets/d53e9b18-66ec-49f7-9a71-cff1821025e5" />
+
 
 
 ### Infra · DevOps
