@@ -67,6 +67,14 @@ public final class OrderOfferGroup {
         return List.copyOf(offers);
     }
 
+    /**
+     * 누적된 오퍼 개수. 재매칭 라운드마다 append만 되고 제거되지 않으므로 방 하나가 얼마나 커졌는지 보는 진단 지표로 쓴다.
+     * {@link #offers()}는 호출마다 전체를 복사하므로, 개수만 필요할 때는 이쪽을 쓴다.
+     */
+    public int offerCount() {
+        return offers.size();
+    }
+
     public OrderOfferGroupStatus status() {
         return status;
     }

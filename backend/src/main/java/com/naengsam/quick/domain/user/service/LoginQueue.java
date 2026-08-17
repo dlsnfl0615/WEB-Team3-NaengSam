@@ -4,6 +4,8 @@ import com.naengsam.quick.domain.user.dto.LoginCredential;
 import com.naengsam.quick.domain.user.dto.LoginRequest;
 import com.naengsam.quick.domain.user.dto.LoginResultDto;
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
+import com.naengsam.quick.global.debug.InMemoryStateProbe;
+import com.naengsam.quick.global.debug.InMemoryStructureDto;
 import com.naengsam.quick.global.exception.BusinessException;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -50,7 +52,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class LoginQueue {
+public class LoginQueue implements InMemoryStateProbe {
 
     private static final String QUEUE_KEY = "login:queue";
     private static final String TICKET_KEY_PREFIX = "login:ticket:";
@@ -313,5 +315,17 @@ public class LoginQueue {
             }
         }
         return AuthErrorCode.LOGIN_FAILED;
+    }
+
+    /**
+     * 해싱을 기다리는 티켓 현황. 워커가 꺼내는 즉시 두 자료구조에서 모두 빠지므로 정상 상태에서는 0에 가깝고, 여기가 계속 남아 있으면 워커 스레드가 멈췄다는 뜻이다.
+     *
+     * <p>{@code pending}의 값은 평문 이메일·비밀번호이므로 값은 어떤 형태로도 내보내지 않는다. 샘플로 내보내는 것은 서버가 발급한 ticketId 뿐이다.
+     */
+    @Override
+    public List<InMemoryStructureDto> inMemoryStructures() {
+        return List.of(
+                InMemoryStructureDto.ofCollection("localQueue", "해싱 대기 중인 ticketId FIFO", localQueue),
+                InMemoryStructureDto.ofMap("pending", "ticketId → 해싱 전 자격증명 (값은 미노출)", pending));
     }
 }

@@ -32,18 +32,23 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.order.service.PendingOfferStateService;
+import com.naengsam.quick.global.debug.InMemoryStateProbe;
+import com.naengsam.quick.global.debug.InMemoryStructureDto;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -56,7 +61,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class MatchingService {
+public class MatchingService implements InMemoryStateProbe {
 
     /**
      * 드리미 응답 제한시간. 제한은 30초 기준.
@@ -145,6 +150,48 @@ public class MatchingService {
      */
     public List<OrderOfferGroup> orderOfferGroups() {
         return List.copyOf(orderOfferGroupsByOrderId.values());
+    }
+
+    /**
+     * 이 서비스가 들고 있는 4개 맵의 현황. 매칭 상태는 DB가 아니라 여기에만 있고, 제거는 매칭이 확정되는 {@code cleanUpAfterMatched} 경로에서만 일어난다. 즉 부르미가 취소했거나
+     * 재매칭이 끝내 성사되지 않은 주문의 방과 오퍼는 맵에 남는다. 상태별 집계를 함께 내보내므로, 종료 상태(DREAMI_REJECTED, *_EXPIRED, CANCELLED …)의 원소가 계속 늘어나는지
+     * 화면에서 바로 확인할 수 있다.
+     */
+    @Override
+    public List<InMemoryStructureDto> inMemoryStructures() {
+        return List.of(
+                InMemoryStructureDto.ofMap("offersById", "offerId → 오퍼", offersById)
+                        .withBreakdown(countBy(offersById.values(), MatchOffer::status, MatchOfferStatus.values())),
+                InMemoryStructureDto.ofMap("offerIdsByDreamiId", "dreamiId → 그 드리미에게 나간 offerId 집합", offerIdsByDreamiId)
+                        .withBreakdown(Map.of("내부 원소 합계",
+                                offerIdsByDreamiId.values().stream().mapToLong(Set::size).sum())),
+                InMemoryStructureDto.ofMap("orderOfferGroupsByOrderId", "orderId → 오퍼 묶음(방)", orderOfferGroupsByOrderId)
+                        .withBreakdown(orderOfferGroupBreakdown()),
+                InMemoryStructureDto.ofMap("dreamiMap", "dreamiId → 대기 중 드리미", dreamiMap)
+                        .withBreakdown(countBy(dreamiMap.values(), WaitingDreami::status, WaitingDreamiStatus.values())));
+    }
+
+    private Map<String, Long> orderOfferGroupBreakdown() {
+        Collection<OrderOfferGroup> groups = orderOfferGroupsByOrderId.values();
+        Map<String, Long> breakdown = countBy(groups, OrderOfferGroup::status, OrderOfferGroupStatus.values());
+        // 방 하나에 쌓인 오퍼는 재매칭 라운드마다 append만 되므로, 방 개수와 별개로 총 오퍼 수도 함께 본다.
+        breakdown.put("offers 합계", groups.stream().mapToLong(OrderOfferGroup::offerCount).sum());
+        return breakdown;
+    }
+
+    /**
+     * 상태별 개수를 세되 0인 상태도 함께 담아, 갱신할 때마다 항목이 나타났다 사라지지 않게 한다. 순서는 enum 선언 순서를 따른다.
+     */
+    private <T, S extends Enum<S>> Map<String, Long> countBy(Collection<T> values, Function<T, S> statusOf,
+            S[] allStatuses) {
+        Map<String, Long> counts = new LinkedHashMap<>();
+        for (S status : allStatuses) {
+            counts.put(status.name(), 0L);
+        }
+        for (T value : values) {
+            counts.merge(statusOf.apply(value).name(), 1L, Long::sum);
+        }
+        return counts;
     }
 
     // ────────────────────────────── 외부 API ──────────────────────────────
