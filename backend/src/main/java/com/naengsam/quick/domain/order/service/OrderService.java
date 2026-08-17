@@ -120,6 +120,18 @@ public class OrderService {
     }
 
     /**
+     * 주문을 비관적 쓰기 락으로 조회한다. 상태를 확인하고 곧바로 바꾸는 경로(취소 등)에서 쓰며, 먼저 락을 잡은 트랜잭션이 끝날 때까지 나머지는 대기했다가
+     * 최신 상태를 다시 읽으므로 read-check-write 레이스가 닫힌다. 없으면 ORDER_NOT_FOUND 예외를 던진다.
+     * <p>
+     * FOR UPDATE 는 읽기 전용 트랜잭션에서 쓸 수 없으므로 조회만 하는 곳에서는 {@link #getOrder(UUID)} 를 쓴다.
+     */
+    @Transactional
+    public Orders getOrderForUpdate(UUID orderId) {
+        return orderRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
+    }
+
+    /**
      * 주문을 취소 상태로 전이하고 취소 이력(CANCEL)을 저장한다. 이미 종료된 주문(취소·완료·클레임)은 취소할 수 없어
      * CANNOT_CANCEL 예외를 던진다(호출자의 상태·소유권 검증과 무관하게 지켜야 하는 주문 자신의 불변식). 주문 상태 변경은
      * 영속 상태 dirty checking 으로 반영된다.

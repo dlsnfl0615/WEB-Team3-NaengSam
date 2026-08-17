@@ -18,10 +18,11 @@ import com.naengsam.quick.domain.payment.repository.PointTxRepository;
 import com.naengsam.quick.domain.payment.repository.PointWalletRepository;
 import com.naengsam.quick.domain.payment.repository.WalletRepository;
 import com.naengsam.quick.global.exception.BusinessException;
-import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.UUID;
 
 /**
  * 포인트 결제·환불과 배달 완료 정산을 처리한다. 거래 1건은 {@link PointTx} 한 행으로 표현하고(환불·지급 확정은 새 행이 아니라 그 행의 상태 전이), 잔액이 실제로 얼마씩
@@ -68,11 +69,12 @@ public class PaymentService {
     /**
      * 주문 취소에 따라 결제한 포인트를 전액 환불한다. 원본 결제 거래의 상태를 REFUNDED_FULL 로 전이시키고 잔액을 되돌린 뒤 원장에 +금액을 남긴다.
      * <p>
-     * 이미 환불된 주문이면 잔액을 건드리지 않고 그대로 끝낸다.
+     * 이미 환불된 주문이면 잔액을 건드리지 않고 그대로 끝낸다. 이 판단(check-then-act)이 동시 취소 두 건에서 함께 통과하지 않도록 결제 거래 행을 비관적
+     * 쓰기 락으로 읽는다. 지갑 락은 잔액 산술만 직렬화할 뿐 "이미 환불됐는지" 판단은 지켜주지 못하므로, 락이 상태 판단보다 앞서야 한다.
      */
     @Transactional
     public void refundByPoint(UUID orderId) {
-        PointTx pointTx = pointTxRepository.findByOrderIdAndType(orderId, PointTxTypeCd.PAYMENT)
+        PointTx pointTx = pointTxRepository.findByOrderIdAndTypeForUpdate(orderId, PointTxTypeCd.PAYMENT)
                 .orElseThrow(() -> new BusinessException(PaymentErrorCode.PAYMENT_NOT_FOUND));
 
         if (!pointTx.markRefundedFull()) {
