@@ -181,7 +181,7 @@ CREATE TABLE `EXCHANGES` (
 
 CREATE TABLE `BOORMI_REVIEW` (
                                  `review_id`    binary(16)    NOT NULL,
-                                 `score`        tinyint       NOT NULL,
+                                 `score`        integer       NOT NULL,
                                  `detail`       varchar(200)  NULL,
                                  `created_dtm`  timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                                  `updated_dtm`  timestamp     NULL,
