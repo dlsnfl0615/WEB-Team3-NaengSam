@@ -5,6 +5,9 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.policy.scope.OfferPolicySnapshot;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -25,7 +28,10 @@ class LegacyOrderFirstAssignmentPolicyTest {
     private static final GeoPoint LOCATION = new GeoPoint(BigDecimal.ZERO, BigDecimal.ZERO);
     private static final LocalDateTime EVALUATED_AT = LocalDateTime.of(2026, 8, 9, 9, 0);
 
-    private final LegacyOrderFirstAssignmentPolicy policy = new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy());
+    private final OfferScopeResolver offerScopeResolver = new OfferScopeResolver(
+            List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
+    private final LegacyOrderFirstAssignmentPolicy policy =
+            new LegacyOrderFirstAssignmentPolicy(new OrderWaitScorePolicy(), offerScopeResolver);
 
     @Test
     void 후보가_maxConcurrentOffers보다_많으면_상한만큼만_제안한다() {
@@ -116,7 +122,8 @@ class LegacyOrderFirstAssignmentPolicyTest {
 
         MatchingPlan plan = policy.createPlan(problem);
 
-        assertThat(plan.proposals()).containsExactly(new MatchingProposal(orderA, sharedDreami));
+        OfferPolicySnapshot snapshot = new OfferPolicySnapshot(Duration.ZERO, EVALUATED_AT, 0L, 0.0, 3_000);
+        assertThat(plan.proposals()).containsExactly(new MatchingProposal(orderA, sharedDreami, snapshot));
     }
 
     @Test
@@ -154,8 +161,8 @@ class LegacyOrderFirstAssignmentPolicyTest {
                         candidateWithDistance(orderId, betterScoreShortWait, 10L, Duration.ofMinutes(1)),
                         candidateWithDistance(orderId, worseScoreLongWait, 100L, Duration.ofMinutes(30))));
 
-        LegacyOrderFirstAssignmentPolicy distanceScoredPolicy =
-                new LegacyOrderFirstAssignmentPolicy(candidate -> (long) candidate.distanceMeters());
+        LegacyOrderFirstAssignmentPolicy distanceScoredPolicy = new LegacyOrderFirstAssignmentPolicy(
+                candidate -> (long) candidate.distanceMeters(), offerScopeResolver);
 
         MatchingPlan plan = distanceScoredPolicy.createPlan(problem);
 

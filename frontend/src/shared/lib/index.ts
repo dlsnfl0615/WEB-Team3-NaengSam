@@ -27,6 +27,7 @@ export {
   useCurrentAddress,
   type CurrentAddressState,
 } from "./geo/useCurrentAddress";
+export { distanceMeters } from "./geo/distance";
 export {
   rememberDeliveryStage,
   recallDeliveryStage,
@@ -48,6 +49,10 @@ export {
   type DeliveryDetailGateState,
 } from "./delivery/useDeliveryDetailGate";
 export { ContactSheet, type ContactSheetProps } from "./delivery/ContactSheet";
+export {
+  ETA_UNAVAILABLE_TITLE,
+  type EtaUnavailablePayload,
+} from "./delivery/etaUnavailable";
 export {
   useExpiryCountdown,
   type UseExpiryCountdownOptions,

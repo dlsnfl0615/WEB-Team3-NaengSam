@@ -196,7 +196,7 @@ class PaymentServiceTest {
         UUID walletId = UUID.randomUUID();
         PointWallet wallet = pointWallet(walletId, 6000L);
         PointTx tx = pendingTx(walletId, orderId, 4000L);
-        given(pointTxRepository.findByOrderIdAndType(orderId, PointTxTypeCd.PAYMENT))
+        given(pointTxRepository.findByOrderIdAndTypeForUpdate(orderId, PointTxTypeCd.PAYMENT))
                 .willReturn(Optional.of(tx));
         given(pointWalletRepository.findByIdForUpdate(walletId)).willReturn(Optional.of(wallet));
 
@@ -221,7 +221,7 @@ class PaymentServiceTest {
         UUID walletId = UUID.randomUUID();
         PointTx tx = pendingTx(walletId, orderId, 4000L);
         tx.markRefundedFull();
-        given(pointTxRepository.findByOrderIdAndType(orderId, PointTxTypeCd.PAYMENT))
+        given(pointTxRepository.findByOrderIdAndTypeForUpdate(orderId, PointTxTypeCd.PAYMENT))
                 .willReturn(Optional.of(tx));
 
         paymentService.refundByPoint(orderId);
@@ -233,7 +233,7 @@ class PaymentServiceTest {
     @Test
     void 결제내역이_없는_주문을_환불하면_PAYMENT_NOT_FOUND_예외() {
         UUID orderId = UUID.randomUUID();
-        given(pointTxRepository.findByOrderIdAndType(orderId, PointTxTypeCd.PAYMENT))
+        given(pointTxRepository.findByOrderIdAndTypeForUpdate(orderId, PointTxTypeCd.PAYMENT))
                 .willReturn(Optional.empty());
 
         Throwable thrown = catchThrowable(() -> paymentService.refundByPoint(orderId));
@@ -241,6 +241,26 @@ class PaymentServiceTest {
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(PaymentErrorCode.PAYMENT_NOT_FOUND);
         then(pointLedgerRepository).should(never()).save(any());
+    }
+
+    /**
+     * 동시 취소 두 건이 같은 PENDING 스냅샷을 읽어 둘 다 환불하는 이중환불을 막으려면, "이미 환불됐는지" 판단 자체가 락 안에서
+     * 일어나야 한다. 잠기지 않은 조회로 되돌아가면 이 테스트가 깨진다.
+     */
+    @Test
+    void 환불은_결제거래를_비관적_락으로_읽어_상태_판단을_직렬화한다() {
+        UUID orderId = UUID.randomUUID();
+        UUID walletId = UUID.randomUUID();
+        PointTx tx = pendingTx(walletId, orderId, 4000L);
+        given(pointTxRepository.findByOrderIdAndTypeForUpdate(orderId, PointTxTypeCd.PAYMENT))
+                .willReturn(Optional.of(tx));
+        given(pointWalletRepository.findByIdForUpdate(walletId))
+                .willReturn(Optional.of(pointWallet(walletId, 6000L)));
+
+        paymentService.refundByPoint(orderId);
+
+        then(pointTxRepository).should().findByOrderIdAndTypeForUpdate(orderId, PointTxTypeCd.PAYMENT);
+        then(pointTxRepository).should(never()).findByOrderIdAndType(any(), any());
     }
 
     @Test

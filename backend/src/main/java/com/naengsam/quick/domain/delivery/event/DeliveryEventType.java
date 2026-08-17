@@ -47,7 +47,14 @@ public enum DeliveryEventType implements SseEventType {
      * 드리미: 부르미가 연락 시트에서 '핑 보내기'를 눌러 깨웠다. 상태 전이는 없고 "지금 확인해 달라"는 신호만
      * 전달한다. 핑을 보내는 이유 자체가 드리미가 응답이 없어서이므로 인앱만으로는 닿지 않는다 → 웹푸시까지 태운다.
      */
-    DELIVERY_PING;
+    DELIVERY_PING,
+    /**
+     * 부르미/드리미: '드리미→픽업지' 경로·배송완료예상시간 계산이 실패했다(카카오가 경로를 못 냄, 응답 지연 등).
+     * payload는 EtaUnavailableDto. 화면은 배송완료예상시각 배지를 지우고 payload의 message를 안내한다.
+     * 계산은 쿨다운(30초)을 두고 재시도되므로 이 이벤트도 실패가 이어지는 동안 그 주기로 반복 도착한다 —
+     * 중복 억제는 화면이 맡는다. 복구는 별도 이벤트 없이 배송완료예상시간이 다시 채워지는 것으로 알린다.
+     */
+    DELIVERY_ETA_UNAVAILABLE;
 
     @Override
     public String eventName() {

@@ -6,7 +6,9 @@ import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 import com.naengsam.quick.domain.matching.model.PreviousOfferInteraction;
 import com.naengsam.quick.domain.matching.model.PreviousOfferOutcome;
+import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.DistanceOnlyScorePolicy;
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -28,6 +30,8 @@ class MatchingAssignmentProblemFactoryTest {
 
     private final MatchingAssignmentProblemFactory factory =
             new MatchingAssignmentProblemFactory(new LegacyOfferPolicy());
+    private final OfferScopeResolver offerScopeResolver = new OfferScopeResolver(
+            List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
 
     @Test
     void 부적격_후보는_제외되고_적격_후보만_남는다() {
@@ -85,7 +89,8 @@ class MatchingAssignmentProblemFactoryTest {
                 rawCandidates
         );
 
-        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(new DistanceOnlyScorePolicy()).createPlan(problem);
+        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(new DistanceOnlyScorePolicy(), offerScopeResolver)
+                .createPlan(problem);
 
         assertThat(plan.proposals()).hasSize(1);
         assertThat(plan.proposals().get(0).dreamiId()).isEqualTo(eligibleDreamiId);

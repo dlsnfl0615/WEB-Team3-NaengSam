@@ -14,7 +14,9 @@ import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
 import com.naengsam.quick.domain.order.dto.OrderCountDto;
+import com.naengsam.quick.domain.order.dto.OrderStatusCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.exception.OrderErrorCode;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
@@ -69,7 +71,7 @@ public class DreamiController {
     @Operation(summary = "드리미가 제안 수락", description = "로그인한 드리미에게 온 제안을 수락한다.")
     @PostMapping("/offers/{offerId}/accept")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER"})
+    @ApiErrorCodes(enumClass = MatchingErrorCode.class, codes = {"NOT_OFFER_OWNER", "OFFER_EXPIRED"})
     @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
     public void acceptOffer(@PathVariable UUID offerId, @LoginUser UUID dreamiId) {
         dreamiService.acceptOffer(offerId, dreamiId);
@@ -97,7 +99,6 @@ public class DreamiController {
             description = "내 위치·동선 기준으로 콜을 정렬해 리스트/지도뷰로 제공하며 예상 수익·소요시간을 함께 표시한다.")
     @PostMapping("/calls/nearby")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"ORDER_NOT_FOUND"})
     public List<NearbyCallDto> findNearbyCalls(@Valid @RequestBody NearbyOrderRequest request) {
         return dreamiService.findNearbyCalls(request);
     }
@@ -127,11 +128,18 @@ public class DreamiController {
     }
 
     @Operation(summary = "드리미 활동 내역 조회",
-            description = "로그인한 드리미가 수행한(수행 중인) 배달 전체를 최신순으로 조회한다.")
+            description = "로그인한 드리미가 수행한(수행 중인) 배달을 최신순으로 페이지네이션 조회한다. status를 생략하면 상태 무관 전체, "
+                    + "지정하면 그 상태들만 반환한다(필터 탭 하나가 여러 상태를 묶는 경우 여러 값을 함께 넘기면 된다. 예: "
+                    + "status=MATCHING&status=PENDING_BOORMI_CONFIRMATION). cursor는 이전 응답의 nextCursor를 그대로 "
+                    + "넘기면 되고, 첫 페이지는 생략한다.")
     @GetMapping("/deliveries")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    public BoormiOrdersResponse getDreamiOrders(@LoginUser UUID dreamiId) {
-        return dreamiService.getMyOrders(dreamiId);
+    @ApiErrorCodes(enumClass = OrderErrorCode.class, codes = {"INVALID_CURSOR"})
+    public BoormiOrdersResponse getDreamiOrders(@LoginUser UUID dreamiId,
+            @RequestParam(required = false) List<OrderCd> status,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(required = false) Integer size) {
+        return dreamiService.getMyOrders(dreamiId, status, cursor, size);
     }
 
     @Operation(summary = "내 배달 단건 조회",
@@ -148,5 +156,13 @@ public class DreamiController {
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     public OrderCountDto getDreamiOrderCount(@LoginUser UUID dreamiId) {
         return dreamiService.getMyDeliveryCount(dreamiId);
+    }
+
+    @Operation(summary = "내 배달 상태별 건수 조회",
+            description = "활동 내역 화면의 탭(전체/진행중/완료/취소)별 개수 표시용. 목록 페이지네이션과 별개로 화면 진입 시 한 번만 호출하면 된다.")
+    @GetMapping("/deliveries/status-counts")
+    @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
+    public List<OrderStatusCountDto> getDreamiOrderStatusCounts(@LoginUser UUID dreamiId) {
+        return dreamiService.getMyDeliveryStatusCounts(dreamiId);
     }
 }

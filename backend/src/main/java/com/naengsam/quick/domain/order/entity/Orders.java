@@ -37,6 +37,14 @@ public class Orders {
     @Column(name = "dreami_id", columnDefinition = "BINARY(16)")
     private UUID dreamiId;
 
+    /**
+     * PENDING_BOORMI_CONFIRMATION 동안 확정 대기 중인 오퍼 UUID. dreamiId만으로는 "같은 드리미의 이전 수락 재요청"과
+     * "그 사이 새로 발급된 다른 오퍼"를 구분할 수 없어, 드리미 수락 멱등 판단에 이 값까지 함께 확인한다.
+     */
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(name = "pending_offer_id", columnDefinition = "BINARY(16)")
+    private UUID pendingOfferId;
+
     @Column(name = "item_name", length = 50, nullable = false)
     private String itemName;
 
@@ -149,27 +157,33 @@ public class Orders {
     }
 
     /**
-     * 부르미가 드리미를 최종 확정한다. 확정된 드리미로 dreami_id 를 채우고 IN_PROGRESS 로 전이한다(dirty checking 반영). 검증은 서비스에서 수행한다.
+     * 부르미가 드리미를 최종 확정한다. 확정된 드리미로 dreami_id 를 채우고 IN_PROGRESS 로 전이한다(dirty checking 반영). 확정 대기가
+     * 끝났으므로 pendingOfferId도 비운다. 검증은 서비스에서 수행한다.
      */
     public void confirmDreami(UUID dreamiId) {
         this.dreamiId = dreamiId;
         this.orderCd = OrderCd.IN_PROGRESS;
+        this.pendingOfferId = null;
     }
 
     /**
-     * 드리미가 제안을 수락해 부르미의 최종 확인을 기다리는 상태로 전이한다. 수락한 드리미로 dreami_id 를 채워둔다(임시 배정).
-     * 부르미가 거절하면 {@link #rejectDreami()} 가 다시 비운다. 검증은 서비스에서 수행한다.
+     * 드리미가 제안을 수락해 부르미의 최종 확인을 기다리는 상태로 전이한다. 수락한 드리미로 dreami_id 를 채우고(임시 배정), 이
+     * 확정 대기가 어느 오퍼에서 비롯됐는지 offerId로 남긴다 — 같은 드리미의 재요청(멱등)과 그 사이 새로 발급된 다른 오퍼를
+     * 구분하는 데 쓰인다. 부르미가 거절하면 {@link #rejectDreami()} 가 둘 다 비운다. 검증은 서비스에서 수행한다.
      */
-    public void markPendingBoormiConfirmation(UUID dreamiId) {
+    public void markPendingBoormiConfirmation(UUID dreamiId, UUID offerId) {
         this.dreamiId = dreamiId;
+        this.pendingOfferId = offerId;
         this.orderCd = OrderCd.PENDING_BOORMI_CONFIRMATION;
     }
 
     /**
-     * 부르미가 확정 대기 중인 드리미를 거절한다. 배정을 비우고 다시 매칭 대기(MATCHING)로 되돌린다(dirty checking 반영). 검증은 서비스에서 수행한다.
+     * 부르미가 확정 대기 중인 드리미를 거절한다. 배정과 pendingOfferId를 비우고 다시 매칭 대기(MATCHING)로 되돌린다(dirty
+     * checking 반영). 검증은 서비스에서 수행한다.
      */
     public void rejectDreami() {
         this.dreamiId = null;
+        this.pendingOfferId = null;
         this.orderCd = OrderCd.MATCHING;
     }
 

@@ -4,7 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import com.naengsam.quick.domain.matching.policy.scoring.DistanceOnlyScorePolicy;
@@ -40,10 +42,12 @@ class AssignmentScoringPolicySubstitutionTest {
     private final UUID dreamiShared = UUID.randomUUID();
     private final UUID dreamiFiller1 = UUID.randomUUID();
     private final UUID dreamiFiller2 = UUID.randomUUID();
+    private final OfferScopeResolver offerScopeResolver = new OfferScopeResolver(
+            List.of(new MatchingPolicyProperties.OfferScopeThreshold(Duration.ZERO, 3_000)));
 
     @Test
     void 거리_우선_정책은_드리미를_더_가까운_주문에_배정한다() {
-        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(new DistanceOnlyScorePolicy())
+        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(new DistanceOnlyScorePolicy(), offerScopeResolver)
                 .createPlan(sharedProblem());
 
         assertThat(orderOf(plan, dreamiShared)).isEqualTo(orderA);
@@ -52,7 +56,7 @@ class AssignmentScoringPolicySubstitutionTest {
 
     @Test
     void 주문_대기_우선_정책은_드리미를_더_오래_기다린_주문에_배정한다() {
-        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(new OrderWaitScorePolicy())
+        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(new OrderWaitScorePolicy(), offerScopeResolver)
                 .createPlan(sharedProblem());
 
         assertThat(orderOf(plan, dreamiShared)).isEqualTo(orderB);
@@ -64,7 +68,8 @@ class AssignmentScoringPolicySubstitutionTest {
         BalancedScorePolicy distanceHeavyPolicy = new BalancedScorePolicy(
                 new BalancedScoreWeights(90, 5, 5), 1000L, Duration.ofMinutes(30), Duration.ofMinutes(10));
 
-        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(distanceHeavyPolicy).createPlan(sharedProblem());
+        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(distanceHeavyPolicy, offerScopeResolver)
+                .createPlan(sharedProblem());
 
         assertThat(orderOf(plan, dreamiShared)).isEqualTo(orderA);
         assertConstraintsHold(plan);
@@ -75,7 +80,8 @@ class AssignmentScoringPolicySubstitutionTest {
         BalancedScorePolicy waitHeavyPolicy = new BalancedScorePolicy(
                 new BalancedScoreWeights(5, 90, 5), 1000L, Duration.ofMinutes(30), Duration.ofMinutes(10));
 
-        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(waitHeavyPolicy).createPlan(sharedProblem());
+        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(waitHeavyPolicy, offerScopeResolver)
+                .createPlan(sharedProblem());
 
         assertThat(orderOf(plan, dreamiShared)).isEqualTo(orderB);
         assertConstraintsHold(plan);
@@ -86,7 +92,8 @@ class AssignmentScoringPolicySubstitutionTest {
         ScarcityAwareScorePolicy scarcityPolicy = new ScarcityAwareScorePolicy(
                 candidate -> 0L, new ScarcityScoreWeights(0, 100, 0));
 
-        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(scarcityPolicy).createPlan(sharedProblem());
+        MatchingPlan plan = new ScoreBasedGreedyAssignmentPolicy(scarcityPolicy, offerScopeResolver)
+                .createPlan(sharedProblem());
 
         // orderA는 대체 후보가 dreamiShared 하나뿐(orderCandidateCount=1)이라 희소하고,
         // orderB는 filler가 둘 더 있어(orderCandidateCount=3) 희소하지 않다.

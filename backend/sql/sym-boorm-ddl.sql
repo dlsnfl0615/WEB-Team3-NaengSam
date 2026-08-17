@@ -7,6 +7,7 @@ CREATE TABLE `BOORMI` (
                           `birthdate`            date          NOT NULL,
                           `user_cd`              enum('ACTIVE', 'DELETED', 'RESTRICTED', 'BANNED')  NULL,
                           `is_dreami_activated`  boolean       NULL      DEFAULT false,
+                          `is_admin`             boolean       NOT NULL  DEFAULT false,
                           `created_dtm`          timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                           `updated_dtm`          timestamp     NULL,
                           `deleted_dtm`          timestamp     NULL,
@@ -66,10 +67,12 @@ CREATE TABLE `ORDERS` (
                           `image_key`                   varchar(500)    NULL,
                           `route_path`                  text            NULL      COMMENT '카카오 추천 이동경로 좌표 JSON([{latitude, longitude}, ...])',
                           `delivery_request_dtm`        timestamp       NOT NULL  DEFAULT CURRENT_TIMESTAMP,
-                          `dreami_id`                   binary(16)      NULL
+                          `dreami_id`                   binary(16)      NULL,
+                          `pending_offer_id`             binary(16)      NULL      COMMENT 'PENDING_BOORMI_CONFIRMATION 동안 확정 대기 중인 오퍼 UUID. 드리미 수락 재요청의 멱등 판단에 offerId까지 함께 확인하기 위함'
 );
 -- 이미 배포된 DB에는 위 CREATE 대신 아래 ALTER 로 컬럼을 추가한다.
 -- ALTER TABLE `ORDERS` ADD COLUMN `route_path` text NULL COMMENT '카카오 추천 이동경로 좌표 JSON([{latitude, longitude}, ...])';
+-- ALTER TABLE `ORDERS` ADD COLUMN `pending_offer_id` binary(16) NULL COMMENT 'PENDING_BOORMI_CONFIRMATION 동안 확정 대기 중인 오퍼 UUID. 드리미 수락 재요청의 멱등 판단에 offerId까지 함께 확인하기 위함';
 
 CREATE TABLE `POINT_LEDGERS` (
                                  `point_ledgers_id`  binary(16)  NOT NULL,
@@ -181,7 +184,7 @@ CREATE TABLE `EXCHANGES` (
 
 CREATE TABLE `BOORMI_REVIEW` (
                                  `review_id`    binary(16)    NOT NULL,
-                                 `score`        tinyint       NOT NULL,
+                                 `score`        integer       NOT NULL,
                                  `detail`       varchar(200)  NULL,
                                  `created_dtm`  timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                                  `updated_dtm`  timestamp     NULL,
@@ -315,7 +318,7 @@ CREATE TABLE `DREAMI_REQUEST_DENIED_DETAILS` (
 
 CREATE TABLE `DREAMI_REVIEW` (
                                  `review_id`    binary(16)    NOT NULL,
-                                 `score`        tinyint       NOT NULL,
+                                 `score`        integer       NOT NULL,
                                  `content`      varchar(200)  NULL,
                                  `created_dtm`  timestamp     NOT NULL  DEFAULT CURRENT_TIMESTAMP,
                                  `updated_dtm`  timestamp     NULL,
@@ -413,7 +416,15 @@ ALTER TABLE `RETURN_DELIVERY` ADD CONSTRAINT `FK_DELIVERY_TO_RETURN_DELIVERY_1` 
 
 ALTER TABLE `MONEY_WALLET` ADD CONSTRAINT `FK_WALLET_TO_MONEY_WALLET_1` FOREIGN KEY (`wallet_id`) REFERENCES `WALLET` (`wallet_id`);
 
+-- 활동 내역 목록(최신순 커서 페이지네이션)이 boormi_id로 좁힌 뒤 delivery_request_dtm/order_id 순서 그대로
+-- 읽도록 하는 커버링 인덱스. FK(`FK_BOORMI_TO_ORDERS_1`)보다 먼저 생성해 선두 컬럼 boormi_id 단일 인덱스를
+-- 재사용하게 한다(중복 인덱스 방지).
+CREATE INDEX `IX_ORDERS_BOORMI_LIST` ON `ORDERS` (`boormi_id`, `delivery_request_dtm` DESC, `order_id` DESC);
+
 ALTER TABLE `ORDERS` ADD CONSTRAINT `FK_BOORMI_TO_ORDERS_1` FOREIGN KEY (`boormi_id`) REFERENCES `BOORMI` (`boormi_id`);
+
+-- 위와 동일한 이유로 dreami_id 쪽 목록 조회(활동 내역)를 커버한다.
+CREATE INDEX `IX_ORDERS_DREAMI_LIST` ON `ORDERS` (`dreami_id`, `delivery_request_dtm` DESC, `order_id` DESC);
 
 ALTER TABLE `ORDERS` ADD CONSTRAINT `FK_DREAMI_TO_ORDERS_1` FOREIGN KEY (`dreami_id`) REFERENCES `DREAMI` (`dreami_id`);
 
@@ -474,6 +485,12 @@ ALTER TABLE `SETTLEMENT_DETAILS` ADD CONSTRAINT `FK_DREAMI_TO_SETTLEMENT_DETAILS
 -- 배송 정보를 order_id로 조회 + 비관적 락(SELECT ... FOR UPDATE)이 주문 1행에만 걸리도록 인덱스를 명시한다(FK 자동 인덱스에 의존하지 않음).
 -- FK보다 먼저 생성해 MySQL이 이 인덱스를 재사용하도록 한다(중복 인덱스 방지).
 CREATE INDEX `IX_DELIVERY_ORDER_ID` ON `DELIVERY` (`order_id`);
+
+-- findStaleLocationDeliveries()가 5초마다 도는 DELIVERY 풀스캔을 없앤다(GPS 끊김 감지).
+-- delivery_cd를 선두에 두는 이유: 종료·취소된 배달도 last_location_dtm이 과거로 남아 있어
+-- 범위 조건만으로는 걸러지지 않는다. 상태값을 앞에 둬야 진행중 배달만 먼저 잘라낼 수 있다.
+-- 측정 결과는 index-test/delivery-stale-location-index-test/README.md 참고(접근 행 20,001 → 502).
+CREATE INDEX `IX_DELIVERY_STATUS_LAST_LOCATION` ON `DELIVERY` (`delivery_cd`, `last_location_dtm`);
 
 ALTER TABLE `DELIVERY` ADD CONSTRAINT `FK_ORDERS_TO_DELIVERY_1` FOREIGN KEY (`order_id`) REFERENCES `ORDERS` (`order_id`);
 

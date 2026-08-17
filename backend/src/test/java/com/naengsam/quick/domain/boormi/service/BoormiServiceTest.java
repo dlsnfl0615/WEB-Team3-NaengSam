@@ -467,7 +467,7 @@ BoormiServiceTest {
     void 취소_주문이_없으면_ORDER_NOT_FOUND_예외() {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
-        given(orderService.getOrder(orderId))
+        given(orderService.getOrderForUpdate(orderId))
                 .willThrow(new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
 
         Throwable thrown = catchThrowable(() -> boormiService.unsubscribeOrder(boormiId, orderId));
@@ -484,7 +484,7 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = order(UUID.randomUUID(), OrderCd.MATCHING);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        given(orderService.getOrderForUpdate(orderId)).willReturn(order);
 
         Throwable thrown = catchThrowable(() -> boormiService.unsubscribeOrder(boormiId, orderId));
 
@@ -500,7 +500,7 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.IN_PROGRESS);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        given(orderService.getOrderForUpdate(orderId)).willReturn(order);
 
         Throwable thrown = catchThrowable(() -> boormiService.unsubscribeOrder(boormiId, orderId));
 
@@ -516,7 +516,7 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.MATCHING);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        given(orderService.getOrderForUpdate(orderId)).willReturn(order);
 
         boormiService.unsubscribeOrder(boormiId, orderId);
 
@@ -526,6 +526,22 @@ BoormiServiceTest {
         then(eventPublisher).should().publishEvent(new OrderCancelledByBoormiEvent(orderId));
     }
 
+    /**
+     * 동시 취소(더블클릭·재시도) 두 건이 같은 MATCHING 스냅샷을 읽고 함께 통과하지 않도록, 상태 검사부터 취소·환불까지가 주문 행 락 안에서
+     * 일어나야 한다. 잠기지 않은 조회로 되돌아가면 이 테스트가 깨진다.
+     */
+    @Test
+    void 취소는_주문을_비관적_락으로_읽어_상태_검사와_취소를_직렬화한다() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        given(orderService.getOrderForUpdate(orderId)).willReturn(order(boormiId, OrderCd.MATCHING));
+
+        boormiService.unsubscribeOrder(boormiId, orderId);
+
+        then(orderService).should().getOrderForUpdate(orderId);
+        then(orderService).should(never()).getOrder(any());
+    }
+
     @Test
     void 확정_정상이면_dreamiId를_채우고_IN_PROGRESS_전이하며_커밋후_처리용_이벤트를_발행한다() {
         UUID boormiId = UUID.randomUUID();
@@ -533,13 +549,15 @@ BoormiServiceTest {
         UUID offerId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION); // dreamiId 미설정 상태로 시작
-        given(orderService.getOrder(orderId)).willReturn(order);
+        ReflectionTestUtils.setField(order, "pendingOfferId", offerId);
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
         given(matchingService.findDreamiIdByOfferId(offerId)).willReturn(Optional.of(dreamiId));
 
         boormiService.confirmDreami(boormiId, orderId, offerId);
 
         assertThat(order.getOrderCd()).isEqualTo(OrderCd.IN_PROGRESS);
         assertThat(order.getDreamiId()).isEqualTo(dreamiId);
+        assertThat(order.getPendingOfferId()).isNull(); // 확정 대기가 끝났으므로 비운다
         then(matchingRepository).should().save(any());
         then(matchingService).should(never()).acceptByBoormi(any()); // 커밋 전에는 엔진에 직접 제출하지 않는다
         then(eventPublisher).should().publishEvent(new BoormiConfirmedEvent(offerId));
@@ -551,7 +569,7 @@ BoormiServiceTest {
         UUID orderId = UUID.randomUUID();
         Orders order = confirmableOrder(UUID.randomUUID(), UUID.randomUUID(),
                 OrderCd.PENDING_BOORMI_CONFIRMATION);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
 
         Throwable thrown = catchThrowable(
                 () -> boormiService.confirmDreami(boormiId, orderId, UUID.randomUUID()));
@@ -566,7 +584,7 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = confirmableOrder(boormiId, UUID.randomUUID(), OrderCd.MATCHING);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
 
         Throwable thrown = catchThrowable(
                 () -> boormiService.confirmDreami(boormiId, orderId, UUID.randomUUID()));
@@ -582,7 +600,8 @@ BoormiServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID offerId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        ReflectionTestUtils.setField(order, "pendingOfferId", offerId);
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
         given(matchingService.findDreamiIdByOfferId(offerId)).willReturn(Optional.empty());
 
         Throwable thrown = catchThrowable(
@@ -595,19 +614,41 @@ BoormiServiceTest {
     }
 
     @Test
+    void 확정_offerId가_주문의_pendingOfferId와_다르면_NO_DREAMI_TO_CONFIRM_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID staleOfferId = UUID.randomUUID(); // 만료 후 재발급 이전, 지연/재시도된 요청이 들고 온 옛 오퍼
+        UUID currentOfferId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION);
+        ReflectionTestUtils.setField(order, "pendingOfferId", currentOfferId);
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.confirmDreami(boormiId, orderId, staleOfferId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(OrderErrorCode.NO_DREAMI_TO_CONFIRM);
+        then(matchingService).should(never()).findDreamiIdByOfferId(any());
+        then(matchingRepository).should(never()).save(any());
+        then(eventPublisher).should(never()).publishEvent(any(BoormiConfirmedEvent.class));
+    }
+
+    @Test
     void 거절_정상이면_MATCHING으로_되돌리고_매칭엔진에_거절을_제출한다() {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         UUID offerId = UUID.randomUUID();
         Orders order = confirmableOrder(boormiId, UUID.randomUUID(),
                 OrderCd.PENDING_BOORMI_CONFIRMATION);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        ReflectionTestUtils.setField(order, "pendingOfferId", offerId);
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
         given(matchingService.isBoormiOfferOwner(offerId, boormiId)).willReturn(true);
 
         boormiService.rejectDreami(boormiId, orderId, offerId);
 
         assertThat(order.getOrderCd()).isEqualTo(OrderCd.MATCHING);
         assertThat(order.getDreamiId()).isNull();
+        assertThat(order.getPendingOfferId()).isNull(); // 확정 대기가 끝났으므로 비운다
         then(matchingService).should(never()).rejectByBoormi(any()); // 커밋 전에는 엔진에 직접 제출하지 않는다
         then(eventPublisher).should().publishEvent(new BoormiRejectedDreamiEvent(offerId));
         then(matchingRepository).should(never()).save(any());
@@ -618,7 +659,7 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = order(UUID.randomUUID(), OrderCd.PENDING_BOORMI_CONFIRMATION);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
 
         Throwable thrown = catchThrowable(
                 () -> boormiService.rejectDreami(boormiId, orderId, UUID.randomUUID()));
@@ -633,7 +674,7 @@ BoormiServiceTest {
         UUID boormiId = UUID.randomUUID();
         UUID orderId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.MATCHING);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
 
         Throwable thrown = catchThrowable(
                 () -> boormiService.rejectDreami(boormiId, orderId, UUID.randomUUID()));
@@ -649,7 +690,8 @@ BoormiServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID offerId = UUID.randomUUID();
         Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION);
-        given(orderService.getOrder(orderId)).willReturn(order);
+        ReflectionTestUtils.setField(order, "pendingOfferId", offerId);
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
         given(matchingService.isBoormiOfferOwner(offerId, boormiId)).willReturn(false);
 
         Throwable thrown = catchThrowable(() -> boormiService.rejectDreami(boormiId, orderId, offerId));
@@ -657,6 +699,26 @@ BoormiServiceTest {
         assertThat(((BusinessException) thrown).getErrorCode())
                 .isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
         assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
+        then(eventPublisher).should(never()).publishEvent(any(BoormiRejectedDreamiEvent.class));
+    }
+
+    @Test
+    void 거절_offerId가_해당_주문의_pendingOfferId와_다르면_NOT_OFFER_OWNER_예외() {
+        UUID boormiId = UUID.randomUUID();
+        UUID orderId = UUID.randomUUID();
+        UUID otherOrderOfferId = UUID.randomUUID(); // 같은 부르미의 다른 주문에 걸린 오퍼
+        UUID thisOrderOfferId = UUID.randomUUID();
+        Orders order = order(boormiId, OrderCd.PENDING_BOORMI_CONFIRMATION);
+        ReflectionTestUtils.setField(order, "pendingOfferId", thisOrderOfferId);
+        given(orderRepository.findByOrderId(orderId)).willReturn(Optional.of(order));
+
+        Throwable thrown = catchThrowable(
+                () -> boormiService.rejectDreami(boormiId, orderId, otherOrderOfferId));
+
+        assertThat(((BusinessException) thrown).getErrorCode())
+                .isEqualTo(MatchingErrorCode.NOT_OFFER_OWNER);
+        assertThat(order.getOrderCd()).isEqualTo(OrderCd.PENDING_BOORMI_CONFIRMATION);
+        then(matchingService).should(never()).isBoormiOfferOwner(any(), any());
         then(eventPublisher).should(never()).publishEvent(any(BoormiRejectedDreamiEvent.class));
     }
 

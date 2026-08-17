@@ -217,14 +217,12 @@ class MatchingDebugControllerTest {
     }
 
     @Test
-    void 취소할_진행중인_방이_없으면_주문_취소는_409를_반환한다() throws Exception {
+    void 취소할_진행중인_방이_없어도_주문_취소는_200을_반환한다() throws Exception {
         UUID orderId = UUID.randomUUID();
-        when(matchingService.cancelOrderByBoormi(orderId)).thenReturn(false);
+        when(matchingService.cancelOrderByBoormi(orderId)).thenReturn(true);
 
-        mockMvcWithExceptionHandler().perform(post("/api/v1/debug/matching/orders/{orderId}/cancel", orderId))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.isSuccess").value(false))
-                .andExpect(jsonPath("$.code").value("COMMON_008"));
+        mockMvc.perform(post("/api/v1/debug/matching/orders/{orderId}/cancel", orderId))
+                .andExpect(status().isOk());
     }
 
     @Test

@@ -9,11 +9,13 @@ import com.naengsam.quick.domain.matching.policy.assignment.ScoreBasedGreedyAssi
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.MatchingEligibilityPolicy;
 import com.naengsam.quick.domain.matching.policy.eligibility.OutcomeCooldownOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.BalancedScoreWeights;
 import com.naengsam.quick.domain.matching.policy.scoring.MatchingScorePolicy;
 import com.naengsam.quick.domain.matching.policy.scoring.OrderWaitScorePolicy;
 import com.naengsam.quick.domain.matching.service.MatchingService;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.notification.NotificationService;
 import java.time.Duration;
 import lombok.RequiredArgsConstructor;
@@ -52,10 +54,12 @@ public class MatchingPolicyConfiguration {
     }
 
     @Bean
-    public MatchingAssignmentPolicy matchingAssignmentPolicy(MatchingScorePolicy matchingScorePolicy) {
+    public MatchingAssignmentPolicy matchingAssignmentPolicy(
+            MatchingScorePolicy matchingScorePolicy, OfferScopeResolver offerScopeResolver) {
         return switch (properties.assignmentPolicy()) {
-            case LEGACY_ORDER_FIRST -> new LegacyOrderFirstAssignmentPolicy(matchingScorePolicy);
-            case SCORE_BASED_GREEDY -> new ScoreBasedGreedyAssignmentPolicy(matchingScorePolicy);
+            case LEGACY_ORDER_FIRST ->
+                    new LegacyOrderFirstAssignmentPolicy(matchingScorePolicy, offerScopeResolver);
+            case SCORE_BASED_GREEDY -> new ScoreBasedGreedyAssignmentPolicy(matchingScorePolicy, offerScopeResolver);
         };
     }
 
@@ -69,6 +73,11 @@ public class MatchingPolicyConfiguration {
                         cooldown.dreamiRejection(), cooldown.boormiRejection(), cooldown.dreamiExpiration());
             }
         };
+    }
+
+    @Bean
+    public OfferScopeResolver offerScopeResolver() {
+        return new OfferScopeResolver(properties.offerScopes());
     }
 
     @Bean
@@ -86,8 +95,9 @@ public class MatchingPolicyConfiguration {
     public MatchingPlanApplier matchingPlanApplier(
             MatchingPlanValidator matchingPlanValidator,
             @Lazy MatchingService matchingService,
-            NotificationService notificationService) {
+            NotificationService notificationService,
+            OrderService orderService) {
         return new MatchingPlanApplier(
-                matchingPlanValidator, matchingService, notificationService, OFFER_TTL);
+                matchingPlanValidator, matchingService, notificationService, OFFER_TTL, orderService);
     }
 }

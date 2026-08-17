@@ -4,6 +4,7 @@
  * OpenAPI definition
  * OpenAPI spec version: v0
  */
+import type { OfferPolicyDto } from './offerPolicyDto';
 import type { OrderSummaryDto } from './orderSummaryDto';
 
 export interface PendingOfferDto {
@@ -11,4 +12,5 @@ export interface PendingOfferDto {
   orderSummary?: OrderSummaryDto;
   offeredAt?: string;
   expiresAt?: string;
+  offerPolicy?: OfferPolicyDto;
 }
