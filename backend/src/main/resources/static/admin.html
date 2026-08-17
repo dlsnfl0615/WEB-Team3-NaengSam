@@ -375,7 +375,7 @@
         TAB_LOADERS[tab]();
     }
 
-    // ===== 탭 1. 매칭 현황판 (matching-status.html 재사용) =====
+    // ===== 탭 1. 매칭 현황판 =====
     const MATCHING_API = "/api/v1/debug/matching";
     let matchingPollTimer = null;
     let matchingRefreshing = false;
@@ -490,7 +490,7 @@
         matchingPollTimer = null;
     }
 
-    // ===== 탭 2. 드리미 인증 검수 (dreami-review.html 재사용) =====
+    // ===== 탭 2. 드리미 인증 검수 =====
     const DREAMI_REVIEW_API = "/api/v1/debug/dreami-review";
     const DEFAULT_REJECT_REASON = "관리자 검수 결과 반려";
 
