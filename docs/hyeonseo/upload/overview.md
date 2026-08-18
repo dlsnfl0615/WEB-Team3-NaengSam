@@ -111,5 +111,34 @@ presigned URL 검증을 "S3에 파일이 존재하는가"만으로 하면 다음
 | `STORAGE_UPLOAD_FAILED` | 500 | S3 HEAD 조회 자체가 실패(권한/장애 등) |
 | `FILE_NOT_FOUND` | 404 | 세션이 없거나, 세션은 있는데 실제 파일이 없음 |
 | `INVALID_FILE_NAME` | 404 | 파일명에 `/`, `\`, `..` 포함 |
+
+## 9. 로컬 dev-storage PUT이 로그인 상태에서도 401 나던 문제
+
+**증상.** 로그인해서 정상적으로 다른 API는 다 되는 상태에서, 드리미 픽업 인증 단계처럼 사진을 실제로 업로드하는 화면에서만 401이 났다.
+
+**원인.** presigned URL 발급(`GET /api/v1/upload/url`)과 실제 파일 PUT은 별개의 요청이고, 서로 인증이 실리는 경로가 다르다.
+
+- 발급 요청은 프론트의 공용 axios 인스턴스(`withCredentials: true`)로 나가고, Vite dev 프록시를 거쳐 프론트와 같은 origin(`localhost:5173`)으로 보이므로 세션 쿠키가 자동으로 실린다.
+- 반면 실제 파일 바이트를 올리는 PUT은 발급받은 절대 URL로 직접 `fetch()`하는데, 로컬 dev에서는 `DevUploader`(§6)가 이 URL을 **백엔드 자기 origin**(`http://localhost:8080/api/v1/upload/dev-storage?key=...`)으로 내려준다. 프론트(`5173`)에서 이 URL로 보내는 `fetch`는 교차 출처 요청이고, `fetch`의 기본 `credentials` 모드는 `same-origin`이라 쿠키를 아예 안 붙인다.
+- `DevStorageController`엔 `@PublicApi`가 없어서(로그인 세션이 필요한 게 의도된 설계) `LoginCheckInterceptor`가 쿠키 없는 이 요청을 그대로 401(`AuthErrorCode.UNAUTHORIZED`)로 튕겼다.
+
+문제였던 코드(세 화면 모두 동일한 패턴):
+
+```ts
+// frontend/src/pages/delivery-proof/ui/DeliveryProofScreen.tsx
+// frontend/src/pages/verify/ui/VerifyScreen.tsx
+// frontend/src/pages/request-create/ui/StepPhoto.tsx
+const putRes = await fetch(url, {
+  method: "PUT",
+  body: file,
+  headers: { "Content-Type": file.type || "application/octet-stream" },
+});
+```
+
+CORS(`cors.allowed-origins=http://localhost:5173`)는 이미 credentialed 요청을 허용하고 있어서 원인이 아니었다 — 브라우저가 쿠키를 붙여서 보내지 않은 게 문제였을 뿐이다.
+
+**검토했다가 기각한 대안.** `DevStorageController`의 메서드에 `@AdminUser`를 붙여 관리자 세션만 쓰게 하는 방법도 있었다. 하지만 이 엔드포인트는 로컬 dev에서 S3를 대신하는 범용 저장소라 드리미/부르미 계정의 실제 사진 업로드 테스트가 전부 여길 거친다. `@AdminUser`를 붙이면 로그인 자체는 통과해도 role이 ADMIN이 아니라 403으로 막혀서, 일반 계정으로는 업로드 테스트 자체가 불가능해진다. "아무나 로그인만 하면 되게" 두는 게 목적에 맞아 채택하지 않았다.
+
+**해결.** 세 곳의 `fetch` 호출에 `credentials: "include"`를 추가했다. 실 S3 presigned URL(운영)로 나가는 같은 코드에도 그대로 적용되지만, S3 origin엔 이 앱의 세션 쿠키가 애초에 없으므로 무해하다.
 | `KEY_OWNER_MISMATCH` | 403 | key의 purpose/boormiId/resourceId 불일치 |
 | `MISSING_RESOURCE_ID` | 400 | resource-scoped purpose인데 resourceId 없음 |
