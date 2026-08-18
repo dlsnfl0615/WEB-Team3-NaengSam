@@ -14,6 +14,7 @@ async function uploadDocument(file: File, purpose: GetPresignedUrlPurpose): Prom
   if (!result?.url || !result?.key) throw new Error('업로드 URL을 받지 못했어요.')
   const res = await fetch(result.url, {
     method: 'PUT',
+    credentials: 'include',
     body: file,
     headers: { 'Content-Type': file.type },
   })

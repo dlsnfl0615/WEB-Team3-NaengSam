@@ -168,8 +168,11 @@ function RealDeliveryProof({
       // 2) 발급받은 presigned URL로 S3에 직접 PUT(공통 axios 인스턴스 미사용 — 절대 URL 그대로
       //    호출해야 실제 호스트로 간다. path만 떼어 앱 origin으로 보내면 dev-storage에서만 우연히
       //    맞고 실 S3에서는 엉뚱한 곳(CloudFront 등)으로 요청이 나가 깨진다).
+      //    credentials: "include" — 로컬 dev-storage는 백엔드 자체 origin(다른 포트)이라 세션
+      //    쿠키를 명시적으로 실어야 로그인 검사를 통과한다(실 S3에서는 어차피 해당 쿠키가 없어 무해).
       const putRes = await fetch(url, {
         method: "PUT",
+        credentials: "include",
         body: file,
         headers: { "Content-Type": file.type || "application/octet-stream" },
       });
