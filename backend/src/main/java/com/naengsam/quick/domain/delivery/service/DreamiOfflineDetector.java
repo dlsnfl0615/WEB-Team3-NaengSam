@@ -51,7 +51,7 @@ import java.util.stream.Collectors;
  * 임계값을 하나 더 보는 것으로 끝나는 이유는 GPS 하트비트({@code last_location_dtm})가 "이 라이더의 앱이 죽었다"의
  * 이미 영속된 프록시이기 때문이다 — 별도의 연결 업타임 트래커를 만들지 않는다.
  *
- * <p>SSE 단계의 중복 억제 상태는 인메모리지만(SseEmitterRegistry·매칭 레지스트리와 동일한 단일 JVM 전제),
+ * <p>SSE 단계의 중복 억제 상태는 인메모리지만(SseConnectionManager·매칭 레지스트리와 동일한 단일 JVM 전제),
  * SMS 단계는 {@code DELIVERY.offline_sms_sent_dtm} 컬럼으로 영속한다. 재시작 시 소실되는 인메모리 집합은
  * SSE 에는 무해하지만 유료 채널에는 용납할 수 없다 — 정체된 배달 중에 배포하면 문자가 재발송된다.
  */

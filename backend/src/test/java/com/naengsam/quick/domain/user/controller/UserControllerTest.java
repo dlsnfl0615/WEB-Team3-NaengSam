@@ -7,7 +7,6 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import ch.qos.logback.classic.Level;
@@ -26,7 +25,8 @@ import com.naengsam.quick.global.session.LoginCheckInterceptor;
 import com.naengsam.quick.global.session.LoginSession;
 import com.naengsam.quick.global.session.SessionConst;
 import com.naengsam.quick.global.sse.SseCloseReason;
-import com.naengsam.quick.global.sse.SseEmitterRegistry;
+import com.naengsam.quick.global.sse.SseConnection;
+import com.naengsam.quick.global.sse.SseConnectionManager;
 import jakarta.servlet.http.HttpSession;
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +43,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.web.method.HandlerMethod;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
  * 사용자당 활성 세션을 하나만 유지하는 로그인/로그아웃 흐름(세션 교체, 이전 SSE 종료, 이전 세션 무효화)을 검증한다.
@@ -51,7 +52,7 @@ class UserControllerTest {
 
     private LoginQueue loginQueue;
     private ActiveSessionRegistry activeSessionRegistry;
-    private SseEmitterRegistry sseEmitterRegistry;
+    private SseConnectionManager sseConnectionManager;
     private UserController controller;
 
     @BeforeEach
@@ -60,9 +61,16 @@ class UserControllerTest {
         loginQueue = mock(LoginQueue.class);
         SmsVerificationService smsVerificationService = mock(SmsVerificationService.class);
         activeSessionRegistry = new ActiveSessionRegistry();
-        sseEmitterRegistry = mock(SseEmitterRegistry.class);
+        sseConnectionManager = mock(SseConnectionManager.class);
         controller = new UserController(userService, loginQueue, smsVerificationService, activeSessionRegistry,
-                sseEmitterRegistry);
+                sseConnectionManager);
+    }
+
+    /** 실제 구독(/sse/subscribe)을 거치지 않고, 주어진 세션에 SSE 연결을 직접 붙여둔다. */
+    private SseConnection attachSseConnection(UUID userId, LoginSession session) {
+        SseConnection connection = new SseConnection(UUID.randomUUID().toString(), mock(SseEmitter.class));
+        activeSessionRegistry.replaceSseIfCurrent(userId, session.getSessionId(), connection);
+        return connection;
     }
 
     /** 대기열을 통과해 세션을 만들 차례가 된 결과(즉시 로그인 경로와 클레임 경로가 공유한다). */
@@ -77,7 +85,7 @@ class UserControllerTest {
 
         controller.login(loginRequest(), new MockHttpServletRequest());
 
-        verify(sseEmitterRegistry, never()).disconnectAll(any(), any());
+        verify(sseConnectionManager, never()).close(any(), any());
     }
 
     @Test
@@ -94,14 +102,17 @@ class UserControllerTest {
     }
 
     @Test
-    void 두번째_로그인은_이전_사용자의_SSE를_전체_종료한다() {
+    void 두번째_로그인은_이전_사용자의_SSE_연결을_종료한다() {
         UUID userId = UUID.randomUUID();
         given(loginQueue.submit(any())).willReturn(ready(userId));
-        controller.login(loginRequest(), new MockHttpServletRequest());
+        MockHttpServletRequest firstRequest = new MockHttpServletRequest();
+        controller.login(loginRequest(), firstRequest);
+        LoginSession firstSession = LoginSession.current(firstRequest).orElseThrow();
+        SseConnection connection = attachSseConnection(userId, firstSession);
 
         controller.login(loginRequest(), new MockHttpServletRequest());
 
-        verify(sseEmitterRegistry).disconnectAll(userId, SseCloseReason.REPLACED_BY_LOGIN);
+        verify(sseConnectionManager).close(connection, SseCloseReason.REPLACED_BY_LOGIN);
     }
 
     @Test
@@ -112,11 +123,12 @@ class UserControllerTest {
         MockHttpServletRequest requestA = new MockHttpServletRequest();
         controller.login(loginRequest(), requestA);
         LoginSession sessionA = LoginSession.current(requestA).orElseThrow();
+        SseConnection connectionA = attachSseConnection(userA, sessionA);
 
         controller.login(loginRequest(), new MockHttpServletRequest());
 
         assertThat(isStillValid(sessionA)).isTrue();
-        verify(sseEmitterRegistry, never()).disconnectAll(eq(userA), any());
+        verify(sseConnectionManager, never()).close(eq(connectionA), any());
     }
 
     @Test
@@ -148,7 +160,8 @@ class UserControllerTest {
 
             long stillValid = sessions.stream().filter(this::isStillValid).count();
             assertThat(stillValid).isEqualTo(1);
-            verify(sseEmitterRegistry, times(loginCount - 1)).disconnectAll(userId, SseCloseReason.REPLACED_BY_LOGIN);
+            // 이 테스트는 SSE 구독 없이 로그인만 반복하므로 매 교체마다 sseConnection은 비어 있고, close()는
+            // 호출되지 않는다. SSE 연결이 있을 때의 종료 동작은 위 단일 흐름 테스트들이 검증한다.
         } finally {
             start.countDown();
             executor.shutdownNow();
@@ -156,15 +169,17 @@ class UserControllerTest {
     }
 
     @Test
-    void 로그아웃하면_해당_사용자의_모든_emitter를_종료한다() {
+    void 로그아웃하면_해당_사용자의_SSE_연결을_종료한다() {
         UUID userId = UUID.randomUUID();
         given(loginQueue.submit(any())).willReturn(ready(userId));
         MockHttpServletRequest loginRequest = new MockHttpServletRequest();
         controller.login(loginRequest(), loginRequest);
+        LoginSession session = LoginSession.current(loginRequest).orElseThrow();
+        SseConnection connection = attachSseConnection(userId, session);
 
         controller.logout(loginRequest);
 
-        verify(sseEmitterRegistry).disconnectAll(userId, SseCloseReason.LOGOUT);
+        verify(sseConnectionManager).close(connection, SseCloseReason.LOGOUT);
     }
 
     @Test
@@ -190,11 +205,12 @@ class UserControllerTest {
         MockHttpServletRequest requestB = new MockHttpServletRequest();
         controller.login(loginRequest(), requestB);
         LoginSession sessionB = LoginSession.current(requestB).orElseThrow();
+        SseConnection connectionB = attachSseConnection(userB, sessionB);
 
         controller.logout(requestA);
 
         assertThat(isStillValid(sessionB)).isTrue();
-        verify(sseEmitterRegistry, never()).disconnectAll(eq(userB), any());
+        verify(sseConnectionManager, never()).close(eq(connectionB), any());
     }
 
     @Test
@@ -207,7 +223,7 @@ class UserControllerTest {
 
         // 이전 세션은 이미 무효화·제거됐으므로, 그 쿠키로 들어오는 다음 요청은 서버에 세션이 없는 것과 같다.
         MockHttpServletRequest staleRequest = new MockHttpServletRequest();
-        LoginCheckInterceptor interceptor = new LoginCheckInterceptor();
+        LoginCheckInterceptor interceptor = new LoginCheckInterceptor(activeSessionRegistry);
 
         Throwable thrown = catchThrowable(() ->
                 interceptor.preHandle(staleRequest, new MockHttpServletResponse(), protectedHandler()));

@@ -5,10 +5,13 @@ import com.naengsam.quick.domain.boormi.entity.ItemCd;
 import com.naengsam.quick.domain.delivery.service.DeliveryService;
 import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.OrderService;
+import com.naengsam.quick.global.session.ActiveSessionRegistry;
+import com.naengsam.quick.global.session.LoginSession;
 import com.naengsam.quick.global.session.PublicApi;
 import com.naengsam.quick.global.sse.SseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
@@ -37,6 +40,7 @@ public class DeliveryTestController {
     private final DeliveryService deliveryService;
     private final SseService sseService;
     private final OrderService orderService;
+    private final ActiveSessionRegistry activeSessionRegistry;
 
     /**
      * PICKUP_NORMAL 상태의 배달 한 건을 새로 만들어 저장하고, 생성한 식별자들을 돌려준다.
@@ -96,11 +100,17 @@ public class DeliveryTestController {
 
     /**
      * 로그인 없이 임의 UUID로 SSE를 구독하는 dev 전용 엔드포인트. 실제 구독(/api/v1/sse/subscribe)은 로그인 필수라
-     * seed가 만든 랜덤 boormiId/dreamiId로는 구독할 수 없어, 테스트 콘솔이 이 경로로 구독한다. 실제 SSE 경로를 그대로 태운다.
+     * seed가 만든 랜덤 boormiId/dreamiId로는 구독할 수 없어, 테스트 콘솔이 이 경로로 구독한다.
+     * <p>운영 코드(세션 검증)를 우회하지 않도록, 실제 servlet {@link LoginSession}을 만들어 {@link ActiveSessionRegistry}에
+     * 등록한 뒤 실제 SSE 경로({@link SseService#subscribe})를 그대로 태운다. {@link LoginSession#create}는 이 요청의
+     * 기존 세션을 무효화하고 새로 발급하므로, 한 브라우저 세션에서 동시에 구독할 수 있는 dev userId는 한 번에 하나다.
      */
     @Operation(summary = "SSE 구독(dev)", description = "임의 userId(boormiId/dreamiId)로 로그인 없이 SSE를 구독한다. 테스트 콘솔 전용.")
     @GetMapping(value = "/subscribe/{userId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter devSubscribe(@PathVariable UUID userId) {
-        return sseService.subscribe(userId);
+    public SseEmitter devSubscribe(@PathVariable UUID userId, HttpServletRequest httpRequest) {
+        LoginSession session = LoginSession.create(httpRequest);
+        session.login(userId);
+        activeSessionRegistry.replace(userId, session);
+        return sseService.subscribe(userId, session.getSessionId());
     }
 }
