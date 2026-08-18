@@ -44,7 +44,8 @@
 - [🧭 핵심 흐름](#-핵심-흐름)
 - [서비스 아키텍쳐](#서비스-아키텍쳐)
 - [🧠 기술 결정](#-기술-결정)
-- [🐛 트러블슈팅](#-트러블슈팅)
+- [🔧 트러블슈팅](#-트러블슈팅)
+- [🧪 부하테스트](#-부하테스트)
 
 ---
 
@@ -139,7 +140,7 @@
 - [Redis 기반 로그인 대기열 도입기](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/Redis-%EA%B8%B0%EB%B0%98-%EB%A1%9C%EA%B7%B8%EC%9D%B8-%EB%8C%80%EA%B8%B0%EC%97%B4-%EB%8F%84%EC%9E%85%EA%B8%B0)
 - [활동 내역 조회를 커서 기반 페이지네이션으로 진행](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/%ED%99%9C%EB%8F%99-%EB%82%B4%EC%97%AD-%EC%A1%B0%ED%9A%8C%EB%A5%BC-%EC%BB%A4%EC%84%9C-%EA%B8%B0%EB%B0%98-%ED%8E%98%EC%9D%B4%EC%A7%80%EB%84%A4%EC%9D%B4%EC%85%98%EC%9C%BC%EB%A1%9C-%EC%A7%84%ED%96%89)
 
-## 🐛 트러블슈팅
+## 🔧 트러블슈팅
 
 - [UploadSession - 옛 키 재사용 공격 방어 설계](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/UploadSession-%E2%80%90-%EC%98%9B-%ED%82%A4-%EC%9E%AC%EC%82%AC%EC%9A%A9-%EA%B3%B5%EA%B2%A9-%EB%B0%A9%EC%96%B4-%EC%84%A4%EA%B3%84)
 - [8/6 · EC2 SSH 접속 불가](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/8_6_%EB%B0%B0%ED%8F%AC%EC%A4%91_%EC%9E%A5%EC%95%A0)
@@ -153,3 +154,10 @@
 - [드리미 오프라인 조회에 필요한 복합 인덱스 추가](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/%EB%93%9C%EB%A6%AC%EB%AF%B8-%EC%98%A4%ED%94%84%EB%9D%BC%EC%9D%B8-%EC%A1%B0%ED%9A%8C%EC%97%90-%ED%95%84%EC%9A%94%ED%95%9C-%EB%B3%B5%ED%95%A9-%EC%9D%B8%EB%8D%B1%EC%8A%A4-%EC%B6%94%EA%B0%80)
 - [매칭 단계 취소시 포인트 이중 환불 문제](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/%EB%A7%A4%EC%B9%AD-%EB%8B%A8%EA%B3%84-%EC%B7%A8%EC%86%8C%EC%8B%9C-%ED%8F%AC%EC%9D%B8%ED%8A%B8-%EC%9D%B4%EC%A4%91-%ED%99%98%EB%B6%88-%EB%AC%B8%EC%A0%9C)
 
+## 🧪 부하테스트
+
+- [매칭 부하테스트](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/%EB%A7%A4%EC%B9%AD-%EB%B6%80%ED%95%98%ED%85%8C%EC%8A%A4%ED%8A%B8)
+- [매칭 부하테스트 보고서 (8.12)](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/%EB%A7%A4%EC%B9%AD-%EB%B6%80%ED%95%98%ED%85%8C%EC%8A%A4%ED%8A%B8-%EB%B3%B4%EA%B3%A0%EC%84%9C-8.12)
+- [매칭 부하테스트 보고서 (8.13)](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/%EB%A7%A4%EC%B9%AD-%EB%B6%80%ED%95%98%ED%85%8C%EC%8A%A4%ED%8A%B8-%EB%B3%B4%EA%B3%A0%EC%84%9C-8.13)
+- [매칭 부하테스트 보고서 (8.13 · 외부 API 트랜잭션)](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/%EB%A7%A4%EC%B9%AD-%EB%B6%80%ED%95%98%ED%85%8C%EC%8A%A4%ED%8A%B8-%EB%B3%B4%EA%B3%A0%EC%84%9C-8.13-%EC%99%B8%EB%B6%80-API-%ED%8A%B8%EB%9E%9C%EC%9E%AD%EC%85%98)
+- [매칭 부하테스트 보고서 (8.16 · 동시 접속 용량)](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/%EB%A7%A4%EC%B9%AD-%EB%B6%80%ED%95%98%ED%85%8C%EC%8A%A4%ED%8A%B8-%EB%B3%B4%EA%B3%A0%EC%84%9C-8.16-%EB%8F%99%EC%8B%9C-%EC%A0%91%EC%86%8D-%EC%9A%A9%EB%9F%89)
