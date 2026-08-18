@@ -26,6 +26,7 @@ public class SessionExpirationListener implements HttpSessionListener {
     @Override
     public void sessionDestroyed(HttpSessionEvent event) {
         activeSessionRegistry.removeIfCurrent(event.getSession().getId())
-                .ifPresent(userId -> sseEmitterRegistry.disconnectAll(userId, SseCloseReason.SESSION_EXPIRED));
+                .ifPresent(removed ->
+                        sseEmitterRegistry.disconnectAll(removed.userId(), SseCloseReason.SESSION_EXPIRED));
     }
 }

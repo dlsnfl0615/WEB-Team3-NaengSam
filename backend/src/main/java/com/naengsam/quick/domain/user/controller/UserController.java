@@ -134,7 +134,7 @@ public class UserController {
     public void logout(HttpServletRequest httpRequest) {
         LoginSession.current(httpRequest).ifPresent(session -> {
             activeSessionRegistry.removeIfCurrent(session.getSessionId())
-                    .ifPresent(boormiId -> sseEmitterRegistry.disconnectAll(boormiId, SseCloseReason.LOGOUT));
+                    .ifPresent(removed -> sseEmitterRegistry.disconnectAll(removed.userId(), SseCloseReason.LOGOUT));
             session.invalidate();
         });
     }

@@ -58,7 +58,7 @@ class SessionExpirationListenerTest {
         LoginSession session = loginSession(userId);
         // 컨트롤러의 로그아웃 흐름: removeIfCurrent로 먼저 제거 후 disconnectAll 호출.
         activeSessionRegistry.removeIfCurrent(session.getSessionId())
-                .ifPresent(id -> sseEmitterRegistry.disconnectAll(id, SseCloseReason.LOGOUT));
+                .ifPresent(removed -> sseEmitterRegistry.disconnectAll(removed.userId(), SseCloseReason.LOGOUT));
 
         listener.sessionDestroyed(sessionDestroyedEvent(session));
 
