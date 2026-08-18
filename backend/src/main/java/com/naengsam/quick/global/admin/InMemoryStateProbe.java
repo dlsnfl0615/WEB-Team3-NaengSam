@@ -1,4 +1,4 @@
-package com.naengsam.quick.global.debug;
+package com.naengsam.quick.global.admin;
 
 import java.util.List;
 

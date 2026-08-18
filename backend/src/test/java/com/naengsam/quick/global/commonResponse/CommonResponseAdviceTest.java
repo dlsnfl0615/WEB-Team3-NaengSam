@@ -2,7 +2,7 @@ package com.naengsam.quick.global.commonResponse;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.naengsam.quick.global.debug.InMemoryStateController;
+import com.naengsam.quick.global.admin.InMemoryStateController;
 import com.naengsam.quick.global.notification.PushSubscriptionController;
 import com.naengsam.quick.global.sse.SseController;
 import java.util.Arrays;

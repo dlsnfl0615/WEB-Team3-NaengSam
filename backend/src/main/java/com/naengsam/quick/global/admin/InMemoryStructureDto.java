@@ -1,4 +1,4 @@
-package com.naengsam.quick.global.debug;
+package com.naengsam.quick.global.admin;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Collection;

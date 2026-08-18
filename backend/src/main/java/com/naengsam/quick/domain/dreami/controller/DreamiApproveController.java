@@ -21,9 +21,9 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 드리미 신분증/범죄경력 인증 신청을 사람이 직접 검수해 승인/반려하기 위한 관리자 페이지용 API. 관리자 계정으로 로그인해야 호출할 수 있다({@link AdminUser}).
  */
-@Tag(name = "[Debug] Dreami Review", description = "드리미 인증 신청을 수동으로 검수하는 관리자 전용 API")
+@Tag(name = "[Admin] Dreami Review", description = "드리미 인증 신청을 수동으로 검수하는 관리자 전용 API")
 @RestController
-@RequestMapping("/api/v1/debug/dreami-review")
+@RequestMapping("/api/v1/admin/dreami-review")
 @RequiredArgsConstructor
 public class DreamiApproveController {
 
