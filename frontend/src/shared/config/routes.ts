@@ -7,6 +7,7 @@ export const ROUTES = {
   login: "/login",
   signup: "/signup",
   verify: "/verify",
+  dreamiPending: "/dreami-pending",
   home: "/home",
   requestCreate: "/request-create",
   destinationSearch: "/destination-search",
