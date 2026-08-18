@@ -81,54 +81,60 @@
 
 <img width="1504" height="1656" alt="image" src="https://github.com/user-attachments/assets/1c066699-0073-4cd7-8d71-dfd2b49a5c9a" />
 
+
+### ERD
 <img width="4650" height="2342" alt="image" src="https://github.com/user-attachments/assets/d53e9b18-66ec-49f7-9a71-cff1821025e5" />
 
 
 
 ### Infra · DevOps
 
-|       구분       | 기술                            |
-|:--------------:|-------------------------------|
-| **Container**  | Docker · Docker Hub           |
-|   **CI/CD**    | GitHub Actions                |
-|   **Deploy**   | AWS S3 · CloudFront           |
-|  **Hosting**   | AWS EC2 · S3 · CloudFront     |
-| **Monitoring** | Prometheus 3.1 · Grafana 11.5 |
+![Docker](https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![Docker Hub](https://img.shields.io/badge/Docker%20Hub-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-2088FF?style=for-the-badge&logo=githubactions&logoColor=white)
+![AWS EC2](https://img.shields.io/badge/AWS%20EC2-FF9900?style=for-the-badge&logo=amazonec2&logoColor=white)
+![AWS S3](https://img.shields.io/badge/AWS%20S3-569A31?style=for-the-badge&logo=amazons3&logoColor=white)
+![CloudFront](https://img.shields.io/badge/CloudFront-232F3E?style=for-the-badge&logo=amazon&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Prometheus%203.1-E6522C?style=for-the-badge&logo=prometheus&logoColor=white)
+![Grafana](https://img.shields.io/badge/Grafana%2011.5-F46800?style=for-the-badge&logo=grafana&logoColor=white)
 
 ### Backend
 
-|       구분        | 기술                                              |
-|:---------------:|-------------------------------------------------|
-|  **Language**   | Java 21                                         |
-|  **Framework**  | Spring Boot 4.1                                 |
-|    **Build**    | Gradle                                          |
-| **Persistence** | Spring Data JPA · Hibernate · MySQL             |
-|  **인증 · 실시간**   | 세션 기반 인증 · SSE(실시간 알림)                          |
-|   **API 문서**    | SpringDoc OpenAPI(Swagger)                      |
-|    **외부 연동**    | AWS S3 · Kakao Local API(지오코딩) · Solapi(SMS 인증) |
-|     **기타**      | Lombok                                          |
+![Java](https://img.shields.io/badge/Java%2021-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot%204.1-6DB33F?style=for-the-badge&logo=springboot&logoColor=white)
+![Spring Data JPA](https://img.shields.io/badge/Spring%20Data%20JPA-6DB33F?style=for-the-badge&logo=spring&logoColor=white)
+![MySQL](https://img.shields.io/badge/MySQL-4479A1?style=for-the-badge&logo=mysql&logoColor=white)
+![Session Auth](https://img.shields.io/badge/세션%20기반%20인증-000000?style=for-the-badge)
+![SSE](https://img.shields.io/badge/SSE-FF6B6B?style=for-the-badge)
+![Swagger](https://img.shields.io/badge/Swagger-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)
+![AWS S3](https://img.shields.io/badge/AWS%20S3-569A31?style=for-the-badge&logo=amazons3&logoColor=white)
+![Kakao API](https://img.shields.io/badge/Kakao%20Local%20API-FFCD00?style=for-the-badge&logo=kakao&logoColor=black)
+![Solapi](https://img.shields.io/badge/Solapi-00C4B4?style=for-the-badge)
 
 ### ️ Frontend
 
-|         구분          | 기술                            |
-|:-------------------:|-------------------------------|
-|    **Language**     | TypeScript                    |
-|     **Library**     | React 19                      |
-|      **Build**      | Vite 8                        |
-| **Package Manager** | pnpm 11                       |
-|      **State**      | Zustand 5                     |
-|     **Routing**     | React Router 7                |
-|     **Styling**     | Tailwind CSS 4                |
-|       **API**       | Axios · Orval 8               |
-|       **기타**        | PWA(vite-plugin-pwa) · ESLint |
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React%2019-61DAFB?style=for-the-badge&logo=react&logoColor=black)
+![Vite](https://img.shields.io/badge/Vite%208-646CFF?style=for-the-badge&logo=vite&logoColor=white)
+![pnpm](https://img.shields.io/badge/pnpm%2011-F69220?style=for-the-badge&logo=pnpm&logoColor=white)
+![Zustand](https://img.shields.io/badge/Zustand%205-443E38?style=for-the-badge)
+![React Router](https://img.shields.io/badge/React%20Router%207-CA4245?style=for-the-badge&logo=reactrouter&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind%20CSS%204-06B6D4?style=for-the-badge&logo=tailwindcss&logoColor=white)
+![Axios](https://img.shields.io/badge/Axios-5A29E4?style=for-the-badge&logo=axios&logoColor=white)
+![Orval](https://img.shields.io/badge/Orval%208-F09000?style=for-the-badge)
+![PWA](https://img.shields.io/badge/PWA-5A0FC8?style=for-the-badge&logo=pwa&logoColor=white)
+![ESLint](https://img.shields.io/badge/ESLint-4B32C3?style=for-the-badge&logo=eslint&logoColor=white)
 
 ### Test
 
-|      구분       | 기술                          |
-|:-------------:|-----------------------------|
-|  **Backend**  | JUnit 5 · Mockito · AssertJ |
-| **Frontend**  | Vitest 4 · Testing Library  |
-| **Load Test** | K6 · Node.js · Playwright   |
+![JUnit5](https://img.shields.io/badge/JUnit%205-25A162?style=for-the-badge&logo=junit5&logoColor=white)
+![Mockito](https://img.shields.io/badge/Mockito-C5D9C8?style=for-the-badge)
+![AssertJ](https://img.shields.io/badge/AssertJ-2B2D42?style=for-the-badge)
+![Vitest](https://img.shields.io/badge/Vitest%204-6E9F18?style=for-the-badge&logo=vitest&logoColor=white)
+![Testing Library](https://img.shields.io/badge/Testing%20Library-E33332?style=for-the-badge&logo=testinglibrary&logoColor=white)
+![k6](https://img.shields.io/badge/k6-7D64FF?style=for-the-badge&logo=k6&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)
+![Playwright](https://img.shields.io/badge/Playwright-2EAD33?style=for-the-badge&logo=playwright&logoColor=white)
 
 
 ## 🧠 기술 결정
