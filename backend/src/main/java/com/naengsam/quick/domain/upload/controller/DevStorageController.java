@@ -4,7 +4,6 @@ import com.naengsam.quick.domain.upload.exception.UploadErrorCode;
 import com.naengsam.quick.domain.upload.service.InMemoryFileStore;
 import com.naengsam.quick.domain.upload.service.InMemoryFileStore.StoredFile;
 import com.naengsam.quick.global.exception.BusinessException;
-import com.naengsam.quick.global.session.PublicApi;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpHeaders;
@@ -20,13 +19,13 @@ import org.springframework.web.bind.annotation.RestController;
 
 /**
  * {@link com.naengsam.quick.domain.upload.service.DevUploader}가 발급한 URL이 실제로 가리키는 대상.
- * 로컬 개발에서 S3 presigned PUT/GET을 흉내낸다. 실제 presigned URL과 마찬가지로 로그인 세션 없이 접근한다.
+ * 로컬 개발에서 S3 presigned PUT/GET을 흉내낸다. 실제 presigned URL과 달리 서명 검증이 없으므로
+ * 로그인 세션을 요구한다.
  */
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/upload/dev-storage")
 @ConditionalOnProperty(name = "upload.s3-enabled", havingValue = "false", matchIfMissing = true)
-@PublicApi
 public class DevStorageController {
 
     private final InMemoryFileStore fileStore;

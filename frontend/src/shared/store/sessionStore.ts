@@ -95,6 +95,8 @@ function toAuthUser(dto: UserDto): AuthUser {
     // 드리미 평점은 승인된 드리미일 때만 내려온다(미등록·미승인이면 null → 마이페이지에서 숨김).
     boormiRating: dto.boormiAvgScore ?? 0,
     dreamiRating: dto.dreamiAvgScore ?? undefined,
+    // 신청 이력이 없으면 백엔드가 필드 자체를 내려주지 않는다(null).
+    dreamiStatus: dto.dreamiStatus ?? undefined,
   };
 }
 

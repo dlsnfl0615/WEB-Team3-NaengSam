@@ -3,7 +3,7 @@ package com.naengsam.quick.domain.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.naengsam.quick.domain.user.service.VerificationCodeStore.VerifyResult;
-import com.naengsam.quick.global.debug.InMemoryStructureDto;
+import com.naengsam.quick.global.admin.InMemoryStructureDto;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.concurrent.ConcurrentHashMap;

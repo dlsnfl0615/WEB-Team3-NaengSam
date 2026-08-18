@@ -1,6 +1,13 @@
 import type { IconName } from "@/shared/ui";
 import type { Role } from "@/shared/lib/role/RoleContext";
 
+/** 드리미 인증 신청 이력의 상태. 신청한 적이 없으면 필드 자체가 없다(undefined). */
+export type DreamiVerificationStatus =
+  | "REQUESTED"
+  | "REVIEWING"
+  | "APPROVED"
+  | "REJECTED";
+
 /** 배달(드림) 라이프사이클 상태. deliveryStore·진행 화면 공용. */
 export type DeliveryStatus =
   "요청됨" | "매칭중" | "픽업중" | "배송중" | "완료" | "취소" | "사고";
@@ -56,6 +63,8 @@ export interface AuthUser {
   boormiRating: number;
   /** 드리미로서 받은 평균 평점. 승인된 드리미가 아니면 없다. */
   dreamiRating?: number;
+  /** 드리미 인증 신청 이력의 상태. 신청한 적이 없으면 없다. */
+  dreamiStatus?: DreamiVerificationStatus;
   email: string;
 }
 

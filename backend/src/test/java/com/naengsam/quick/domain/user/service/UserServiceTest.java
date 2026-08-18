@@ -262,16 +262,33 @@ class UserServiceTest {
     }
 
     @Test
-    void 내정보_드리미_비활성화면_드리미조회없이_isDreami_false() {
+    void 내정보_드리미_비활성화여도_신청이력이_있으면_승인여부와_무관하게_dreamiStatus를_반환한다() {
         Boormi boormi = activeBoormi();
         UUID id = boormi.getBoormiId();
+        Dreami dreami = org.mockito.Mockito.mock(Dreami.class);
+        given(dreami.getRequestCd()).willReturn(DreamiCd.REQUESTED);
         given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
+        given(dreamiRepository.findById(id)).willReturn(Optional.of(dreami));
         given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
 
         UserDto result = userService.getUserInfo(id);
 
         assertThat(result.isDreami()).isFalse();
-        verify(dreamiRepository, never()).findById(any());
+        assertThat(result.dreamiStatus()).isEqualTo(DreamiCd.REQUESTED);
+    }
+
+    @Test
+    void 내정보_드리미_신청이력이_없으면_dreamiStatus는_null이다() {
+        Boormi boormi = activeBoormi();
+        UUID id = boormi.getBoormiId();
+        given(boormiRepository.findById(id)).willReturn(Optional.of(boormi));
+        given(dreamiRepository.findById(id)).willReturn(Optional.empty());
+        given(userActivityResolver.resolve(id)).willReturn(ActiveContext.idle());
+
+        UserDto result = userService.getUserInfo(id);
+
+        assertThat(result.isDreami()).isFalse();
+        assertThat(result.dreamiStatus()).isNull();
     }
 
     @Test

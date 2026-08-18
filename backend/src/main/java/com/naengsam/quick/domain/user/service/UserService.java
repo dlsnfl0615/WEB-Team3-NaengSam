@@ -115,14 +115,15 @@ public class UserService {
         Boormi boormi = boormiRepository.findById(boormiId)
                 .orElseThrow(() -> new BusinessException(AuthErrorCode.INVALID_SESSION));
 
-        Dreami dreami = boormi.isDreamiActivate()
-                ? dreamiRepository.findById(boormiId).orElse(null)
-                : null;
+        // isDreamiActivate로 게이팅하면 REQUESTED/REJECTED가 미신청과 구분되지 않아(둘 다 조회를 건너뜀),
+        // 신청 이력 자체를 프론트에 알려주려면 승인 여부와 무관하게 항상 조회해야 한다.
+        Dreami dreami = dreamiRepository.findById(boormiId).orElse(null);
         boolean approved = dreami != null && dreami.getRequestCd() == DreamiCd.APPROVED;
         // 승인된 드리미일 때만 드리미 평점을 내려준다(미등록·미승인은 null).
         BigDecimal dreamiAvgScore = approved ? dreami.getDreamiAvgScore() : null;
+        DreamiCd dreamiStatus = dreami != null ? dreami.getRequestCd() : null;
 
-        return UserDto.from(boormi, approved, dreamiAvgScore, userActivityResolver.resolve(boormiId));
+        return UserDto.from(boormi, approved, dreamiAvgScore, dreamiStatus, userActivityResolver.resolve(boormiId));
     }
 
     /**

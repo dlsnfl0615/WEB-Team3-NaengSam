@@ -423,7 +423,7 @@
     }
 
     // ===== 탭 1. 매칭 현황판 =====
-    const MATCHING_API = "/api/v1/debug/matching";
+    const MATCHING_API = "/api/v1/admin/matching";
     let matchingPollTimer = null;
     let matchingRefreshing = false;
 
@@ -538,7 +538,7 @@
     }
 
     // ===== 탭 2. 드리미 인증 검수 =====
-    const DREAMI_REVIEW_API = "/api/v1/debug/dreami-review";
+    const DREAMI_REVIEW_API = "/api/v1/admin/dreami-review";
     const DEFAULT_REJECT_REASON = "관리자 검수 결과 반려";
 
     function photoFigure(label, url) {
@@ -690,7 +690,7 @@
     // ===== 탭 4. 인메모리 상태 =====
     // 자료구조가 "정리되고 있는지"를 보는 화면이라, 크기 자체보다 직전 갱신 대비 증감이 핵심이다.
     // previousSizes에 "Owner.field" → size 를 남겨두고 다음 조회 때 비교한다.
-    const IN_MEMORY_API = "/api/v1/debug/inmemory";
+    const IN_MEMORY_API = "/api/v1/admin/inmemory";
     let memoryPollTimer = null;
     let memoryRefreshing = false;
     let previousSizes = null;
