@@ -36,6 +36,7 @@ import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.order.service.PendingOfferStateService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Collection;
@@ -64,6 +65,18 @@ import org.springframework.test.util.ReflectionTestUtils;
 class MatchingServiceConcurrencyTest {
 
     private static final Duration OFFER_TTL = Duration.ofSeconds(30);
+
+    // 그리드 프리필터가 좌표를 직접 읽으므로 좌표 없는 목 대신 실제 좌표를 쓴다. 모든 주문·드리미를 같은 점에 두면
+    // 항상 같은 셀에 들어가므로 후보 조합은 프리필터 도입 전과 동일하다.
+    private static final GeoPoint LOCATION =
+            new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0));
+
+    /** 좌표를 스텁하지 않은 주문 목에 기본 위치를 채워준다. 개별 테스트가 다시 스텁하면 그 값이 이긴다. */
+    private static Orders orderAt(Orders order) {
+        lenient().when(order.getOriginLatitude()).thenReturn(LOCATION.latitude());
+        lenient().when(order.getOriginLongitude()).thenReturn(LOCATION.longitude());
+        return order;
+    }
 
     private MatchingEngine matchingEngine;
     private MatchingService matchingService;
@@ -144,7 +157,7 @@ class MatchingServiceConcurrencyTest {
         List<UUID> dreamiIds = IntStream.range(0, dreamiCount)
                 .mapToObj(i -> UUID.randomUUID())
                 .toList();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         CountDownLatch submitted = new CountDownLatch(dreamiCount);
         for (UUID dreamiId : dreamiIds) {
@@ -164,8 +177,8 @@ class MatchingServiceConcurrencyTest {
     void 동시에_같은_제안을_여러번_수락해도_단_한번만_상태가_전이된다() throws InterruptedException {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
@@ -211,8 +224,8 @@ class MatchingServiceConcurrencyTest {
     void 동시에_같은_주문에_매칭을_시작해도_그룹은_단_하나만_생성된다() throws InterruptedException {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
@@ -255,8 +268,8 @@ class MatchingServiceConcurrencyTest {
     void 수락이_취소보다_먼저_큐에_들어오면_수락된_오퍼는_부르미_거절로_반영된다() throws InterruptedException {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
@@ -295,8 +308,8 @@ class MatchingServiceConcurrencyTest {
     void 취소가_수락보다_먼저_큐에_들어오면_뒤늦은_수락은_반영되지_않는다() throws InterruptedException {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
@@ -340,8 +353,8 @@ class MatchingServiceConcurrencyTest {
     void timeout과_사용자_응답이_거의_동시에_들어와도_큐_처리_순서대로_단_한번만_유효하게_전이된다() throws InterruptedException {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));

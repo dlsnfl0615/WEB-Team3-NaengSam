@@ -39,6 +39,7 @@ import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.order.service.PendingOfferStateService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Collection;
@@ -59,6 +60,18 @@ import org.junit.jupiter.api.Test;
 class PeriodicMatchingBatchIntegrationTest {
 
     private static final Duration OFFER_TTL = Duration.ofSeconds(30);
+
+    // 그리드 프리필터가 좌표를 직접 읽으므로 좌표 없는 목 대신 실제 좌표를 쓴다. 모든 주문·드리미를 같은 점에 두면
+    // 항상 같은 셀에 들어가므로 후보 조합은 프리필터 도입 전과 동일하다.
+    private static final GeoPoint LOCATION =
+            new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0));
+
+    /** 좌표를 스텁하지 않은 주문 목에 기본 위치를 채워준다. 개별 테스트가 다시 스텁하면 그 값이 이긴다. */
+    private static Orders orderAt(Orders order) {
+        lenient().when(order.getOriginLatitude()).thenReturn(LOCATION.latitude());
+        lenient().when(order.getOriginLongitude()).thenReturn(LOCATION.longitude());
+        return order;
+    }
     private static final Duration BATCH_INTERVAL = Duration.ofMillis(30);
 
     private MatchingEngine matchingEngine;
@@ -113,7 +126,7 @@ class PeriodicMatchingBatchIntegrationTest {
     }
 
     private Orders orderMock(UUID orderId) {
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
@@ -180,7 +193,7 @@ class PeriodicMatchingBatchIntegrationTest {
         MatchingService matchingService = newRunningMatchingService(3);
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         // when (public API만 사용 - applyRunMatchingAssignmentCycle을 직접 호출하지 않는다)
         matchingService.registerDreami(dreamiId, location);
@@ -207,7 +220,7 @@ class PeriodicMatchingBatchIntegrationTest {
         // when (그 뒤에야 실제 매칭 대상이 등록된다)
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
         matchingService.registerDreami(dreamiId, location);
         matchingService.startMatching(orderMock(orderId));
 
@@ -223,7 +236,7 @@ class PeriodicMatchingBatchIntegrationTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId1 = UUID.randomUUID();
         UUID dreamiId2 = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.registerDreami(dreamiId1, location);
         matchingService.registerDreami(dreamiId2, location);
@@ -253,7 +266,7 @@ class PeriodicMatchingBatchIntegrationTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId1 = UUID.randomUUID();
         UUID dreamiId2 = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.registerDreami(dreamiId1, location);
         matchingService.registerDreami(dreamiId2, location);
@@ -284,7 +297,7 @@ class PeriodicMatchingBatchIntegrationTest {
                 matchingPolicyPropertiesWithCooldown(1, dreamiExpirationCooldown));
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.registerDreami(dreamiId, location);
         matchingService.startMatching(orderMock(orderId));

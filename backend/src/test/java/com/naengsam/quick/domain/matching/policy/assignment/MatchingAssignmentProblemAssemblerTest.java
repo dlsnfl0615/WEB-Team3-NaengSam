@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.model.MatchOffer;
 import com.naengsam.quick.domain.matching.model.MatchOfferStatus;
+import com.naengsam.quick.domain.matching.model.MatchingCandidate;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroup;
 import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.PreviousOfferInteraction;
@@ -46,7 +47,10 @@ import org.junit.jupiter.api.Test;
 class MatchingAssignmentProblemAssemblerTest {
 
     private static final GeoPoint ORDER_LOCATION = new GeoPoint(BigDecimal.ZERO, BigDecimal.ZERO);
-    private static final GeoPoint DREAMI_LOCATION = new GeoPoint(BigDecimal.ONE, BigDecimal.ONE);
+    // 그리드 프리필터가 좌표를 직접 읽으므로 주문과 같은 셀에 들어가는 값이어야 한다. 거리 자체는 아래 테스트들이
+    // GeoDistanceCalculator를 목킹해 정하므로, 여기서는 "같은 셀"이라는 점만 의미가 있다.
+    private static final GeoPoint DREAMI_LOCATION =
+            new GeoPoint(BigDecimal.valueOf(0.001), BigDecimal.valueOf(0.001));
     private static final LocalDateTime EVALUATED_AT = LocalDateTime.of(2026, 8, 10, 12, 0);
     private static final Clock CLOCK =
             Clock.fixed(EVALUATED_AT.toInstant(ZoneOffset.UTC), ZoneOffset.UTC);
@@ -495,5 +499,51 @@ class MatchingAssignmentProblemAssemblerTest {
         assertThat(problem.orders()).extracting(MatchingOrderInput::orderId).containsExactly(orderId);
         assertThat(problem.dreamis()).extracting(MatchingDreamiInput::dreamiId).containsExactly(dreamiId);
         assertThat(problem.candidates()).extracting(candidate -> candidate.orderId()).containsExactly(orderId);
+    }
+
+    /**
+     * 위 테스트들은 거리를 고정값으로 돌려주는 목 계산기를 쓰므로 그리드 프리필터가 실제로 무엇을 거르는지 확인할 수
+     * 없다. 아래 두 개는 진짜 GeoDistanceCalculator를 넣고 좌표로만 판정한다.
+     */
+    private MatchingAssignmentProblem assembleWithRealDistances() {
+        MatchingPolicyProperties properties = matchingPolicyProperties();
+        MatchingAssignmentProblemFactory factory = new MatchingAssignmentProblemFactory(new LegacyOfferPolicy());
+        meterRegistry = new SimpleMeterRegistry();
+        MatchingAssignmentProblemAssembler realDistanceAssembler = new MatchingAssignmentProblemAssembler(
+                new GeoDistanceCalculator(), factory, properties, CLOCK,
+                new OfferScopeResolver(properties.offerScopes()), meterRegistry);
+        return realDistanceAssembler.assemble(orderOfferGroups, waitingDreamis);
+    }
+
+    private static WaitingDreami dreamiAt(GeoPoint location) {
+        return new WaitingDreami(UUID.randomUUID(), location, WaitingDreamiStatus.MATCHING,
+                EVALUATED_AT.minusMinutes(5));
+    }
+
+    @Test
+    void 그리드_이웃_밖의_드리미는_후보로_만들어지지_않는다() {
+        orderOfferGroups = List.of(group(UUID.randomUUID(), OrderOfferGroupStatus.WAITING));
+        // ORDER_LOCATION(0,0)에서 약 111km 떨어져 3000m scope의 이웃 셀에 들어오지 않는다.
+        waitingDreamis = List.of(dreamiAt(new GeoPoint(BigDecimal.ONE, BigDecimal.ZERO)));
+
+        MatchingAssignmentProblem problem = assembleWithRealDistances();
+
+        assertThat(problem.candidates()).isEmpty();
+        // 하버사인까지 가지 않고 걸러졌으므로 거리 초과 지표도 오르지 않는다.
+        assertThat(meterRegistry.counter("matching.candidates.filtered", "reason", "pickup_distance_exceeded")
+                .count()).isZero();
+    }
+
+    @Test
+    void 그리드_이웃_안이고_반경_안인_드리미는_후보로_만들어진다() {
+        UUID orderId = UUID.randomUUID();
+        orderOfferGroups = List.of(group(orderId, OrderOfferGroupStatus.WAITING));
+        // ORDER_LOCATION(0,0)에서 약 157m — 3000m scope 안이다.
+        waitingDreamis = List.of(dreamiAt(new GeoPoint(BigDecimal.valueOf(0.001), BigDecimal.valueOf(0.001))));
+
+        MatchingAssignmentProblem problem = assembleWithRealDistances();
+
+        assertThat(problem.candidates()).extracting(MatchingCandidate::orderId).containsExactly(orderId);
+        assertThat(problem.candidates().getFirst().distanceMeters()).isLessThan(3_000);
     }
 }
