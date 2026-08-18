@@ -28,7 +28,7 @@
 ### 협업 · 문서
 
 [![Wiki](https://img.shields.io/badge/Wiki-GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki)
-[![Discussions](https://img.shields.io/badge/Discussions-GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/discussions)
+[![Discussions](https://img.shields.io/badge/Discussions-GitHub-181717?style=for-the-badge&logo=github&logoColor=white)](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/discussions?discussions_q=)
 [![Ground Rule](https://img.shields.io/badge/Ground%20Rule-그라운드%20룰-2088FF?style=for-the-badge&logo=readthedocs&logoColor=white)](docs/ground_rule.md)
 [![Git 컨벤션](https://img.shields.io/badge/Git%20컨벤션-깃%20컨벤션-2088FF?style=for-the-badge&logo=git&logoColor=white)](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/%EA%B9%83-%EC%BB%A8%EB%B2%A4%EC%85%98)
 
@@ -75,11 +75,14 @@
                      └──────── 실시간 추적 ────────┘
 ```
 
+<img width="1867" height="677" alt="image" src="https://github.com/user-attachments/assets/71e65630-ce26-493a-8fa7-09d60237c447" />
+
+
 ---
 
 ## 서비스 아키텍쳐
+<img width="1504" height="1656" alt="image" src="https://github.com/user-attachments/assets/b016bcd7-afc1-44ef-afa1-63b127493370" />
 
-<img width="1504" height="1656" alt="image" src="https://github.com/user-attachments/assets/1c066699-0073-4cd7-8d71-dfd2b49a5c9a" />
 
 
 ### ERD
