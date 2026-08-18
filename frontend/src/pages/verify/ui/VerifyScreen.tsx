@@ -76,10 +76,11 @@ export function VerifyScreen() {
       />
 
       <main className="flex flex-1 flex-col gap-4 pt-2">
-        {/* 브랜드/안내 이미지 자리표시 */}
-        <div className="flex h-[138px] items-center justify-center rounded-md border border-dashed border-line text-sm text-muted">
-          브랜드 / 드리미 안내 이미지
-        </div>
+        <img
+          src="/dreami-review-pending.png"
+          alt="드리미 등록 안내"
+          className="mx-auto h-[138px] w-auto"
+        />
 
         <h2 className="text-lg font-bold leading-snug tracking-[-0.4px] text-navy-900">
           지금 바로 드리미로
