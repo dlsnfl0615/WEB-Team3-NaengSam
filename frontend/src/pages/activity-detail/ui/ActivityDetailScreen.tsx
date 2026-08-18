@@ -21,11 +21,7 @@ export function ActivityDetailScreen() {
 
   return (
     <ScreenShell>
-      <TopBar
-        title="배달 상세"
-        onBack={backOrHome}
-        actions={ongoing ? [] : ["more"]}
-      />
+      <TopBar title="배달 상세" onBack={backOrHome} actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         {ongoing ? (
