@@ -1,7 +1,7 @@
 package com.naengsam.quick.domain.matching.service.engine;
 
-import com.naengsam.quick.global.debug.InMemoryStateProbe;
-import com.naengsam.quick.global.debug.InMemoryStructureDto;
+import com.naengsam.quick.global.admin.InMemoryStateProbe;
+import com.naengsam.quick.global.admin.InMemoryStructureDto;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;

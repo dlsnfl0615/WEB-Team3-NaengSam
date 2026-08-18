@@ -1,8 +1,8 @@
-package com.naengsam.quick.global.debug;
+package com.naengsam.quick.global.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.naengsam.quick.global.debug.InMemoryStateController.InMemoryStateDto;
+import com.naengsam.quick.global.admin.InMemoryStateController.InMemoryStateDto;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDateTime;

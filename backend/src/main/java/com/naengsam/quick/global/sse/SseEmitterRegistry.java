@@ -1,7 +1,7 @@
 package com.naengsam.quick.global.sse;
 
-import com.naengsam.quick.global.debug.InMemoryStateProbe;
-import com.naengsam.quick.global.debug.InMemoryStructureDto;
+import com.naengsam.quick.global.admin.InMemoryStateProbe;
+import com.naengsam.quick.global.admin.InMemoryStructureDto;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.List;

@@ -54,7 +54,7 @@ import com.naengsam.quick.domain.order.entity.Orders;
 import com.naengsam.quick.domain.order.service.BoormiOfferExpirationService;
 import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.order.service.PendingOfferStateService;
-import com.naengsam.quick.global.debug.InMemoryStructureDto;
+import com.naengsam.quick.global.admin.InMemoryStructureDto;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.math.BigDecimal;
