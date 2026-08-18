@@ -54,10 +54,21 @@ export interface PeerClosingMessage {
   peerId: string;
 }
 
+/**
+ * 대표 탭이 서버 세션이 더 이상 유효하지 않음을 확인했을 때(예: 다른 곳에서 로그인해 이전 세션이
+ * 교체됨) 같은 브라우저의 다른 탭에도 알린다. 받은 탭은 각자 전역 강제 로그아웃 흐름을 실행한다.
+ * 두 번 받아도 안전(idempotent)하므로 발신자/순서를 따로 검증하지 않는다.
+ */
+export interface SessionInvalidMessage {
+  type: "session-invalid";
+  senderId: string;
+}
+
 export type SseChannelMessage =
   | LeaderReadyMessage
   | SubscriptionsMessage
   | SseEventMessage
   | SseStatusMessage
   | ReconnectRequestMessage
-  | PeerClosingMessage;
+  | PeerClosingMessage
+  | SessionInvalidMessage;

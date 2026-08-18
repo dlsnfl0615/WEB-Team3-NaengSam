@@ -4,9 +4,10 @@ import { Button, Card, Modal } from "@/shared/ui";
 import { SseContext } from "./SseContext";
 
 /**
- * 실시간 연결이 영구 종료(`closed`)됐을 때만 뜨는 안내 모달. 대표 사례는 사용자당 SSE 연결 상한 초과다.
- * 브라우저의 무한 자동 재연결이 멈춘 상태이므로, 다른 탭을 닫고 사용자가 직접 다시 연결하도록 안내한다.
- * 닫기(dismiss)와 수동 재연결(`reconnect`)을 제공한다.
+ * 실시간 연결이 영구 종료(`closed`)됐을 때만 뜨는 안내 모달. 브라우저의 무한 자동 재연결이 멈춘
+ * 상태이므로 사용자가 직접 다시 연결하도록 안내한다. 일시적 재연결(reconnecting)이나 대표 탭 승계
+ * 과정에서는 뜨지 않는다 — 그 두 경우는 이 컴포넌트가 구독하는 `status`가 각각 `reconnecting`/
+ * `connected`로 유지되기 때문이다. 닫기(dismiss)와 수동 재연결(`reconnect`)을 제공한다.
  */
 export function SseStatusBanner() {
   const context = use(SseContext);
@@ -36,7 +37,7 @@ export function SseStatusBanner() {
             실시간 연결이 종료됐어요
           </h2>
           <p className="text-2xs text-muted">
-            다른 탭을 닫고 다시 시도해주세요.
+            네트워크 상태를 확인한 뒤 다시 연결해주세요.
           </p>
         </div>
 

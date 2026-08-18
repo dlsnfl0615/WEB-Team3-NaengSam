@@ -39,6 +39,12 @@ export interface SseTabCoordinatorOptions {
   userId: string;
   createConnection: SseTabConnectionFactory;
   onStatusChange?: (status: SseTabStatus) => void;
+  /**
+   * 대표 탭이 세션 무효화를 확인해 {@link SseTabCoordinator#notifySessionInvalid}를 호출했거나, 다른
+   * 탭이 보낸 session-invalid 메시지를 받았을 때 호출된다. 두 경우 모두를 같은 콜백으로 받는다 —
+   * 어느 탭이든 전역 강제 로그아웃 흐름을 실행하면 되기 때문이다.
+   */
+  onSessionInvalid?: () => void;
   /** 테스트용 주입 지점. 기본값은 각각 `navigator.locks`/`new BroadcastChannel(name)`. */
   locks?: SseLockManagerLike;
   createChannel?: (name: string) => SseBroadcastChannelLike;
@@ -81,6 +87,7 @@ export class SseTabCoordinator {
   private readonly userId: string;
   private readonly createConnectionFn: SseTabConnectionFactory;
   private readonly onStatusChangeCallback: (status: SseTabStatus) => void;
+  private readonly onSessionInvalidCallback: () => void;
   private readonly locks: SseLockManagerLike | undefined;
   private readonly createChannelFn: (name: string) => SseBroadcastChannelLike;
   private readonly hasChannelSupport: boolean;
@@ -107,6 +114,7 @@ export class SseTabCoordinator {
     this.userId = options.userId;
     this.createConnectionFn = options.createConnection;
     this.onStatusChangeCallback = options.onStatusChange ?? (() => {});
+    this.onSessionInvalidCallback = options.onSessionInvalid ?? (() => {});
     this.locks =
       options.locks ??
       (typeof navigator !== "undefined" && navigator.locks
@@ -186,6 +194,15 @@ export class SseTabCoordinator {
       if (current.size === 0) this.handlersByEvent.delete(eventName);
       this.onLocalSubscriptionsChanged();
     };
+  }
+
+  /**
+   * 서버 세션이 더 이상 유효하지 않음을 확인했을 때(예: `/me` 프로브 실패) 호출한다. 이 탭 자신은 이미
+   * axios 인터셉터가 별도로 강제 로그아웃을 처리하므로, 이 메서드는 같은 브라우저의 다른 탭들에게만
+   * 알리면 된다.
+   */
+  notifySessionInvalid(): void {
+    this.broadcast({ type: "session-invalid", senderId: this.peerId });
   }
 
   /** 대표 탭이면 연결에 직접 재연결을 요청하고, 아니면 대표 탭에 재연결 요청을 전달한다. */
@@ -297,6 +314,9 @@ export class SseTabCoordinator {
         return;
       case "peer-closing":
         this.handlePeerClosing(message.peerId);
+        return;
+      case "session-invalid":
+        this.onSessionInvalidCallback();
         return;
     }
   }
