@@ -18,7 +18,8 @@ import com.naengsam.quick.global.session.LoginSession;
 import com.naengsam.quick.global.session.LoginUser;
 import com.naengsam.quick.global.session.PublicApi;
 import com.naengsam.quick.global.sse.SseCloseReason;
-import com.naengsam.quick.global.sse.SseEmitterRegistry;
+import com.naengsam.quick.global.sse.SseConnection;
+import com.naengsam.quick.global.sse.SseConnectionManager;
 import com.naengsam.quick.global.swagger.ApiErrorCodes;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
@@ -46,7 +47,7 @@ public class UserController {
     private final LoginQueue loginQueue;
     private final SmsVerificationService smsVerificationService;
     private final ActiveSessionRegistry activeSessionRegistry;
-    private final SseEmitterRegistry sseEmitterRegistry;
+    private final SseConnectionManager sseConnectionManager;
 
     @PublicApi
     @Operation(summary = "인증문자 발송", description = "휴대폰 번호로 인증번호를 발송한다.")
@@ -117,10 +118,14 @@ public class UserController {
         LoginSession newSession = LoginSession.create(httpRequest);
         newSession.login(boormiId);
 
-        // 새 세션 등록 후 이전 활성 세션이 있으면, 응답 반환 전에 이전 SSE를 모두 끊고 이전 세션을 무효화한다.
+        // 새 세션 등록 후 이전 활성 세션이 있으면, 응답 반환 전에 이전 SSE를 끊고 이전 세션을 무효화한다. 새
+        // ActiveSession의 SSE 슬롯은 비어 있으므로, 새 로그인 브라우저가 SSE 화면에 진입할 때 새 연결을 만든다.
         ActiveSession previous = activeSessionRegistry.replace(boormiId, newSession);
         if (previous != null) {
-            sseEmitterRegistry.disconnectAll(boormiId, SseCloseReason.REPLACED_BY_LOGIN);
+            SseConnection previousConnection = previous.sseConnection();
+            if (previousConnection != null) {
+                sseConnectionManager.close(previousConnection, SseCloseReason.REPLACED_BY_LOGIN);
+            }
             previous.session().invalidate();
         }
         return progress.response();
@@ -134,7 +139,12 @@ public class UserController {
     public void logout(HttpServletRequest httpRequest) {
         LoginSession.current(httpRequest).ifPresent(session -> {
             activeSessionRegistry.removeIfCurrent(session.getSessionId())
-                    .ifPresent(removed -> sseEmitterRegistry.disconnectAll(removed.userId(), SseCloseReason.LOGOUT));
+                    .ifPresent(removed -> {
+                        SseConnection connection = removed.activeSession().sseConnection();
+                        if (connection != null) {
+                            sseConnectionManager.close(connection, SseCloseReason.LOGOUT);
+                        }
+                    });
             session.invalidate();
         });
     }

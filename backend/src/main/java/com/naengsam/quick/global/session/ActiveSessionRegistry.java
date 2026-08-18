@@ -129,6 +129,19 @@ public class ActiveSessionRegistry implements InMemoryStateProbe {
     }
 
     /**
+     * 사용자의 현재 SSE 연결을, 그 연결이 속한 sessionId와 함께 조회한다(없으면 empty). 전송 실패 시 지금 이 연결이
+     * 여전히 현재 연결인지(userId·sessionId·connectionId) 확인하려면 sessionId가 함께 필요하므로 {@link #findSse}와
+     * 별도로 둔다.
+     */
+    public Optional<ActiveSessionSnapshot> findSseSnapshot(UUID userId) {
+        ActiveSession active = sessionsByUser.get(userId);
+        if (active == null || active.sseConnection() == null) {
+            return Optional.empty();
+        }
+        return Optional.of(new ActiveSessionSnapshot(userId, active.sessionId(), active.sseConnection()));
+    }
+
+    /**
      * 사용자에게 현재 SSE 연결이 있는지 락 없이 조회한다.
      */
     public boolean isSseConnected(UUID userId) {
