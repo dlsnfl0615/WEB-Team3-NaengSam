@@ -194,7 +194,9 @@ beforeEach(() => {
   // 세션 probe 기본값: 대부분의 테스트는 closed 경로를 직접 검증하지 않으므로, 우연히 probe가 불려도
   // 강제 로그아웃으로 이어지지 않도록 성공 응답을 기본으로 둔다. 무효화를 검증하는 테스트는 개별적으로
   // mockRejectedValueOnce로 덮어쓴다.
-  vi.mocked(api.me).mockReset().mockResolvedValue({ result: {} } as never);
+  // boormiId를 반드시 채운다 — "connected" 상태 전이가 부르는 refreshUser()가 이 응답으로
+  // useSessionStore의 user를 덮어쓰므로, 비워두면 userId가 사라져 SseProvider effect가 꺼진다.
+  vi.mocked(api.me).mockReset().mockResolvedValue({ result: { boormiId: TEST_USER.id } } as never);
   vi.mocked(emitUnauthorized).mockReset();
   // 매칭 polling은 별도로 검증하므로 여기서는 호출 여부만 스파이한다(실제 api 조회를 막는다).
   useMatchingStore.setState({
