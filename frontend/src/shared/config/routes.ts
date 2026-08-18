@@ -25,6 +25,7 @@ export const ROUTES = {
   wallet: "/wallet",
   pointCharge: "/point-charge",
   mypage: "/mypage",
+  faq: "/faq",
   deliveryTest: "/delivery-test",
 } as const;
 
