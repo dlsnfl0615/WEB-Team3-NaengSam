@@ -75,7 +75,7 @@ public class MatchingDebugController {
     @Operation(summary = "드리미 등록")
     @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
     @PostMapping("/dreamis")
-    public UUID registerDreami(@RequestBody GeoPoint location, @AdminUser UUID adminId) {
+    public UUID registerDreami(@Valid @RequestBody GeoPoint location, @AdminUser UUID adminId) {
         UUID dreamiId = UUID.randomUUID();
         if (!matchingService.registerDreami(dreamiId, location)) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);

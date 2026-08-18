@@ -16,6 +16,8 @@ import java.util.Map;
  * 후자는 이벤트가 아니라 사이클 시점에 조회되는 값이라 증분 인덱스로는 반영할 수 없다. 이미 필터링이 끝난 목록을 받아
  * 매번 버킷팅하면 정합성 문제가 없고, 비용은 드리미 수만큼의 맵 삽입뿐이다.
  * <p>한계: 경도 ±180° 자오선을 넘는 조회는 셀 인덱스가 불연속이라 덮지 못한다. 국내 서비스라 발생하지 않는다.
+ * <p>좌표가 없는(null) 드리미/중심점은 조용히 제외한다 — {@link com.naengsam.quick.domain.matching.service.MatchingService#pickupEtaMinutesForOffer}가
+ * 이미 전제하는 것처럼, 좌표 없는 드리미는 존재할 수 있고 이 인덱스가 배치 전체를 실패시킬 이유는 없다.
  */
 final class WaitingDreamiGrid {
 
@@ -39,6 +41,9 @@ final class WaitingDreamiGrid {
         Map<Long, List<WaitingDreami>> buckets = new HashMap<>();
         for (WaitingDreami dreami : dreamis) {
             GeoPoint location = dreami.location();
+            if (!hasCoordinates(location)) {
+                continue;
+            }
             long key = cellKey(
                     cellIndex(location.latitude().doubleValue()),
                     cellIndex(location.longitude().doubleValue()));
@@ -55,6 +60,10 @@ final class WaitingDreamiGrid {
      * 개수로 고정된다.
      */
     List<List<WaitingDreami>> nearbyBuckets(GeoPoint center, double radiusMeters) {
+        if (!hasCoordinates(center)) {
+            return List.of();
+        }
+
         double latitude = center.latitude().doubleValue();
         double longitude = center.longitude().doubleValue();
 
@@ -89,5 +98,9 @@ final class WaitingDreamiGrid {
 
     private static long cellKey(int latIndex, int lngIndex) {
         return ((long) latIndex << 32) | (lngIndex & 0xFFFFFFFFL);
+    }
+
+    private static boolean hasCoordinates(GeoPoint point) {
+        return point != null && point.latitude() != null && point.longitude() != null;
     }
 }
