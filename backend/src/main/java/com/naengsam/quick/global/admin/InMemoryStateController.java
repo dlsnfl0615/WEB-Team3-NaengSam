@@ -1,4 +1,4 @@
-package com.naengsam.quick.global.debug;
+package com.naengsam.quick.global.admin;
 
 import com.naengsam.quick.domain.user.exception.AuthErrorCode;
 import com.naengsam.quick.global.session.AdminUser;
@@ -23,9 +23,9 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>조회 전용이다. 진행 중인 매칭·배달·세션을 망가뜨릴 수 있어 강제 정리 기능은 두지 않는다. 관리자 계정으로 로그인해야 호출할 수 있다({@link AdminUser}).
  */
-@Tag(name = "[Debug] In-Memory State", description = "힙에 남아있는 인메모리 자료구조 현황을 조회하는 관리자 전용 API")
+@Tag(name = "[Admin] In-Memory State", description = "힙에 남아있는 인메모리 자료구조 현황을 조회하는 관리자 전용 API")
 @RestController
-@RequestMapping("/api/v1/debug/inmemory")
+@RequestMapping("/api/v1/admin/inmemory")
 @RequiredArgsConstructor
 public class InMemoryStateController {
 
