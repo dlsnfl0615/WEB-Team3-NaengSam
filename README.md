@@ -46,6 +46,7 @@
 - [🧠 기술 결정](#-기술-결정)
 - [🧪 부하테스트](#-부하테스트)
 - [🔧 트러블슈팅](#-트러블슈팅)
+- [🗓️ 데일리 스크럼](https://github.com/softeerbootcamp-8th/WEB-Team3-NaengSam/wiki/%EC%95%84%EC%B9%A8-%EC%8A%A4%ED%81%AC%EB%9F%BC)
 
 ---
 
