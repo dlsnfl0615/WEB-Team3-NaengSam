@@ -110,6 +110,8 @@
 ![AWS S3](https://img.shields.io/badge/AWS%20S3-569A31?style=for-the-badge&logo=amazons3&logoColor=white)
 ![Kakao API](https://img.shields.io/badge/Kakao%20Local%20API-FFCD00?style=for-the-badge&logo=kakao&logoColor=black)
 ![Solapi](https://img.shields.io/badge/Solapi-00C4B4?style=for-the-badge)
+![Web Push](https://img.shields.io/badge/Web%20Push%20(VAPID)-5A0FC8?style=for-the-badge)
+
 
 ### ️ Frontend
 
