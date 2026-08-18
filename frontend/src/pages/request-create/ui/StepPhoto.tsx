@@ -39,6 +39,7 @@ export function StepPhoto({ form, update }: StepPhotoProps) {
       // presigned URL로 S3에 직접 PUT(공통 axios 인스턴스 미사용).
       const res = await fetch(result.url, {
         method: "PUT",
+        credentials: "include",
         body: file,
         headers: { "Content-Type": file.type },
       });
