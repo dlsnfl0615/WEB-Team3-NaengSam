@@ -253,6 +253,30 @@ describe("SseTabCoordinator", () => {
     expect(connections[1]!.eventNames).toEqual(["delivery_location"]);
   });
 
+  it("이미 연결된 leader 뒤에 참가한 follower도 현재 상태를 즉시 받는다", () => {
+    const { createTab, connections } = setupHarness();
+    const leader = createTab("peer-leader");
+    leader.coordinator.start();
+    connections[0]!.callbacks.onStatus("connected");
+
+    const follower = createTab("peer-late-follower");
+    follower.coordinator.start();
+
+    expect(follower.coordinator.getStatus()).toBe("connected");
+  });
+
+  it("leader 연결 후 늦게 참가한 follower의 기존 구독도 leader 연결에 반영된다", () => {
+    const { createTab, connections } = setupHarness();
+    const leader = createTab("peer-leader");
+    leader.coordinator.start();
+
+    const follower = createTab("peer-late-follower");
+    follower.coordinator.subscribe("delivery_ping", vi.fn());
+    follower.coordinator.start();
+
+    expect(connections[0]!.eventNames).toContain("delivery_ping");
+  });
+
   it("leader가 받은 서버 이벤트가 follower에게 정확히 한 번 전달된다", () => {
     const { createTab, connections } = setupHarness();
     const leader = createTab("peer-leader");

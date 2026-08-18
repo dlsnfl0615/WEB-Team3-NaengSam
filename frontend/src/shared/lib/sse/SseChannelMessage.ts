@@ -15,6 +15,16 @@ export interface LeaderReadyMessage {
   epoch: number;
 }
 
+/**
+ * 이미 대표 탭이 연결된 뒤 새 탭이 참가했을 때 현재 대표와 연결 상태를 다시 알려달라는 요청.
+ * BroadcastChannel은 과거 메시지를 재생하지 않으므로, 이 요청이 없으면 새 탭은 최초
+ * `leader-ready`/`connected`를 놓치고 `connecting`에 머물 수 있다.
+ */
+export interface LeaderStateRequestMessage {
+  type: "leader-state-request";
+  peerId: string;
+}
+
 /** 탭 하나의 전체 구독 이벤트 이름 스냅샷. local subscribe/unsubscribe가 바뀔 때마다 통째로 다시 보낸다. */
 export interface SubscriptionsMessage {
   type: "subscriptions";
@@ -66,6 +76,7 @@ export interface SessionInvalidMessage {
 
 export type SseChannelMessage =
   | LeaderReadyMessage
+  | LeaderStateRequestMessage
   | SubscriptionsMessage
   | SseEventMessage
   | SseStatusMessage

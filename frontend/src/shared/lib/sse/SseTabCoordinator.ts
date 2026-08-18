@@ -145,6 +145,10 @@ export class SseTabCoordinator {
 
     this.channel = this.createChannelFn(sseChannelName(this.userId));
     this.channel.addEventListener("message", (event) => this.handleMessage(event.data));
+    // BroadcastChannel은 과거 메시지를 보관하지 않는다. 이미 연결된 대표 뒤에 참가한 탭도 현재 대표와
+    // connected 상태를 즉시 알 수 있도록 먼저 상태 스냅샷을 요청한다. 아직 대표가 없다면 요청은
+    // 유실돼도 괜찮다 — 곧 lock을 얻는 탭이 runAsLeader()에서 leader-ready를 새로 알린다.
+    this.broadcast({ type: "leader-state-request", peerId: this.peerId });
     this.requestLock();
   }
 
@@ -300,6 +304,9 @@ export class SseTabCoordinator {
       case "leader-ready":
         this.handleLeaderReady(message.senderId, message.epoch);
         return;
+      case "leader-state-request":
+        this.handleLeaderStateRequest(message.peerId);
+        return;
       case "subscriptions":
         this.handleRemoteSubscriptions(message.peerId, message.eventNames);
         return;
@@ -329,6 +336,15 @@ export class SseTabCoordinator {
     if (this.leader) return;
     // 새 대표가 등장했으니, 대표가 모르는 내 구독 목록을 다시 알려준다.
     this.broadcastLocalSubscriptions();
+  }
+
+  private handleLeaderStateRequest(peerId: string): void {
+    if (!this.leader || peerId === this.peerId) return;
+
+    // BroadcastChannel에는 수신자 지정이 없다. 같은 epoch의 leader-ready를 기존 follower가 다시 받아
+    // 구독 snapshot을 한 번 더 보내더라도 전체 snapshot 교체라 idempotent하다.
+    this.broadcast({ type: "leader-ready", senderId: this.peerId, epoch: this.myEpoch });
+    this.broadcast({ type: "status", senderId: this.peerId, status: this.status });
   }
 
   private handleRemoteSubscriptions(peerId: string, eventNames: string[]): void {

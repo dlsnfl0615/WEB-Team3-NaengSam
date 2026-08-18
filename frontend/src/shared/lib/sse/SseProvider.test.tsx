@@ -1,6 +1,6 @@
 import { act, StrictMode, use } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { api, emitUnauthorized } from "@/shared/api";
 import { useSessionStore } from "@/shared/store/sessionStore";
 import { useMatchingStore } from "@/shared/store/matchingStore";
@@ -342,7 +342,9 @@ describe("SseProvider", () => {
     expect(navigator.sendBeacon).toHaveBeenCalledWith(expect.stringContaining("conn-1"));
 
     render(<SseProvider><Consumer handlers={{}} /></SseProvider>);
-    await flush(); // 이전 탭의 lock 반환이 한 틱 늦게 처리되므로, 새 탭이 leader가 될 때까지 기다린다.
+    // 이전 탭의 lock 반환이 정확히 몇 틱 뒤에 처리되는지(React act()의 내부 마이크로태스크 처리 방식에 따라
+    // 달라질 수 있다)에 기대지 않고, 새 탭이 실제로 leader가 될 때까지 폴링으로 기다린다.
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
     act(() => {
       FakeEventSource.instances[1].dispatch("connected", { connectionId: "conn-2" });
     });

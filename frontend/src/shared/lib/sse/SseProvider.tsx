@@ -13,6 +13,15 @@ export interface SseProviderProps {
   children: ReactNode;
 }
 
+interface PendingSubscription {
+  eventName: string;
+  handler: (data: unknown) => void;
+  /** false가 되면(구독 해제) flush 시 건너뛴다. */
+  active: boolean;
+  /** flush돼 코디네이터에 실제로 등록된 뒤에만 채워진다. */
+  unsubscribeFromCoordinator: (() => void) | null;
+}
+
 function disconnectUrl(connectionId: string): string {
   const base = import.meta.env.VITE_API_BASE_URL ?? "";
   return `${base}/api/v1/sse/disconnect?connectionId=${encodeURIComponent(connectionId)}`;
@@ -133,6 +142,10 @@ export function SseProvider({ children }: SseProviderProps) {
   const userId = useSessionStore((state) => state.user?.id);
   const [status, setStatus] = useState<SseStatus>("connecting");
   const coordinatorRef = useRef<SseTabCoordinator | null>(null);
+  // React는 effect를 자식 먼저, 부모 나중 순서로 실행한다. SseProvider와 같은 커밋에서 마운트되는
+  // 자식(useSse 사용처)의 구독 effect는 이 provider가 아래 effect에서 coordinator를 만들기 전에
+  // 먼저 실행될 수 있다. 그 순간엔 여기 담아뒀다가 coordinator가 생기는 즉시 flush한다.
+  const pendingSubscriptionsRef = useRef<PendingSubscription[]>([]);
 
   // 로그인/로그아웃 전환 시 상태를 connecting으로 초기화한다(예: closed였다가 재로그인해도 배너가 남지 않도록).
   // effect가 아니라 렌더 중 조정 패턴을 쓴다 — https://react.dev/learn/you-might-not-need-an-effect
@@ -144,8 +157,16 @@ export function SseProvider({ children }: SseProviderProps) {
 
   const subscribe = useCallback((eventName: string, handler: (data: unknown) => void) => {
     const coordinator = coordinatorRef.current;
-    if (!coordinator) return () => {};
-    return coordinator.subscribe(eventName, handler);
+    if (coordinator) return coordinator.subscribe(eventName, handler);
+
+    // coordinator가 아직 없다(위 effect가 아직 안 돌았다) — 대기열에 담아두고, coordinator가 생기면
+    // 그때 실제로 등록한다. entry.active로 그 사이 unsubscribe된 요청을 걸러낸다.
+    const entry: PendingSubscription = { eventName, handler, active: true, unsubscribeFromCoordinator: null };
+    pendingSubscriptionsRef.current.push(entry);
+    return () => {
+      entry.active = false;
+      entry.unsubscribeFromCoordinator?.();
+    };
   }, []);
 
   const reconnect = useCallback(() => {
@@ -185,6 +206,14 @@ export function SseProvider({ children }: SseProviderProps) {
     });
     coordinatorRef.current = coordinator;
     coordinator.start();
+
+    // 이 provider의 effect보다 먼저 구독을 시도했던(같은 커밋의 자식) 요청들을 이제 실제로 등록한다.
+    const pending = pendingSubscriptionsRef.current;
+    pendingSubscriptionsRef.current = [];
+    pending.forEach((entry) => {
+      if (!entry.active) return;
+      entry.unsubscribeFromCoordinator = coordinator.subscribe(entry.eventName, entry.handler);
+    });
 
     // 페이지 새로고침/종료: React 언마운트가 제때 돌지 않을 수 있으므로 별도로 정리한다.
     const handlePageHide = () => coordinator.stop();
