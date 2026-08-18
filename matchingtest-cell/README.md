@@ -9,11 +9,67 @@
 짧게 훑으려면 [QUICKSTART.md](QUICKSTART.md)를 본다. 이 문서는 상세판이다.
 
 ```bash
+# 1. Redis — 로그인이 전부 이걸 탄다. 없으면 로그인 단계에서 통째로 실패한다
+#    저장소의 redis/docker-compose.yml 은 EC2 전용이라 로컬에서는 쓰지 않는다(아래 참고)
+docker run -d --name symboorm-redis -p 6379:6379 redis:7-alpine \
+  redis-server --maxmemory 64mb --maxmemory-policy noeviction --appendonly no
+
+# 2. 백엔드 (별도 터미널). 운영과 같은 JVM 예산으로 jar를 직접 띄운다
+cd backend
+./gradlew bootJar
+set -a; source .env; set +a          # ★ 이걸 빼면 SOLAPI_ENABLED 등 미해결로 기동 실패
+KAKAO_ENABLED=false KAKAO_DEV_ZONE_MODE=national \
+java -Duser.timezone=Asia/Seoul \
+     -Xms192m -Xmx192m \
+     -XX:MaxMetaspaceSize=256m \
+     -XX:ReservedCodeCacheSize=48m \
+     -XX:MaxDirectMemorySize=48m \
+     -Xss512k \
+     -XX:+HeapDumpOnOutOfMemoryError \
+     -jar build/libs/*.jar
+
+# 3. 프론트 (별도 터미널, WATCH=1일 때만)
+cd frontend && npm run dev
+
+# 4. 하네스
 cd matchingtest-cell
 npm install
 cp config/env.example config/.env.local
 cp config/users.example.json config/users.json
 npm run loadtest
+```
+
+### 이 순서를 지켜야 하는 이유
+
+| | 왜 |
+| --- | --- |
+| **Redis 먼저** | `UserController`가 모든 로그인을 `loginQueue.submit()`으로 보낸다. 해싱 permit(2개)을 못 잡으면 Redis 대기열로 가고, Redis가 없으면 `LOGIN_QUEUE_UNAVAILABLE`을 던진다 — **fail-open이 아니다.** 동시 로그인이 수백이면 거의 전부 이 경로다 |
+| **`source .env`** | `application.properties`가 `${SOLAPI_ENABLED}`·`${DATABASE_URL}` 등을 기본값 없이 참조한다. 빼면 `PlaceholderResolutionException`으로 기동 자체가 실패한다. `start-dev.sh`가 늘 이렇게 띄운다 |
+| **`KAKAO_DEV_ZONE_MODE=national`** | 없으면 주문이 전부 강남에 몰려 지방 주문이 굶는다. `run.mjs`가 실행 전에 검사하고 중단한다 |
+| **JVM 옵션** | 아래 [운영 조건으로 재기](#운영-조건으로-재기) 참고 |
+| **`DB_URL`** | `.env.local`이 백엔드와 같은 H2 파일을 봐야 한다. 기본값을 그렇게 맞춰뒀다 |
+
+### 운영 조건으로 재기
+
+`./gradlew bootRun`은 **도커를 띄우지 않는다.** 호스트 JVM에서 직접 뜨므로 `docker-compose.yml`의 메모리 예산이 하나도 적용되지 않는다.
+
+| | `bootRun` (제한 없음) | 배포 (`docker compose up -d`) |
+| --- | --- | --- |
+| 최대 힙 | 물리 RAM의 1/4 (16GB 머신이면 **4096MB**) | `-Xmx192m` |
+| 컨테이너 제한 | 없음 | `mem_limit: 800m`, 스왑 봉쇄 |
+| vCPU | 로컬 전체 | 2 |
+| 코드 | 지금 작업트리 | `seoki/symboorm:main` (DockerHub 이미지) |
+
+힙이 운영의 20배가 넘으면 "몇 명까지 버티나"가 운영과 전혀 다른 숫자가 나온다. 그래서 위 명령은 `bootRun`이 아니라 **jar를 직접 실행**한다. JVM 옵션은 `docker-compose.yml`의 `JAVA_TOOL_OPTIONS`를 그대로 옮긴 것이다(`-XX:HeapDumpPath=/dump`만 뺐다 — 컨테이너 마운트 경로라 로컬엔 없다).
+
+`JAVA_TOOL_OPTIONS` 환경변수로 주는 방법은 쓰지 않는다. **Gradle 데몬까지 같은 힙으로 묶여** 빌드가 불안정해진다(기동 로그에 `Picked up JAVA_TOOL_OPTIONS`가 두 번 찍히는 것이 그 증거다).
+
+vCPU 2까지 맞추려면 로컬 이미지를 빌드해 도커로 띄워야 한다 — `docker compose`는 기본적으로 **DockerHub의 `main` 이미지를 pull**하므로 지금 작업트리 코드가 들어있지 않다는 점에 주의한다.
+
+**빠르게 기능만 확인할 때**는 제한 없이 띄워도 된다. 대신 그 수치를 용량 산정에 쓰지 않는다.
+
+```bash
+cd backend && set -a; source .env; set +a && ./gradlew bootRun
 ```
 
 ## 전국 분산 분포 (이 폴더의 유일한 차이)
@@ -83,11 +139,44 @@ SPREAD_DEG=0.01         # 도시 하나 안에서의 지터 반경(도)
 
 ## 실행 전 준비
 
-**백엔드를 `KAKAO_ENABLED=false`로 띄운다.** 주문 1건이 카카오 API 3회(지오코딩 2 + 길찾기 1)를 태워 실 API로는 쿼터가 먼저 마른다. 이 값을 주면 좌표·거리를 로컬에서 계산하고, 주문 생성 경로 자체는 그대로 돈다.
+**백엔드를 띄우기 전에 `backend/.env`를 source한다.** `application.properties`가 `${SOLAPI_ENABLED}`·`${DATABASE_URL}` 등을 기본값 없이 참조해서, 빼면 `PlaceholderResolutionException: Could not resolve placeholder 'SOLAPI_ENABLED'`로 기동이 실패한다.
+
+**`KAKAO_ENABLED=false`로 띄운다.** 주문 1건이 카카오 API 3회(지오코딩 2 + 길찾기 1)를 태워 실 API로는 쿼터가 먼저 마른다. 이 값을 주면 좌표·거리를 로컬에서 계산하고, 주문 생성 경로 자체는 그대로 돈다. 전국 분산은 `KAKAO_DEV_ZONE_MODE=national`을 함께 준다(둘 다 `.env`에 넣어두면 생략 가능).
 
 ```bash
-KAKAO_ENABLED=false KAKAO_DEV_ZONE_MODE=national ./gradlew bootRun
+cd backend
+./gradlew bootJar
+set -a; source .env; set +a
+KAKAO_ENABLED=false KAKAO_DEV_ZONE_MODE=national \
+java -Duser.timezone=Asia/Seoul -Xms192m -Xmx192m -XX:MaxMetaspaceSize=256m \
+     -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m -Xss512k \
+     -XX:+HeapDumpOnOutOfMemoryError -jar build/libs/*.jar
 ```
+
+**Redis를 먼저 띄운다.** 로그인이 전부 Redis 대기열을 타고, 없으면 `LOGIN_QUEUE_UNAVAILABLE`로 실패한다(fail-open 아님).
+
+```bash
+docker run -d --name symboorm-redis -p 6379:6379 redis:7-alpine \
+  redis-server --maxmemory 64mb --maxmemory-policy noeviction --appendonly no
+
+redis-cli ping   # PONG
+```
+
+**저장소의 `redis/docker-compose.yml`은 쓰지 않는다.** 그 파일은 백엔드와 분리된 EC2 Redis 인스턴스 전용이라 로컬에서는 세 가지가 걸린다.
+
+| 문제 | 내용 |
+| --- | --- |
+| `env_file: .env` | `redis/.env`가 저장소에 없다 (README가 말하는 `.env.example`도 없다) |
+| 빈 비밀번호 | `backend/.env`의 `REDIS_PASSWORD=`가 비어 있어, 그대로 만들면 `redis-server --requirepass --maxmemory 64mb`가 되어 **`--maxmemory`를 비밀번호로 먹는다** |
+| `network_mode: host` | macOS Docker Desktop에서 기본 동작하지 않는다 |
+
+위 `docker run`은 `--requirepass`를 빼서 `backend/.env`의 빈 `REDIS_PASSWORD`와 맞추고, `-p 6379:6379`로 host networking을 피하면서, 운영과 같은 메모리 정책(`64mb` + `noeviction`)은 그대로 둔 것이다.
+
+Docker를 쓰지 않으려면 `brew install redis` 후 `redis-server --port 6379 --maxmemory 64mb --maxmemory-policy noeviction --save ''`.
+
+**Redis 없이 돌리려면** `LOGIN_CONCURRENCY=1`로 둔다. 로그인이 해싱 permit(2개)을 항상 잡아 `LoginQueue.submit`의 fast path로 빠져 Redis를 타지 않는다. 대신 400명 로그인에 몇 분이 걸리고 리포트 11절(로그인 대기열)이 비게 되므로, 동시 접속 한계를 보는 목적에는 맞지 않는다.
+
+**`DB_URL`이 백엔드와 같은 DB를 봐야 한다.** `.env.local` 기본값은 `backend/.env`의 `DATABASE_URL`(`jdbc:h2:file:./data/naengsam`)을 이 폴더 기준 상대경로로 옮긴 것이다. 백엔드가 다른 DB를 쓰도록 바꿨다면 여기도 같이 바꾼다 — 어긋나면 시드는 들어가는데 백엔드가 그 계정을 못 찾아 로그인부터 전부 실패한다.
 
 **프론트가 5173이 아니면 그 오리진을 백엔드에 허용시킨다.** 허용 목록 기본값이 `http://localhost:5173` 하나뿐이라 다른 포트면 모든 API가 `403 Invalid CORS request`로 막힌다.
 

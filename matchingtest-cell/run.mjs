@@ -227,7 +227,7 @@ async function seedUsers() {
   const watchUsers = pickWatchUsers(browserUsers);
   const center = resolveCenter();
   if (center.mode === "national") {
-    line(`분포  전국 ${NATIONAL_ZONES.length}개 도시 분산 — 주문 존(강남) ${center.orderZoneDreamis}명, 나머지는 전국`);
+    line(`분포  전국 ${NATIONAL_ZONES.length}개 도시 분산 — 드리미와 부르미를 같은 존에 라운드로빈`);
   } else {
     line(`분포  주문 존 집중 (DIST_MODE=local, 원본 matchingtest와 동일)`);
   }
@@ -331,8 +331,9 @@ async function checkKakaoStub(agents) {
  * 하네스만 전국으로 바꾸고 백엔드를 기본값(gangnam)으로 띄우면, 드리미는 전국에 흩어지는데 주문은 전부
  * 강남에 몰려 지방 도시의 주문이 통째로 굶는다. 리포트에는 "오퍼_미발송"만 잔뜩 찍혀 서버 결함처럼 보인다.
  *
- * 판별은 서울 출발 · 부산 도착으로 견적을 내서 거리를 본다. 전국 모드면 두 주소가 실제로 300km 넘게
- * 떨어지고, 강남 모드면 둘 다 같은 2.5km 격자에 떨어져 거리가 한 자릿수 km에 그친다.
+ * 판별은 부산 주소를 지오코딩해 위도를 본다. `/api/v1/address/place`는 저장 없이 좌표만 돌려주므로
+ * (AddressCoordinatesResponseDto: origin/destination 의 latitude·longitude) 그 값을 그대로 쓴다.
+ * 전국 모드면 부산 좌표(위도 약 35.16)가 나오고, 강남 모드면 주소와 무관하게 강남 격자(위도 약 37.49)가 나온다.
  */
 async function checkZoneMode(call, probe) {
   const center = resolveCenter();
@@ -347,21 +348,30 @@ async function checkZoneMode(call, probe) {
     destination: "부산 테헤란로 212",
     destinationDetail: "1층",
   });
-  const distance = res?.expectedDistance ?? 0;
+  const busanLatitude = Number(res?.destinationLatitude);
 
-  if (distance < ZONE_MODE_MIN_DISTANCE) {
+  if (!Number.isFinite(busanLatitude)) {
     throw new Error(
-      `백엔드 좌표 스텁이 전국 모드가 아닙니다 (서울→부산 견적 거리 ${distance}m).\n` +
+      "좌표 변환 응답에서 destinationLatitude를 읽지 못했습니다 — /api/v1/address/place 응답 형식이 바뀐 것 같습니다.\n" +
+        `  받은 값: ${JSON.stringify(res)}\n` +
+        "  KAKAO_CHECK=0으로 건너뛸 수 있습니다.",
+    );
+  }
+  if (Math.abs(busanLatitude - BUSAN_LATITUDE) > ZONE_LATITUDE_TOLERANCE) {
+    throw new Error(
+      `백엔드 좌표 스텁이 전국 모드가 아닙니다 (부산 주소의 위도가 ${busanLatitude}, 기대 ${BUSAN_LATITUDE} 부근).\n` +
         "  DIST_MODE=national인데 주문이 전부 강남에 몰려 지방 주문이 전부 굶습니다.\n" +
         "  백엔드를 KAKAO_ENABLED=false KAKAO_DEV_ZONE_MODE=national 로 다시 띄우세요.\n" +
         "  주문은 강남에 두고 드리미만 흩으려면 DIST_MODE=local 로 바꾸세요.",
     );
   }
-  item("분포", `전국 ${NATIONAL_ZONES.length}개 도시`, `✓ 서울→부산 ${(distance / 1000).toFixed(0)}km`);
+  item("분포", `전국 ${NATIONAL_ZONES.length}개 도시`, `✓ 부산 주소 → 위도 ${busanLatitude}`);
 }
 
-/** 서울-부산 직선거리는 약 325km다. 강남 격자 안(최대 3.5km)과는 자릿수가 달라 오판할 여지가 없다. */
-const ZONE_MODE_MIN_DISTANCE = 100_000;
+/** zones.mjs·DevCoordinatesService의 부산 존 중심 위도. 격자가 이 값을 중심으로 ±0.012° 펴진다. */
+const BUSAN_LATITUDE = 35.1578;
+/** 강남 존(37.4979)과는 2.3도 차이라, 격자 폭(0.012°)의 몇 배로 잡아도 오판할 여지가 없다. */
+const ZONE_LATITUDE_TOLERANCE = 0.5;
 
 /** 외부 왕복은 최소 수십 ms(실측 190ms 안팎)라 로컬 인메모리 계산(한 자릿수 ms)과 이 선에서 확실히 갈린다. */
 const KAKAO_STUB_MAX_MS = 50;

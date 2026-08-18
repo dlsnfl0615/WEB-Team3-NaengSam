@@ -4,20 +4,44 @@
 
 ## 실행
 
-백엔드 먼저. **매번 재시작** — 엔진 인메모리라 이전 런 상태 되살아난다.
+Redis 먼저. 로그인이 전부 이걸 탄다 — 없으면 로그인 단계에서 통째로 실패한다.
+저장소의 `redis/docker-compose.yml`은 EC2 전용이라 로컬에서는 쓰지 않는다(README 참고).
 
 ```bash
-KAKAO_ENABLED=false KAKAO_DEV_ZONE_MODE=national ./gradlew bootRun
+docker run -d --name symboorm-redis -p 6379:6379 redis:7-alpine \
+  redis-server --maxmemory 64mb --maxmemory-policy noeviction --appendonly no
+redis-cli ping   # PONG
 ```
+
+그다음 백엔드. **매번 재시작** — 엔진 인메모리라 이전 런 상태 되살아난다.
+`bootRun`은 도커를 안 띄워 힙 제한이 없으므로, 운영(192MB)과 같은 예산으로 jar를 직접 띄운다.
+
+```bash
+cd backend
+./gradlew bootJar
+set -a; source .env; set +a          # 빼면 SOLAPI_ENABLED 미해결로 기동 실패
+KAKAO_ENABLED=false KAKAO_DEV_ZONE_MODE=national \
+java -Duser.timezone=Asia/Seoul -Xms192m -Xmx192m -XX:MaxMetaspaceSize=256m \
+     -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=48m -Xss512k \
+     -XX:+HeapDumpOnOutOfMemoryError -jar build/libs/*.jar
+```
+
+제한 없이 빠르게 확인만 할 때: `set -a; source .env; set +a && ./gradlew bootRun`
+(단 그 수치는 용량 산정에 쓰지 않는다 — 힙이 운영의 20배가 넘는다.)
+
+프론트(WATCH=1일 때): `cd frontend && npm run dev`
 
 부하:
 
 ```bash
+cd matchingtest-cell
 npm install
 cp config/env.example config/.env.local
 cp config/users.example.json config/users.json
 npm run loadtest
 ```
+
+`.env.local`의 `DB_URL`은 백엔드와 같은 H2 파일을 보도록 이미 맞춰져 있다(`../backend/data/naengsam`).
 
 단계만 다시: `npm run db:reset` · `seed` · `drive` · `watch`.
 
