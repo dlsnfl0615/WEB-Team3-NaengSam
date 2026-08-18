@@ -14,7 +14,7 @@
 ### 기획 · 명세
 
 [![기능명세서](https://img.shields.io/badge/기능명세서-Google%20Sheets-34A853?style=for-the-badge&logo=googlesheets&logoColor=white)](https://docs.google.com/spreadsheets/d/1OPN7gDw0_ZbZzS4ikvkhgRhP_cMBv9GLgR7UGgOX0Yo/edit?gid=510946227#gid=510946227)
-[![API 명세서](https://img.shields.io/badge/API%20명세서-Notion-000000?style=for-the-badge&logo=notion&logoColor=white)](https://app.notion.com/p/API-3a419935b8ae80239efad93d09355588?source=copy_link)
+[![API 명세서](https://img.shields.io/badge/API%20명세서-Swagger-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)](https://symboorm.duckdns.org/swagger-ui/index.html)
 
 [![Notion](https://img.shields.io/badge/Notion-000000?style=for-the-badge&logo=notion&logoColor=white)](https://pretty-cheque-c57.notion.site/39f19935b8ae809f9890c82e7577c01d?source=copy_link)
 
@@ -22,7 +22,7 @@
 
 [![ERD](https://img.shields.io/badge/ERD-ERDCloud-1E6FEB?style=for-the-badge)](https://www.erdcloud.com/d/yRGsks3sXTGLktNJF)
 [![Figma](https://img.shields.io/badge/Figma-F24E1E?style=for-the-badge&logo=figma&logoColor=white)](https://www.figma.com/design/ERZUfKLiF6VynCX0FmrdhZ/%EC%89%BC-%EB%B6%80%EB%A6%84?node-id=165-1590&t=d5Wr8icAVuTwSpo6-1)
-[![Swagger](https://img.shields.io/badge/Swagger-85EA2D?style=for-the-badge&logo=swagger&logoColor=black)](https://symboorm.duckdns.org/swagger-ui/index.html)
+
 
 
 ### 협업 · 문서
