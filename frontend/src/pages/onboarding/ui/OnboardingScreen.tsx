@@ -20,9 +20,7 @@ export function OnboardingScreen() {
 
         {/* 타이틀 */}
         <h1 className="mt-6 text-center text-xl font-bold leading-snug tracking-[-0.4px] text-navy-900">
-          사내 배송의
-          <br />
-          새로운 기준: <span className="text-muted">쉼, 부름</span>
+          간단한 심부름 <span className="text-muted">쉼,부름</span> 하나로!
         </h1>
 
         {/* 역할 카드 */}

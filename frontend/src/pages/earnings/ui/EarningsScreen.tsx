@@ -32,7 +32,7 @@ export function EarningsScreen() {
       <TopBar
         title={isDriver ? "수익" : "절감 리포트"}
         onBack={backOrHome}
-        actions={["document", "profile"]}
+        actions={["profile"]}
       />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
