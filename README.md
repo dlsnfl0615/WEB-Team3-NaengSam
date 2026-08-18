@@ -1,6 +1,7 @@
 <div align="center">
 
-![home.png](docs/img/home.png)
+<img width="2334" height="1317" alt="home" src="https://github.com/user-attachments/assets/196843de-e45c-4a15-83ea-c6ed92dfed00" />
+
 
 # 쉼, 부름
 
