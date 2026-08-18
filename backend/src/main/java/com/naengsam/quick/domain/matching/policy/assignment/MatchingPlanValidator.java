@@ -8,8 +8,10 @@ import java.util.stream.Collectors;
 
 /**
  * {@link MatchingPlan}이 원본 {@link MatchingAssignmentProblem}의 제약(주문별 maxConcurrentOffers)을
- * 넘지 않는지, 그리고 각 제안의 후보가 여전히 적격한지 검증한다. MatchingPlan 자체는 각 주문의 한도도, 후보의
- * 적격 여부도 모르므로 문제와 함께 넘겨받아야만 검증할 수 있다.
+ * 넘지 않는지, 각 제안의 후보가 여전히 적격한지, 그리고 제안에 실린
+ * {@link com.naengsam.quick.domain.matching.policy.scope.OfferPolicySnapshot}이 그 후보의 실제 거리와
+ * 일치하는지 검증한다. MatchingPlan 자체는 각 주문의 한도도, 후보의 적격 여부도 모르므로 문제와 함께 넘겨받아야만
+ * 검증할 수 있다.
  */
 public class MatchingPlanValidator {
 
@@ -53,6 +55,13 @@ public class MatchingPlanValidator {
             }
             if (!eligibilityPolicy.isEligible(candidate, problem.evaluatedAt())) {
                 throw new IllegalArgumentException("제안할 수 없는 후보입니다.");
+            }
+            if (candidate.distanceMeters() != proposal.offerPolicySnapshot().pickupDistanceMeters()) {
+                throw new IllegalArgumentException(
+                        "proposal의 offer scope 스냅샷이 실제 후보 거리와 일치하지 않습니다: orderId=" + proposal.orderId()
+                                + ", dreamiId=" + proposal.dreamiId()
+                                + ", candidate.distanceMeters=" + candidate.distanceMeters()
+                                + ", snapshot.pickupDistanceMeters=" + proposal.offerPolicySnapshot().pickupDistanceMeters());
             }
         }
     }

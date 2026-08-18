@@ -1,6 +1,8 @@
-# Redis (로그인 대기열)
+# Redis (로그인 대기열 · 카카오 응답 캐시)
 
 로그인 대기열의 순번과 티켓 상태를 담는 저장소입니다. 관련 이슈: #399
+
+같은 인스턴스에 카카오 API 응답 캐시(`kakao:*`)도 함께 들어갑니다. 관련 이슈: #435
 
 이 폴더는 **백엔드 배포 파이프라인과 분리**되어 있습니다. `monitoring/` 과 같은 방식으로, 이 폴더를 Redis 인스턴스에 복사해 별도 compose 로 띄웁니다.
 
@@ -66,12 +68,38 @@ docker run --rm -p 6379:6379 redis:7-alpine
 
 ## 저장되는 키
 
-| 키                        | 타입 | 내용                                                                                             |
-| ------------------------- | ---- | ------------------------------------------------------------------------------------------------ |
-| `login:queue`             | ZSET | member = ticketId, score = 등록 시각(epoch millis)                                               |
-| `login:ticket:{ticketId}` | HASH | `state`(WAITING/READY/FAILED), `payload`(boormiId 또는 에러코드). TTL = `login.queue.ticket-ttl` |
+| 키                                        | 타입   | 내용                                                                                             |
+| ----------------------------------------- | ------ | ------------------------------------------------------------------------------------------------ |
+| `login:queue`                             | ZSET   | member = ticketId, score = 등록 시각(epoch millis)                                               |
+| `login:ticket:{ticketId}`                 | HASH   | `state`(WAITING/READY/FAILED), `payload`(boormiId 또는 에러코드). TTL = `login.queue.ticket-ttl` |
+| `kakao:geo:{주소}`                        | STRING | 카카오 로컬 API 응답 JSON(~400B). TTL = `kakao.cache.geocode-ttl`(기본 7d)                       |
+| `kakao:route:{위도}:{경도}:{위도}:{경도}` | STRING | 도보 길찾기 응답 JSON. 폴리라인 때문에 5~15KB. TTL = `kakao.cache.route-ttl`(기본 1h)            |
 
 ZSET 멤버에는 개별 TTL 이 없어, 이탈한 대기자가 남아 뒷사람 순번을 부풀립니다. 백엔드가 30초마다 `ZREMRANGEBYSCORE` 로 걷어냅니다 (`LoginQueue.sweepExpired`).
+
+`kakao:*` 는 평문 JSON 이라 `redis-cli GET` 으로 그대로 읽힙니다. 크기·건수는 다음으로 확인합니다.
+
+```bash
+redis-cli --scan --pattern 'kakao:*' | wc -l
+redis-cli MEMORY USAGE kakao:route:37.4979:127.027:37.5013:127.1027
+redis-cli INFO memory | grep used_memory_human
+```
+
+## 카카오 캐시와 maxmemory (중요)
+
+`maxmemory 64mb` + `maxmemory-policy noeviction` 은 **바꾸지 않습니다.** `allkeys-*` 로 바꾸면 `login:queue`/`login:ticket:*` 가, `volatile-*` 로 바꿔도 TTL 이 붙은 `login:ticket:*` 가 evict 되어 대기자가 조용히 사라집니다.
+
+캐시 총량은 정책이 아니라 TTL 로 묶습니다. 기본 조합(지오코딩 7d / 경로 1h)의 예상 워킹셋은 20MB 안팎입니다. TTL 이 비대칭인 이유는 값 크기 차이입니다 — 주소→좌표는 사실상 불변인데 400B 라 길게 잡아도 싸고, 경로는 30배 커서 히트율보다 메모리 상한이 우선입니다(#435 가 보고한 중복은 전부 한 주문 흐름 안에서 벌어져 1시간이면 다 잡힙니다).
+
+64MB 가 차면 `noeviction` 이라 **모든 쓰기가 OOM 으로 실패**하고, 캐시뿐 아니라 `LoginQueue.enqueue` 까지 막혀 로그인이 503 이 됩니다. redis_exporter 가 없어 Redis 메모리를 직접 볼 수 없으므로, 앱 카운터 `kakao_cache_error_total{reason="oom"}` 을 조기경보로 씁니다.
+
+```promql
+rate(kakao_cache_error_total{reason="oom"}[5m]) > 0
+```
+
+**`reason` 을 반드시 붙여서 보세요.** 아래 대응은 OOM 에만 맞습니다. `reason="connection"`(레디스가 죽었거나 보안그룹에 막힘)이면 TTL·maxmemory 를 아무리 건드려도 소용없고, `reason="serialization"`(DTO 모양 변경)은 배포 직후 잠깐 튀었다가 새 값으로 덮여 자동 복구되는 정상 현상입니다.
+
+울리면 순서대로: ① `KAKAO_ROUTE_TTL` 을 줄인다 → ② `--maxmemory` 를 128mb 로 올린다. **정책은 건드리지 않습니다.** 급하면 `KAKAO_ROUTE_TTL=0`/`KAKAO_GEOCODE_TTL=0` 으로 해당 캐시를 통째로 끌 수 있습니다(카카오 직접 호출로 돌아갈 뿐 기능은 그대로).
 
 ## Redis 가 죽으면
 
@@ -81,12 +109,16 @@ Redis 장애를 헬스체크에 반영하지 않는 것도 같은 이유입니�
 
 ## 관측
 
-| 메트릭                               | 의미                                                                                       |
-| ------------------------------------ | ------------------------------------------------------------------------------------------ |
-| `login_queue_waiting`                | 이 인스턴스에서 해싱을 기다리는 로그인 수                                                  |
-| `login_queue_enqueued_total`         | 대기열에 등록된 누적 건수                                                                  |
-| `login_queue_admitted_total`         | 해싱을 마치고 결과가 기록된 누적 건수                                                      |
-| `login_queue_rejected_total{reason}` | 거부 사유별 누적 건수 (`full`/`expired`/`unavailable`)                                     |
-| `login_hash_seconds`                 | 해싱 1회 소요 시간. `login.queue.permits` 와 `estimated-hash-duration` 을 정하는 실측 근거 |
+| 메트릭                                   | 의미                                                                                       |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `login_queue_waiting`                    | 이 인스턴스에서 해싱을 기다리는 로그인 수                                                  |
+| `login_queue_enqueued_total`             | 대기열에 등록된 누적 건수                                                                  |
+| `login_queue_admitted_total`             | 해싱을 마치고 결과가 기록된 누적 건수                                                      |
+| `login_queue_rejected_total{reason}`     | 거부 사유별 누적 건수 (`full`/`expired`/`unavailable`)                                     |
+| `login_hash_seconds`                     | 해싱 1회 소요 시간. `login.queue.permits` 와 `estimated-hash-duration` 을 정하는 실측 근거 |
+| `kakao_cache_total{api,result}`          | 카카오 응답 캐시 조회 결과. `api`=geocode/route, `result`=hit/miss                         |
+| `kakao_cache_error_total{api,op,reason}` | 캐시 실패의 원인별 건수. `op`=get/put, `reason`=connection/timeout/oom/serialization/other |
+
+`kakao_cache_total{result="miss"}` 의 증가량 = **실제로 카카오로 나간 호출 수**입니다(캐시가 fail-open 이라 실패는 `kakao_cache_error_total` 로 따로 셉니다). 히트율은 `hit / (hit + miss)`, 절감량은 `sum by (api) (rate(kakao_cache_total{result="miss"}[5m]))` 로 봅니다.
 
 배포 후 `login_hash_seconds` 의 p50 을 보고 `login.queue.estimated-hash-duration` 을 맞추세요. 기본값 150ms 는 **추정치**입니다. 인스턴스가 t 계열 버스터블이면 CPU 크레딧 소진 후 베이스라인으로 throttle 되므로 실제 해시 시간이 크게 늘어납니다 (CloudWatch `CPUCreditBalance` 확인).

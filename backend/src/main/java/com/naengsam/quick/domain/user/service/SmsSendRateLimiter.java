@@ -1,7 +1,11 @@
 package com.naengsam.quick.domain.user.service;
 
+import com.naengsam.quick.global.admin.InMemoryStateProbe;
+import com.naengsam.quick.global.admin.InMemoryStructureDto;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -22,7 +26,7 @@ import org.springframework.stereotype.Component;
  * 세 검사를 모두 통과했을 때만 실제 발송으로 간주해 카운터를 증가시킨다(거부된 요청은 카운터를 소모하지 않음).
  */
 @Component
-public class SmsSendRateLimiter {
+public class SmsSendRateLimiter implements InMemoryStateProbe {
 
     private record Window(LocalDateTime start, int count) {
     }
@@ -74,5 +78,20 @@ public class SmsSendRateLimiter {
     void sweepExpired() {
         LocalDateTime now = LocalDateTime.now();
         phoneCounters.entrySet().removeIf(e -> now.isAfter(e.getValue().start().plus(props.phoneWindow())));
+    }
+
+    /**
+     * 번호별 윈도우 맵의 현황. {@link #sweepExpired()}가 1시간마다 도는데도 만료 윈도우가 계속 쌓여 있다면 스윕이 멈췄다는 뜻이므로, 크기와 함께 만료된 윈도우 수를 보고한다. 키가
+     * 휴대폰번호라 샘플은 내보내지 않는다.
+     */
+    @Override
+    public List<InMemoryStructureDto> inMemoryStructures() {
+        LocalDateTime now = LocalDateTime.now();
+        long expired = phoneCounters.values().stream()
+                .filter(window -> now.isAfter(window.start().plus(props.phoneWindow())))
+                .count();
+
+        return List.of(InMemoryStructureDto.ofSize("phoneCounters", "휴대폰번호 → 발송 횟수 고정 윈도우", phoneCounters.size())
+                .withBreakdown(Map.of("만료 윈도우", expired)));
     }
 }

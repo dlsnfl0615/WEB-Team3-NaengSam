@@ -24,7 +24,9 @@ import com.naengsam.quick.domain.matching.exception.MatchingErrorCode;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.matching.service.NearbyOrderFinder;
 import com.naengsam.quick.domain.order.dto.BoormiOrdersResponse;
+import com.naengsam.quick.domain.order.dto.NearbyCallOrderDto;
 import com.naengsam.quick.domain.order.dto.OrderCountDto;
+import com.naengsam.quick.domain.order.dto.OrderStatusCountDto;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
 import com.naengsam.quick.domain.order.entity.OrderCd;
 import com.naengsam.quick.domain.order.entity.Orders;
@@ -118,11 +120,22 @@ public class DreamiService {
     /**
      * 드리미가 제안을 수락한다. 매칭엔진에 반영하기 전에 주문을 PENDING_BOORMI_CONFIRMATION으로 전이해 DB에도 반영한다. 매칭엔진 제출은 이 트랜잭션이 커밋된 뒤에
      * 일어난다.
+     *
+     * <p>{@code isDreamiOfferOwner}만으로는 부족하다 — 엔진이 이미 timeout으로 DREAMI_EXPIRED 처리한 오래된 offerId도
+     * 대상 드리미만 일치하면 통과해버린다. DB를 건드리기 전에 {@code isDreamiOfferAcceptable}로 상태(OFFERED)와 TTL까지 확인해,
+     * 이미 만료된 제안이 주문을 잘못 PENDING_BOORMI_CONFIRMATION으로 옮기거나 이벤트를 발행하지 않도록 막는다. 엔진의
+     * {@code acceptableOffer} 재검증은 이 검사와 무관하게 최종 방어선으로 유지된다.
+     *
+     * <p>멱등 재시도 판단도 dreamiId만으로는 부족하다 — 같은 드리미라도 그 사이 새 오퍼(재매칭)로 넘어갔을 수 있어, 실제로
+     * 지금 확정 대기 중인 offerId({@code order.getPendingOfferId()})까지 일치해야 "본인의 이전 수락 재시도"로 본다.
      */
     @Transactional
     public void acceptOffer(UUID offerId, UUID dreamiId) {
         if (!matchingService.isDreamiOfferOwner(offerId, dreamiId)) {
             throw new BusinessException(MatchingErrorCode.NOT_OFFER_OWNER);
+        }
+        if (!matchingService.isDreamiOfferAcceptable(offerId, dreamiId)) {
+            throw new BusinessException(MatchingErrorCode.OFFER_EXPIRED);
         }
         UUID orderId = matchingService.findOrderIdByOfferId(offerId)
                 .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
@@ -131,8 +144,8 @@ public class DreamiService {
 
         // 락을 잡은 뒤 재확인 — 다른 드리미가 먼저 커밋해 이미 MATCHING이 아니게 됐을 수 있다.
         if (order.getOrderCd() == OrderCd.PENDING_BOORMI_CONFIRMATION) {
-            if (dreamiId.equals(order.getDreamiId())) {
-                // 본인이 이미 성공시킨 수락의 재시도(더블클릭/네트워크 재시도) — 멱등하게 조용히 반환한다.
+            if (dreamiId.equals(order.getDreamiId()) && offerId.equals(order.getPendingOfferId())) {
+                // 본인이 이미 성공시킨 "바로 이 offerId"의 재시도(더블클릭/네트워크 재시도) — 멱등하게 조용히 반환한다.
                 return;
             }
             throw new BusinessException(MatchingErrorCode.ALREADY_ACCEPTED_BY_OTHER);
@@ -142,7 +155,7 @@ public class DreamiService {
             throw new BusinessException(MatchingErrorCode.NOT_ACCEPTABLE_STATUS);
         }
 
-        order.markPendingBoormiConfirmation(dreamiId);
+        order.markPendingBoormiConfirmation(dreamiId, offerId);
 
         // 엔진은 수락 즉시 부르미에게 확인 팝업을 보내고, 부르미의 확정은 주문이 PENDING_BOORMI_CONFIRMATION 인지
         // 검사하므로 커밋 후에 제출해야 한다. 커밋 후 처리는 MatchingService 의 리스너가 담당한다.
@@ -205,22 +218,28 @@ public class DreamiService {
 
     /**
      * 드리미가 지정한 좌표 반경 내에 열려있는 콜(주문)을 거리순으로 조회한다. 각 콜에 예상 수익/소요시간을 함께 담아 반환한다.
+     *
+     * <p>matching이 돌려준 건 위치/거리뿐이라 화면에 보여줄 품목/예상수익/ETA는 order 도메인에서 채운다. 주문마다 조회하면 최대 10번의 PK 조회가 되므로 id를 모아 한 번에
+     * 읽고, 거리순은 matching이 돌려준 순서로 다시 맞춘다.
      */
     @Transactional(readOnly = true)
     public List<NearbyCallDto> findNearbyCalls(NearbyOrderRequest request) {
-        return nearbyOrderFinder.find(request).stream()
-                .map(this::toNearbyCallDto)
-                .toList();
-    }
+        List<NearbyOrderDto> nearbyOrders = nearbyOrderFinder.find(request);
+        if (nearbyOrders.isEmpty()) {
+            return List.of();
+        }
 
-    /**
-     * matching이 돌려준 건 위치/거리뿐이라, 화면에 보여줄 품목/예상수익/ETA는 order 도메인에서 주문을 다시 조회해 채운다. 방금 nearbyOrderFinder가 찾아준 주문이라 사실상 항상
-     * 존재한다.
-     */
-    private NearbyCallDto toNearbyCallDto(NearbyOrderDto nearby) {
-        Orders order = orderRepository.findById(nearby.orderId())
-                .orElseThrow(() -> new BusinessException(OrderErrorCode.ORDER_NOT_FOUND));
-        return NearbyCallDto.from(nearby, order);
+        // 인메모리 매칭 엔진이 orderId로 키를 잡고 있어 중복 id는 나오지 않는다.
+        Map<UUID, NearbyCallOrderDto> ordersById = orderRepository
+                .findNearbyCallOrders(nearbyOrders.stream().map(NearbyOrderDto::orderId).toList())
+                .stream()
+                .collect(Collectors.toMap(NearbyCallOrderDto::orderId, order -> order));
+
+        // 매칭 엔진(인메모리)과 DB가 어긋나 주문이 없는 건은 목록에서 빼고 나머지는 그대로 보여준다.
+        return nearbyOrders.stream()
+                .filter(nearby -> ordersById.containsKey(nearby.orderId()))
+                .map(nearby -> NearbyCallDto.from(nearby, ordersById.get(nearby.orderId())))
+                .toList();
     }
 
     /**
@@ -258,11 +277,19 @@ public class DreamiService {
     }
 
     /**
-     * 드리미가 수행한(수행 중인) 배달 전체를 최신순으로 조회한다.
+     * 드리미가 수행한(수행 중인) 배달을 최신순으로 커서 페이지네이션 조회한다. {@code statusFilter}가 null이면 전체 탭이다.
      */
     @Transactional(readOnly = true)
-    public BoormiOrdersResponse getMyOrders(UUID dreamiId) {
-        return orderService.getOrders(dreamiId, Role.DREAMI);
+    public BoormiOrdersResponse getMyOrders(UUID dreamiId, List<OrderCd> statusFilter, String cursor, Integer size) {
+        return orderService.getOrders(dreamiId, Role.DREAMI, statusFilter, cursor, size);
+    }
+
+    /**
+     * 활동 내역 화면의 상태별(전체/진행중/완료/취소) 탭 개수.
+     */
+    @Transactional(readOnly = true)
+    public List<OrderStatusCountDto> getMyDeliveryStatusCounts(UUID dreamiId) {
+        return orderService.getStatusCounts(dreamiId, Role.DREAMI);
     }
 
     /**

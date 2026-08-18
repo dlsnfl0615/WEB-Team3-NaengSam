@@ -1,8 +1,12 @@
 package com.naengsam.quick.domain.matching.service.engine;
 
+import com.naengsam.quick.global.admin.InMemoryStateProbe;
+import com.naengsam.quick.global.admin.InMemoryStructureDto;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.atomic.AtomicLong;
 import lombok.extern.slf4j.Slf4j;
@@ -14,7 +18,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class MatchingEngine {
+public class MatchingEngine implements InMemoryStateProbe {
 
     private final DelayQueue<QueuedAction> queue = new DelayQueue<>();
     private final AtomicLong sequencer = new AtomicLong();
@@ -46,6 +50,17 @@ public class MatchingEngine {
             throw new IllegalArgumentException("반복 주기는 0보다 커야 합니다: " + interval);
         }
         queue.put(QueuedAction.repeating(action, interval, sequencer.getAndIncrement()));
+    }
+
+    /**
+     * 대기 중인 액션 수. 워커가 계속 소비하므로 정상 동작 중에는 0 근처를 유지하며, 여기가 계속 쌓이면 워커 스레드가 멈췄거나 액션 하나가 오래 붙잡고 있다는 뜻이다. 반복 액션(micro-batch
+     * 등)은 실행 후 다시 큐에 들어가므로 상시 몇 건은 남아 있는 것이 정상이다.
+     */
+    @Override
+    public List<InMemoryStructureDto> inMemoryStructures() {
+        // QueuedAction의 toString은 액션 내부를 그대로 노출하므로 샘플 없이 개수만 보고한다.
+        return List.of(InMemoryStructureDto.ofSize("queue", "실행 대기 중인 매칭 액션", queue.size())
+                .withBreakdown(Map.of("누적 제출 액션", sequencer.get())));
     }
 
     @PostConstruct

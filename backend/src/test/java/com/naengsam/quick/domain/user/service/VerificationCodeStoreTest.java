@@ -3,6 +3,7 @@ package com.naengsam.quick.domain.user.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.naengsam.quick.domain.user.service.VerificationCodeStore.VerifyResult;
+import com.naengsam.quick.global.admin.InMemoryStructureDto;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.concurrent.ConcurrentHashMap;
@@ -144,5 +145,57 @@ class VerificationCodeStoreTest {
 
         assertThat(store.isVerified(PHONE)).isFalse();
         assertThat(verified).doesNotContainKey(PHONE);
+    }
+
+    @Test
+    void 인메모리_현황은_발급_직후_코드를_만료_잔류로_세지_않는다() {
+        store.issue(PHONE);
+
+        assertThat(structureOf("codes").size()).isEqualTo(1);
+        assertThat(structureOf("codes").breakdown()).containsEntry("만료됐는데 잔류", 0L);
+    }
+
+    @Test
+    void 유효기간이_지난_코드가_남아있으면_인메모리_현황이_만료_잔류로_집계한다() {
+        // 만료는 그 번호로 다시 접근할 때만 lazy 하게 판정되므로, TTL이 지나도 맵에는 그대로 남는다.
+        VerificationCodeStore expiredStore = new VerificationCodeStore(new VerificationProperties(
+                Duration.ofSeconds(-1), Duration.ofSeconds(60), Duration.ofMinutes(30),
+                MAX_ATTEMPTS,
+                Duration.ofHours(24), 5, Duration.ofHours(24), 1000));
+        expiredStore.issue(PHONE);
+
+        InMemoryStructureDto codes = expiredStore.inMemoryStructures().stream()
+                .filter(structure -> structure.name().equals("codes"))
+                .findFirst()
+                .orElseThrow();
+
+        assertThat(codes.size()).isEqualTo(1);
+        assertThat(codes.breakdown()).containsEntry("만료됐는데 잔류", 1L);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void 유효기간이_지난_인증완료_상태도_인메모리_현황이_만료_잔류로_집계한다() {
+        ConcurrentHashMap<String, LocalDateTime> verified =
+                (ConcurrentHashMap<String, LocalDateTime>) ReflectionTestUtils.getField(store, "verified");
+        verified.put(PHONE, LocalDateTime.now().minusMinutes(1));
+
+        assertThat(structureOf("verified").size()).isEqualTo(1);
+        assertThat(structureOf("verified").breakdown()).containsEntry("만료됐는데 잔류", 1L);
+    }
+
+    @Test
+    void 인메모리_현황은_휴대폰번호와_인증번호를_노출하지_않는다() {
+        store.issue(PHONE);
+
+        assertThat(store.inMemoryStructures()).allSatisfy(structure ->
+                assertThat(structure.samples()).isEmpty());
+    }
+
+    private InMemoryStructureDto structureOf(String name) {
+        return store.inMemoryStructures().stream()
+                .filter(structure -> structure.name().equals(name))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("보고되지 않은 자료구조입니다: " + name));
     }
 }

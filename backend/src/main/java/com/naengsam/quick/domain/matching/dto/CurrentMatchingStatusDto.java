@@ -25,13 +25,17 @@ public record CurrentMatchingStatusDto(
             UUID offerId,
             OrderSummaryDto orderSummary,
             LocalDateTime offeredAt,
-            LocalDateTime expiresAt
+            LocalDateTime expiresAt,
+            OfferPolicyDto offerPolicy
     ) {
 
-        // SSE 유실 후 클라이언트가 폴백으로 이 API를 호출했을 때도, 팝업으로 받았을 expiresAt과 같은 값을 복원해 남은 시간을 다시 계산할 수 있게 한다.
+        // SSE 유실 후 클라이언트가 폴백으로 이 API를 호출했을 때도, 팝업으로 받았을 expiresAt·offerPolicy와 같은 값을 복원해
+        // 남은 시간과 탐색 범위를 다시 계산·재해석하지 않고 그대로 쓸 수 있게 한다.
         public static PendingOfferDto from(MatchOffer offer, OrderOfferGroup group, Duration ttl) {
             LocalDateTime offeredAt = offer.statusUpdatedAt();
-            return new PendingOfferDto(offer.offerId(), group.orderSummary(), offeredAt, offeredAt.plus(ttl));
+            return new PendingOfferDto(
+                    offer.offerId(), group.orderSummary(), offeredAt, offeredAt.plus(ttl),
+                    OfferPolicyDto.from(offer.offerPolicySnapshot()));
         }
     }
 }

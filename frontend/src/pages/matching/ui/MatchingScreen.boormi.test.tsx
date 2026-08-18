@@ -16,27 +16,23 @@ vi.mock("@/shared/api", async (importOriginal) => {
     api: {
       ...actual.api,
       getCurrentStatus: vi.fn(),
-      getBoormiOrders: vi.fn(),
+      getBoormiOrder: vi.fn(),
       findNearbyWaitingDreamis: vi.fn(),
     },
   };
 });
 
 const getCurrentStatus = vi.mocked(api.getCurrentStatus);
-const getBoormiOrders = vi.mocked(api.getBoormiOrders);
+const getBoormiOrder = vi.mocked(api.getBoormiOrder);
 const findNearbyWaitingDreamis = vi.mocked(api.findNearbyWaitingDreamis);
 
 beforeEach(() => {
   getCurrentStatus.mockResolvedValue({ result: {} } as never);
-  getBoormiOrders.mockResolvedValue({
+  getBoormiOrder.mockResolvedValue({
     result: {
-      orders: [
-        {
-          orderId: "order-1",
-          originLatitude: 37.4979,
-          originLongitude: 127.0276,
-        },
-      ],
+      orderId: "order-1",
+      originLatitude: 37.4979,
+      originLongitude: 127.0276,
     },
   } as never);
   findNearbyWaitingDreamis.mockResolvedValue({

@@ -5,6 +5,7 @@ import {
   type CurrentMatchingStatusDto,
   type DreamiProfileDto,
   type NearbyCallDto,
+  type OfferPolicyDto,
   type PendingOfferDto,
 } from "@/shared/api";
 import type { Coords } from "@/shared/ui";
@@ -47,6 +48,11 @@ interface OfferPopupPayload {
   offeredAt: string;
   /** 응답 마감 절대 시각. */
   expiresAt: string;
+  /**
+   * 이 오퍼가 생성될 때 적용된 offer scope 스냅샷(픽업거리·허용 반경 등). 서버가 그 시점에 실제로 판단한
+   * 값을 그대로 내려주므로, 프론트는 offer-scopes 설정을 다시 해석하지 않고 이 값을 그대로 표시한다.
+   */
+  offerPolicy?: OfferPolicyDto;
 }
 
 /** 드리미가 받은 제안. 픽업 거리만 주변 콜 캐시에서 보충한다. */
@@ -211,8 +217,9 @@ function str(v: string | undefined): string | null {
 }
 
 /**
- * 스냅샷의 PendingOfferDto(offerId + OrderSummaryDto + offeredAt/expiresAt) → store의 PendingOffer로 매핑한다.
- * offeredAt/expiresAt은 SSE 팝업과 같은 값이라 폴링으로 복구해도 카운트다운이 정확하다.
+ * 스냅샷의 PendingOfferDto(offerId + OrderSummaryDto + offeredAt/expiresAt/offerPolicy) → store의
+ * PendingOffer로 매핑한다. offeredAt/expiresAt/offerPolicy는 SSE 팝업과 같은 값이라 폴링으로 복구해도
+ * 카운트다운과 픽업거리·확장 범위 표시가 정확하다.
  */
 function pendingOfferFromSnapshot(
   dto: PendingOfferDto,
@@ -238,6 +245,7 @@ function pendingOfferFromSnapshot(
     deliveryRequest: str(summary.deliveryRequest),
     offeredAt: dto.offeredAt ?? "",
     expiresAt: dto.expiresAt ?? "",
+    offerPolicy: dto.offerPolicy,
     distanceMeters: nearbyCalls.find((c) => c.orderId === orderId)?.distanceMeters,
   };
 }
@@ -254,6 +262,18 @@ let syncing = false;
  * 담고 있어, 방금 누른 시작하기/종료를 되돌려버린다.
  */
 let togglingOnline = false;
+
+/**
+ * pendingOffer/incomingDreami/awaitingBoormi에 영향을 줄 수 있는 이벤트(offer_popup·offer_closed·
+ * offer_error·boormi_rejected·dreami_info·로컬 만료·수락/거절 성공)가 있을 때마다 증가하는 내부 카운터.
+ * `syncCurrentMatching`은 요청 시작 시점의 값을 저장해두고, 응답이 도착했을 때 값이 달라졌으면
+ * (그 사이 SSE 등으로 이미 상태가 바뀌었으면) 그 snapshot을 적용하지 않고 버린다 — HTTP 응답이 SSE보다
+ * 늦게 도착해 최신 상태를 오래된 것으로 덮어쓰는 순서 역전을 막는다.
+ */
+let matchingRevision = 0;
+function bumpMatchingRevision(): void {
+  matchingRevision += 1;
+}
 
 /**
  * 실 매칭 상태 전역 스토어. 수락·거절·최종 확정을 실제 매칭 API로 처리한다.
@@ -278,6 +298,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
 
   // 드리미: 새 제안 도착. 표시 정보는 SSE payload를 쓰고 거리만 주변 콜 캐시에서 보충한다.
   receiveOfferPopup: (payload) => {
+    bumpMatchingRevision();
     const offer = payload as OfferPopupPayload;
     set((s) => ({
       pendingOffer: {
@@ -293,6 +314,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   // 드리미: 제안 마감(선착순 마감·거절 처리 완료 등). 이미 수락해 대기 중이던 제안이 마감된 것이면
   // '부르미 응답 대기' 카드도 함께 내린다.
   receiveOfferClosed: (payload) => {
+    bumpMatchingRevision();
     const { offerId, reason } = payload as { offerId: string; reason?: string };
     set((s) =>
       s.pendingOffer?.offerId === offerId || s.awaitingBoormi?.offerId === offerId
@@ -309,6 +331,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
 
   // 드리미: 부르미가 거절함. 수락 후 띄워둔 '부르미 응답 대기' 카드를 내리는 지점이기도 하다.
   receiveBoormiRejected: (payload) => {
+    bumpMatchingRevision();
     const { offerId } = payload as { offerId: string };
     set((s) => ({
       pendingOffer: s.pendingOffer?.offerId === offerId ? null : s.pendingOffer,
@@ -320,6 +343,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
 
   // 부르미: 드리미가 수락 → 프로필을 붙여 확정 카드를 띄운다.
   receiveDreamiInfo: (payload) => {
+    bumpMatchingRevision();
     const { offerId, orderId, dreamiId, pickupEtaMinutes, acceptedAt, expiresAt } = payload as {
       offerId: string;
       orderId: string;
@@ -347,11 +371,28 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   },
 
   // 매칭 처리가 실패했으면 그 제안은 더 진행되지 않는다 → 대기 카드도 남겨두지 않는다.
+  // offerId로 대상을 가려서, 이미 새 offer로 교체된 뒤 뒤늦게 도착한 오류가 그 새 offer를
+  // 지우거나 사용자에게 새 offer가 실패한 것처럼 보이게 하지 않는다.
   receiveOfferError: (payload) => {
-    const { message } = payload as { message?: string };
-    set({
-      awaitingBoormi: null,
-      message: message ?? "매칭 요청 처리에 실패했어요.",
+    bumpMatchingRevision();
+    const { offerId, message } = payload as { offerId?: string | null; message?: string };
+    set((s) => {
+      // 등록/주문 단위 오류처럼 특정 제안과 무관하면(offerId 없음) 안내만 띄우고 팝업 상태는 건드리지 않는다.
+      if (offerId == null) {
+        return { message: message ?? "매칭 요청 처리에 실패했어요." };
+      }
+      const matchesPending = s.pendingOffer?.offerId === offerId;
+      const matchesAwaiting = s.awaitingBoormi?.offerId === offerId;
+      // 지금 화면의 pendingOffer/awaitingBoormi 어느 쪽과도 관련 없으면, 이미 지나간 offer의
+      // 오래된 오류다 — 조용히 무시한다(상태도, 안내 메시지도 남기지 않는다).
+      if (!matchesPending && !matchesAwaiting) {
+        return {};
+      }
+      return {
+        pendingOffer: matchesPending ? null : s.pendingOffer,
+        awaitingBoormi: matchesAwaiting ? null : s.awaitingBoormi,
+        message: message ?? "매칭 요청 처리에 실패했어요.",
+      };
     });
   },
 
@@ -363,20 +404,21 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     }),
 
   // 드리미 카운트다운 만료(로컬). 그 사이 새 제안으로 교체됐으면(offerId 다름) 건드리지 않는다.
-  expirePendingOffer: (offerId) =>
-    set((s) =>
-      s.pendingOffer?.offerId === offerId ? { pendingOffer: null } : {},
-    ),
+  expirePendingOffer: (offerId) => {
+    bumpMatchingRevision();
+    set((s) => (s.pendingOffer?.offerId === offerId ? { pendingOffer: null } : {}));
+  },
 
   // 부르미 카운트다운 만료(로컬). 그 사이 다른 확인 대기로 교체됐으면 건드리지 않는다.
-  expireIncomingDreami: (offerId) =>
-    set((s) =>
-      s.incomingDreami?.offerId === offerId ? { incomingDreami: null } : {},
-    ),
+  expireIncomingDreami: (offerId) => {
+    bumpMatchingRevision();
+    set((s) => (s.incomingDreami?.offerId === offerId ? { incomingDreami: null } : {}));
+  },
 
   // 부르미 확인 TTL이 지나도록 아무 이벤트도 못 받은 경우의 안전장치. 결말은 서버가 알고 있으므로
   // 단정적인 문구 대신 대기 종료만 알리고, 다음 오퍼를 받을 수 있는 상태로 되돌린다.
-  expireAwaitingBoormi: (offerId) =>
+  expireAwaitingBoormi: (offerId) => {
+    bumpMatchingRevision();
     set((s) =>
       s.awaitingBoormi?.offerId === offerId
         ? {
@@ -384,7 +426,8 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
             message: "부르미의 응답을 받지 못했어요. 다음 콜을 기다려주세요.",
           }
         : {},
-    ),
+    );
+  },
 
   clearAwaitingBoormi: () => set({ awaitingBoormi: null }),
 
@@ -440,6 +483,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     togglingOnline = true;
     try {
       await api.goOffline();
+      bumpMatchingRevision();
       set({ online: false, pendingOffer: null });
     } catch (e) {
       set({ message: toMessage(e, "오프라인 전환에 실패했어요.") });
@@ -451,24 +495,37 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   acceptOffer: async () => {
     const { pendingOffer, submitting } = get();
     if (!pendingOffer || submitting) return null;
+    // API 응답을 기다리는 동안 SSE로 새 offer가 도착해 pendingOffer가 교체될 수 있다. 그러니
+    // 지금 요청 중인 offer를 미리 캡처해두고, 응답 이후에는 이 값으로만 판단한다.
+    const requestedOfferId = pendingOffer.offerId;
+    const requestedOrderId = pendingOffer.orderId;
+    const requestedItemName = pendingOffer.itemName;
     set({ submitting: true });
     try {
-      await api.acceptOffer(pendingOffer.offerId);
+      await api.acceptOffer(requestedOfferId);
+      bumpMatchingRevision();
       // 수락은 배달 시작이 아니라 '부르미 확인 대기'의 시작이다. 콜 카드를 내리고 대기 카드로 바꿔,
       // 드리미가 빈 화면에서 무슨 일이 일어나는지 모른 채 기다리지 않게 한다.
       const acceptedAt = Date.now();
-      set({
-        pendingOffer: null,
-        awaitingBoormi: {
-          offerId: pendingOffer.offerId,
-          orderId: pendingOffer.orderId,
-          itemName: pendingOffer.itemName,
-          acceptedAt: new Date(acceptedAt).toISOString(),
-          expiresAt: new Date(acceptedAt + BOORMI_CONFIRM_TTL_MS).toISOString(),
-        },
-        submitting: false,
+      set((current) => {
+        // 응답이 오는 사이 이미 다른 offer로 교체됐으면, 그 새 offer를 그대로 두고 submitting만
+        // 해제한다 — 방금 성공한 옛 offer로 화면을 덮어써 새 offer를 지우면 안 된다.
+        if (current.pendingOffer?.offerId !== requestedOfferId) {
+          return { submitting: false };
+        }
+        return {
+          pendingOffer: null,
+          awaitingBoormi: {
+            offerId: requestedOfferId,
+            orderId: requestedOrderId,
+            itemName: requestedItemName,
+            acceptedAt: new Date(acceptedAt).toISOString(),
+            expiresAt: new Date(acceptedAt + BOORMI_CONFIRM_TTL_MS).toISOString(),
+          },
+          submitting: false,
+        };
       });
-      return pendingOffer.orderId;
+      return requestedOrderId;
     } catch (e) {
       set({ submitting: false, message: toMessage(e, "수락에 실패했어요.") });
       return null;
@@ -478,10 +535,16 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
   rejectOffer: async () => {
     const { pendingOffer, submitting } = get();
     if (!pendingOffer || submitting) return;
+    const requestedOfferId = pendingOffer.offerId;
     set({ submitting: true });
     try {
-      await api.rejectOffer(pendingOffer.offerId);
-      set({ pendingOffer: null });
+      await api.rejectOffer(requestedOfferId);
+      bumpMatchingRevision();
+      // accept와 같은 이유로, 응답을 기다리는 사이 교체된 새 offer는 건드리지 않는다.
+      set((current) => ({
+        pendingOffer:
+          current.pendingOffer?.offerId === requestedOfferId ? null : current.pendingOffer,
+      }));
     } catch (e) {
       set({ message: toMessage(e, "거절에 실패했어요.") });
     } finally {
@@ -498,6 +561,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
       await api.confirmDreami(incomingDreami.orderId, {
         offerId: incomingDreami.offerId,
       });
+      bumpMatchingRevision();
       set({ incomingDreami: null, submitting: false });
       return incomingDreami.orderId;
     } catch (e) {
@@ -514,6 +578,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
       await api.rejectDreami(incomingDreami.orderId, {
         offerId: incomingDreami.offerId,
       });
+      bumpMatchingRevision();
       set({ incomingDreami: null });
     } catch (e) {
       set({ message: toMessage(e, "거절에 실패했어요.") });
@@ -528,6 +593,9 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     // 이미 조회가 진행 중이면 중복 요청하지 않는다(3초 poll이 느린 응답 위로 쌓이지 않게).
     if (syncing) return;
     syncing = true;
+    // 요청 시작 시점의 revision을 저장해둔다. 응답이 오는 사이 SSE 등으로 offer 상태가 바뀌면
+    // (아래에서 값이 달라진 것으로 확인되면) 이 snapshot의 pendingOffer/incomingDreami는 버린다.
+    const requestedRevision = matchingRevision;
     let data: CurrentMatchingStatusDto;
     try {
       ({ result: data = {} } = await api.getCurrentStatus());
@@ -542,6 +610,7 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     // 새로고침하면 online이 false로 돌아가는데 서버 등록은 살아 있다. 그대로 두면 화면은 오프라인인데
     // 오퍼는 계속 오고, 종료 버튼이 online에 묶여 있어 빠져나갈 수도 없다.
     // 전환 요청이 날아가 있는 동안에는 방금 누른 조작을 되돌리게 되므로 건너뛴다.
+    // offer revision과는 별개 관심사이므로, offer 상태가 그 사이 바뀌었어도 온라인 여부는 그대로 반영한다.
     if (
       data.dreamiOnline !== undefined &&
       !togglingOnline &&
@@ -549,6 +618,10 @@ export const useMatchingStore = create<MatchingState>((set, get) => ({
     ) {
       set({ online: data.dreamiOnline });
     }
+
+    // 응답을 기다리는 사이 SSE 등으로 offer 상태가 이미 바뀌었으면, 이 snapshot은 그 시점 기준으로도
+    // 낡은 것이다 — pendingOffer/incomingDreami에는 반영하지 않고 버린다(다음 poll이 다시 맞춘다).
+    if (matchingRevision !== requestedRevision) return;
 
     // 수락·거절 요청이 진행 중이면 사용자의 조작과 충돌하지 않도록 스냅샷을 덮어쓰지 않는다.
     if (get().submitting) return;

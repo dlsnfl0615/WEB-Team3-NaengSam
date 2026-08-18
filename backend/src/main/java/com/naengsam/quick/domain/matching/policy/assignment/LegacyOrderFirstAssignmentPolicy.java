@@ -1,6 +1,8 @@
 package com.naengsam.quick.domain.matching.policy.assignment;
 
 import com.naengsam.quick.domain.matching.model.MatchingCandidate;
+import com.naengsam.quick.domain.matching.policy.scope.OfferPolicySnapshot;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.policy.scoring.MatchingScorePolicy;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -27,13 +29,17 @@ import java.util.stream.Collectors;
  * 주문은 아무리 거리가 가까운 후보를 갖고 있어도 앞 주문에 후보를 빼앗길 수 있다.
  * <p>problem.candidates()는 이미 필터링된 허용 목록이므로, 이 정책은 거절/만료 이력을 직접 조회하지 않고
  * candidates에 존재하는 조합만 사용한다.
+ * <p>제안이 확정되는 순간 {@link com.naengsam.quick.domain.matching.policy.scope.OfferPolicySnapshot#capture}로
+ * 그 후보에 적용 중인 offer scope를 스냅샷으로 남겨 {@link MatchingProposal}에 싣는다.
  */
 public class LegacyOrderFirstAssignmentPolicy implements MatchingAssignmentPolicy {
 
     private final MatchingScorePolicy scorePolicy;
+    private final OfferScopeResolver offerScopeResolver;
 
-    public LegacyOrderFirstAssignmentPolicy(MatchingScorePolicy scorePolicy) {
+    public LegacyOrderFirstAssignmentPolicy(MatchingScorePolicy scorePolicy, OfferScopeResolver offerScopeResolver) {
         this.scorePolicy = scorePolicy;
+        this.offerScopeResolver = offerScopeResolver;
     }
 
     @Override
@@ -59,7 +65,9 @@ public class LegacyOrderFirstAssignmentPolicy implements MatchingAssignmentPolic
                     .toList();
 
             for (MatchingCandidate candidate : selected) {
-                proposals.add(new MatchingProposal(order.orderId(), candidate.dreamiId()));
+                OfferPolicySnapshot snapshot =
+                        OfferPolicySnapshot.capture(offerScopeResolver, candidate, problem.evaluatedAt());
+                proposals.add(new MatchingProposal(order.orderId(), candidate.dreamiId(), snapshot));
                 consumedDreamiIds.add(candidate.dreamiId());
             }
         }

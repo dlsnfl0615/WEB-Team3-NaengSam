@@ -9,7 +9,10 @@ import com.naengsam.quick.domain.matching.model.PreviousOfferOutcome;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.policy.config.MatchingPolicyProperties;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScope;
+import com.naengsam.quick.domain.matching.policy.scope.OfferScopeResolver;
 import com.naengsam.quick.domain.matching.service.GeoDistanceCalculator;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
@@ -29,6 +32,9 @@ import org.springframework.stereotype.Service;
  * <p>대상은 WAITING 상태(다음 micro-batch 라운드를 기다리는 중)인 주문 그룹과 MATCHING 상태(다른 방에 들어가지
  * 않은)인 드리미뿐이다. previousInteraction은 같은 주문 그룹의 offers() 이력 중 그 드리미에게 나갔던 오퍼를 찾아, 아직 진행 중이지 않은(응답이 끝난) 것 중 가장 최근 것으로
  * 만든다.
+ * <p>주문 대기시간으로 고른 {@link OfferScope}의 maxPickupDistanceMeters를 넘는 (주문, 드리미) 조합은 raw
+ * candidate 자체를 만들지 않는다 - 그 주문의 모든 드리미가 이 필터에 걸리면 해당 주문은 이번 라운드에 candidate가
+ * 하나도 없는 채로 문제에 남고, 배정 정책은 그 주문에 대해 자연히 빈 제안만 만든다.
  */
 @Service
 @RequiredArgsConstructor
@@ -39,6 +45,8 @@ public class MatchingAssignmentProblemAssembler {
     private final MatchingAssignmentProblemFactory matchingAssignmentProblemFactory;
     private final MatchingPolicyProperties matchingPolicyProperties;
     private final Clock clock;
+    private final OfferScopeResolver offerScopeResolver;
+    private final MeterRegistry meterRegistry;
 
     private static Optional<PreviousOfferOutcome> toOutcome(MatchOfferStatus status) {
         return switch (status) {
@@ -80,14 +88,23 @@ public class MatchingAssignmentProblemAssembler {
 
         List<MatchingCandidate> rawCandidates = new ArrayList<>();
         for (OrderOfferGroup group : waitingGroups) {
+            Duration orderWaitingTime = orderWaitingTimes.get(group.orderId());
+            OfferScope offerScope = offerScopeResolver.resolve(orderWaitingTime);
+
             for (WaitingDreami dreami : matchingDreamis) {
                 double distanceMeters = geoDistanceCalculator.distanceMeters(group.location(), dreami.location());
+
+                if (distanceMeters > offerScope.maxPickupDistanceMeters()) {
+                    meterRegistry.counter("matching.candidates.filtered", "reason", "pickup_distance_exceeded")
+                            .increment();
+                    continue;
+                }
 
                 rawCandidates.add(new MatchingCandidate(
                         group.orderId(),
                         dreami.dreamiId(),
                         distanceMeters,
-                        orderWaitingTimes.get(group.orderId()),
+                        orderWaitingTime,
                         dreamiWaitingTimes.get(dreami.dreamiId()),
                         0,
                         0,

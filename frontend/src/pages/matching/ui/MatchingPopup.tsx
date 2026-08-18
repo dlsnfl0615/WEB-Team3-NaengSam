@@ -4,7 +4,7 @@ import {ROUTES} from "@/shared/config/routes";
 import {type SseHandlers, useExpiryCountdown, useSse} from "@/shared/lib";
 import {cn} from "@/shared/lib/cn";
 import {type Coords} from "@/shared/ui";
-import type {DeliveryStatusResponseDto} from "@/shared/api";
+import type {DeliveryStatusResponseDto, OfferPolicyDto} from "@/shared/api";
 import {useMatchingStore} from "@/shared/store/matchingStore";
 import {useToastStore} from "@/shared/store/toastStore";
 import {useSessionStore} from "@/shared/store/sessionStore";
@@ -33,6 +33,24 @@ function formatPlace(
     fallback: string,
 ): string {
     return alias?.trim() || address?.trim() || fallback;
+}
+
+/** 오퍼 scope 스냅샷의 픽업거리(나-픽업지 거리) → 표시 라벨. 스냅샷이 없으면 표시하지 않는다. */
+function formatPickupDistance(offerPolicy?: OfferPolicyDto): string | undefined {
+    if (offerPolicy?.pickupDistanceMeters == null) return undefined;
+    return formatDistance(offerPolicy.pickupDistanceMeters);
+}
+
+/**
+ * 대기 시간이 길어져 기본 범위(scopeKeySeconds=0)보다 넓은 scope가 적용된 콜이면 안내 문구를 만든다.
+ * 기본 범위에서 온 콜이면 안내할 것이 없으므로 undefined를 반환한다.
+ */
+function formatExpandedScopeNotice(offerPolicy?: OfferPolicyDto): string | undefined {
+    if (!offerPolicy?.scopeKeySeconds) return undefined;
+    if (offerPolicy.maxPickupDistanceMeters == null) {
+        return "대기 시간이 길어져 더 넓은 범위에서 찾은 콜이에요.";
+    }
+    return `대기 시간이 길어져 반경 ${formatDistance(offerPolicy.maxPickupDistanceMeters)}까지 넓혀 찾은 콜이에요.`;
 }
 
 /** nullable 위·경도를 지도 컴포넌트 좌표로 변환한다. */
@@ -215,6 +233,8 @@ export function MatchingPopup() {
                         currentLocation={dreamiCoords ?? undefined}
                         deliveryDistance={formatDistance(call.deliveryDistance)}
                         eta={`${call.deliveryEta}분`}
+                        pickupDistance={formatPickupDistance(call.offerPolicy)}
+                        expandedScopeNotice={formatExpandedScopeNotice(call.offerPolicy)}
                         requestNote={call.deliveryRequest ?? undefined}
                         countdown={callCountdown}
                         onReject={rejectOffer}

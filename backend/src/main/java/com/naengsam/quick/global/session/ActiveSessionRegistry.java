@@ -1,5 +1,8 @@
 package com.naengsam.quick.global.session;
 
+import com.naengsam.quick.global.admin.InMemoryStateProbe;
+import com.naengsam.quick.global.admin.InMemoryStructureDto;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -13,7 +16,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-public class ActiveSessionRegistry {
+public class ActiveSessionRegistry implements InMemoryStateProbe {
 
     private final Map<UUID, ActiveSession> sessionsByUser = new ConcurrentHashMap<>();
     private final Map<String, UUID> usersBySessionId = new ConcurrentHashMap<>();
@@ -69,5 +72,19 @@ public class ActiveSessionRegistry {
         }
         usersBySessionId.remove(removed.sessionId(), userId);
         return Optional.of(removed);
+    }
+
+    /**
+     * 두 맵의 현황. 사용자당 세션이 하나이므로 정상 상태에서는 두 크기가 같아야 한다. {@code usersBySessionId} 쪽만 계속 커지면 역인덱스를 정리하지 못하는 경로가 있다는 뜻이므로,
+     * 두 값을 나란히 놓고 보는 것 자체가 진단이다.
+     *
+     * <p>{@code usersBySessionId}의 키는 세션 ID라 노출하면 세션 탈취에 그대로 쓰일 수 있어 샘플을 내보내지 않는다.
+     */
+    @Override
+    public List<InMemoryStructureDto> inMemoryStructures() {
+        return List.of(
+                InMemoryStructureDto.ofMap("sessionsByUser", "userId → 활성 세션", sessionsByUser),
+                InMemoryStructureDto.ofSize("usersBySessionId", "세션 ID → userId 역인덱스 (키 미노출)",
+                        usersBySessionId.size()));
     }
 }

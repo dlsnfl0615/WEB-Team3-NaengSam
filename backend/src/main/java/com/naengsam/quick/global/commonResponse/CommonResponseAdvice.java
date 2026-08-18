@@ -17,11 +17,14 @@ import tools.jackson.databind.ObjectMapper;
  * <p>basePackages 를 반드시 한정해야 한다. 범위를 열어두면 springdoc 의
  * {@code OpenApiWebMvcResource} 도 {@code @RestController} 라서 {@code /v3/api-docs} 응답까지 감싸버려 Swagger UI 가 통째로 깨진다.
  *
- * <p>{@code global.notification} 은 도메인이 아니지만 JSON API 를 노출하므로(웹푸시 구독) 예외적으로 포함한다.
- * 프론트가 다른 API 와 똑같이 {@code .result} 를 읽을 수 있어야 하기 때문이다. 스트림을 반환하는
- * {@code global.sse} 는 봉투로 감싸면 안 되므로 넣지 않는다.
+ * <p>{@code global.notification}(웹푸시 구독)과 {@code global.admin}(관리자 페이지의 인메모리 현황) 는 도메인이 아니지만
+ * JSON API 를 노출하므로 예외적으로 포함한다. 프론트가 다른 API 와 똑같이 {@code .result} 를 읽을 수 있어야 하기 때문이다.
+ * 스트림을 반환하는 {@code global.sse} 는 봉투로 감싸면 안 되므로 넣지 않는다.
  */
-@RestControllerAdvice(basePackages = {"com.naengsam.quick.domain", "com.naengsam.quick.global.notification"})
+@RestControllerAdvice(basePackages = {
+        "com.naengsam.quick.domain",
+        "com.naengsam.quick.global.notification",
+        "com.naengsam.quick.global.admin"})
 @RequiredArgsConstructor
 public class CommonResponseAdvice implements ResponseBodyAdvice<Object> {
 

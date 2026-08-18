@@ -4,11 +4,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import com.naengsam.quick.domain.matching.dto.GeoPoint;
 import com.naengsam.quick.domain.matching.event.MatchingEventType;
@@ -20,19 +23,25 @@ import com.naengsam.quick.domain.matching.model.OrderOfferGroupStatus;
 import com.naengsam.quick.domain.matching.model.WaitingDreami;
 import com.naengsam.quick.domain.matching.model.WaitingDreamiStatus;
 import com.naengsam.quick.domain.matching.policy.eligibility.LegacyOfferPolicy;
+import com.naengsam.quick.domain.matching.policy.scope.OfferPolicySnapshot;
 import com.naengsam.quick.domain.matching.service.MatchingService;
 import com.naengsam.quick.domain.order.dto.OrderSummaryDto;
+import com.naengsam.quick.domain.order.entity.OrderCd;
+import com.naengsam.quick.domain.order.entity.Orders;
+import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.global.notification.NotificationService;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -49,6 +58,7 @@ class MatchingPlanApplierTest {
 
     private MatchingService matchingService;
     private NotificationService notificationService;
+    private OrderService orderService;
     private MatchingPlanApplier applier;
 
     private Map<UUID, OrderOfferGroup> orderOfferGroupsByOrderId;
@@ -60,9 +70,19 @@ class MatchingPlanApplierTest {
     void setUp() {
         matchingService = mock(MatchingService.class);
         notificationService = mock(NotificationService.class);
+        orderService = mock(OrderService.class);
+        // 이 파일 대부분의 테스트는 오퍼 생성 로직 자체를 검증하므로, 오퍼 직전 DB 상태 확인(가드)이 항상
+        // MATCHING을 반환해 통과하도록 기본값을 둔다. 가드는 findOrders(orderId 목록)를 한 번에 호출하므로,
+        // 요청받은 orderId 전부를 MATCHING으로 응답한다. 가드 자체를 검증하는 테스트는 개별적으로 재스텁한다.
+        Orders matchingOrder = mock(Orders.class);
+        lenient().when(matchingOrder.getOrderCd()).thenReturn(OrderCd.MATCHING);
+        lenient().when(orderService.findOrders(any())).thenAnswer(invocation -> {
+            Collection<UUID> orderIds = invocation.getArgument(0);
+            return orderIds.stream().collect(Collectors.toMap(id -> id, id -> matchingOrder));
+        });
         applier = new MatchingPlanApplier(
                 new MatchingPlanValidator(new LegacyOfferPolicy()), matchingService,
-                notificationService, OFFER_TTL);
+                notificationService, OFFER_TTL, orderService);
 
         orderOfferGroupsByOrderId = new HashMap<>();
         dreamiMap = new HashMap<>();
@@ -81,7 +101,7 @@ class MatchingPlanApplierTest {
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderId, 3)), List.of(dreami1, dreami2), List.of(orderId), List.of(dreami1, dreami2));
         MatchingPlan plan = new MatchingPlan(List.of(
-                new MatchingProposal(orderId, dreami1), new MatchingProposal(orderId, dreami2)));
+                new MatchingProposal(orderId, dreami1, snapshot()), new MatchingProposal(orderId, dreami2, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -92,6 +112,61 @@ class MatchingPlanApplierTest {
     }
 
     @Test
+    void 생성된_오퍼는_proposal의_offerPolicySnapshot을_그대로_저장한다() {
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        registerGroup(orderId);
+        registerDreami(dreamiId);
+        MatchingAssignmentProblem problem = problem(
+                List.of(orderInput(orderId, 3)), List.of(dreamiId), List.of(orderId), List.of(dreamiId));
+        OfferPolicySnapshot proposalSnapshot = snapshot();
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId, proposalSnapshot)));
+
+        applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
+
+        MatchOffer createdOffer = offersById.values().iterator().next();
+        assertThat(createdOffer.offerPolicySnapshot()).isEqualTo(proposalSnapshot);
+    }
+
+    @Test
+    void 이미_생성된_오퍼의_스냅샷은_이후_라운드에서_scope가_넓어져도_바뀌지_않는다() {
+        UUID orderNarrow = UUID.randomUUID();
+        UUID dreamiNarrow = UUID.randomUUID();
+        registerGroup(orderNarrow);
+        registerDreami(dreamiNarrow);
+        OfferPolicySnapshot narrowSnapshot = new OfferPolicySnapshot(Duration.ZERO, EVALUATED_AT, 0L, 0.0, 3_000);
+        MatchingAssignmentProblem firstRoundProblem = problem(
+                List.of(orderInput(orderNarrow, 3)), List.of(dreamiNarrow), List.of(orderNarrow), List.of(dreamiNarrow));
+        MatchingPlan firstRoundPlan =
+                new MatchingPlan(List.of(new MatchingProposal(orderNarrow, dreamiNarrow, narrowSnapshot)));
+        applyPlan(firstRoundPlan, firstRoundProblem);
+
+        MatchOffer narrowOffer = offersById.values().iterator().next();
+
+        // 다음 배치 라운드: 다른 주문의 대기시간이 임계값을 넘어 넓은 scope가 적용된 새 제안이 들어온다.
+        UUID orderWide = UUID.randomUUID();
+        UUID dreamiWide = UUID.randomUUID();
+        registerGroup(orderWide);
+        registerDreami(dreamiWide);
+        OfferPolicySnapshot wideSnapshot = new OfferPolicySnapshot(Duration.ofSeconds(60), EVALUATED_AT, 61L, 0.0, 6_000);
+        MatchingAssignmentProblem secondRoundProblem = problem(
+                List.of(orderInput(orderWide, 3)), List.of(dreamiWide), List.of(orderWide), List.of(dreamiWide));
+        MatchingPlan secondRoundPlan =
+                new MatchingPlan(List.of(new MatchingProposal(orderWide, dreamiWide, wideSnapshot)));
+        applyPlan(secondRoundPlan, secondRoundProblem);
+
+        assertThat(narrowOffer.offerPolicySnapshot()).isEqualTo(narrowSnapshot);
+        MatchOffer wideOffer = offersById.values().stream()
+                .filter(offer -> offer.dreamiId().equals(dreamiWide))
+                .findFirst().orElseThrow();
+        assertThat(wideOffer.offerPolicySnapshot()).isEqualTo(wideSnapshot);
+    }
+
+    private void applyPlan(MatchingPlan plan, MatchingAssignmentProblem problem) {
+        applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
+    }
+
+    @Test
     void maxConcurrentOffers보다_적은_제안도_허용된다() {
         UUID orderId = UUID.randomUUID();
         UUID dreami1 = UUID.randomUUID();
@@ -99,7 +174,7 @@ class MatchingPlanApplierTest {
         registerDreami(dreami1);
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderId, 3)), List.of(dreami1), List.of(orderId), List.of(dreami1));
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreami1)));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreami1, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -118,7 +193,7 @@ class MatchingPlanApplierTest {
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderWithProposal, 3), orderInput(orderWithoutProposal, 3)),
                 List.of(dreamiId), List.of(orderWithProposal, orderWithoutProposal), List.of(dreamiId));
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderWithProposal, dreamiId)));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderWithProposal, dreamiId, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -156,9 +231,9 @@ class MatchingPlanApplierTest {
                 List.of(orderInput(orderId, 3)), List.of(dreami1, dreami2, dreami3),
                 List.of(orderId), List.of(dreami1, dreami2, dreami3));
         MatchingPlan plan = new MatchingPlan(List.of(
-                new MatchingProposal(orderId, dreami1),
-                new MatchingProposal(orderId, dreami2),
-                new MatchingProposal(orderId, dreami3)));
+                new MatchingProposal(orderId, dreami1, snapshot()),
+                new MatchingProposal(orderId, dreami2, snapshot()),
+                new MatchingProposal(orderId, dreami3, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -173,7 +248,8 @@ class MatchingPlanApplierTest {
         MatchingAssignmentProblem problem = new MatchingAssignmentProblem(
                 EVALUATED_AT, List.of(orderInput(orderId, 1)), List.of(), List.of());
         // 문제에 존재하지 않는 orderId에 대한 제안 -> validator가 거부해야 한다.
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(UUID.randomUUID(), UUID.randomUUID())));
+        MatchingPlan plan = new MatchingPlan(
+                List.of(new MatchingProposal(UUID.randomUUID(), UUID.randomUUID(), snapshot())));
 
         Throwable thrown = catchThrowable(() -> applier.apply(
                 problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId));
@@ -192,7 +268,7 @@ class MatchingPlanApplierTest {
         registerDreami(dreamiId);
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderId, 1)), List.of(dreamiId), List.of(orderId), List.of(dreamiId));
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId)));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
@@ -215,12 +291,88 @@ class MatchingPlanApplierTest {
         registerDreami(newDreamiId);
         MatchingAssignmentProblem problem = problem(
                 List.of(orderInput(orderId, 3)), List.of(newDreamiId), List.of(orderId), List.of(newDreamiId));
-        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, newDreamiId)));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, newDreamiId, snapshot())));
 
         applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
 
         assertThat(group.offers()).hasSize(1);
         verifyNoInteractions(matchingService, notificationService);
+    }
+
+    @Test
+    void DB_주문이_MATCHING이_아니면_배치_오퍼를_생성하지_않는다() {
+        // given (스냅샷 조립~계획 적용 사이 주문이 취소된 경우 - 그룹은 아직 살아있는 오퍼 없이 WAITING이다)
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        OrderOfferGroup group = registerGroup(orderId);
+        registerDreami(dreamiId);
+        Orders cancelledOrder = mock(Orders.class);
+        when(cancelledOrder.getOrderCd()).thenReturn(OrderCd.CANCELLED);
+        // doReturn (when이 아님): setUp의 기본 답변형(thenAnswer) 스텁이 이미 있는 상태에서 when(mock.foo(any()))으로
+        // 재스텁하면, 레코딩 과정에서 그 기본 답변이 null 인자로 실행돼 NPE가 난다. doReturn은 기존 스텁을 실행하지
+        // 않고 바로 덮어쓴다.
+        doReturn(Map.of(orderId, cancelledOrder)).when(orderService).findOrders(any());
+        MatchingAssignmentProblem problem = problem(
+                List.of(orderInput(orderId, 3)), List.of(dreamiId), List.of(orderId), List.of(dreamiId));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId, snapshot())));
+
+        // when
+        applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
+
+        // then
+        assertThat(group.offers()).isEmpty();
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
+        assertThat(dreamiMap.get(dreamiId).status()).isEqualTo(WaitingDreamiStatus.MATCHING);
+        verifyNoInteractions(matchingService, notificationService);
+    }
+
+    @Test
+    void DB에_주문이_없으면_배치_오퍼를_생성하지_않는다() {
+        // given
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        OrderOfferGroup group = registerGroup(orderId);
+        registerDreami(dreamiId);
+        doReturn(Map.of()).when(orderService).findOrders(any());
+        MatchingAssignmentProblem problem = problem(
+                List.of(orderInput(orderId, 3)), List.of(dreamiId), List.of(orderId), List.of(dreamiId));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId, snapshot())));
+
+        // when
+        applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
+
+        // then
+        assertThat(group.offers()).isEmpty();
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
+        assertThat(dreamiMap.get(dreamiId).status()).isEqualTo(WaitingDreamiStatus.MATCHING);
+        verifyNoInteractions(matchingService, notificationService);
+    }
+
+    @Test
+    void 이전에_DREAMI_EXPIRED로_종료된_같은_주문_드리미_조합에_재제안하면_새_UUID의_오퍼가_생성된다() {
+        // 쿨다운이 끝나 같은 (orderId, dreamiId) 조합이 다시 적격 판정을 받았을 때, MatchingPlanApplier가 만드는 새 오퍼는
+        // 이전 만료 오퍼와 다른 offerId를 가져야 한다 — 재사용/덮어쓰기가 아니라 항상 새 UUID로 생성됨을 확인한다.
+        UUID orderId = UUID.randomUUID();
+        UUID dreamiId = UUID.randomUUID();
+        MatchOffer expiredOffer = new MatchOffer(
+                UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.DREAMI_EXPIRED, EVALUATED_AT.minusMinutes(10));
+        OrderOfferGroup group = new OrderOfferGroup(
+                orderId, UUID.randomUUID(), LOCATION, mock(OrderSummaryDto.class),
+                new ArrayList<>(List.of(expiredOffer)), EVALUATED_AT.minusMinutes(20));
+        orderOfferGroupsByOrderId.put(orderId, group);
+        registerDreami(dreamiId);
+        MatchingAssignmentProblem problem = problem(
+                List.of(orderInput(orderId, 3)), List.of(dreamiId), List.of(orderId), List.of(dreamiId));
+        MatchingPlan plan = new MatchingPlan(List.of(new MatchingProposal(orderId, dreamiId, snapshot())));
+
+        applier.apply(problem, plan, APPLIED_AT, orderOfferGroupsByOrderId, dreamiMap, offersById, offerIdsByDreamiId);
+
+        assertThat(group.offers()).hasSize(2);
+        MatchOffer newOffer = group.offers().getLast();
+        assertThat(newOffer.offerId()).isNotEqualTo(expiredOffer.offerId());
+        assertThat(newOffer.dreamiId()).isEqualTo(dreamiId);
+        assertThat(newOffer.status()).isEqualTo(MatchOfferStatus.OFFERED);
+        assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.OPEN);
     }
 
     private OrderOfferGroup registerGroup(UUID orderId) {
@@ -238,6 +390,10 @@ class MatchingPlanApplierTest {
 
     private MatchingOrderInput orderInput(UUID orderId, int maxConcurrentOffers) {
         return new MatchingOrderInput(orderId, LOCATION, Duration.ZERO, maxConcurrentOffers);
+    }
+
+    private OfferPolicySnapshot snapshot() {
+        return new OfferPolicySnapshot(Duration.ZERO, EVALUATED_AT, 0L, 0.0, 3_000);
     }
 
     private MatchingAssignmentProblem problem(
