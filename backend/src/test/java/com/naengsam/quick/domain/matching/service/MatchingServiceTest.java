@@ -78,6 +78,11 @@ class MatchingServiceTest {
 
     private static final Duration OFFER_TTL = Duration.ofSeconds(30);
 
+    // 그리드 프리필터가 좌표를 직접 읽으므로 좌표 없는 목 대신 실제 좌표를 쓴다. 모든 주문·드리미를 같은 점에 두면
+    // 항상 같은 셀에 들어가므로 후보 조합은 프리필터 도입 전과 동일하다.
+    private static final GeoPoint LOCATION =
+            new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0));
+
     // 오퍼 팝업 payload 생성에만 쓰이는 주문 표시 스냅샷. 값 자체는 대부분의 테스트에서 검증 대상이 아니다.
     private static final OrderSummaryDto ORDER_SUMMARY = new OrderSummaryDto(
             UUID.randomUUID(), "품목", null, null, 5000L, 20, 1200L,
@@ -102,6 +107,13 @@ class MatchingServiceTest {
      * 예전 legacy attemptOfferRound(top-3, 오래_대기한_순)와 가장 가까운 조합. 이 조합으로 배치 매칭 사이클을 실행하면 이 파일의 기존
      * legacy 기반 테스트 기대값(오퍼 3건, 대기 오래한 순 우선 등)이 그대로 유지된다.
      */
+    /** 좌표를 스텁하지 않은 주문 목에 기본 위치를 채워준다. 개별 테스트가 다시 스텁하면 그 값이 이긴다. */
+    private static Orders orderAt(Orders order) {
+        lenient().when(order.getOriginLatitude()).thenReturn(LOCATION.latitude());
+        lenient().when(order.getOriginLongitude()).thenReturn(LOCATION.longitude());
+        return order;
+    }
+
     private static MatchingPolicyProperties matchingPolicyProperties() {
         return new MatchingPolicyProperties(
                 Duration.ofMillis(500),
@@ -135,7 +147,7 @@ class MatchingServiceTest {
         // 배치 오퍼 생성 직전 가드(MatchingPlanApplier)가 항상 DB를 조회하므로, orderId별 스텁이 없는 테스트
         // (그룹을 직접 맵에 넣고 배치 사이클만 실행하는 경우 등)를 위한 기본값을 MATCHING으로 둔다. 특정 orderId에
         // 대한 스텁이 테스트 본문에 있으면 그쪽이 우선한다.
-        Orders defaultMatchingOrder = mock(Orders.class);
+        Orders defaultMatchingOrder = orderAt(mock(Orders.class));
         lenient().when(defaultMatchingOrder.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(any())).thenReturn(Optional.of(defaultMatchingOrder));
         // MatchingPlanApplier는 배치 사이클마다 findOrders(orderId 목록)를 한 번에 호출하므로, 여기서도 요청받은
@@ -177,8 +189,8 @@ class MatchingServiceTest {
         UUID dreamiId3 = UUID.randomUUID();
         UUID dreamiId4 = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
 
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -230,8 +242,8 @@ class MatchingServiceTest {
         UUID connectedDreamiId = UUID.randomUUID();
         UUID ghostDreamiId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
 
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -271,7 +283,7 @@ class MatchingServiceTest {
         UUID connectedDreamiId = UUID.randomUUID();
         UUID ghostDreamiId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         when(notificationService.isReachableNow(ghostDreamiId)).thenReturn(false);
 
@@ -295,8 +307,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
 
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -354,8 +366,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
 
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -385,8 +397,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
 
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -415,8 +427,8 @@ class MatchingServiceTest {
         // given (DB 확정 대기가 그 사이 다른 경로로 바뀐 경우 - 예: 타임아웃이 먼저 처리돼 이미 MATCHING으로 되돌아감)
         UUID orderId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
 
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -446,8 +458,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
 
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -470,7 +482,7 @@ class MatchingServiceTest {
     void WAITING_상태인_방이_있어도_다시_매칭을_시작할_수_없다() {
         // given (대기 중인 드리미가 없어 오퍼 없이 WAITING으로 생성된 그룹)
         UUID orderId = UUID.randomUUID();
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -492,7 +504,7 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
 
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -512,7 +524,7 @@ class MatchingServiceTest {
     void DB_주문이_CANCELLED면_방이_생성되지_않는다() {
         // given (큐에 쌓여 있는 동안 취소된 주문 - 액션이 들고 온 order는 여전히 stale한 채로 남아 있다)
         UUID orderId = UUID.randomUUID();
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
         when(order.getOrderCd()).thenReturn(OrderCd.CANCELLED);
@@ -528,7 +540,7 @@ class MatchingServiceTest {
     void DB_주문이_PENDING_BOORMI_CONFIRMATION이면_방이_생성되지_않는다() {
         // given (드리미가 수락해 부르미 확정 대기 중인 주문 - 늦게 도착한 StartMatching 액션은 무시돼야 한다)
         UUID orderId = UUID.randomUUID();
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
         when(order.getOrderCd()).thenReturn(OrderCd.PENDING_BOORMI_CONFIRMATION);
@@ -544,7 +556,7 @@ class MatchingServiceTest {
     void DB_주문이_IN_PROGRESS이면_방이_생성되지_않는다() {
         // given (이미 배송이 시작된 주문 - 늦게 도착한 StartMatching 액션은 무시돼야 한다)
         UUID orderId = UUID.randomUUID();
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
         when(order.getOrderCd()).thenReturn(OrderCd.IN_PROGRESS);
@@ -560,7 +572,7 @@ class MatchingServiceTest {
     void DB에_주문이_없으면_방이_생성되지_않는다() {
         // given
         UUID orderId = UUID.randomUUID();
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         when(orderService.findOrder(orderId)).thenReturn(Optional.empty());
 
@@ -578,13 +590,13 @@ class MatchingServiceTest {
         UUID staleBoormiId = UUID.randomUUID();
         UUID freshBoormiId = UUID.randomUUID();
 
-        Orders staleOrder = mock(Orders.class);
+        Orders staleOrder = orderAt(mock(Orders.class));
         when(staleOrder.getOrderId()).thenReturn(orderId);
         when(staleOrder.getBoormiId()).thenReturn(staleBoormiId);
         when(staleOrder.getOriginLatitude()).thenReturn(BigDecimal.valueOf(1.1));
         when(staleOrder.getOriginLongitude()).thenReturn(BigDecimal.valueOf(1.1));
 
-        Orders freshOrder = mock(Orders.class);
+        Orders freshOrder = orderAt(mock(Orders.class));
         when(freshOrder.getOrderId()).thenReturn(orderId);
         when(freshOrder.getBoormiId()).thenReturn(freshBoormiId);
         when(freshOrder.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -607,8 +619,8 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -637,12 +649,12 @@ class MatchingServiceTest {
 
         // given
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         UUID orderIdA = UUID.randomUUID();
         UUID orderIdB = UUID.randomUUID();
-        Orders orderA = mock(Orders.class);
-        Orders orderB = mock(Orders.class);
+        Orders orderA = orderAt(mock(Orders.class));
+        Orders orderB = orderAt(mock(Orders.class));
         when(orderA.getOrderId()).thenReturn(orderIdA);
         when(orderB.getOrderId()).thenReturn(orderIdB);
         lenient().when(orderA.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -676,8 +688,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -711,8 +723,8 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -740,8 +752,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
 
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -772,8 +784,8 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId1 = UUID.randomUUID();
         UUID dreamiId2 = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -808,8 +820,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
 
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
 
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -842,8 +854,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -902,8 +914,8 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -939,8 +951,8 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId1 = UUID.randomUUID();
         UUID dreamiId2 = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -979,8 +991,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1018,8 +1030,8 @@ class MatchingServiceTest {
         // given (부르미 확정이 먼저 DB 잠금을 잡아 이미 IN_PROGRESS로 넘어간 상황을 흉내낸다)
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1049,8 +1061,8 @@ class MatchingServiceTest {
         // given (부르미 응답 timeout으로 자유로워질 드리미보다 먼저 등록되어 대기 시간이 더 긴 후보 3명을 준비한다)
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1089,8 +1101,8 @@ class MatchingServiceTest {
     void 이미_수락된_오퍼에_드리미_timeout이_뒤늦게_도착해도_상태가_바뀌지_않는다() {
         // given
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1115,8 +1127,8 @@ class MatchingServiceTest {
     void 이미_확정된_오퍼에_부르미_timeout이_뒤늦게_도착하면_무시한다() {
         // given
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1142,8 +1154,8 @@ class MatchingServiceTest {
     void 이미_만료된_오퍼에_부르미_거절이_뒤늦게_도착하면_무시한다() {
         // given
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1169,8 +1181,8 @@ class MatchingServiceTest {
     void 매칭이_완료되어_정리된_그룹은_배치_매칭_사이클로_되살아나지_않는다() {
         // given
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1198,8 +1210,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1239,8 +1251,8 @@ class MatchingServiceTest {
                 boormiOfferExpirationService, orderService, pendingOfferStateService);
 
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1275,8 +1287,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1301,7 +1313,7 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
         GeoPoint dreamiLocation = new GeoPoint(BigDecimal.valueOf(37.5013), BigDecimal.valueOf(127.0));
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1329,17 +1341,19 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
-        GeoPoint dreamiLocation = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        UUID dreamiId = UUID.randomUUID();
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
         when(order.getBoormiId()).thenReturn(boormiId);
 
-        matchingService.applyRegisterDreami(UUID.randomUUID(), dreamiLocation);
+        matchingService.applyRegisterDreami(dreamiId, LOCATION);
         matchingService.applyStartMatching(order);
         matchingService.applyRunMatchingAssignmentCycle();
         MatchOffer offer = getOrderOfferGroups().get(orderId).offers().getFirst();
+        // 후보 조립의 그리드 프리필터가 좌표를 요구하므로, 오퍼가 만들어진 뒤에 위치를 비운다.
+        ReflectionTestUtils.setField(getDreamiMap().get(dreamiId), "location", new GeoPoint(null, null));
 
         // when
         matchingService.applyAcceptByDreami(offer.offerId());
@@ -1356,8 +1370,8 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1383,8 +1397,8 @@ class MatchingServiceTest {
     void 드리미가_수락하면_선착순_패배자에게_OFFER_CLOSED를_보낸다() {
         // given
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1409,8 +1423,8 @@ class MatchingServiceTest {
     void 부르미가_거절하면_드리미에게_BOORMI_REJECTED를_보낸다() {
         // given
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1433,8 +1447,8 @@ class MatchingServiceTest {
     void 모든_드리미가_거절한_뒤_새_드리미가_등록되면_그_드리미에게_오퍼된다() {
         // given
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1473,8 +1487,8 @@ class MatchingServiceTest {
     void 오퍼가_소진되면_WAITING이_되고_배치_매칭_사이클이_대기_드리미에게_재오퍼한다() {
         // given (드리미 5명 중 3명만 오퍼받고 2명은 대기로 남는다)
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1514,8 +1528,8 @@ class MatchingServiceTest {
     void 재오퍼는_이미_거절한_드리미를_제외한다() {
         // given
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -1561,7 +1575,7 @@ class MatchingServiceTest {
         // given (아직 오퍼가 나가지 않은, micro-batch 대기 중인 그룹)
         UUID orderId = UUID.randomUUID();
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(), LocalDateTime.now());
+                orderId, UUID.randomUUID(), LOCATION, ORDER_SUMMARY, List.of(), LocalDateTime.now());
         assertThat(group.status()).isEqualTo(OrderOfferGroupStatus.WAITING);
         getOrderOfferGroups().put(orderId, group);
 
@@ -1583,11 +1597,11 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiId,
                 MatchOfferStatus.MATCHED, LocalDateTime.now());
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer), LocalDateTime.now());
+                orderId, UUID.randomUUID(), LOCATION, ORDER_SUMMARY, List.of(offer), LocalDateTime.now());
         group.confirmMatch();
         getOrderOfferGroups().put(orderId, group);
         getDreamiMap().put(dreamiId, new WaitingDreami(
-                dreamiId, mock(GeoPoint.class),
+                dreamiId, LOCATION,
                 WaitingDreamiStatus.MATCHING, LocalDateTime.now()));
 
         // when
@@ -1618,12 +1632,12 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiIdC,
                 MatchOfferStatus.OFFERED, LocalDateTime.now());
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY,
+                orderId, UUID.randomUUID(), LOCATION, ORDER_SUMMARY,
                 List.of(offerA, offerB, offerC), LocalDateTime.now());
         getOrderOfferGroups().put(orderId, group);
         for (UUID dreamiId : List.of(dreamiIdA, dreamiIdB, dreamiIdC)) {
             getDreamiMap().put(dreamiId, new WaitingDreami(
-                    dreamiId, mock(GeoPoint.class),
+                    dreamiId, LOCATION,
                     WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
         }
 
@@ -1658,12 +1672,12 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiIdC,
                 MatchOfferStatus.OFFERED, LocalDateTime.now());
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY,
+                orderId, UUID.randomUUID(), LOCATION, ORDER_SUMMARY,
                 List.of(offerA, offerB, offerC), LocalDateTime.now());
         getOrderOfferGroups().put(orderId, group);
         for (UUID dreamiId : List.of(dreamiIdA, dreamiIdB, dreamiIdC)) {
             getDreamiMap().put(dreamiId, new WaitingDreami(
-                    dreamiId, mock(GeoPoint.class),
+                    dreamiId, LOCATION,
                     WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
         }
 
@@ -1699,7 +1713,7 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiIdC,
                 MatchOfferStatus.DREAMI_EXPIRED, LocalDateTime.now());
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY,
+                orderId, UUID.randomUUID(), LOCATION, ORDER_SUMMARY,
                 List.of(offerA, offerB, offerC), LocalDateTime.now());
         getOrderOfferGroups().put(orderId, group);
 
@@ -1722,10 +1736,10 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiId,
                 MatchOfferStatus.OFFERED, LocalDateTime.now());
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer), LocalDateTime.now());
+                orderId, UUID.randomUUID(), LOCATION, ORDER_SUMMARY, List.of(offer), LocalDateTime.now());
         getOrderOfferGroups().put(orderId, group);
         getDreamiMap().put(dreamiId, new WaitingDreami(
-                dreamiId, mock(GeoPoint.class),
+                dreamiId, LOCATION,
                 WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
 
         // when
@@ -1750,10 +1764,10 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiId,
                 MatchOfferStatus.OFFERED, LocalDateTime.now());
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer), LocalDateTime.now());
+                orderId, UUID.randomUUID(), LOCATION, ORDER_SUMMARY, List.of(offer), LocalDateTime.now());
         getOrderOfferGroups().put(orderId, group);
         getDreamiMap().put(dreamiId, new WaitingDreami(
-                dreamiId, mock(GeoPoint.class),
+                dreamiId, LOCATION,
                 WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
 
         // when
@@ -1773,7 +1787,7 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(), LocalDateTime.now());
+                orderId, UUID.randomUUID(), LOCATION, ORDER_SUMMARY, List.of(), LocalDateTime.now());
         getOrderOfferGroups().put(orderId, group);
         when(matchingEngine.submit(any())).thenReturn(true);
 
@@ -1810,7 +1824,7 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(), LocalDateTime.now());
+                orderId, UUID.randomUUID(), LOCATION, ORDER_SUMMARY, List.of(), LocalDateTime.now());
         group.cancel();
         getOrderOfferGroups().put(orderId, group);
         when(matchingEngine.submit(any())).thenReturn(true);
@@ -1836,7 +1850,7 @@ class MatchingServiceTest {
         // given (DB MATCHING 상태에서 매칭이 시작되어 방과 살아있는 오퍼가 만들어진다)
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
         when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -1846,7 +1860,7 @@ class MatchingServiceTest {
         MatchOffer offer = new MatchOffer(UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
         group.addOffersAndOpen(List.of(offer));
         getDreamiMap().put(dreamiId, new WaitingDreami(
-                dreamiId, mock(GeoPoint.class), WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
+                dreamiId, LOCATION, WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
 
         // when (DB가 취소로 바뀐 뒤 취소 액션이 실행된다)
         when(order.getOrderCd()).thenReturn(OrderCd.CANCELLED);
@@ -1870,7 +1884,7 @@ class MatchingServiceTest {
     void 그룹_생성_전_취소돼도_지연된_매칭_시작이_그룹을_만들지_않는다() {
         // given (원래 유실 버그의 핵심 재현 - DB는 이미 CANCELLED, 아직 방은 없다)
         UUID orderId = UUID.randomUUID();
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
         when(order.getOrderCd()).thenReturn(OrderCd.CANCELLED);
@@ -1892,7 +1906,7 @@ class MatchingServiceTest {
         // given (StartMatching이 먼저 큐에 제출됐더라도, 엔진 워커가 실제로 applyStartMatching을 실행하는 시점에는
         // 이미 취소가 먼저 처리·커밋되어 DB가 CANCELLED로 바뀌어 있을 수 있다 - 제출 순서와 실행 순서는 다르다)
         UUID orderId = UUID.randomUUID();
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
         when(order.getOrderCd()).thenReturn(OrderCd.CANCELLED);
@@ -1914,7 +1928,7 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
         when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
@@ -1924,7 +1938,7 @@ class MatchingServiceTest {
         MatchOffer offer = new MatchOffer(UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.OFFERED, LocalDateTime.now());
         group.addOffersAndOpen(List.of(offer));
         getDreamiMap().put(dreamiId, new WaitingDreami(
-                dreamiId, mock(GeoPoint.class), WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
+                dreamiId, LOCATION, WaitingDreamiStatus.PROPOSED, LocalDateTime.now()));
 
         // when (DB CANCELLED 이후 취소·시작 이벤트가 중복으로 들어온다)
         when(order.getOrderCd()).thenReturn(OrderCd.CANCELLED);
@@ -1967,7 +1981,7 @@ class MatchingServiceTest {
     @Test
     void 매칭시작_요청_이벤트를_받으면_엔진_큐에_StartMatching_액션이_제출된다() {
         // given
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(UUID.randomUUID());
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -2081,7 +2095,7 @@ class MatchingServiceTest {
     void 매칭을_시작하면_즉시_오퍼를_만들지_않는다() {
         // given
         UUID orderId = UUID.randomUUID();
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -2102,12 +2116,12 @@ class MatchingServiceTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
         UUID boormiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId, location);
 
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of(), LocalDateTime.now());
+                orderId, boormiId, LOCATION, ORDER_SUMMARY, List.of(), LocalDateTime.now());
         group.closeForRematch();
         getOrderOfferGroups().put(orderId, group);
 
@@ -2128,9 +2142,9 @@ class MatchingServiceTest {
         // given
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        matchingService.applyRegisterDreami(dreamiId, mock(GeoPoint.class));
+        matchingService.applyRegisterDreami(dreamiId, LOCATION);
 
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(order.getOrderId())).thenReturn(Optional.of(order));
@@ -2182,7 +2196,7 @@ class MatchingServiceTest {
         UUID boormiId = UUID.randomUUID();
 
         OrderOfferGroup group = new OrderOfferGroup(
-                orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of(), LocalDateTime.now());
+                orderId, boormiId, LOCATION, ORDER_SUMMARY, List.of(), LocalDateTime.now());
         group.addOffersAndOpen(List.of());
         getOrderOfferGroups().put(orderId, group);
 
@@ -2281,7 +2295,7 @@ class MatchingServiceTest {
                 offerId, orderId, UUID.randomUUID(), MatchOfferStatus.OFFERED, LocalDateTime.now());
         getOffersById().put(offerId, offer);
         getOrderOfferGroups().put(orderId, new OrderOfferGroup(
-                orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer), LocalDateTime.now()));
+                orderId, boormiId, LOCATION, ORDER_SUMMARY, List.of(offer), LocalDateTime.now()));
 
         assertThat(matchingService.isBoormiOfferOwner(offerId, boormiId)).isTrue();
     }
@@ -2295,7 +2309,7 @@ class MatchingServiceTest {
                 offerId, orderId, UUID.randomUUID(), MatchOfferStatus.OFFERED, LocalDateTime.now());
         getOffersById().put(offerId, offer);
         getOrderOfferGroups().put(orderId, new OrderOfferGroup(
-                orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer), LocalDateTime.now()));
+                orderId, boormiId, LOCATION, ORDER_SUMMARY, List.of(offer), LocalDateTime.now()));
 
         assertThat(matchingService.isBoormiOfferOwner(offerId, UUID.randomUUID())).isFalse();
     }
@@ -2346,7 +2360,7 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, dreamiId, MatchOfferStatus.PENDING_BOORMI_CONFIRMATION, LocalDateTime.now());
         getOrderOfferGroups().put(orderId,
                 new OrderOfferGroup(
-                        orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer), LocalDateTime.now()));
+                        orderId, boormiId, LOCATION, ORDER_SUMMARY, List.of(offer), LocalDateTime.now()));
 
         assertThat(matchingService.findIncomingDreamiOffer(boormiId)).contains(offer);
     }
@@ -2359,7 +2373,7 @@ class MatchingServiceTest {
                 UUID.randomUUID(), orderId, UUID.randomUUID(), MatchOfferStatus.OFFERED, LocalDateTime.now());
         getOrderOfferGroups().put(orderId,
                 new OrderOfferGroup(
-                        orderId, boormiId, mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer), LocalDateTime.now()));
+                        orderId, boormiId, LOCATION, ORDER_SUMMARY, List.of(offer), LocalDateTime.now()));
 
         assertThat(matchingService.findIncomingDreamiOffer(boormiId)).isEmpty();
     }
@@ -2372,7 +2386,7 @@ class MatchingServiceTest {
                 LocalDateTime.now());
         getOrderOfferGroups().put(orderId,
                 new OrderOfferGroup(
-                        orderId, UUID.randomUUID(), mock(GeoPoint.class), ORDER_SUMMARY, List.of(offer),
+                        orderId, UUID.randomUUID(), LOCATION, ORDER_SUMMARY, List.of(offer),
                         LocalDateTime.now()));
 
         assertThat(matchingService.findIncomingDreamiOffer(UUID.randomUUID())).isEmpty();
