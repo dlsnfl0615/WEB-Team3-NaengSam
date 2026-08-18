@@ -182,6 +182,20 @@
         .review-actions input { flex: 1; }
         button.approve { background: var(--green); color: #0f1115; }
         button.reject { background: var(--red); color: #0f1115; }
+
+        /* 인메모리 상태 */
+        .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; flex-wrap: wrap; }
+        .toolbar .hint { margin-right: auto; }
+        .checkbox { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; cursor: pointer; }
+        .checkbox input { min-width: 0; width: 14px; height: 14px; padding: 0; accent-color: var(--accent); }
+        .struct-desc { margin-top: 2px; color: var(--muted); font-size: 11px; }
+        .delta { font-variant-numeric: tabular-nums; font-weight: 600; }
+        .delta.up { color: var(--yellow); }
+        .delta.down { color: var(--green); }
+        .delta.flat { color: var(--muted); font-weight: 400; }
+        tr.zero td { color: var(--muted); }
+        .breakdown { display: flex; flex-wrap: wrap; gap: 4px; }
+        .samples { display: flex; flex-direction: column; gap: 2px; }
         @media (max-width: 900px) { main { padding: 16px; } }
     </style>
 </head>
@@ -215,6 +229,7 @@
             <button class="tab-btn" data-tab="matching" onclick="activateTab('matching')">매칭 현황판</button>
             <button class="tab-btn" data-tab="dreami" onclick="activateTab('dreami')">드리미 인증 검수</button>
             <button class="tab-btn" data-tab="cancel" onclick="activateTab('cancel')">매칭·배달 취소 관리</button>
+            <button class="tab-btn" data-tab="memory" onclick="activateTab('memory')">인메모리 상태</button>
         </div>
 
         <!-- ===== 탭 1. 매칭 현황판 ===== -->
@@ -279,6 +294,35 @@
                     <div id="activeDeliveriesTable"><div class="empty">조회 중…</div></div>
                 </section>
             </div>
+        </section>
+
+        <!-- ===== 탭 4. 인메모리 상태 ===== -->
+        <section id="tab-memory" class="tab-panel">
+            <div id="memoryErrorBox" class="error-box"></div>
+            <section class="summary">
+                <div class="panel">
+                    <div id="memoryTotalElements" class="count">-</div>
+                    <div class="count-label">전체 원소 수</div>
+                </div>
+                <div class="panel">
+                    <div id="memoryTotalStructures" class="count">-</div>
+                    <div class="count-label">자료구조 개수</div>
+                </div>
+                <div class="panel">
+                    <div id="memoryOwnerCount" class="count">-</div>
+                    <div class="count-label">상태 보유 빈</div>
+                </div>
+            </section>
+            <div class="toolbar">
+                <span class="muted hint">증감은 직전 갱신 대비입니다. 줄지 않고 계속 늘어나는 항목이 정리되지 않는 자료구조입니다.</span>
+                <span id="memoryUpdatedAt" class="muted">조회 대기 중</span>
+                <label class="checkbox">
+                    <input type="checkbox" id="memoryAutoRefresh" onchange="toggleMemoryPolling()"/>
+                    2초 자동 갱신
+                </label>
+                <button type="button" onclick="refreshInMemoryState()">지금 갱신</button>
+            </div>
+            <div id="memoryOwners" class="stack"><div class="empty">조회 중…</div></div>
         </section>
     </main>
 </div>
@@ -356,6 +400,7 @@
     async function logout() {
         try { await apiFetch("/api/v1/user/logout", { method: "POST" }); } catch (ignored) {}
         stopMatchingPolling();
+        stopMemoryPolling();
         document.getElementById("app").style.display = "none";
         document.getElementById("loginGate").style.display = "block";
     }
@@ -365,6 +410,7 @@
         matching: () => { startMatchingPolling(); void refreshMatchingDashboard(true); },
         dreami: () => void loadPendingReviews(),
         cancel: () => { void loadWaitingOrders(); void loadActiveDeliveries(); },
+        memory: () => { toggleMemoryPolling(); void refreshInMemoryState(); },
     };
     function activateTab(tab) {
         document.querySelectorAll(".tab-btn").forEach(button =>
@@ -372,6 +418,7 @@
         document.querySelectorAll(".tab-panel").forEach(panel =>
             panel.classList.toggle("active", panel.id === `tab-${tab}`));
         if (tab !== "matching") stopMatchingPolling();
+        if (tab !== "memory") stopMemoryPolling();
         TAB_LOADERS[tab]();
     }
 
@@ -638,6 +685,110 @@
         } catch (error) {
             showBoxError("cancelErrorBox", `배달 취소 실패: ${error.message}`);
         }
+    }
+
+    // ===== 탭 4. 인메모리 상태 =====
+    // 자료구조가 "정리되고 있는지"를 보는 화면이라, 크기 자체보다 직전 갱신 대비 증감이 핵심이다.
+    // previousSizes에 "Owner.field" → size 를 남겨두고 다음 조회 때 비교한다.
+    const IN_MEMORY_API = "/api/v1/debug/inmemory";
+    let memoryPollTimer = null;
+    let memoryRefreshing = false;
+    let previousSizes = null;
+
+    function deltaCell(key, size) {
+        if (previousSizes === null || !(key in previousSizes)) {
+            return '<span class="delta flat">-</span>';
+        }
+        const delta = size - previousSizes[key];
+        if (delta === 0) return '<span class="delta flat">0</span>';
+        const direction = delta > 0 ? "up" : "down";
+        return `<span class="delta ${direction}">${delta > 0 ? "+" : ""}${delta}</span>`;
+    }
+    // 어떤 항목이 위험 신호인지는 서버가 알려주지 않으므로 색으로 판정하지 않는다. 라벨 자체가 의미를 말해주고
+    // (예: "만료됐는데 잔류"), 늘어나는지 여부는 증감 열이 보여준다.
+    function breakdownCell(breakdown) {
+        const entries = Object.entries(breakdown ?? {});
+        if (!entries.length) return '<span class="muted">-</span>';
+        const tags = entries.map(([label, value]) =>
+            `<span class="tag">${escapeHtml(label)} ${escapeHtml(value)}</span>`);
+        return `<div class="breakdown">${tags.join("")}</div>`;
+    }
+    function samplesCell(samples) {
+        if (!samples?.length) return '<span class="muted">-</span>';
+        const items = samples.map(sample =>
+            `<span class="mono ellipsis" title="${escapeHtml(sample)}">${escapeHtml(shortId(sample))}</span>`);
+        return `<div class="samples">${items.join("")}</div>`;
+    }
+    function structureRow(owner, structure) {
+        const key = `${owner}.${structure.name}`;
+        return `
+            <tr class="${structure.size === 0 ? "zero" : ""}">
+                <td>
+                    <div class="mono">${escapeHtml(structure.name)}</div>
+                    <div class="struct-desc">${escapeHtml(structure.description)}</div>
+                </td>
+                <td class="mono">${escapeHtml(structure.size)}</td>
+                <td>${deltaCell(key, structure.size)}</td>
+                <td>${breakdownCell(structure.breakdown)}</td>
+                <td>${samplesCell(structure.samples)}</td>
+            </tr>
+        `;
+    }
+    function ownerPanel(owner) {
+        const total = owner.structures.reduce((sum, structure) => sum + structure.size, 0);
+        const rows = owner.structures.map(structure => structureRow(owner.owner, structure)).join("");
+        return `
+            <section class="panel">
+                <div class="panel-header">
+                    <h2>${escapeHtml(owner.owner)}</h2>
+                    <span class="muted">원소 합계 ${escapeHtml(total)}</span>
+                </div>
+                <table>
+                    <thead><tr><th>자료구조</th><th>크기</th><th>증감</th><th>세부</th><th>샘플</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </section>
+        `;
+    }
+    function collectSizes(owners) {
+        const sizes = {};
+        owners.forEach(owner =>
+            owner.structures.forEach(structure => { sizes[`${owner.owner}.${structure.name}`] = structure.size; }));
+        return sizes;
+    }
+    async function refreshInMemoryState() {
+        if (memoryRefreshing) return;
+        memoryRefreshing = true;
+        try {
+            const snapshot = await apiFetch(IN_MEMORY_API);
+            const owners = snapshot?.owners ?? [];
+
+            document.getElementById("memoryTotalElements").textContent = String(snapshot?.totalElements ?? 0);
+            document.getElementById("memoryTotalStructures").textContent = String(snapshot?.totalStructures ?? 0);
+            document.getElementById("memoryOwnerCount").textContent = String(owners.length);
+            document.getElementById("memoryOwners").innerHTML = owners.length
+                ? owners.map(ownerPanel).join("")
+                : '<div class="empty">상태를 보고하는 빈이 없습니다.</div>';
+            // 렌더가 끝난 뒤에 갱신해야 이번 표가 직전 값과 비교된다.
+            previousSizes = collectSizes(owners);
+            document.getElementById("memoryUpdatedAt").textContent =
+                `${new Date().toLocaleTimeString("ko-KR")} 기준`;
+            showBoxError("memoryErrorBox", "");
+        } catch (error) {
+            showBoxError("memoryErrorBox", `인메모리 상태를 불러오지 못했습니다: ${error.message}`);
+        } finally {
+            memoryRefreshing = false;
+        }
+    }
+    function toggleMemoryPolling() {
+        stopMemoryPolling();
+        if (document.getElementById("memoryAutoRefresh").checked) {
+            memoryPollTimer = window.setInterval(() => void refreshInMemoryState(), 2000);
+        }
+    }
+    function stopMemoryPolling() {
+        if (memoryPollTimer) window.clearInterval(memoryPollTimer);
+        memoryPollTimer = null;
     }
 
     void checkSession();

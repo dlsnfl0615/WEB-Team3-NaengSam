@@ -7,6 +7,8 @@ import com.naengsam.quick.domain.delivery.entity.Delivery;
 import com.naengsam.quick.domain.delivery.entity.DeliveryCd;
 import com.naengsam.quick.domain.delivery.event.DeliveryEventType;
 import com.naengsam.quick.domain.delivery.repository.DeliveryRepository;
+import com.naengsam.quick.global.debug.InMemoryStateProbe;
+import com.naengsam.quick.global.debug.InMemoryStructureDto;
 import com.naengsam.quick.global.notification.NotificationService;
 import com.naengsam.quick.global.notification.SmsFallbackNotifier;
 import lombok.extern.slf4j.Slf4j;
@@ -55,7 +57,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-public class DreamiOfflineDetector {
+public class DreamiOfflineDetector implements InMemoryStateProbe {
 
     // 부르미가 '움직이는 드리미'를 보고 있는 상태들. 그 외(완료·취소·반송)는 추적 대상이 아니다.
     private static final Set<DeliveryCd> TRACKED_STATUSES =
@@ -186,5 +188,15 @@ public class DreamiOfflineDetector {
 
     private long secondsSinceLastLocation(Delivery delivery) {
         return Duration.between(delivery.getLastLocationDtm(), LocalDateTime.now()).toSeconds();
+    }
+
+    /**
+     * 중복 알림 억제 집합의 현황. 매 스캔마다 {@code retainAll}로 "지금 무소식인 주문"만 남기므로 크기는 현재 오프라인 배달 수로 수렴한다. 이 값이 활성 배달 수를 넘어 계속 커지면
+     * 스캔 스케줄러가 멈췄다는 뜻이다.
+     */
+    @Override
+    public List<InMemoryStructureDto> inMemoryStructures() {
+        return List.of(InMemoryStructureDto.ofCollection(
+                "notifiedOrders", "오프라인 알림을 이미 보낸 orderId", notifiedOrders));
     }
 }
