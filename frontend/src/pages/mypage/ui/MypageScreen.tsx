@@ -63,7 +63,7 @@ export function MypageScreen() {
 
   return (
     <ScreenShell footer={<BottomNav />}>
-      <TopBar title="마이페이지" actions={["profile"]} />
+      <TopBar title="마이페이지" actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <Card className="flex flex-col items-center gap-1 py-5">
