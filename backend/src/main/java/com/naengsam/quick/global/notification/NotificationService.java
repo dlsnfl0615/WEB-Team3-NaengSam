@@ -1,7 +1,7 @@
 package com.naengsam.quick.global.notification;
 
-import com.naengsam.quick.global.debug.InMemoryStateProbe;
-import com.naengsam.quick.global.debug.InMemoryStructureDto;
+import com.naengsam.quick.global.admin.InMemoryStateProbe;
+import com.naengsam.quick.global.admin.InMemoryStructureDto;
 import com.naengsam.quick.global.sse.SseEventType;
 import com.naengsam.quick.global.sse.SseService;
 import io.micrometer.core.instrument.Gauge;

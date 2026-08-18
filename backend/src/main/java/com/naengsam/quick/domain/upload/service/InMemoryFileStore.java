@@ -1,7 +1,7 @@
 package com.naengsam.quick.domain.upload.service;
 
-import com.naengsam.quick.global.debug.InMemoryStateProbe;
-import com.naengsam.quick.global.debug.InMemoryStructureDto;
+import com.naengsam.quick.global.admin.InMemoryStateProbe;
+import com.naengsam.quick.global.admin.InMemoryStructureDto;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;

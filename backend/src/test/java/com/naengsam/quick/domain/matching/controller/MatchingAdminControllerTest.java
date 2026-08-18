@@ -39,7 +39,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
  * 매칭 디버그 엔드포인트가 요청을 올바르게 파싱해 {@link MatchingService}로 위임하는지 검증한다. 매칭 엔진 자체의 상태 전이는 {@link MatchingService} 단위 테스트에서
  * 다룬다.
  */
-class MatchingDebugControllerTest {
+class MatchingAdminControllerTest {
 
     private MatchingService matchingService;
     private NearbyDreamiFinder nearbyDreamiFinder;
@@ -52,12 +52,12 @@ class MatchingDebugControllerTest {
         nearbyDreamiFinder = mock(NearbyDreamiFinder.class);
         nearbyOrderFinder = mock(NearbyOrderFinder.class);
         mockMvc = MockMvcBuilders.standaloneSetup(
-                new MatchingDebugController(matchingService, nearbyDreamiFinder, nearbyOrderFinder)).build();
+                new MatchingAdminController(matchingService, nearbyDreamiFinder, nearbyOrderFinder)).build();
     }
 
     private MockMvc mockMvcWithExceptionHandler() {
         return MockMvcBuilders.standaloneSetup(
-                        new MatchingDebugController(matchingService, nearbyDreamiFinder, nearbyOrderFinder))
+                        new MatchingAdminController(matchingService, nearbyDreamiFinder, nearbyOrderFinder))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
     }
@@ -66,7 +66,7 @@ class MatchingDebugControllerTest {
     void 드리미_등록시_생성된_ID와_요청한_위치로_서비스에_위임한다() throws Exception {
         when(matchingService.registerDreami(any(), any())).thenReturn(true);
 
-        String response = mockMvc.perform(post("/api/v1/debug/matching/dreamis")
+        String response = mockMvc.perform(post("/api/v1/admin/matching/dreamis")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"latitude\": 37.5, \"longitude\": 127.0}"))
                 .andExpect(status().isOk())
@@ -86,10 +86,10 @@ class MatchingDebugControllerTest {
         when(matchingService.registerDreami(any(), any())).thenReturn(true);
         String body = "{\"latitude\": 37.5, \"longitude\": 127.0}";
 
-        String firstId = mockMvc.perform(post("/api/v1/debug/matching/dreamis")
+        String firstId = mockMvc.perform(post("/api/v1/admin/matching/dreamis")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andReturn().getResponse().getContentAsString();
-        String secondId = mockMvc.perform(post("/api/v1/debug/matching/dreamis")
+        String secondId = mockMvc.perform(post("/api/v1/admin/matching/dreamis")
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andReturn().getResponse().getContentAsString();
 
@@ -98,7 +98,7 @@ class MatchingDebugControllerTest {
 
     @Test
     void 드리미_등록시_본문이_깨져있으면_400을_반환하고_서비스는_호출되지_않는다() throws Exception {
-        mockMvc.perform(post("/api/v1/debug/matching/dreamis")
+        mockMvc.perform(post("/api/v1/admin/matching/dreamis")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{"))
                 .andExpect(status().isBadRequest());
@@ -111,7 +111,7 @@ class MatchingDebugControllerTest {
         UUID dreamiId = UUID.randomUUID();
         when(matchingService.removeDreami(dreamiId)).thenReturn(true);
 
-        mockMvc.perform(delete("/api/v1/debug/matching/dreamis/{dreamiId}", dreamiId))
+        mockMvc.perform(delete("/api/v1/admin/matching/dreamis/{dreamiId}", dreamiId))
                 .andExpect(status().isOk());
 
         verify(matchingService).removeDreami(dreamiId);
@@ -119,7 +119,7 @@ class MatchingDebugControllerTest {
 
     @Test
     void 드리미_제거시_UUID_형식이_아니면_400을_반환하고_서비스는_호출되지_않는다() throws Exception {
-        mockMvc.perform(delete("/api/v1/debug/matching/dreamis/{dreamiId}", "not-a-uuid"))
+        mockMvc.perform(delete("/api/v1/admin/matching/dreamis/{dreamiId}", "not-a-uuid"))
                 .andExpect(status().isBadRequest());
 
         verify(matchingService, never()).removeDreami(any());
@@ -130,7 +130,7 @@ class MatchingDebugControllerTest {
         UUID dreamiId = UUID.randomUUID();
         when(matchingService.removeDreami(dreamiId)).thenReturn(false);
 
-        mockMvcWithExceptionHandler().perform(delete("/api/v1/debug/matching/dreamis/{dreamiId}", dreamiId))
+        mockMvcWithExceptionHandler().perform(delete("/api/v1/admin/matching/dreamis/{dreamiId}", dreamiId))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.isSuccess").value(false))
                 .andExpect(jsonPath("$.code").value("COMMON_008"));
@@ -144,7 +144,7 @@ class MatchingDebugControllerTest {
                 dreamiId, location, WaitingDreamiStatus.MATCHING, LocalDateTime.now());
         when(matchingService.waitingDreamis()).thenReturn(List.of(waitingDreami));
 
-        mockMvc.perform(get("/api/v1/debug/matching/dreamis"))
+        mockMvc.perform(get("/api/v1/admin/matching/dreamis"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].dreamiId").value(dreamiId.toString()))
                 .andExpect(jsonPath("$[0].location.latitude").value(37.5))
@@ -155,7 +155,7 @@ class MatchingDebugControllerTest {
     void 제거후_조회하면_대기중_드리미_목록에서_사라진다() throws Exception {
         when(matchingService.waitingDreamis()).thenReturn(List.of());
 
-        mockMvc.perform(get("/api/v1/debug/matching/dreamis"))
+        mockMvc.perform(get("/api/v1/admin/matching/dreamis"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$").isEmpty());
     }
@@ -165,7 +165,7 @@ class MatchingDebugControllerTest {
 //        UUID orderId = UUID.randomUUID();
 //        UUID boormiId = UUID.randomUUID();
 //
-//        mockMvc.perform(post("/api/v1/debug/matching/orders/{orderId}/start", orderId)
+//        mockMvc.perform(post("/api/v1/admin/matching/orders/{orderId}/start", orderId)
 //                        .contentType(MediaType.APPLICATION_JSON)
 //                        .content("""
 //                                {"boormiId": "%s", "destination": {"latitude": 37.5, "longitude": 127.0}}
@@ -183,7 +183,7 @@ class MatchingDebugControllerTest {
 
     @Test
     void 매칭_시작시_필수값이_없으면_400을_반환하고_서비스는_호출되지_않는다() throws Exception {
-        mockMvc.perform(post("/api/v1/debug/matching/orders/{orderId}/start", UUID.randomUUID())
+        mockMvc.perform(post("/api/v1/admin/matching/orders/{orderId}/start", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{}"))
                 .andExpect(status().isBadRequest());
@@ -195,7 +195,7 @@ class MatchingDebugControllerTest {
     void 이미_진행중인_매칭이면_409를_반환한다() throws Exception {
         when(matchingService.startMatching(any())).thenReturn(false);
 
-        mockMvcWithExceptionHandler().perform(post("/api/v1/debug/matching/orders/{orderId}/start", UUID.randomUUID())
+        mockMvcWithExceptionHandler().perform(post("/api/v1/admin/matching/orders/{orderId}/start", UUID.randomUUID())
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"boormiId": "%s", "destination": {"latitude": 0, "longitude": 0}}
@@ -210,7 +210,7 @@ class MatchingDebugControllerTest {
         UUID orderId = UUID.randomUUID();
         when(matchingService.cancelOrderByBoormi(orderId)).thenReturn(true);
 
-        mockMvc.perform(post("/api/v1/debug/matching/orders/{orderId}/cancel", orderId))
+        mockMvc.perform(post("/api/v1/admin/matching/orders/{orderId}/cancel", orderId))
                 .andExpect(status().isOk());
 
         verify(matchingService).cancelOrderByBoormi(orderId);
@@ -221,7 +221,7 @@ class MatchingDebugControllerTest {
         UUID orderId = UUID.randomUUID();
         when(matchingService.cancelOrderByBoormi(orderId)).thenReturn(true);
 
-        mockMvc.perform(post("/api/v1/debug/matching/orders/{orderId}/cancel", orderId))
+        mockMvc.perform(post("/api/v1/admin/matching/orders/{orderId}/cancel", orderId))
                 .andExpect(status().isOk());
     }
 
@@ -240,7 +240,7 @@ class MatchingDebugControllerTest {
         group.addOffersAndOpen(List.of(offer));
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.of(group));
 
-        mockMvc.perform(get("/api/v1/debug/matching/orders/{orderId}/group", orderId))
+        mockMvc.perform(get("/api/v1/admin/matching/orders/{orderId}/group", orderId))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.orderId").value(orderId.toString()))
                 .andExpect(jsonPath("$.status").value("OPEN"))
@@ -255,7 +255,7 @@ class MatchingDebugControllerTest {
         UUID orderId = UUID.randomUUID();
         when(matchingService.findOrderOfferGroup(orderId)).thenReturn(Optional.empty());
 
-        mockMvcWithExceptionHandler().perform(get("/api/v1/debug/matching/orders/{orderId}/group", orderId))
+        mockMvcWithExceptionHandler().perform(get("/api/v1/admin/matching/orders/{orderId}/group", orderId))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.isSuccess").value(false))
                 .andExpect(jsonPath("$.code").value("COMMON_005"));
@@ -265,7 +265,7 @@ class MatchingDebugControllerTest {
     void 드리미_수락_요청은_offerId로_서비스에_위임한다() throws Exception {
         UUID offerId = UUID.randomUUID();
 
-        mockMvc.perform(post("/api/v1/debug/matching/offers/{offerId}/dreami-accept", offerId))
+        mockMvc.perform(post("/api/v1/admin/matching/offers/{offerId}/dreami-accept", offerId))
                 .andExpect(status().isOk());
 
         verify(matchingService).acceptByDreami(offerId);
@@ -275,7 +275,7 @@ class MatchingDebugControllerTest {
     void 드리미_거절_요청은_offerId로_서비스에_위임한다() throws Exception {
         UUID offerId = UUID.randomUUID();
 
-        mockMvc.perform(post("/api/v1/debug/matching/offers/{offerId}/dreami-reject", offerId))
+        mockMvc.perform(post("/api/v1/admin/matching/offers/{offerId}/dreami-reject", offerId))
                 .andExpect(status().isOk());
 
         verify(matchingService).rejectByDreami(offerId);
@@ -285,7 +285,7 @@ class MatchingDebugControllerTest {
     void 부르미_수락_요청은_offerId로_서비스에_위임한다() throws Exception {
         UUID offerId = UUID.randomUUID();
 
-        mockMvc.perform(post("/api/v1/debug/matching/offers/{offerId}/boormi-accept", offerId))
+        mockMvc.perform(post("/api/v1/admin/matching/offers/{offerId}/boormi-accept", offerId))
                 .andExpect(status().isOk());
 
         verify(matchingService).acceptByBoormi(offerId);
@@ -295,7 +295,7 @@ class MatchingDebugControllerTest {
     void 부르미_거절_요청은_offerId로_서비스에_위임한다() throws Exception {
         UUID offerId = UUID.randomUUID();
 
-        mockMvc.perform(post("/api/v1/debug/matching/offers/{offerId}/boormi-reject", offerId))
+        mockMvc.perform(post("/api/v1/admin/matching/offers/{offerId}/boormi-reject", offerId))
                 .andExpect(status().isOk());
 
         verify(matchingService).rejectByBoormi(offerId);
@@ -305,7 +305,7 @@ class MatchingDebugControllerTest {
     void 드리미_만료_요청은_offerId로_서비스에_위임한다() throws Exception {
         UUID offerId = UUID.randomUUID();
 
-        mockMvc.perform(post("/api/v1/debug/matching/offers/{offerId}/dreami-expire", offerId))
+        mockMvc.perform(post("/api/v1/admin/matching/offers/{offerId}/dreami-expire", offerId))
                 .andExpect(status().isOk());
 
         verify(matchingService).expireDreamiOffer(offerId);
@@ -315,7 +315,7 @@ class MatchingDebugControllerTest {
     void 부르미_만료_요청은_offerId로_서비스에_위임한다() throws Exception {
         UUID offerId = UUID.randomUUID();
 
-        mockMvc.perform(post("/api/v1/debug/matching/offers/{offerId}/boormi-expire", offerId))
+        mockMvc.perform(post("/api/v1/admin/matching/offers/{offerId}/boormi-expire", offerId))
                 .andExpect(status().isOk());
 
         verify(matchingService).expireBoormiOffer(offerId);

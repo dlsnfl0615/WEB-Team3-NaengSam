@@ -34,6 +34,7 @@ import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.order.service.PendingOfferStateService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Collection;
@@ -55,6 +56,18 @@ class MatchingMicroBatchIntegrationTest {
 
     private static final Duration OFFER_TTL = Duration.ofSeconds(30);
 
+    // 그리드 프리필터가 좌표를 직접 읽으므로 좌표 없는 목 대신 실제 좌표를 쓴다. 모든 주문·드리미를 같은 점에 두면
+    // 항상 같은 셀에 들어가므로 후보 조합은 프리필터 도입 전과 동일하다.
+    private static final GeoPoint LOCATION =
+            new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0));
+
+    /** 좌표를 스텁하지 않은 주문 목에 기본 위치를 채워준다. 개별 테스트가 다시 스텁하면 그 값이 이긴다. */
+    private static Orders orderAt(Orders order) {
+        lenient().when(order.getOriginLatitude()).thenReturn(LOCATION.latitude());
+        lenient().when(order.getOriginLongitude()).thenReturn(LOCATION.longitude());
+        return order;
+    }
+
     private static MatchingPolicyProperties matchingPolicyProperties(int maxConcurrentOffers) {
         return new MatchingPolicyProperties(
                 Duration.ofMillis(500),
@@ -75,7 +88,7 @@ class MatchingMicroBatchIntegrationTest {
     private PendingOfferStateService pendingOfferStateService;
 
     private Orders orderMock(UUID orderId) {
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
@@ -145,7 +158,7 @@ class MatchingMicroBatchIntegrationTest {
         MatchingService matchingService = newMatchingService(3);
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderMock(orderId));
@@ -165,7 +178,7 @@ class MatchingMicroBatchIntegrationTest {
         UUID orderId1 = UUID.randomUUID();
         UUID orderId2 = UUID.randomUUID();
         UUID orderId3 = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
@@ -192,7 +205,7 @@ class MatchingMicroBatchIntegrationTest {
     void 같은_윈도우에_등록된_여러_드리미가_하나의_배치_문제에_포함된다() {
         MatchingService matchingService = newMatchingService(3);
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
@@ -211,7 +224,7 @@ class MatchingMicroBatchIntegrationTest {
         MatchingService matchingService = newMatchingService(3);
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderMock(orderId));
@@ -243,7 +256,7 @@ class MatchingMicroBatchIntegrationTest {
     void 주문별_maxConcurrentOffers를_초과해서_오퍼가_생성되지_않는다() {
         MatchingService matchingService = newMatchingService(2);
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
         matchingService.applyRegisterDreami(UUID.randomUUID(), location);
@@ -264,7 +277,7 @@ class MatchingMicroBatchIntegrationTest {
         UUID orderIdA = UUID.randomUUID();
         UUID orderIdB = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderMock(orderIdA));
@@ -300,7 +313,7 @@ class MatchingMicroBatchIntegrationTest {
         UUID orderIdB = UUID.randomUUID();
         UUID dreamiId1 = UUID.randomUUID();
         UUID dreamiId2 = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId1, location);
         matchingService.applyRegisterDreami(dreamiId2, location);
@@ -341,7 +354,7 @@ class MatchingMicroBatchIntegrationTest {
         UUID orderIdB = UUID.randomUUID();
         UUID dreamiId1 = UUID.randomUUID();
         UUID dreamiId2 = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId1, location);
         matchingService.applyRegisterDreami(dreamiId2, location);
@@ -372,7 +385,7 @@ class MatchingMicroBatchIntegrationTest {
         UUID orderIdA = UUID.randomUUID();
         UUID orderIdB = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderMock(orderIdA));
@@ -402,7 +415,7 @@ class MatchingMicroBatchIntegrationTest {
         UUID orderIdB = UUID.randomUUID();
         UUID orderIdC = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderMock(orderIdA));

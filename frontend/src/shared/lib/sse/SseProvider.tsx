@@ -1,31 +1,151 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { api, emitUnauthorized } from "@/shared/api";
 import { useSessionStore } from "@/shared/store/sessionStore";
 import { useMatchingStore } from "@/shared/store/matchingStore";
+import {
+  SseTabCoordinator,
+  type SseTabConnection,
+  type SseTabConnectionCallbacks,
+} from "./SseTabCoordinator";
 import { SseContext, type SseContextValue, type SseStatus } from "./SseContext";
 
 export interface SseProviderProps {
   children: ReactNode;
 }
 
-type Listener = (data: unknown) => void;
+interface PendingSubscription {
+  eventName: string;
+  handler: (data: unknown) => void;
+  /** false가 되면(구독 해제) flush 시 건너뛴다. */
+  active: boolean;
+  /** flush돼 코디네이터에 실제로 등록된 뒤에만 채워진다. */
+  unsubscribeFromCoordinator: (() => void) | null;
+}
+
+function disconnectUrl(connectionId: string): string {
+  const base = import.meta.env.VITE_API_BASE_URL ?? "";
+  return `${base}/api/v1/sse/disconnect?connectionId=${encodeURIComponent(connectionId)}`;
+}
+
+/** 명시적 종료(재연결·핸드오프·로그아웃·페이지 종료)에서만 쓴다. 실패는 무시한다 — heartbeat가 최종 정리한다. */
+function sendDisconnectBeacon(connectionId: string): void {
+  try {
+    navigator.sendBeacon(disconnectUrl(connectionId));
+  } catch {
+    // best-effort
+  }
+}
+
+interface ConnectedPayload {
+  connectionId?: string;
+}
+
+function parseEventData(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
 
 /**
- * 탭(브라우저 컨텍스트)당 `EventSource`를 하나만 소유한다. 화면(`useSse`)들은 연결을 직접 만들지 않고
- * 이벤트 이름별 핸들러만 등록/해제한다 — 그래서 세션 하나(로그인 브라우저) : connection 하나(탭 하나)가
- * 실제로 성립한다(사용자당 최대 5개 = 동시에 열린 탭 최대 5개).
+ * {@link SseTabConnection}을 실제 `EventSource`로 구현한다. 대표 탭이 됐을 때만 만들어진다.
+ * named event는 한 번 걸면 다시 떼지 않는다 — 구독이 사라져도 남는 리스너는 해당 이름의 핸들러 집합이
+ * 비어 있으면 그냥 아무 일도 하지 않으므로 무해하다.
  *
- * 로그인 상태(`isAuthenticated`)가 꺼지면 연결을 닫는다. 명시적 로그아웃과 401 세션만료(자동 로그아웃)
- * 모두 결국 이 플래그를 false로 만들므로 별도 분기가 필요 없다.
+ * 일시적 onerror(자동 재연결 대상)에서는 절대 disconnect beacon을 보내지 않는다 — 서버 emitter가
+ * 아직 살아 있고, native EventSource의 자동 재연결을 그대로 신뢰하기 때문이다. beacon은 이 연결을
+ * 명시적으로 내려놓을 때(`close()`, `reconnect()`)만 보낸다.
+ */
+function createEventSourceConnection({ onStatus, onEvent }: SseTabConnectionCallbacks): SseTabConnection {
+  let source: EventSource | null = null;
+  let attachedNames = new Set<string>();
+  let currentEventNames: string[] = [];
+  let currentConnectionId: string | null = null;
+
+  function attachListener(eventName: string): void {
+    if (!source || attachedNames.has(eventName)) return;
+    attachedNames.add(eventName);
+    source.addEventListener(eventName, (event: MessageEvent) => {
+      onEvent(eventName, parseEventData(event.data));
+    });
+  }
+
+  function open(): void {
+    const base = import.meta.env.VITE_API_BASE_URL ?? "";
+    source = new EventSource(`${base}/api/v1/sse/subscribe`, { withCredentials: true });
+    attachedNames = new Set();
+
+    source.addEventListener("connected", (event: MessageEvent) => {
+      const payload = parseEventData(event.data) as ConnectedPayload;
+      if (payload.connectionId) currentConnectionId = payload.connectionId;
+      onStatus("connected");
+    });
+    source.onerror = () => {
+      if (source?.readyState === EventSource.CLOSED) {
+        // 영구 종료: 서버가 이미 이 emitter를 정리했다는 뜻이므로(예: 다른 곳에서 로그인해 세션이
+        // 교체됨) beacon을 보낼 대상 자체가 없다. native EventSource도 더 재시도하지 않는다.
+        onStatus("closed");
+        source.close();
+      } else {
+        // 일시 장애: 자동 재연결을 그대로 둔다. 여기서 close/beacon을 하면 살아 있는 서버 emitter를
+        // 스스로 끊어버리는 셈이라 절대 하지 않는다.
+        onStatus("reconnecting");
+      }
+    };
+
+    currentEventNames.forEach(attachListener);
+  }
+
+  function closeAndBeacon(): void {
+    source?.close();
+    source = null;
+    if (currentConnectionId) {
+      sendDisconnectBeacon(currentConnectionId);
+      currentConnectionId = null;
+    }
+  }
+
+  open();
+
+  return {
+    updateEventNames(eventNames) {
+      currentEventNames = eventNames;
+      eventNames.forEach(attachListener);
+    },
+    reconnect() {
+      closeAndBeacon();
+      onStatus("connecting");
+      open();
+    },
+    close() {
+      closeAndBeacon();
+    },
+  };
+}
+
+/**
+ * 계정(userId) 하나에 Web Lock으로 뽑힌 대표 탭 하나만 실제 `EventSource`를 소유하게 하는 provider.
+ * 화면(`useSse`)은 이 provider가 감싼 {@link SseTabCoordinator}에 이벤트 이름별 핸들러만 등록/해제한다.
  *
- * 연결 상태는 `SseStatus`로 세분화한다. `onerror`에서 `readyState`로 일시 장애(브라우저 자동 재연결,
- * `reconnecting`)와 영구 종료(예: 연결 한도 초과 204, `closed`)를 구분한다. `closed`이면 자동 재연결도
- * 무한 빠른 polling도 하지 않고, 사용자가 `reconnect()`로 직접 다시 시도한다.
+ * 연결 상태(`status`)는 대표 탭이든 follower든 동일하게 반영된다 — follower는 BroadcastChannel로 대표
+ * 탭의 상태를 받는다. `connected` 전이에서 matching polling 중단·`syncCurrentMatching`·`refreshUser`를
+ * 모두 실행하는 것도 대표/follower 공통이다(놓친 REST 상태를 두 경우 다 다시 맞춰야 하기 때문).
+ *
+ * `closed`(영구 종료)는 이제 사용자당 연결 상한이 사라졌으므로 사실상 "이 servlet 세션이 더 이상 계정의
+ * 현재 ActiveSession이 아니다"(다른 곳에서 로그인)와 거의 동의어다. 대표 탭만 `/me`로 확인해, 세션이
+ * 실제로 무효화됐으면(401) axios 인터셉터가 이 탭을 강제 로그아웃시키고, 같은 브라우저의 다른 탭에도
+ * session-invalid를 브로드캐스트해 전부 정리되게 한다.
  */
 export function SseProvider({ children }: SseProviderProps) {
   const isAuthenticated = useSessionStore((state) => state.isAuthenticated);
+  const userId = useSessionStore((state) => state.user?.id);
   const [status, setStatus] = useState<SseStatus>("connecting");
-  // reconnect()가 바뀔 때마다 연결 effect를 다시 실행해 EventSource를 새로 만든다.
-  const [reconnectNonce, setReconnectNonce] = useState(0);
+  const coordinatorRef = useRef<SseTabCoordinator | null>(null);
+  // React는 effect를 자식 먼저, 부모 나중 순서로 실행한다. SseProvider와 같은 커밋에서 마운트되는
+  // 자식(useSse 사용처)의 구독 effect는 이 provider가 아래 effect에서 coordinator를 만들기 전에
+  // 먼저 실행될 수 있다. 그 순간엔 여기 담아뒀다가 coordinator가 생기는 즉시 flush한다.
+  const pendingSubscriptionsRef = useRef<PendingSubscription[]>([]);
 
   // 로그인/로그아웃 전환 시 상태를 connecting으로 초기화한다(예: closed였다가 재로그인해도 배너가 남지 않도록).
   // effect가 아니라 렌더 중 조정 패턴을 쓴다 — https://react.dev/learn/you-might-not-need-an-effect
@@ -35,100 +155,78 @@ export function SseProvider({ children }: SseProviderProps) {
     setStatus("connecting");
   }
 
-  // 렌더와 무관하게 최신 등록 상태를 유지해야 하므로 ref로 보관한다(연결 자체는 재생성하지 않는다).
-  const handlersByEventRef = useRef(new Map<string, Set<Listener>>());
-  // 현재 EventSource에 실제로 addEventListener를 건 이벤트 이름들. 연결이 바뀌면 다시 걸어야 한다.
-  const attachedNamesRef = useRef(new Set<string>());
-  const sourceRef = useRef<EventSource | null>(null);
+  const subscribe = useCallback((eventName: string, handler: (data: unknown) => void) => {
+    const coordinator = coordinatorRef.current;
+    if (coordinator) return coordinator.subscribe(eventName, handler);
 
-  const attachListener = useCallback((source: EventSource, eventName: string) => {
-    if (attachedNamesRef.current.has(eventName)) return;
-    attachedNamesRef.current.add(eventName);
-    source.addEventListener(eventName, (event: MessageEvent) => {
-      const handlers = handlersByEventRef.current.get(eventName);
-      if (!handlers || handlers.size === 0) return;
-      let payload: unknown = event.data;
-      try {
-        payload = JSON.parse(event.data);
-      } catch {
-        // data가 JSON이 아니면(예: 빈 문자열) 원본을 그대로 넘긴다.
-      }
-      handlers.forEach((handler) => handler(payload));
-    });
+    // coordinator가 아직 없다(위 effect가 아직 안 돌았다) — 대기열에 담아두고, coordinator가 생기면
+    // 그때 실제로 등록한다. entry.active로 그 사이 unsubscribe된 요청을 걸러낸다.
+    const entry: PendingSubscription = { eventName, handler, active: true, unsubscribeFromCoordinator: null };
+    pendingSubscriptionsRef.current.push(entry);
+    return () => {
+      entry.active = false;
+      entry.unsubscribeFromCoordinator?.();
+    };
   }, []);
 
-  const subscribe = useCallback(
-    (eventName: string, handler: Listener) => {
-      let handlers = handlersByEventRef.current.get(eventName);
-      if (!handlers) {
-        handlers = new Set();
-        handlersByEventRef.current.set(eventName, handlers);
-      }
-      handlers.add(handler);
-
-      // 이미 열려 있는 연결에 새 이벤트 이름이 등록되면 그 자리에서 바로 걸어준다.
-      if (sourceRef.current) {
-        attachListener(sourceRef.current, eventName);
-      }
-
-      return () => {
-        handlersByEventRef.current.get(eventName)?.delete(handler);
-      };
-    },
-    [attachListener],
-  );
-
   const reconnect = useCallback(() => {
-    // 수동 재연결: 상태를 connecting으로 되돌리고, effect 의존성 nonce를 올려 연결을 새로 맺게 한다.
-    setStatus("connecting");
-    setReconnectNonce((n) => n + 1);
+    coordinatorRef.current?.reconnect();
   }, []);
 
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (!isAuthenticated || !userId) return;
 
-    const base = import.meta.env.VITE_API_BASE_URL ?? "";
-    const source = new EventSource(`${base}/api/v1/sse/subscribe`, {
-      withCredentials: true,
-    });
-    sourceRef.current = source;
-    attachedNamesRef.current = new Set();
-
-    source.addEventListener("connected", () => {
-      setStatus("connected");
-      // 연결(재연결 포함)이 서면 빠른 polling을 멈추고, 그동안 놓친 상태를 즉시 한 번 맞춘다.
+    function handleStatusChange(nextStatus: SseStatus): void {
+      setStatus(nextStatus);
       const matching = useMatchingStore.getState();
-      matching.stopMatchingPolling();
-      void matching.syncCurrentMatching();
-      // 수행 중인 역할도 함께 맞춘다(역할 토글 잠금 판정 근거).
-      void useSessionStore.getState().refreshUser();
-    });
-    source.onerror = () => {
-      const matching = useMatchingStore.getState();
-      if (source.readyState === EventSource.CLOSED) {
-        // 영구 종료(예: 연결 한도 초과로 서버가 204를 내려 native EventSource가 재연결을 포기).
-        // 무한 재연결·무한 빠른 polling을 하지 않고 사용자의 수동 재연결을 기다린다.
-        setStatus("closed");
-        source.close();
+      if (nextStatus === "connected") {
+        // 연결(재연결 포함)이 서면 빠른 polling을 멈추고, 그동안 놓친 상태를 즉시 한 번 맞춘다.
         matching.stopMatchingPolling();
-      } else {
+        void matching.syncCurrentMatching();
+        void useSessionStore.getState().refreshUser();
+      } else if (nextStatus === "reconnecting") {
         // 일시 장애: 브라우저가 자동 재연결하는 동안 매칭 상태는 polling으로 복구한다.
-        setStatus("reconnecting");
         matching.startMatchingPolling();
+      } else if (nextStatus === "closed") {
+        matching.stopMatchingPolling();
+        if (coordinatorRef.current?.isLeaderTab()) {
+          // 세션 probe(별도 헤더 없음) — 실패하면 axios 인터셉터가 이 탭을 강제 로그아웃시킨다.
+          api.me().catch(() => {
+            coordinatorRef.current?.notifySessionInvalid();
+          });
+        }
       }
-    };
+    }
 
-    // 연결이 만들어지기 전에 이미 subscribe된 이벤트 이름들도 새 연결에 걸어준다.
-    handlersByEventRef.current.forEach((_handlers, eventName) => attachListener(source, eventName));
+    const coordinator = new SseTabCoordinator({
+      userId,
+      createConnection: createEventSourceConnection,
+      onStatusChange: handleStatusChange,
+      onSessionInvalid: () => emitUnauthorized(),
+    });
+    coordinatorRef.current = coordinator;
+    coordinator.start();
+
+    // 이 provider의 effect보다 먼저 구독을 시도했던(같은 커밋의 자식) 요청들을 이제 실제로 등록한다.
+    const pending = pendingSubscriptionsRef.current;
+    pendingSubscriptionsRef.current = [];
+    pending.forEach((entry) => {
+      if (!entry.active) return;
+      entry.unsubscribeFromCoordinator = coordinator.subscribe(entry.eventName, entry.handler);
+    });
+
+    // 페이지 새로고침/종료: React 언마운트가 제때 돌지 않을 수 있으므로 별도로 정리한다.
+    const handlePageHide = () => coordinator.stop();
+    window.addEventListener("pagehide", handlePageHide);
 
     return () => {
-      source.close();
-      sourceRef.current = null;
-      attachedNamesRef.current = new Set();
+      window.removeEventListener("pagehide", handlePageHide);
+      coordinator.stop();
+      coordinatorRef.current = null;
       // 로그아웃·언마운트·재연결 재시작 시 남아 있는 polling timer를 반드시 제거한다.
       useMatchingStore.getState().stopMatchingPolling();
     };
-  }, [isAuthenticated, attachListener, reconnectNonce]);
+  }, [isAuthenticated, userId]);
 
   const value = useMemo<SseContextValue>(
     () => ({ status, connected: status === "connected", subscribe, reconnect }),

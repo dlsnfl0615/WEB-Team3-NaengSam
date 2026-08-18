@@ -37,11 +37,11 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 매칭 상태를 수동으로 조작/조회하기 위한 디버그 전용 API. 관리자 계정으로 로그인해야 호출할 수 있다({@link AdminUser}).
  */
-@Tag(name = "[Debug] Matching", description = "매칭 흐름을 수동으로 조작/조회하는 관리자 전용 API")
+@Tag(name = "[Admin] Matching", description = "매칭 흐름을 수동으로 조작/조회하는 관리자 전용 API")
 @RestController
-@RequestMapping("/api/v1/debug/matching")
+@RequestMapping("/api/v1/admin/matching")
 @RequiredArgsConstructor
-public class MatchingDebugController {
+public class MatchingAdminController {
 
     private final MatchingService matchingService;
     private final NearbyDreamiFinder nearbyDreamiFinder;
@@ -75,7 +75,7 @@ public class MatchingDebugController {
     @Operation(summary = "드리미 등록")
     @ApiErrorCodes(enumClass = GeneralErrorCode.class, codes = {"CONFLICT"})
     @PostMapping("/dreamis")
-    public UUID registerDreami(@RequestBody GeoPoint location, @AdminUser UUID adminId) {
+    public UUID registerDreami(@Valid @RequestBody GeoPoint location, @AdminUser UUID adminId) {
         UUID dreamiId = UUID.randomUUID();
         if (!matchingService.registerDreami(dreamiId, location)) {
             throw new BusinessException(GeneralErrorCode.CONFLICT);

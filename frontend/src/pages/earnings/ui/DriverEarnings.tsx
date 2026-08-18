@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart, Button, Card } from "@/shared/ui";
+import { BarChart, Card } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
 import { api, isApiError } from "@/shared/api";
 import type { DreamiDashboardDto } from "@/shared/api";
@@ -68,10 +68,6 @@ export function DriverEarnings() {
       </div>
 
       {error && <p className="text-2xs text-status-danger">{error}</p>}
-
-      <Button variant="navy" block>
-        정산 계좌로 출금하기
-      </Button>
     </>
   );
 }

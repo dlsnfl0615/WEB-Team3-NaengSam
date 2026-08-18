@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BarChart, Button, Card } from "@/shared/ui";
+import { BarChart, Card } from "@/shared/ui";
 import { cn } from "@/shared/lib/cn";
 import { api, isApiError } from "@/shared/api";
 import type { BoormiDashboardDto } from "@/shared/api";
@@ -88,10 +88,6 @@ export function SenderSavings() {
       </Card>
 
       {error && <p className="text-2xs text-status-danger">{error}</p>}
-
-      <Button variant="outline" block className="border-transparent bg-track">
-        절감 리포트 공유하기
-      </Button>
     </>
   );
 }

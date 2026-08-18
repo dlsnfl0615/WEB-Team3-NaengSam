@@ -105,7 +105,7 @@ export function ActivityDetailDriverScreen() {
 
   return (
     <ScreenShell>
-      <TopBar title="드림상세" onBack={backOrHome} actions={["more"]} />
+      <TopBar title="드림상세" onBack={backOrHome} actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         {order ? (

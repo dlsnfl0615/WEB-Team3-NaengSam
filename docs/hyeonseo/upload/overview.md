@@ -113,3 +113,49 @@ presigned URL 검증을 "S3에 파일이 존재하는가"만으로 하면 다음
 | `INVALID_FILE_NAME` | 404 | 파일명에 `/`, `\`, `..` 포함 |
 | `KEY_OWNER_MISMATCH` | 403 | key의 purpose/boormiId/resourceId 불일치 |
 | `MISSING_RESOURCE_ID` | 400 | resource-scoped purpose인데 resourceId 없음 |
+
+## 9. 로컬 dev-storage PUT이 로그인 상태에서도 401 나던 문제
+
+### dev-storage
+`DevStorageController`(`/api/v1/upload/dev-storage`, PUT/GET)는 로컬 개발 환경에서 S3 자리를 대신하는, 이 앱 자신이 호스팅하는 엔드포인트다. `DevUploader`가 presigned URL을 발급할 때 실제 S3 주소 대신 이 컨트롤러의 URL을 그대로 돌려주고, PUT으로 올라온 파일 바이트는 `InMemoryFileStore`(key→byte[] 메모리 맵)에 저장했다가 같은 key로 GET하면 그대로 돌려준다. S3 SigV4 서명 같은 건 전혀 없는 "그냥 로그인 세션 하나로 지키는 메모리 저장소"라, 서버를 재시작하면 그동안 로컬에서 올린 사진들은 전부 사라진다(`UploadSession` row는 DB에 남아있어도 실제 파일은 없는 상태가 된다).
+
+### 왜 이렇게 선언해서 쓰고 있었는지
+운영에서 쓰는 `S3Uploader`는 실제 AWS 자격증명과 `s3:PutObject`/`headObject` 권한이 있어야 동작하고, 이 권한을 실제로 확보하기까지도 SCP·IAM 관련 시행착오가 있었다. 로컬 개발마다 팀원 각자가 AWS 키를 발급받아 설정해야 한다면 온보딩 비용이 크고, 테스트 삼아 올린 파일이 실수로 운영 S3 버킷에 쌓일 위험도 있다. 그래서 `Uploader` 인터페이스(`generateUploadUrl`/`generateDownloadUrl`/`exists`) 뒤에 `DevUploader`를 별도 구현으로 두어, `upload.s3-enabled=false`(로컬 기본값)일 때는 AWS를 전혀 건드리지 않고도 "URL 발급 → PUT → 검증" 전체 계약을 동일하게 재현하게 만들었다. 덕분에 프론트/백엔드 어느 쪽 코드도 지금 실제 S3를 쓰는지 dev-storage를 쓰는지 신경 쓸 필요가 없다 — `upload.s3-enabled` 하나로 전체가 전환된다.
+
+### 처음부터 로그인 필수는 아니었음
+맨 처음 만들어질 때는 `DevStorageController`에 `@PublicApi`가 붙어 있었다. 실제 S3 presigned URL은 URL 자체에 SigV4 서명·만료시각이 박혀 있어서, 그 서명만 유효하면 로그인 여부와 무관하게 통해도 안전하다는 전제였다.
+
+이후 admin 페이지 쪽 엔드포인트들을 `debug` 패키지에서 `admin` 패키지로 옮기며 정리하던 커밋 바로 다음 `@PublicApi`를 제거했다. dev-storage는 실제 S3와 달리 SigV4 서명 검증이 전혀 없는 "그냥 key 문자열만 맞으면 되는" 메모리 저장소라, `@PublicApi`로 열어두면 로그인 없이도 key만 추측/획득하면 누구나 읽고 쓸 수 있다는 걸 이 정리 과정에서 발견하고 바로 잠근 것이다. Javadoc도 "실제 presigned URL과 **달리** 서명 검증이 없으므로 로그인 세션을 요구한다"로 바뀌었다.
+
+문제는 이 보안 수정 자체가 아니라, 프론트의 업로드 PUT이 애초부터 세션 쿠키를 안 보내고 있었다는 점이다. `@PublicApi`가 붙어 있던 동안은 로그인 여부를 아예 안 봤으니 이 누락이 드러나지 않았을 뿐이고, `@PublicApi`를 떼자마자(=로그인을 요구하기 시작하자마자) 잠재해 있던 프론트 쪽 문제가 401로 바로 노출된 것이다.
+
+### 증상
+로그인해서 정상적으로 다른 API는 다 되는 상태에서, 드리미 픽업 인증 단계처럼 사진을 실제로 업로드하는 화면에서만 401이 났다.
+
+### 원인
+presigned URL 발급(`GET /api/v1/upload/url`)과 실제 파일 PUT은 별개의 요청이고, 서로 인증이 실리는 경로가 다르다.
+
+- 발급 요청은 프론트의 공용 axios 인스턴스(`withCredentials: true`)로 나가고, Vite dev 프록시를 거쳐 프론트와 같은 origin(`localhost:5173`)으로 보이므로 세션 쿠키가 자동으로 실린다.
+- 반면 실제 파일 바이트를 올리는 PUT은 발급받은 절대 URL로 직접 `fetch()`하는데, 로컬 dev에서는 `DevUploader`가 이 URL을 **백엔드 자기 origin**(`http://localhost:8080/api/v1/upload/dev-storage?key=...`)으로 내려준다. 프론트(`5173`)에서 이 URL로 보내는 `fetch`는 교차 출처 요청이고, `fetch`의 기본 `credentials` 모드는 `same-origin`이라 쿠키를 아예 안 붙인다.
+- `DevStorageController`엔 `@PublicApi`가 없어서(로그인 세션이 필요한 게 의도된 설계) `LoginCheckInterceptor`가 쿠키 없는 이 요청을 그대로 401(`AuthErrorCode.UNAUTHORIZED`)로 튕겼다.
+
+### 문제였던 코드
+
+```ts
+// frontend/src/pages/delivery-proof/ui/DeliveryProofScreen.tsx
+// frontend/src/pages/verify/ui/VerifyScreen.tsx
+// frontend/src/pages/request-create/ui/StepPhoto.tsx
+const putRes = await fetch(url, {
+  method: "PUT",
+  body: file,
+  headers: { "Content-Type": file.type || "application/octet-stream" },
+});
+```
+
+CORS(`cors.allowed-origins=http://localhost:5173`)는 이미 credentialed 요청을 허용하고 있어서 원인이 아니었다 — 브라우저가 쿠키를 붙여서 보내지 않은 게 문제였을 뿐이다.
+
+### 검토했다가 기각한 대안
+`DevStorageController`의 메서드에 `@AdminUser`를 붙여 관리자 세션만 쓰게 하는 방법도 있었다. 하지만 이 엔드포인트는 로컬 dev에서 S3를 대신하는 범용 저장소라 드리미/부르미 계정의 실제 사진 업로드 테스트가 전부 여길 거친다. `@AdminUser`를 붙이면 로그인 자체는 통과해도 role이 ADMIN이 아니라 403으로 막혀서, 일반 계정으로는 업로드 테스트 자체가 불가능해진다. "아무나 로그인만 하면 되게" 두는 게 목적에 맞아 채택하지 않았다.
+
+### 해결
+세 곳의 `fetch` 호출에 `credentials: "include"`를 추가했다. 실 S3 presigned URL(운영)로 나가는 같은 코드에도 그대로 적용되지만, S3 origin엔 이 앱의 세션 쿠키가 애초에 없으므로 무해하다.

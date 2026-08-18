@@ -5,11 +5,16 @@
  * OpenAPI spec version: v0
  */
 import type {
+  AcceptByBoormiParams,
+  AcceptByDreamiParams,
   AddressApiRequestDto,
   AddressRequestDto,
+  ApproveParams,
   CancelByAdmin200,
+  CancelByAdminParams,
   CancelByBoormi200,
   CancelByDreami200,
+  CancelOrderByBoormiParams,
   ChangeRoleParams,
   ChargePoint200,
   ConfirmDreamiRequest,
@@ -22,11 +27,15 @@ import type {
   ExchangeRequest,
   ExpectedValue200,
   ExpectedValueRequest,
+  ExpireBoormiOfferParams,
+  ExpireDreamiOfferParams,
   FindAll200,
   FindCurrentDeliveryCard200,
   FindNearbyCalls200,
   FindNearbyDreamis200,
+  FindNearbyDreamisParams,
   FindNearbyOrders200,
+  FindNearbyOrdersParams,
   FindNearbyWaitingDreamis200,
   FinishDelivery200,
   GeoPoint,
@@ -50,6 +59,7 @@ import type {
   GetMyReview200,
   GetOfferItemPhoto200,
   GetOrderOfferGroup200,
+  GetOrderOfferGroupParams,
   GetPickupPhoto200,
   GetPresignedUrl200,
   GetPresignedUrlParams,
@@ -57,6 +67,8 @@ import type {
   GetReceivedReview200,
   GetTodayStats200,
   GetWallet200,
+  ListActiveDeliveries200,
+  ListActiveDeliveriesParams,
   Login200,
   LoginRequest,
   MatchingStartRequest,
@@ -65,19 +77,28 @@ import type {
   NearbyOrderRequest,
   OrderRequest,
   Pending200,
+  PendingParams,
   PickupFinishByDreami200,
   PointChargeRequest,
   PollLoginQueue200,
   PushSubscriptionRequest,
   PushUnsubscribeRequest,
   RegisterDreami200,
+  RegisterDreamiParams,
+  RejectByBoormiParams,
+  RejectByDreamiParams,
   RejectDreamiRequest,
+  RejectParams,
+  RemoveDreamiParams,
   ReviewContentRequest,
   ReviewScoreRequest,
   SaveAddress200,
   SendVerificationCodeRequest,
   SignUpRequest,
   Signup200,
+  Snapshot200,
+  SnapshotParams,
+  StartMatchingParams,
   Subscribe200,
   Subscribe204,
   SubscribeOrder200,
@@ -85,7 +106,9 @@ import type {
   VapidPublicKey200,
   VerifyCodeRequest,
   WaitingDreamis200,
+  WaitingDreamisParams,
   WaitingOrders200,
+  WaitingOrdersParams,
   WriteContent200,
   WriteScore200
 } from './model';
@@ -480,9 +503,11 @@ const cancelByBoormi = (
  */
 const cancelByAdmin = (
     orderId: string,
+    params: CancelByAdminParams,
  options?: SecondParameter<typeof customInstance<CancelByAdmin200>>,) => {
       return customInstance<CancelByAdmin200>(
-      {url: `/api/v1/delivery/orders/${orderId}/cancel/admin`, method: 'POST'
+      {url: `/api/v1/delivery/orders/${orderId}/cancel/admin`, method: 'POST',
+        params
     },
       options);
     }
@@ -494,23 +519,27 @@ const cancelByAdmin = (
 const startMatching = (
     orderId: string,
     matchingStartRequest: MatchingStartRequest,
+    params: StartMatchingParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
       {url: `/api/v1/debug/matching/orders/${orderId}/start`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
-      data: matchingStartRequest
+      data: matchingStartRequest,
+        params
     },
       options);
     }
 
 /**
- * @summary 부르미가 매칭 진행 중인 주문을 취소
+ * @summary 매칭 진행 중인 주문을 취소
  */
 const cancelOrderByBoormi = (
     orderId: string,
+    params: CancelOrderByBoormiParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/debug/matching/orders/${orderId}/cancel`, method: 'POST'
+      {url: `/api/v1/debug/matching/orders/${orderId}/cancel`, method: 'POST',
+        params
     },
       options);
     }
@@ -521,11 +550,13 @@ const cancelOrderByBoormi = (
  */
 const findNearbyOrders = (
     nearbyOrderRequest: NearbyOrderRequest,
+    params: FindNearbyOrdersParams,
  options?: SecondParameter<typeof customInstance<FindNearbyOrders200>>,) => {
       return customInstance<FindNearbyOrders200>(
       {url: `/api/v1/debug/matching/orders/nearby`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
-      data: nearbyOrderRequest
+      data: nearbyOrderRequest,
+        params
     },
       options);
     }
@@ -535,9 +566,11 @@ const findNearbyOrders = (
  */
 const rejectByDreami = (
     offerId: string,
+    params: RejectByDreamiParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/debug/matching/offers/${offerId}/dreami-reject`, method: 'POST'
+      {url: `/api/v1/debug/matching/offers/${offerId}/dreami-reject`, method: 'POST',
+        params
     },
       options);
     }
@@ -547,9 +580,11 @@ const rejectByDreami = (
  */
 const expireDreamiOffer = (
     offerId: string,
+    params: ExpireDreamiOfferParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/debug/matching/offers/${offerId}/dreami-expire`, method: 'POST'
+      {url: `/api/v1/debug/matching/offers/${offerId}/dreami-expire`, method: 'POST',
+        params
     },
       options);
     }
@@ -559,9 +594,11 @@ const expireDreamiOffer = (
  */
 const acceptByDreami = (
     offerId: string,
+    params: AcceptByDreamiParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/debug/matching/offers/${offerId}/dreami-accept`, method: 'POST'
+      {url: `/api/v1/debug/matching/offers/${offerId}/dreami-accept`, method: 'POST',
+        params
     },
       options);
     }
@@ -571,9 +608,11 @@ const acceptByDreami = (
  */
 const rejectByBoormi = (
     offerId: string,
+    params: RejectByBoormiParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/debug/matching/offers/${offerId}/boormi-reject`, method: 'POST'
+      {url: `/api/v1/debug/matching/offers/${offerId}/boormi-reject`, method: 'POST',
+        params
     },
       options);
     }
@@ -583,9 +622,11 @@ const rejectByBoormi = (
  */
 const expireBoormiOffer = (
     offerId: string,
+    params: ExpireBoormiOfferParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/debug/matching/offers/${offerId}/boormi-expire`, method: 'POST'
+      {url: `/api/v1/debug/matching/offers/${offerId}/boormi-expire`, method: 'POST',
+        params
     },
       options);
     }
@@ -595,9 +636,11 @@ const expireBoormiOffer = (
  */
 const acceptByBoormi = (
     offerId: string,
+    params: AcceptByBoormiParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/debug/matching/offers/${offerId}/boormi-accept`, method: 'POST'
+      {url: `/api/v1/debug/matching/offers/${offerId}/boormi-accept`, method: 'POST',
+        params
     },
       options);
     }
@@ -606,10 +649,11 @@ const acceptByBoormi = (
  * @summary 대기중인 드리미 목록 조회
  */
 const waitingDreamis = (
-
+    params: WaitingDreamisParams,
  options?: SecondParameter<typeof customInstance<WaitingDreamis200>>,) => {
       return customInstance<WaitingDreamis200>(
-      {url: `/api/v1/debug/matching/dreamis`, method: 'GET'
+      {url: `/api/v1/debug/matching/dreamis`, method: 'GET',
+        params
     },
       options);
     }
@@ -619,11 +663,13 @@ const waitingDreamis = (
  */
 const registerDreami = (
     geoPoint: GeoPoint,
+    params: RegisterDreamiParams,
  options?: SecondParameter<typeof customInstance<RegisterDreami200>>,) => {
       return customInstance<RegisterDreami200>(
       {url: `/api/v1/debug/matching/dreamis`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
-      data: geoPoint
+      data: geoPoint,
+        params
     },
       options);
     }
@@ -634,11 +680,13 @@ const registerDreami = (
  */
 const findNearbyDreamis = (
     nearbyDreamiRequest: NearbyDreamiRequest,
+    params: FindNearbyDreamisParams,
  options?: SecondParameter<typeof customInstance<FindNearbyDreamis200>>,) => {
       return customInstance<FindNearbyDreamis200>(
       {url: `/api/v1/debug/matching/dreamis/nearby`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
-      data: nearbyDreamiRequest
+      data: nearbyDreamiRequest,
+        params
     },
       options);
     }
@@ -649,11 +697,13 @@ const findNearbyDreamis = (
 const reject = (
     dreamiId: string,
     dreamiReviewRejectRequest: DreamiReviewRejectRequest,
+    params: RejectParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
       {url: `/api/v1/debug/dreami-review/${dreamiId}/reject`, method: 'POST',
       headers: {'Content-Type': 'application/json', },
-      data: dreamiReviewRejectRequest
+      data: dreamiReviewRejectRequest,
+        params
     },
       options);
     }
@@ -663,9 +713,11 @@ const reject = (
  */
 const approve = (
     dreamiId: string,
+    params: ApproveParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/debug/dreami-review/${dreamiId}/approve`, method: 'POST'
+      {url: `/api/v1/debug/dreami-review/${dreamiId}/approve`, method: 'POST',
+        params
     },
       options);
     }
@@ -1067,13 +1119,29 @@ const getDeliveryCompletion = (
     }
 
 /**
+ * 관리자 페이지용. 픽업/배달중 상태의 배달을 전부 반환한다.
+ * @summary 진행 중인 배달 목록 조회
+ */
+const listActiveDeliveries = (
+    params: ListActiveDeliveriesParams,
+ options?: SecondParameter<typeof customInstance<ListActiveDeliveries200>>,) => {
+      return customInstance<ListActiveDeliveries200>(
+      {url: `/api/v1/delivery/admin/deliveries`, method: 'GET',
+        params
+    },
+      options);
+    }
+
+/**
  * @summary 주문의 매칭 방(OrderOfferGroup) 상태 조회
  */
 const getOrderOfferGroup = (
     orderId: string,
+    params: GetOrderOfferGroupParams,
  options?: SecondParameter<typeof customInstance<GetOrderOfferGroup200>>,) => {
       return customInstance<GetOrderOfferGroup200>(
-      {url: `/api/v1/debug/matching/orders/${orderId}/group`, method: 'GET'
+      {url: `/api/v1/debug/matching/orders/${orderId}/group`, method: 'GET',
+        params
     },
       options);
     }
@@ -1082,10 +1150,25 @@ const getOrderOfferGroup = (
  * @summary 대기중인 주문 목록 조회
  */
 const waitingOrders = (
-
+    params: WaitingOrdersParams,
  options?: SecondParameter<typeof customInstance<WaitingOrders200>>,) => {
       return customInstance<WaitingOrders200>(
-      {url: `/api/v1/debug/matching/orders/waiting`, method: 'GET'
+      {url: `/api/v1/debug/matching/orders/waiting`, method: 'GET',
+        params
+    },
+      options);
+    }
+
+/**
+ * 상태를 들고 있는 빈들을 순회하며 각 자료구조의 원소 수, 상태별 집계, 남아 있는 키 샘플을 반환한다. 두 번 호출해 크기를 비교하면 정리되지 않는 자료구조를 찾을 수 있다.
+ * @summary 인메모리 자료구조 현황 스냅샷
+ */
+const snapshot = (
+    params: SnapshotParams,
+ options?: SecondParameter<typeof customInstance<Snapshot200>>,) => {
+      return customInstance<Snapshot200>(
+      {url: `/api/v1/debug/inmemory`, method: 'GET',
+        params
     },
       options);
     }
@@ -1094,10 +1177,11 @@ const waitingOrders = (
  * @summary 검수 대기 중인 드리미 인증 신청 목록 조회
  */
 const pending = (
-
+    params: PendingParams,
  options?: SecondParameter<typeof customInstance<Pending200>>,) => {
       return customInstance<Pending200>(
-      {url: `/api/v1/debug/dreami-review/pending`, method: 'GET'
+      {url: `/api/v1/debug/dreami-review/pending`, method: 'GET',
+        params
     },
       options);
     }
@@ -1172,14 +1256,16 @@ const getBoormiOrderCount = (
  */
 const removeDreami = (
     dreamiId: string,
+    params: RemoveDreamiParams,
  options?: SecondParameter<typeof customInstance<void>>,) => {
       return customInstance<void>(
-      {url: `/api/v1/debug/matching/dreamis/${dreamiId}`, method: 'DELETE'
+      {url: `/api/v1/debug/matching/dreamis/${dreamiId}`, method: 'DELETE',
+        params
     },
       options);
     }
 
-return {chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,pollLoginQueue,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,findNearbyWaitingDreamis,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,sendPing,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getReceivedReview,getCurrentStatus,getProfile,getOfferItemPhoto,getDreamiOrders,getDreamiOrder,getDreamiOrderStatusCounts,findCurrentDeliveryCard,getDreamiOrderCount,getDashboard,getTodayStats,getDeliveryDetail,getPickupPhoto,getDeliveryContact,getDeliveryCompletion,getOrderOfferGroup,waitingOrders,pending,getBoormiDashboard,getBoormiOrder,unsubscribeOrder,getBoormiOrderStatusCounts,getBoormiOrderCount,removeDreami}};
+return {chargePoint,exchangeMoneyToPoint,sendVerificationCode,verifyCode,signup,logout,login,pollLoginQueue,createSubscription,deleteSubscription,getMyReview,writeScore,writeContent,findNearbyWaitingDreamis,verifyUploadedDocuments,goOnline,goOffline,rejectOffer,acceptOffer,findNearbyCalls,sendPing,pickupFinishByDreami,finishDelivery,updateDreamiLocation,cancelByDreami,cancelByBoormi,cancelByAdmin,startMatching,cancelOrderByBoormi,findNearbyOrders,rejectByDreami,expireDreamiOffer,acceptByDreami,rejectByBoormi,expireBoormiOffer,acceptByBoormi,waitingDreamis,registerDreami,findNearbyDreamis,reject,approve,expectedValue,getBoormiOrders,subscribeOrder,rejectDreami,confirmDreami,findAll,saveAddress,getCoordinates,getWallet,changeRole,me,getPresignedUrl,subscribe,vapidPublicKey,getReceivedReview,getCurrentStatus,getProfile,getOfferItemPhoto,getDreamiOrders,getDreamiOrder,getDreamiOrderStatusCounts,findCurrentDeliveryCard,getDreamiOrderCount,getDashboard,getTodayStats,getDeliveryDetail,getPickupPhoto,getDeliveryContact,getDeliveryCompletion,listActiveDeliveries,getOrderOfferGroup,waitingOrders,snapshot,pending,getBoormiDashboard,getBoormiOrder,unsubscribeOrder,getBoormiOrderStatusCounts,getBoormiOrderCount,removeDreami}};
 export type ChargePointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['chargePoint']>>>
 export type ExchangeMoneyToPointResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['exchangeMoneyToPoint']>>>
 export type SendVerificationCodeResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['sendVerificationCode']>>>
@@ -1250,8 +1336,10 @@ export type GetDeliveryDetailResult = NonNullable<Awaited<ReturnType<ReturnType<
 export type GetPickupPhotoResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getPickupPhoto']>>>
 export type GetDeliveryContactResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDeliveryContact']>>>
 export type GetDeliveryCompletionResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getDeliveryCompletion']>>>
+export type ListActiveDeliveriesResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['listActiveDeliveries']>>>
 export type GetOrderOfferGroupResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getOrderOfferGroup']>>>
 export type WaitingOrdersResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['waitingOrders']>>>
+export type SnapshotResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['snapshot']>>>
 export type PendingResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['pending']>>>
 export type GetBoormiDashboardResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiDashboard']>>>
 export type GetBoormiOrderResult = NonNullable<Awaited<ReturnType<ReturnType<typeof getOpenAPIDefinition>['getBoormiOrder']>>>

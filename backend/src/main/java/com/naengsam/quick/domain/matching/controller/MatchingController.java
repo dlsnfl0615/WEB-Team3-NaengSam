@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 로그인 사용자를 위한 매칭 상태 조회 운영용 API. 임의로 상태를 조작할 수 있는 {@link MatchingDebugController}와는 분리되어 있으며, 로그인 세션 기준으로만
+ * 로그인 사용자를 위한 매칭 상태 조회 운영용 API. 임의로 상태를 조작할 수 있는 {@link MatchingAdminController}와는 분리되어 있으며, 로그인 세션 기준으로만
  * 자신의 매칭 상태를 조회한다.
  */
 @Tag(name = "매칭컨트롤러", description = "로그인 사용자의 매칭 상태를 조회하는 API")

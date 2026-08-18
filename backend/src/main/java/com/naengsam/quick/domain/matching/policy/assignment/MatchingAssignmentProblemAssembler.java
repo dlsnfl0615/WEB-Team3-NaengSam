@@ -86,29 +86,34 @@ public class MatchingAssignmentProblemAssembler {
         Map<UUID, Duration> dreamiWaitingTimes = dreamis.stream()
                 .collect(Collectors.toMap(MatchingDreamiInput::dreamiId, MatchingDreamiInput::waitingTime));
 
+        WaitingDreamiGrid grid = WaitingDreamiGrid.of(matchingDreamis);
+
         List<MatchingCandidate> rawCandidates = new ArrayList<>();
         for (OrderOfferGroup group : waitingGroups) {
             Duration orderWaitingTime = orderWaitingTimes.get(group.orderId());
             OfferScope offerScope = offerScopeResolver.resolve(orderWaitingTime);
 
-            for (WaitingDreami dreami : matchingDreamis) {
-                double distanceMeters = geoDistanceCalculator.distanceMeters(group.location(), dreami.location());
+            for (List<WaitingDreami> bucket :
+                    grid.nearbyBuckets(group.location(), offerScope.maxPickupDistanceMeters())) {
+                for (WaitingDreami dreami : bucket) {
+                    double distanceMeters = geoDistanceCalculator.distanceMeters(group.location(), dreami.location());
 
-                if (distanceMeters > offerScope.maxPickupDistanceMeters()) {
-                    meterRegistry.counter("matching.candidates.filtered", "reason", "pickup_distance_exceeded")
-                            .increment();
-                    continue;
+                    if (distanceMeters > offerScope.maxPickupDistanceMeters()) {
+                        meterRegistry.counter("matching.candidates.filtered", "reason", "pickup_distance_exceeded")
+                                .increment();
+                        continue;
+                    }
+
+                    rawCandidates.add(new MatchingCandidate(
+                            group.orderId(),
+                            dreami.dreamiId(),
+                            distanceMeters,
+                            orderWaitingTime,
+                            dreamiWaitingTimes.get(dreami.dreamiId()),
+                            0,
+                            0,
+                            findPreviousInteraction(group, dreami.dreamiId())));
                 }
-
-                rawCandidates.add(new MatchingCandidate(
-                        group.orderId(),
-                        dreami.dreamiId(),
-                        distanceMeters,
-                        orderWaitingTime,
-                        dreamiWaitingTimes.get(dreami.dreamiId()),
-                        0,
-                        0,
-                        findPreviousInteraction(group, dreami.dreamiId())));
             }
         }
 

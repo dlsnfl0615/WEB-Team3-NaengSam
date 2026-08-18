@@ -1,0 +1,163 @@
+[
+  {
+    "label": "dreami-1",
+    "role": "dreami",
+    "email": "dreami1@test.local",
+    "password": "test1234!",
+    "lat": 37.4979,
+    "lng": 127.0276
+  },
+  {
+    "label": "dreami-2",
+    "role": "dreami",
+    "email": "dreami2@test.local",
+    "password": "test1234!",
+    "lat": 37.4987,
+    "lng": 127.0284
+  },
+  {
+    "label": "dreami-3",
+    "role": "dreami",
+    "email": "dreami3@test.local",
+    "password": "test1234!",
+    "lat": 37.4995,
+    "lng": 127.0292
+  },
+  {
+    "label": "dreami-4",
+    "role": "dreami",
+    "email": "dreami4@test.local",
+    "password": "test1234!",
+    "lat": 37.5003,
+    "lng": 127.03
+  },
+  {
+    "label": "dreami-5",
+    "role": "dreami",
+    "email": "dreami5@test.local",
+    "password": "test1234!",
+    "lat": 37.5011,
+    "lng": 127.0308
+  },
+  {
+    "label": "dreami-6",
+    "role": "dreami",
+    "email": "dreami6@test.local",
+    "password": "test1234!",
+    "lat": 37.4983,
+    "lng": 127.0316
+  },
+  {
+    "label": "dreami-7",
+    "role": "dreami",
+    "email": "dreami7@test.local",
+    "password": "test1234!",
+    "lat": 37.4991,
+    "lng": 127.0324
+  },
+  {
+    "label": "dreami-8",
+    "role": "dreami",
+    "email": "dreami8@test.local",
+    "password": "test1234!",
+    "lat": 37.4999,
+    "lng": 127.0332
+  },
+  {
+    "label": "dreami-9",
+    "role": "dreami",
+    "email": "dreami9@test.local",
+    "password": "test1234!",
+    "lat": 37.5007,
+    "lng": 127.034
+  },
+  {
+    "label": "dreami-10",
+    "role": "dreami",
+    "email": "dreami10@test.local",
+    "password": "test1234!",
+    "lat": 37.5015,
+    "lng": 127.0348
+  },
+
+  {
+    "label": "boormi-1",
+    "role": "boormi",
+    "email": "boormi1@test.local",
+    "password": "test1234!",
+    "lat": 37.4979,
+    "lng": 127.0276
+  },
+  {
+    "label": "boormi-2",
+    "role": "boormi",
+    "email": "boormi2@test.local",
+    "password": "test1234!",
+    "lat": 37.4986,
+    "lng": 127.0283
+  },
+  {
+    "label": "boormi-3",
+    "role": "boormi",
+    "email": "boormi3@test.local",
+    "password": "test1234!",
+    "lat": 37.4993,
+    "lng": 127.029
+  },
+  {
+    "label": "boormi-4",
+    "role": "boormi",
+    "email": "boormi4@test.local",
+    "password": "test1234!",
+    "lat": 37.5,
+    "lng": 127.0297
+  },
+  {
+    "label": "boormi-5",
+    "role": "boormi",
+    "email": "boormi5@test.local",
+    "password": "test1234!",
+    "lat": 37.5007,
+    "lng": 127.0304
+  },
+  {
+    "label": "boormi-6",
+    "role": "boormi",
+    "email": "boormi6@test.local",
+    "password": "test1234!",
+    "lat": 37.4982,
+    "lng": 127.0311
+  },
+  {
+    "label": "boormi-7",
+    "role": "boormi",
+    "email": "boormi7@test.local",
+    "password": "test1234!",
+    "lat": 37.4989,
+    "lng": 127.0318
+  },
+  {
+    "label": "boormi-8",
+    "role": "boormi",
+    "email": "boormi8@test.local",
+    "password": "test1234!",
+    "lat": 37.4996,
+    "lng": 127.0325
+  },
+  {
+    "label": "boormi-9",
+    "role": "boormi",
+    "email": "boormi9@test.local",
+    "password": "test1234!",
+    "lat": 37.5003,
+    "lng": 127.0332
+  },
+  {
+    "label": "boormi-10",
+    "role": "boormi",
+    "email": "boormi10@test.local",
+    "password": "test1234!",
+    "lat": 37.501,
+    "lng": 127.0339
+  }
+]

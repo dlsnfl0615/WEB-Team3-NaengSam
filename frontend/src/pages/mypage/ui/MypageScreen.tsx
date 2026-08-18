@@ -6,7 +6,7 @@ import { ROUTES } from "@/shared/config/routes";
 import { getProfileImage } from "@/shared/lib";
 import { AccountSection } from "./AccountSection";
 import { MenuGroup } from "./MenuGroup";
-import { ACCOUNT_MENU, SUPPORT_MENU, VERIFY_MENU_LABEL } from "./menus";
+import { ACCOUNT_MENU, FAQ_MENU_LABEL, VERIFY_MENU_LABEL } from "./menus";
 
 /**
  * 마이페이지 화면(Figma node 191:1574 계좌 미등록 / 191:1657 계좌 등록됨).
@@ -35,25 +35,35 @@ export function MypageScreen() {
     navigate(ROUTES.login, { replace: true });
   };
 
-  // "로그아웃" 항목에만 동작을 주입한다(나머지 지원 메뉴는 표시만).
-  const supportMenu = SUPPORT_MENU.map((item) =>
-    item.label === "로그아웃" ? { ...item, onClick: handleLogout } : item,
-  );
-
   // 드리미 등록 항목: 승인된 드리미면 "완료" 뱃지만, 아니면 눌러서 본인인증 화면으로.
   // (roles에 "드리미"가 있으면 /me의 isDreami가 true — HomeScreen과 같은 판정)
   const isDreami = user?.roles.includes("드리미") ?? false;
-  const accountMenu = ACCOUNT_MENU.map((item) =>
-    item.label === VERIFY_MENU_LABEL
-      ? isDreami
+  // 이미 신청해서 심사 대기 중(REQUESTED)이면 업로드 폼이 아니라 접수 안내 화면으로(useRoleSwitch와 동일 규칙).
+  const dreamiStatus = user?.dreamiStatus;
+  const accountMenu = ACCOUNT_MENU.map((item) => {
+    if (item.label === VERIFY_MENU_LABEL) {
+      return isDreami
         ? { ...item, badge: "완료" }
-        : { ...item, onClick: () => navigate(ROUTES.verify) }
-      : item,
-  );
+        : {
+            ...item,
+            onClick: () =>
+              navigate(
+                dreamiStatus === "REQUESTED" ? ROUTES.dreamiPending : ROUTES.verify,
+              ),
+          };
+    }
+    if (item.label === FAQ_MENU_LABEL) {
+      return { ...item, onClick: () => navigate(ROUTES.faq) };
+    }
+    if (item.label === "로그아웃") {
+      return { ...item, onClick: handleLogout };
+    }
+    return item;
+  });
 
   return (
     <ScreenShell footer={<BottomNav />}>
-      <TopBar title="마이페이지" actions={["profile"]} />
+      <TopBar title="마이페이지" actions={[]} />
 
       <main className="flex flex-1 flex-col gap-4 pt-4">
         <Card className="flex flex-col items-center gap-1 py-5">
@@ -83,8 +93,7 @@ export function MypageScreen() {
           onChange={() => setRegistered(false)}
         />
 
-        <MenuGroup title="계정" items={accountMenu} />
-        <MenuGroup title="지원" items={supportMenu} />
+        <MenuGroup items={accountMenu} />
       </main>
     </ScreenShell>
   );

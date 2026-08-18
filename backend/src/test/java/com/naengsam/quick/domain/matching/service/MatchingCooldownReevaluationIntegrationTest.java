@@ -35,6 +35,7 @@ import com.naengsam.quick.domain.order.service.OrderService;
 import com.naengsam.quick.domain.order.service.PendingOfferStateService;
 import com.naengsam.quick.global.notification.NotificationService;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -57,6 +58,18 @@ import org.junit.jupiter.api.Test;
 class MatchingCooldownReevaluationIntegrationTest {
 
     private static final Duration OFFER_TTL = Duration.ofSeconds(30);
+
+    // 그리드 프리필터가 좌표를 직접 읽으므로 좌표 없는 목 대신 실제 좌표를 쓴다. 모든 주문·드리미를 같은 점에 두면
+    // 항상 같은 셀에 들어가므로 후보 조합은 프리필터 도입 전과 동일하다.
+    private static final GeoPoint LOCATION =
+            new GeoPoint(BigDecimal.valueOf(37.5), BigDecimal.valueOf(127.0));
+
+    /** 좌표를 스텁하지 않은 주문 목에 기본 위치를 채워준다. 개별 테스트가 다시 스텁하면 그 값이 이긴다. */
+    private static Orders orderAt(Orders order) {
+        lenient().when(order.getOriginLatitude()).thenReturn(LOCATION.latitude());
+        lenient().when(order.getOriginLongitude()).thenReturn(LOCATION.longitude());
+        return order;
+    }
     private static final Duration DREAMI_REJECTION_COOLDOWN = Duration.ofMinutes(10);
     private static final Duration BOORMI_REJECTION_COOLDOWN = Duration.ofMinutes(15);
     private static final Duration DREAMI_EXPIRATION_COOLDOWN = Duration.ofMinutes(5);
@@ -65,7 +78,7 @@ class MatchingCooldownReevaluationIntegrationTest {
     private PendingOfferStateService pendingOfferStateService;
 
     private Orders orderMock(UUID orderId) {
-        Orders order = mock(Orders.class);
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
@@ -142,7 +155,7 @@ class MatchingCooldownReevaluationIntegrationTest {
         MatchingService matchingService = newMatchingService(1, clock);
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderMock(orderId));
@@ -181,7 +194,7 @@ class MatchingCooldownReevaluationIntegrationTest {
         UUID orderIdA = UUID.randomUUID();
         UUID orderIdB = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderMock(orderIdA));
@@ -210,7 +223,7 @@ class MatchingCooldownReevaluationIntegrationTest {
         MatchingService matchingService = newMatchingService(1, clock);
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderMock(orderId));
@@ -244,7 +257,7 @@ class MatchingCooldownReevaluationIntegrationTest {
         MatchingService matchingService = newMatchingService(1, clock);
         UUID orderId = UUID.randomUUID();
         UUID dreamiId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId, location);
         matchingService.applyStartMatching(orderMock(orderId));
@@ -277,7 +290,7 @@ class MatchingCooldownReevaluationIntegrationTest {
         UUID orderId = UUID.randomUUID();
         UUID dreamiId1 = UUID.randomUUID();
         UUID dreamiId2 = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId1, location);
         matchingService.applyRegisterDreami(dreamiId2, location);
@@ -322,7 +335,7 @@ class MatchingCooldownReevaluationIntegrationTest {
         UUID dreamiId1 = UUID.randomUUID();
         UUID dreamiId2 = UUID.randomUUID();
         UUID dreamiId3 = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
+        GeoPoint location = LOCATION;
 
         matchingService.applyRegisterDreami(dreamiId1, location);
         matchingService.applyRegisterDreami(dreamiId2, location);

@@ -6,14 +6,17 @@
  */
 import type { UserDtoActiveOrderCd } from './userDtoActiveOrderCd';
 import type { UserDtoActiveRole } from './userDtoActiveRole';
+import type { UserDtoDreamiStatus } from './userDtoDreamiStatus';
 
 export interface UserDto {
   boormiId?: string;
   email?: string;
   name?: string;
   isDreami?: boolean;
+  isAdmin?: boolean;
   boormiAvgScore?: number;
   dreamiAvgScore?: number;
+  dreamiStatus?: UserDtoDreamiStatus;
   activeRole?: UserDtoActiveRole;
   activeOrderId?: string;
   activeOrderCd?: UserDtoActiveOrderCd;
