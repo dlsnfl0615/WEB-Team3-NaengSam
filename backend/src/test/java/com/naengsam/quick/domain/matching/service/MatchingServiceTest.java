@@ -2398,8 +2398,8 @@ class MatchingServiceTest {
     void 매칭이_진행되면_인메모리_현황이_네개_맵의_크기와_상태별_집계를_보고한다() {
         // given
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
@@ -2429,8 +2429,8 @@ class MatchingServiceTest {
     void 부르미가_취소한_주문의_방과_오퍼는_인메모리_현황에_그대로_남는다() {
         // given
         UUID orderId = UUID.randomUUID();
-        GeoPoint location = mock(GeoPoint.class);
-        Orders order = mock(Orders.class);
+        GeoPoint location = LOCATION;
+        Orders order = orderAt(mock(Orders.class));
         when(order.getOrderId()).thenReturn(orderId);
         lenient().when(order.getOrderCd()).thenReturn(OrderCd.MATCHING);
         lenient().when(orderService.findOrder(orderId)).thenReturn(Optional.of(order));
