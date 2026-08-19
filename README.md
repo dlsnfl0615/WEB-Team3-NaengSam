@@ -11,6 +11,10 @@
 </div>
 
 <div align="center">
+  
+### 서비스 링크
+
+[![서비스 링크](https://img.shields.io/badge/쉼,%20부름-FF9900?style=for-the-badge&logo=amazon&logoColor=white)](https://d3cev4xst074qp.cloudfront.net/)
 
 ### 기획 · 명세
 
