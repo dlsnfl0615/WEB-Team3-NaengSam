@@ -16,7 +16,7 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 @Slf4j
 @Component
 @RequiredArgsConstructor
-@ConditionalOnProperty(name = "upload.s3-enabled", havingValue = "false", matchIfMissing = true)
+@ConditionalOnProperty(name = "upload.s3-enabled", havingValue = "false", matchIfMissing = true)  // matchIfMissing=true: 프로퍼티가 아예 없을 때도 이 빈 등록(로컬 기본값) → annotations.md
 public class DevUploader implements Uploader {
 
     private final InMemoryFileStore fileStore;
@@ -39,7 +39,7 @@ public class DevUploader implements Uploader {
     }
 
     private String devStorageUrl(String key) {
-        String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();
-        return baseUrl + "/api/v1/upload/dev-storage?key=" + URLEncoder.encode(key, StandardCharsets.UTF_8);
+        String baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString();  // 현재 요청 컨텍스트에서 scheme+host+port 추출(예: http://localhost:8080) → java-patterns.md
+        return baseUrl + "/api/v1/upload/dev-storage?key=" + URLEncoder.encode(key, StandardCharsets.UTF_8);  // URL 쿼리 파라미터의 특수문자를 %XX 형식으로 인코딩 → java-patterns.md
     }
 }

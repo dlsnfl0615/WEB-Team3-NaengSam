@@ -26,20 +26,21 @@ import org.springframework.web.bind.annotation.RestController;
 @RequiredArgsConstructor
 @Slf4j
 @RequestMapping("/api/v1/upload")
-@Tag(name = "업로드 컨트롤러", description = "S3 presigned URL을 발급하고, 실제로 파일이 업로드됐는지 확인한다.")
+@Tag(name = "업로드 컨트롤러", description = "S3 presigned URL을 발급하고, 실제로 파일이 업로드됐는지 확인한다.")  // Swagger UI에 표시될 컨트롤러 그룹명·설명
 public class UploadController {
 
     private final UploadSessionService uploadSessionService;
 
     @Operation(summary = "업로드용 presigned URL 발급",
-            description = "이 fileName/purpose로 S3에 직접 PUT 할 수 있는 presigned URL과, 그 파일의 S3 key를 발급한다.")
+            description = "이 fileName/purpose로 S3에 직접 PUT 할 수 있는 presigned URL과, 그 파일의 S3 key를 발급한다.")  // Swagger UI 엔드포인트 설명
     @GetMapping("/url")
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
-    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})
+    @ApiErrorCodes(enumClass = AuthErrorCode.class, codes = {"UNAUTHORIZED"})  // Swagger에 에러 케이스 문서화. 반복 적용 가능한 커스텀 어노테이션 → annotations.md
     @ApiErrorCodes(enumClass = UploadErrorCode.class,
             codes = {"NO_FILE_ATTACHED", "INVALID_FILE_NAME", "UNSUPPORTED_FILE_TYPE"})
     public PresignedUrlResponseDto getPresignedUrl(@RequestParam String fileName, @RequestParam UploadPurpose purpose,
-            @RequestParam(required = false) UUID resourceId, @LoginUser UUID boormiId) {
+            @RequestParam(required = false) UUID resourceId,  // required=false: 쿼리 파라미터가 없어도 허용. 없으면 null → annotations.md
+            @LoginUser UUID boormiId) {  // 커스텀 어노테이션. LoginCheckInterceptor가 세션에서 추출한 boormiId를 파라미터로 주입
         validateFileName(fileName);
 
         return uploadSessionService.issue(purpose, boormiId, resourceId, fileName);
@@ -50,7 +51,7 @@ public class UploadController {
      * S3 key에 그대로 이어붙이므로 의도하지 않은 key 경로가 만들어질 수 있어 별도로 거부한다.
      */
     private void validateFileName(String fileName) {
-        if (fileName == null || fileName.isBlank()) {
+        if (fileName == null || fileName.isBlank()) {  // isBlank(): Java 11+. 공백 문자만 있어도 true. isEmpty()는 길이 0만 true
             throw new BusinessException(UploadErrorCode.NO_FILE_ATTACHED);
         }
         if (fileName.contains("/") || fileName.contains("\\") || fileName.contains("..")) {

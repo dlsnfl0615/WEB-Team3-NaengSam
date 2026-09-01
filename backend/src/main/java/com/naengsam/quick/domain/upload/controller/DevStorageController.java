@@ -30,19 +30,19 @@ public class DevStorageController {
 
     private final InMemoryFileStore fileStore;
 
-    @PutMapping
-    public void put(@RequestParam String key, @RequestBody byte[] body,
-            @RequestHeader(value = HttpHeaders.CONTENT_TYPE, required = false) String contentType) {
-        fileStore.save(key, body, contentType != null ? contentType : MediaType.APPLICATION_OCTET_STREAM_VALUE);
+    @PutMapping  // HTTP PUT 요청 처리. @GetMapping/@PostMapping/@DeleteMapping/@PatchMapping도 동일 구조
+    public void put(@RequestParam String key, @RequestBody byte[] body,  // @RequestBody: HTTP 요청 body를 byte 배열로 직접 역직렬화
+            @RequestHeader(value = HttpHeaders.CONTENT_TYPE, required = false) String contentType) {  // @RequestHeader: HTTP 헤더를 파라미터로 받음. required=false로 없어도 허용 → annotations.md
+        fileStore.save(key, body, contentType != null ? contentType : MediaType.APPLICATION_OCTET_STREAM_VALUE);  // MediaType.APPLICATION_OCTET_STREAM_VALUE: "application/octet-stream" 문자열 상수. Content-Type 미지정 시 기본값
     }
 
     @GetMapping
-    public ResponseEntity<byte[]> get(@RequestParam String key) {
+    public ResponseEntity<byte[]> get(@RequestParam String key) {  // ResponseEntity: HTTP 상태코드·헤더·바디를 직접 제어할 때 사용. 순수 DTO를 반환하면 CommonResponseAdvice가 래핑하지만, 여기선 바이너리를 그대로 내려야 해서 직접 구성
         StoredFile storedFile = fileStore.find(key)
-                .orElseThrow(() -> new BusinessException(UploadErrorCode.FILE_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(UploadErrorCode.FILE_NOT_FOUND));  // Optional이 비어있으면 람다로 예외 생성
 
-        return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_TYPE, storedFile.contentType())
-                .body(storedFile.bytes());
+        return ResponseEntity.ok()  // HTTP 200 응답 빌더 시작
+                .header(HttpHeaders.CONTENT_TYPE, storedFile.contentType())  // 응답 헤더 직접 설정
+                .body(storedFile.bytes());  // 응답 body 설정 후 ResponseEntity 완성
     }
 }

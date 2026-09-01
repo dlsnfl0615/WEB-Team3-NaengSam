@@ -28,7 +28,7 @@ public class UploadSessionService {
      *
      * @return 이번 호출로 처음 소비됐는지(재시도로 이미 소비된 요청이면 false)
      */
-    @Transactional
+    @Transactional  // 메서드 실행 전 트랜잭션 시작, 완료 후 커밋. 예외 발생 시 자동 롤백 → annotations.md
     public boolean checkUpload(UploadPurpose uploadPurpose, UUID boormiId, UUID resourceId,String key) {
         // 다른 사람에게 발급됐거나 다른 용도로 발급된 key를 그대로 제출하는 것을 막는다.
         validateScope(uploadPurpose, boormiId, resourceId, key);
@@ -57,7 +57,7 @@ public class UploadSessionService {
     /**
      * key가 이 purpose/boormiId/resourceId 조합으로 발급된 것인지 확인한다. 아니면(다른 용도·다른 사람·다른 건에 발급된 key를 그대로 제출한 경우) 예외를 던진다.
      */
-    @Transactional(readOnly = true)
+    @Transactional(readOnly = true)  // 읽기 전용 트랜잭션. Hibernate가 flush를 생략해 성능 최적화. DB에 쓰기 불가 → annotations.md
     public void validateScope(UploadPurpose purpose, UUID boormiId, UUID resourceId, String key) {
         if (!findByKey(key).matches(purpose, boormiId, resourceId)) {
             throw new BusinessException(UploadErrorCode.KEY_OWNER_MISMATCH);
@@ -71,7 +71,7 @@ public class UploadSessionService {
      */
     @Transactional
     public boolean consume(String key) {
-        if (uploadSessionRepository.markConsumedIfIssued(key) == 1) {
+        if (uploadSessionRepository.markConsumedIfIssued(key) == 1) {  // UPDATE 영향받은 row 수로 성공 여부 판단. 1=이번에 상태 전이됨, 0=이미 소비됨
             return true;
         }
         findByKey(key); // 세션 자체가 없으면 FILE_NOT_FOUND, 있으면(이미 CONSUMED) 그냥 통과
@@ -81,10 +81,10 @@ public class UploadSessionService {
     private UploadSession findByKey(String key) {
         return uploadSessionRepository
                 .findByS3Key(key)
-                .orElseThrow(() -> new BusinessException(UploadErrorCode.FILE_NOT_FOUND));
+                .orElseThrow(() -> new BusinessException(UploadErrorCode.FILE_NOT_FOUND));  // Optional이 비어있으면 람다로 예외 생성
     }
 
     private String buildKey(UploadPurpose purpose, String fileName) {
-        return "uploads/" + purpose.name() + "/" + UUID.randomUUID() + "-" + fileName;
+        return "uploads/" + purpose.name() + "/" + UUID.randomUUID() + "-" + fileName;  // purpose.name(): enum 상수명을 문자열로 반환(예: "ORDER_ITEM_IMAGE")
     }
 }

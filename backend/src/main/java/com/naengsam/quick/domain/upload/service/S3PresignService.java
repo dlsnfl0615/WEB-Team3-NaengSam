@@ -19,14 +19,14 @@ import org.springframework.stereotype.Service;
 @Slf4j
 public class S3PresignService {
 
-    private static final Map<String, String> CONTENT_TYPES_BY_EXTENSION = Map.of(
+    private static final Map<String, String> CONTENT_TYPES_BY_EXTENSION = Map.of(  // Java 9+ 불변 Map 생성 팩토리. 선언 후 put() 불가 → java-patterns.md
             "png", "image/png",
             "jpg", "image/jpeg",
             "jpeg", "image/jpeg",
             "webp", "image/webp"
     );
 
-    private final Uploader uploader;
+    private final Uploader uploader;  // 인터페이스 타입으로 주입. 운영=S3Uploader, 로컬=DevUploader가 @ConditionalOnProperty에 따라 자동 선택
 
     /**
      * 클라이언트가 이 key로 S3에 직접 PUT 할 수 있는 presigned URL을 발급한다.
@@ -73,13 +73,13 @@ public class S3PresignService {
      * key의 확장자로 content type을 추론한다. 지원하지 않는 확장자면 예외를 던진다.
      */
     private String resolveContentType(String key) {
-        int dotIndex = key.lastIndexOf('.');
+        int dotIndex = key.lastIndexOf('.');  // 문자열에서 마지막 '.' 위치 반환. -1이면 확장자 없음
         if (dotIndex == -1 || dotIndex == key.length() - 1) {
             throw new BusinessException(UploadErrorCode.UNSUPPORTED_FILE_TYPE);
         }
-        String extension = key.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
-        return Optional.ofNullable(CONTENT_TYPES_BY_EXTENSION.get(extension))
-                .orElseThrow(() -> new BusinessException(UploadErrorCode.UNSUPPORTED_FILE_TYPE));
+        String extension = key.substring(dotIndex + 1).toLowerCase(Locale.ROOT);  // Locale.ROOT: 터키어 등 특수 로케일의 대소문자 변환 오류 방지 → java-patterns.md
+        return Optional.ofNullable(CONTENT_TYPES_BY_EXTENSION.get(extension))  // null 가능 값을 Optional로 감쌈 → java-patterns.md
+                .orElseThrow(() -> new BusinessException(UploadErrorCode.UNSUPPORTED_FILE_TYPE));  // 없으면 람다로 예외 생성. () -> ...는 인수 없는 람다(Supplier)
     }
 
     // todo: presigned url에 저장된 파일이 안전한지 체크해주는 aws 서비스 호출해야 함. 지금은 권한이 없는데 댕글님께 나중에 여쭤보기...

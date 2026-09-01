@@ -22,11 +22,11 @@ import org.hibernate.type.SqlTypes;
 @Entity
 @Table(name = "UPLOAD_SESSION")
 @Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@NoArgsConstructor(access = AccessLevel.PROTECTED)  // JPA 필수 기본 생성자를 protected로 제한. 외부에서 new UploadSession() 금지, 정적 팩토리 create()만 허용 → annotations.md
 public class UploadSession {
 
     @Id
-    @JdbcTypeCode(SqlTypes.BINARY)
+    @JdbcTypeCode(SqlTypes.BINARY)  // UUID를 DB에 BINARY(16)으로 저장. 문자열(36바이트) 대신 바이너리(16바이트)라 인덱스 효율이 좋음 → annotations.md
     @Column(name = "upload_session_id", columnDefinition = "BINARY(16)")
     private UUID uploadSessionId;
 
@@ -34,7 +34,7 @@ public class UploadSession {
     @Column(name = "boormi_id", columnDefinition = "BINARY(16)", nullable = false)
     private UUID boormiId;
 
-    @Enumerated(EnumType.STRING)
+    @Enumerated(EnumType.STRING)  // enum을 DB에 문자열로 저장. ORDINAL(숫자)은 순서 변경 시 의미가 바뀌는 위험이 있어 STRING 권장 → annotations.md
     @Column(name = "purpose", length = 50, nullable = false)
     private UploadPurpose purpose;
 
@@ -68,9 +68,9 @@ public class UploadSession {
     }
 
     public boolean matches(UploadPurpose expectedPurpose, UUID expectedBoormiId, UUID expectedResourceId) {
-        return purpose == expectedPurpose
+        return purpose == expectedPurpose  // enum 비교는 == 사용(같은 상수 인스턴스를 참조하므로 equals()와 동일)
                 && boormiId.equals(expectedBoormiId)
-                && Objects.equals(resourceId, expectedResourceId);
+                && Objects.equals(resourceId, expectedResourceId);  // null-safe equals. 둘 다 null이면 true, 하나만 null이면 false → java-patterns.md
     }
 
     /**

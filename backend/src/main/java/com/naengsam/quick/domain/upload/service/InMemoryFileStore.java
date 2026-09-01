@@ -15,16 +15,16 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @ConditionalOnProperty(name = "upload.s3-enabled", havingValue = "false", matchIfMissing = true)
-public class InMemoryFileStore implements InMemoryStateProbe {
+public class InMemoryFileStore implements InMemoryStateProbe {  // 관리자 화면에서 인메모리 상태를 조회하기 위한 인터페이스 구현
 
-    private final Map<String, StoredFile> filesByKey = new ConcurrentHashMap<>();
+    private final Map<String, StoredFile> filesByKey = new ConcurrentHashMap<>();  // 멀티스레드 안전한 HashMap. 동시 요청에서 race condition 방지 → java-patterns.md
 
     public void save(String key, byte[] bytes, String contentType) {
         filesByKey.put(key, new StoredFile(bytes, contentType));
     }
 
     public Optional<StoredFile> find(String key) {
-        return Optional.ofNullable(filesByKey.get(key));
+        return Optional.ofNullable(filesByKey.get(key));  // null 가능 값을 Optional로 감쌈. 호출부에서 null 체크 대신 orElseThrow/orElse 사용
     }
 
     public boolean exists(String key) {
@@ -37,14 +37,14 @@ public class InMemoryFileStore implements InMemoryStateProbe {
      */
     @Override
     public List<InMemoryStructureDto> inMemoryStructures() {
-        long totalBytes = filesByKey.values().stream()
-                .mapToLong(file -> file.bytes().length)
-                .sum();
+        long totalBytes = filesByKey.values().stream()  // 컬렉션을 스트림으로 변환
+                .mapToLong(file -> file.bytes().length)  // 각 StoredFile을 바이트 크기(long)로 변환. mapToLong은 LongStream 반환 → java-patterns.md
+                .sum();  // LongStream의 합산 단말 연산
 
-        return List.of(InMemoryStructureDto.ofMap("filesByKey", "S3 key → 업로드된 파일 바이트 (제거 경로 없음)", filesByKey)
+        return List.of(InMemoryStructureDto.ofMap("filesByKey", "S3 key → 업로드된 파일 바이트 (제거 경로 없음)", filesByKey)  // Java 9+ 불변 List 생성 팩토리
                 .withBreakdown(Map.of("총 바이트", totalBytes)));
     }
 
-    public record StoredFile(byte[] bytes, String contentType) {
+    public record StoredFile(byte[] bytes, String contentType) {  // 중첩 record. 파일 바이트+타입을 묶는 불변 데이터 클래스
     }
 }
