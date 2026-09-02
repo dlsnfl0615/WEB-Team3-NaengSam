@@ -12,14 +12,14 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-@Entity
+@Entity // JPA 엔티티: DREAMI_REQUEST_DENIED_DETAILS 테이블과 매핑
 @Table(name = "DREAMI_REQUEST_DENIED_DETAILS")
-@Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter // Lombok: getter 자동 생성
+@NoArgsConstructor(access = AccessLevel.PROTECTED) // Lombok: JPA용 protected 기본 생성자. 생성은 아래 create()로만
 public class DreamiRequestDeniedDetails {
 
     @Id
-    @JdbcTypeCode(SqlTypes.BINARY)
+    @JdbcTypeCode(SqlTypes.BINARY) // UUID를 BINARY(16)으로 저장 (Dreami 엔티티와 동일한 패턴)
     @Column(name = "reject_id", columnDefinition = "BINARY(16)")
     private UUID rejectId;
 

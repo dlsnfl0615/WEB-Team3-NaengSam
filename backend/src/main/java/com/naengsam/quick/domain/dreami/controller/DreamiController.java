@@ -35,8 +35,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+// 이 컨트롤러 전체에서 반복되는 것들: @LoginUser 파라미터는 로그인 세션에서 사용자 id를 꺼내주는 커스텀
+// annotation, @Valid는 요청 DTO의 검증 annotation(@NotNull 등)을 실제로 실행시키는 표시,
+// @ApiErrorCodes 는 Swagger 문서에 "이 API가 던질 수 있는 에러코드"를 나열하는 이 프로젝트만의 커스텀 annotation.
 @RestController
-@RequiredArgsConstructor
+@RequiredArgsConstructor // Lombok: final 필드를 받는 생성자 자동 생성
 @RequestMapping("/api/v1/dreami")
 @Tag(name = "드리미 컨트롤러", description = "드리미 프로필을 조회하고 온라인/오프라인 상태를 전환한다.")
 public class DreamiController {
@@ -58,6 +61,7 @@ public class DreamiController {
     @ApiResponse(responseCode = "200", description = "요청에 성공했습니다.")
     @ApiErrorCodes(enumClass = DreamiErrorCode.class, codes = {"NOT_FOUND", "NOT_APPROVED", "ALREADY_HAS_ACTIVE_ORDER"})
     public void goOnline(@LoginUser UUID dreamiId, @Valid @RequestBody DreamiOnlineRequest request) {
+        // GeoPoint는 record(불변 데이터 객체) — new GeoPoint(lat, lng)로 필드 2개를 그대로 담아 생성한다
         dreamiService.goOnline(dreamiId, new GeoPoint(request.latitude(), request.longitude()));
     }
 

@@ -59,11 +59,26 @@ public class OrderService {
     @Transactional(readOnly = true)
     public BoormiOrdersResponse getOrders(UUID userId, Role role, List<OrderCd> statusFilter, String cursorToken,
             Integer size) {
+        // 1) cursorToken(클라이언트가 이전 응답에서 그대로 받아온 opaque 문자열)을 OrderCursor(정렬 기준 값)로 되돌린다.
+        //    OrderCursor.decode(...)는 Optional<OrderCursor>를 반환한다 — cursorToken이 null/공백(첫 페이지 요청)이면
+        //    "커서 없음"을 뜻하는 빈 커서를 담아 정상적으로 값이 있는 Optional을 돌려주고, Base64 디코딩이나 파싱 자체가
+        //    깨진(형식이 이상한) 값일 때만 Optional.empty()가 되어 아래 orElseThrow가 INVALID_CURSOR 예외를 던진다.
         OrderCursor cursor = OrderCursor.decode(cursorToken)
                 .orElseThrow(() -> new BusinessException(OrderErrorCode.INVALID_CURSOR));
+        // 2) Pageable: Spring Data JPA가 페이지 조회(LIMIT/OFFSET 등)에 쓰는 표준 타입. PageRequest.of(0, n)은
+        //    "0번째 페이지, 한 번에 n건"을 의미한다. 여기서는 오프셋 페이지네이션이 아니라 커서 방식이라 페이지 번호(0)는
+        //    항상 고정이고, size 대신 "요청 크기 + 1"을 넘긴다 — hasNext 판단을 위해 한 건 더 가져와 보는 트릭(아래 4번 참고).
         Pageable pageable = PageRequest.of(0, resolvePageSize(size) + 1);
+        // 3) statusFilter가 비어 있으면(전체 탭) OrderCd.values() 전체로 채워, 쿼리 입장에서는 "필터 있음/없음" 분기가
+        //    필요 없게(항상 IN 절 하나로) 통일한다.
         List<OrderCd> orderCds = resolveOrderCds(statusFilter);
 
+        // 4) role(BOORMI/DREAMI)에 따라 완전히 다른 두 쿼리 메서드를 호출한다. 부르미/드리미를 하나의 OR 조건
+        //    쿼리로 합치지 않고 이렇게 나눈 이유는 overview.md 8절에 정리돼 있다 — 파라미터 의존 OR 조건은 MySQL이
+        //    인덱스를 확정적으로 타지 못할 수 있어서, role별로 각자의 인덱스(dreami_id 기준/boormi_id 기준)를
+        //    확실히 타도록 쿼리 자체를 나눴다.
+        //    cursor.deliveryRequestDtm()/cursor.orderId(): "이 시각·이 id보다 이전 것들만" 조회하는 조건으로 쓰인다
+        //    (첫 페이지면 둘 다 null이라 조건 없이 최신부터 조회).
         List<OrderSummaryDto> rows;
         if (role == Role.BOORMI) {
             rows = orderRepository.findPageByBoormiId(userId, orderCds, cursor.deliveryRequestDtm(),
@@ -73,6 +88,7 @@ public class OrderService {
                     cursor.orderId(), pageable);
         }
 
+        // 5) "요청 크기+1"건 중 실제로 몇 건을 보여줄지, 다음 페이지 커서는 뭔지는 toPageResponse가 판단한다.
         return toPageResponse(rows, resolvePageSize(size));
     }
 
@@ -90,6 +106,7 @@ public class OrderService {
     /**
      * 필터 탭이 비어 있으면(전체 탭) {@link OrderCd#values()} 전체로 채운다.
      */
+    // OrderCd.values(): enum의 모든 값을 배열로 돌려주는 자바 표준 메서드. List.of(배열...)로 감싸 불변 리스트로 만든다.
     private List<OrderCd> resolveOrderCds(List<OrderCd> statusFilter) {
         if (statusFilter == null || statusFilter.isEmpty()) {
             return List.of(OrderCd.values());
@@ -97,16 +114,24 @@ public class OrderService {
         return statusFilter;
     }
 
+    // getOrders가 "요청 크기+1"건을 가져온 뒤, 실제로 화면에 보여줄 목록과 다음 페이지 커서를 결정하는 곳.
     private BoormiOrdersResponse toPageResponse(List<OrderSummaryDto> rows, int pageSize) {
+        // 쿼리에서 (pageSize+1)건을 요청했는데 실제로 pageSize보다 많이 왔다는 건 "여분 1건"이 있다는 뜻 =
+        // 다음 페이지가 더 있다는 신호. 이 여분 덕분에 별도 COUNT 쿼리 없이 hasNext를 판단할 수 있다.
         boolean hasNext = rows.size() > pageSize;
         if (!hasNext) {
+            // 더 볼 게 없으니 받은 그대로 반환하고 nextCursor는 null(더 이상 페이지 요청할 필요 없다는 뜻).
             return BoormiOrdersResponse.of(rows, null, false);
         }
+        // subList(0, pageSize): 여분으로 가져온 마지막 1건은 잘라내고, 원래 요청한 개수만큼만 응답에 담는다.
         List<OrderSummaryDto> page = rows.subList(0, pageSize);
+        // getLast(): 리스트의 마지막 원소를 꺼내는 자바 표준 메서드(Java 21+). 그 마지막 행의 정렬 키로
+        // 새 OrderCursor를 만들고 Base64 문자열로 인코딩해, 클라이언트가 다음 요청에 그대로 실어 보내게 한다.
         String nextCursor = OrderCursor.of(page.getLast()).encode();
         return BoormiOrdersResponse.of(page, nextCursor, true);
     }
 
+    // 요청한 size가 없거나 0 이하이면 기본값(20), 있으면 최대값(50)을 넘지 않게 잘라준다(과도한 조회 방지).
     private int resolvePageSize(Integer size) {
         if (size == null || size <= 0) {
             return DEFAULT_PAGE_SIZE;

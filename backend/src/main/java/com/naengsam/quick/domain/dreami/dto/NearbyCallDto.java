@@ -38,6 +38,7 @@ public record NearbyCallDto(
                 order.orderCd(),
                 order.deliveryAmount(),
                 order.deliveryEta(),
+                // matching 도메인의 유틸 클래스가 제공하는 정적 계산 함수(거리 -> 도보/이동 예상 분)를 그대로 호출
                 PickupEtaCalculator.minutesFromDistance(nearby.distanceMeters()),
                 order.originAddressLine1(),
                 order.originAddressLine2(),

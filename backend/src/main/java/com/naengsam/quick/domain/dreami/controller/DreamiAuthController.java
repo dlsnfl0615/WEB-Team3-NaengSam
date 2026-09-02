@@ -25,8 +25,8 @@ import org.springframework.web.bind.annotation.RestController;
  * 드리미 인증 컨트롤러. 신분증/범죄이력조회서가 S3에 모두 업로드됐는지 확인하고, 확인되면 인증 신청을 저장한다.
  */
 @RestController
-@RequiredArgsConstructor
-@Slf4j
+@RequiredArgsConstructor // Lombok: final 필드들을 매개변수로 받는 생성자 자동 생성(생성자 주입)
+@Slf4j // Lombok: log.info(...) 처럼 쓸 수 있는 SLF4J 로거 필드(log)를 자동 생성
 @RequestMapping("/api/v1/dreami")
 @Tag(name = "드리미 인증 컨트롤러", description = "신분증/범죄이력조회서 업로드를 확인하고 드리미 인증 신청을 저장한다.")
 public class DreamiAuthController {
@@ -42,8 +42,8 @@ public class DreamiAuthController {
     @ApiErrorCodes(enumClass = DreamiErrorCode.class, codes = {"ALREADY_APPROVED"})
     @ApiErrorCodes(enumClass = UploadErrorCode.class, codes = {"FILE_NOT_FOUND", "KEY_OWNER_MISMATCH",
             "STORAGE_UPLOAD_FAILED"})
-    public void verifyUploadedDocuments(@Valid @RequestBody DreamiAuthRequestDto requestDto,
-                                        @LoginUser UUID boormiId) {
+    public void verifyUploadedDocuments(@Valid @RequestBody DreamiAuthRequestDto requestDto, // @Valid: DTO에 붙은 @NotBlank 등 검증 annotation을 실제로 검사해서, 위반 시 400 에러로 걸러줌
+                                        @LoginUser UUID boormiId) { // @LoginUser: 로그인 세션에서 현재 로그인한 사용자 id를 꺼내 자동으로 넣어주는 커스텀 annotation
         // 승인 완료됐을 때는 해당 api 호출해서 값 덮어쓰지 못하게 해야함
         // reviewing, requested, rejected일 때는 다시 제출 허용
         dreamiService.assertNotAlreadyApproved(boormiId);

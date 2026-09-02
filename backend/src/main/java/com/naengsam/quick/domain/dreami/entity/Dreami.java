@@ -15,13 +15,13 @@ import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
-@Entity
+@Entity // 이 클래스가 DB 테이블과 매핑되는 JPA 엔티티임을 표시(Hibernate가 관리)
 @Table(name = "DREAMI")
-@Getter
-@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@Getter // Lombok: 모든 필드의 getter(getDreamiId() 등)를 컴파일 시점에 자동 생성
+@NoArgsConstructor(access = AccessLevel.PROTECTED) // Lombok: JPA가 필요로 하는 파라미터 없는 생성자를 protected로 자동 생성(외부에서 new Dreami() 직접 호출 금지, 아래 create()만 쓰도록 강제)
 public class Dreami {
     @Id
-    @JdbcTypeCode(SqlTypes.BINARY)
+    @JdbcTypeCode(SqlTypes.BINARY) // Hibernate 전용 annotation: UUID를 DB에는 BINARY(16) 이진값으로 저장하라는 지시
     @Column(name = "dreami_id", columnDefinition = "BINARY(16)")
     private UUID dreamiId;
 
@@ -34,7 +34,7 @@ public class Dreami {
     @Column(name = "review_dtm")
     private LocalDateTime reviewDtm;
 
-    @Enumerated(EnumType.STRING)
+    @Enumerated(EnumType.STRING) // enum을 숫자(ordinal)가 아니라 "REQUESTED" 같은 문자열로 DB에 저장
     @Column(name = "request_cd", nullable = false)
     private DreamiCd requestCd;
 

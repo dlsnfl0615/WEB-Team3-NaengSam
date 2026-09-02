@@ -16,8 +16,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>리포지토리에만 의존하는 잎 컴포넌트로 둔다. 서비스를 참조하면 매칭↔배달↔유저 사이에 순환 참조가 생긴다.
  */
-@Component
-@RequiredArgsConstructor
+@Component // Spring이 관리하는 일반 빈으로 등록(@Service와 비슷하지만 특정 계층을 의미하지 않음)
+@RequiredArgsConstructor // Lombok: final 필드 생성자 자동 생성
 public class DreamiActivationChecker {
 
     private final BoormiRepository boormiRepository;
@@ -25,6 +25,8 @@ public class DreamiActivationChecker {
 
     @Transactional(readOnly = true)
     public boolean isActivatedDreami(UUID userId) {
+        // Optional.map(람다).orElse(기본값): 값이 있으면 람다로 변환한 결과를, 없으면 기본값(false)을 사용한다.
+        // 즉 "boormi가 존재하고 dreamiActivate 플래그가 true인가"를 null 체크 없이 표현한 것.
         boolean activated = boormiRepository.findById(userId)
                 .map(boormi -> boormi.isDreamiActivate())
                 .orElse(false);
