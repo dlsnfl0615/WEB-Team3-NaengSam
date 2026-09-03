@@ -5,6 +5,11 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 
+/**
+ * 카카오 도보 길찾기 API가 돌려주는 상태 코드를 그대로 매핑한 에러코드. 전부
+ * {@link com.naengsam.quick.domain.address.service.KakaoDirectionsService} 에서만 던져진다(HTTP 400).
+ * 목록에 없는 상태를 카카오가 반환하면 이 enum이 아니라 공통 {@code EXTERNAL_SERVICE_ERROR} 로 처리된다.
+ */
 @RequiredArgsConstructor
 @Getter
 public enum AddressErrorCode implements BaseErrorCode {

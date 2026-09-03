@@ -18,6 +18,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 결제 전 견적 화면에서 쓰는 stateless 좌표 변환 API. {@link AddressController} 와 달리 DB를 전혀 건드리지 않는다 — 계산된 좌표는
+ * 클라이언트가 들고 있다가 결제 완료 시점의 주문 생성 요청에 함께 담아 보낸다(주문이 끝나기 전에는 관련 row를 만들지 않기 위한 의도적 설계).
+ */
 @RestController
 @RequestMapping("/api/v1/address")
 @Tag(name = "주소 좌표 변환 컨트롤러", description = "도로명주소를 위도/경도로 변환한다. 결제가 완료되기 전까지는 아무것도 저장하지 않는다.")

@@ -19,6 +19,11 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * 부르미 배송지 저장/조회 API. {@code boormiId} 는 요청 바디가 아니라 세션({@link com.naengsam.quick.global.session.LoginUser})에서
+ * 가져오며, {@code findAll} 도 호출자 소유 배송지만 조회하도록 스코프된다(원래는 로그인 없이 열려 있고 전체를 조회하는 IDOR 이었다).
+ * 좌표는 요청에 없고 {@link com.naengsam.quick.domain.address.service.AddressService} 가 서버에서 계산한다.
+ */
 @RestController
 @RequiredArgsConstructor
 @RequestMapping("/api/v1/address")
