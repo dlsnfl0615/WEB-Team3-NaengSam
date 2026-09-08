@@ -14,19 +14,27 @@ import org.springframework.stereotype.Component;
  * 인메모리 파일 저장소. 로컬 개발에서 실제 S3 없이 presigned PUT/GET을 흉내내기 위해 사용한다.
  */
 @Component
+// 이 빈 자체가 "로컬 개발용 가짜 S3 버킷"이라, 운영(S3Uploader 활성화)에서는 아예 등록되지 않는다.
+// DevUploader/DevStorageController와 조건이 동일해서, 셋이 항상 다 같이 켜지거나 다 같이 꺼진다.
 @ConditionalOnProperty(name = "upload.s3-enabled", havingValue = "false", matchIfMissing = true)
 public class InMemoryFileStore implements InMemoryStateProbe {  // 관리자 화면에서 인메모리 상태를 조회하기 위한 인터페이스 구현
 
+    // 실제 S3 버킷 하나를 대신하는 자료구조. key는 S3Uploader가 쓰는 key와 완전히 같은 의미(예: uploads/xxx.png)라,
+    // 로컬↔운영 전환 시 이 컴포넌트를 갈아끼우는 것만으로 나머지 코드는 수정할 필요가 없다.
     private final Map<String, StoredFile> filesByKey = new ConcurrentHashMap<>();  // 멀티스레드 안전한 HashMap. 동시 요청에서 race condition 방지 → java-patterns.md
 
+    // DevStorageController.put()이 호출하는 지점 — S3의 실제 PUT 처리(오브젝트 저장)에 대응한다.
     public void save(String key, byte[] bytes, String contentType) {
         filesByKey.put(key, new StoredFile(bytes, contentType));
     }
 
+    // DevStorageController.get()이 호출하는 지점 — S3의 GetObject에 대응한다.
     public Optional<StoredFile> find(String key) {
         return Optional.ofNullable(filesByKey.get(key));  // null 가능 값을 Optional로 감쌈. 호출부에서 null 체크 대신 orElseThrow/orElse 사용
     }
 
+    // DevUploader.exists()가 호출하는 지점 — S3Uploader가 HeadObject로 확인하는 것과 같은 역할("업로드가
+    // 실제로 완료됐는가")을 인메모리 조회로 대신한다.
     public boolean exists(String key) {
         return filesByKey.containsKey(key);
     }

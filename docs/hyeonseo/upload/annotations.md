@@ -53,6 +53,15 @@ public S3Client s3Client() { return S3Client.create(); }
 - `S3Client`와 `S3Presigner` 모두 `SdkAutoCloseable`(→ `Closeable` → `AutoCloseable`)을 구현하고 있어, `close()` 를 호출해야 내부 HTTP 커넥션 풀·스레드 등 리소스가 정리된다.
 - 지정하지 않으면(`destroyMethod = ""`), Spring이 이름으로 메서드를 자동 추론(추론 규칙: `close` 또는 `shutdown` 메서드가 있으면 자동 호출). 명시하면 추론 과정 없이 확실하게 지정된 이름을 호출한다.
 
+
+```java
+@Bean(destroyMethod = "close")
+public S3Client s3Client() {
+    return S3Client.create();   // ← 이 리턴값이 스프링 빈
+}
+```
+`close` 메서드는 해당 빈의 리턴값의 `close` 메서드를 호출하는 것.
+
 ### 기타 `@Bean` 주요 속성
 
 | 속성 | 설명 |

@@ -264,6 +264,12 @@ String baseUrl = ServletUriComponentsBuilder
 - `fromCurrentContextPath()`: `RequestContextHolder`(현재 스레드의 요청 컨텍스트)에서 호스트·포트·컨텍스트 경로를 읽는다. 요청 처리 스레드 밖에서 호출하면 `IllegalStateException`.
 - 하드코딩(`"http://localhost:8080"`) 대신 이 방식을 쓰는 이유: 개발자마다 포트가 다를 수 있고, 배포 환경에서도 동적으로 올바른 origin을 사용하기 위해.
 
+- request.getScheme() — http인지 https인지
+- request.getServerName() — 클라이언트가 요청을 보낸 호스트명(예: localhost)
+- request.getServerPort() — 포트(예: 8080)
+- (request.getContextPath()도 붙는데, 이 프로젝트는 서블릿 컨텍스트 경로를 안 쓰므로 빈 문자열)
+
+
 ---
 
 ## `@Param` + JPQL 이름 바인딩
